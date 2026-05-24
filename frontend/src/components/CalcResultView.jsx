@@ -282,13 +282,42 @@ function Check({ block }) {
   )
 }
 
+// ── Calc text formatter — converts _x → <sub>x</sub>, ^x → <sup>x</sup>,
+// and " a / b " (space-padded slash) → stacked horizontal fraction.
+// Subscript/superscript stops at whitespace, operators, or brackets so that
+// e.g. N_Ed/A → N<sub>Ed</sub>/A.
+// Units like kN/m (no spaces) are left untouched.
+function fmtCalcText(text) {
+  if (!text) return ''
+  // 1. sub / superscripts
+  let s = text
+    .replace(/_([^\s_^<>=+\-*/×÷·()[\]{}]+)/g, '<sub>$1</sub>')
+    .replace(/\^([^\s_^<>=+\-*/×÷·()[\]{}]+)/g, '<sup>$1</sup>')
+  // 2. horizontal fraction — only when there is exactly one " / "
+  const parts = s.split(' / ')
+  if (parts.length === 2) {
+    s =
+      '<span style="display:inline-flex;flex-direction:column;' +
+      'align-items:center;vertical-align:middle;margin:0 3px;font-size:0.9em">' +
+        '<span style="border-bottom:1.5px solid currentColor;padding:1px 5px;' +
+        'line-height:1.3;white-space:nowrap">' + parts[0].trim() + '</span>' +
+        '<span style="padding:1px 5px;line-height:1.3;white-space:nowrap">' +
+        parts[1].trim() + '</span>' +
+      '</span>'
+  }
+  return s
+}
+
 // ── Calc row (pre-formatted single equation row) ──────────────────────────────
 function CalcRow({ block }) {
   return (
     <div style={styles.calcRow}>
-      <span style={styles.calcRowName}>{block.name}</span>
-      <span style={styles.calcRowFormula}>{block.formula ? `${block.formula}` : ''}</span>
-      <span style={styles.calcRowResult}>{block.result}</span>
+      <span style={styles.calcRowName}
+        dangerouslySetInnerHTML={{ __html: fmtCalcText(block.name) }} />
+      <span style={styles.calcRowFormula}
+        dangerouslySetInnerHTML={{ __html: fmtCalcText(block.formula) }} />
+      <span style={styles.calcRowResult}
+        dangerouslySetInnerHTML={{ __html: fmtCalcText(block.result) }} />
       {block.label && <span style={styles.calcRowNote}>{block.label}</span>}
     </div>
   )
