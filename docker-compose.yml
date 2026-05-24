@@ -1,0 +1,72 @@
+# =============================================================================
+# docker-compose.yml  —  StructuralCalc (optional container deployment)
+#
+# Usage:
+#   docker compose up -d            # start
+#   docker compose logs -f          # tail logs
+#   docker compose pull && \
+#     docker compose up -d          # update to latest image
+#
+# Production tip: put ALLOWED_ORIGINS and any secrets in a .env file next to
+# this compose file (never commit it):
+#   ALLOWED_ORIGINS=https://yourdomain.com
+# =============================================================================
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: final
+    image: structuralcalc:latest
+    container_name: structuralcalc_app
+    restart: unless-stopped
+
+    ports:
+      # Bind only to loopback — Nginx (on the host or in another container)
+      # handles public traffic.  Change to "8000:8000" only for local testing.
+      - "127.0.0.1:8000:8000"
+
+    environment:
+      DATABASE_PATH: /data/projects.db
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://localhost:8000}"
+      PYTHONUNBUFFERED: "1"
+
+    volumes:
+      # Persist the SQLite database outside the container
+      - structuralcalc_data:/data
+
+    # Simple healthcheck (Docker CLI: docker inspect --format='{{.State.Health.Status}}' structuralcalc_app)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    # Limit resources on a CX22 (2 vCPU / 4 GB)
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2G
+        reservations:
+          memory: 256M
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
+volumes:
+  structuralcalc_data:
+    driver: local
+    # To persist data at a specific host path instead of a named volume, replace
+    # the two lines above with:
+    #   driver: local
+    #   driver_opts:
+    #     type: none
+    #     o: bind
+    #     device: /opt/structuralcalc/data

@@ -1,0 +1,18 @@
+# Web framework
+fastapi
+uvicorn[standard]
+pydantic
+
+# Authentication (Clerk JWT verification)
+python-jose[cryptography]   # RS256 JWT decoding
+httpx                       # fetch Clerk's public JWKS keys
+python-dotenv               # load .env file in local development
+
+# Structural calculation libraries (same as the Streamlit deploy app)
+numpy
+matplotlib
+pandas
+forallpeople
+handcalcs
+reportlab
+pypdfium2

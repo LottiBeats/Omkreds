@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: structuralcalc-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: starter          # Starter ($7/mo) required for persistent disk
+    envVars:
+      - key: DATABASE_PATH
+        value: /var/data/projects.db
+      - key: ALLOWED_ORIGINS
+        sync: false        # Set this manually in the Render dashboard after deploy
+
+    disk:
+      name: structuralcalc-db
+      mountPath: /var/data
+      sizeGB: 1

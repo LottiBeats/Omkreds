@@ -1,0 +1,850 @@
+/**
+ * BlockList.jsx — document canvas with left block-type panel
+ *
+ * Layout:
+ *   [Add-block panel]  |  [White document page]
+ *
+ * • Blocks render as document content (headings, text, images, calc summaries)
+ * • Click a block → editor opens in-place with a ▲ collapse button
+ * • Hover between blocks → blue + add button
+ * • ⠿ drag handle to reorder
+ */
+import React, { useState, useRef, useEffect } from 'react'
+
+import HeadingBlock      from './HeadingBlock.jsx'
+import TextBlock         from './TextBlock.jsx'
+import ImageBlock        from './ImageBlock.jsx'
+import PythonBlock       from './PythonBlock.jsx'
+import CustomCalcBlock   from './CustomCalcBlock.jsx'
+import SteelBeamBlock    from './SteelBeamBlock.jsx'
+import SteelColumnBlock  from './SteelColumnBlock.jsx'
+import RCBeamBlock       from './RCBeamBlock.jsx'
+import RCColumnBlock     from './RCColumnBlock.jsx'
+import RCSlabBlock       from './RCSlabBlock.jsx'
+import TimberBeamBlock   from './TimberBeamBlock.jsx'
+import TimberColumnBlock from './TimberColumnBlock.jsx'
+import MasonryWallBlock  from './MasonryWallBlock.jsx'
+import BeamFemBlock      from './BeamFemBlock.jsx'
+import WindLoadBlock     from './WindLoadBlock.jsx'
+import SnowLoadBlock     from './SnowLoadBlock.jsx'
+import FoundationBlock     from './FoundationBlock.jsx'
+import LoadComboBlock      from './LoadComboBlock.jsx'
+import BeamColumnBlock     from './BeamColumnBlock.jsx'
+import BoltConnectionBlock from './BoltConnectionBlock.jsx'
+import PlateGirderBlock    from './PlateGirderBlock.jsx'
+import SavedCalcBlock      from './SavedCalcBlock.jsx'
+
+// ── Block registry ────────────────────────────────────────────────────────────
+
+// icon: short text badge shown in the left panel (max 3 chars, monospace)
+const BLOCK_TYPES = [
+  { type: 'heading',       label: 'Heading',           icon: 'H',   color: '#64748b', component: HeadingBlock,
+    default: { level: 1, text: '' } },
+  { type: 'text',          label: 'Paragraph',         icon: 'TXT', color: '#64748b', component: TextBlock,
+    default: { text: '' } },
+  { type: 'image',         label: 'Image',             icon: 'IMG', color: '#64748b', component: ImageBlock,
+    default: { image_b64: null, caption: '', width_pct: 100 } },
+  { type: 'custom_calc',   label: 'Custom calc',       icon: 'CLC', color: '#7c3aed', component: CustomCalcBlock,
+    default: { title: 'Custom Calculation', items: [], _result: null } },
+  { type: 'python_calc',   label: 'Python script',     icon: 'PY',  color: '#0284c7', component: PythonBlock,
+    default: { title: 'Python Script',
+               code: 'import numpy as np\n\nx = np.linspace(0, 10, 100)\nprint(f"Max x = {x.max():.1f}")',
+               _output_text: '', _figs_b64: [], _error: '' } },
+  { type: 'steel_beam',    label: 'Steel beam',        icon: 'SB',  color: '#1e3a5f', component: SteelBeamBlock,
+    default: { title: 'Steel Beam Check', label: 'S1', section: 'IPE300', grade: 'S355',
+               span_m: 5.0, g_k_kNm: 5.0, q_k_kNm: 3.0, gamma_M0: 1.0, gamma_M1: 1.0,
+               ltb_restrained: false, buck_y_restrained: false, buck_x_restrained: false, _result: null } },
+  { type: 'steel_column',  label: 'Steel column',      icon: 'SC',  color: '#1e3a5f', component: SteelColumnBlock,
+    default: { title: 'Steel Column Check', label: 'SC1', section: 'HEB200', grade: 'S355',
+               length_m: 4.0, N_Ed_kN: 500.0, k_y: 1.0, k_z: 1.0,
+               gamma_M0: 1.0, gamma_M1: 1.0, _result: null } },
+  { type: 'rc_beam',       label: 'RC beam',           icon: 'RCB', color: '#374151', component: RCBeamBlock,
+    default: { title: 'RC Beam Check', label: 'B1', span_m: 5.0, b_mm: 300, h_mm: 500,
+               d_mm: 450, g_k_kNm: 10.0, q_k_kNm: 6.0, f_ck_MPa: 30, f_yk_MPa: 500,
+               As_prov_mm2: null, gamma_C: 1.5, gamma_S: 1.15, _result: null } },
+  { type: 'rc_column',     label: 'RC column',         icon: 'RCC', color: '#374151', component: RCColumnBlock,
+    default: { title: 'RC Column Check', label: 'C1', h_mm: 300, b_mm: 300, c_mm: 40,
+               fck_mpa: 30, fyk_mpa: 500, gamma_c: 1.5, gamma_s: 1.15,
+               da_c_mm: 16, n_c: 2, da_t_mm: 16, n_t: 2,
+               Ls_mm: 3500, beta_eff: 1.0,
+               load_cases: [{ label: 'LC1', NEd_kN: 400, M0Ed_kNm: 20 }], _result: null } },
+  { type: 'rc_slab',       label: 'RC slab',           icon: 'RCS', color: '#374151', component: RCSlabBlock,
+    default: { title: 'RC Slab Check', label: 'D1', span_m: 5.0, h_mm: 200, d_mm: 165,
+               g_k_kNm2: 3.5, q_k_kNm2: 2.5, fck_MPa: 30, fyk_MPa: 500,
+               As_prov_mm2m: null, gamma_C: 1.5, gamma_S: 1.15, cover_mm: 35, _result: null } },
+  { type: 'timber_beam',   label: 'Timber beam',       icon: 'TB',  color: '#92400e', component: TimberBeamBlock,
+    default: { title: 'Timber Beam Check', label: 'T1', span_m: 4.0, b_mm: 90, h_mm: 220,
+               g_k_kNm: 3.0, q_k_kNm: 2.0, timber_grade: 'C24', service_class: 1,
+               load_duration: 'medium', gamma_M: 1.3,
+               compression_edge_restrained: true, torsional_restraint_at_supports: true, _result: null } },
+  { type: 'timber_column', label: 'Timber column',     icon: 'TC',  color: '#92400e', component: TimberColumnBlock,
+    default: { title: 'Timber Column Check', label: 'C1', length_m: 3.0, N_Ed_kN: 50.0,
+               M_Ed_kNm: 0.0, b_mm: 120, h_mm: 120, timber_grade: 'C24', service_class: 1,
+               load_duration: 'medium', gamma_M: 1.3, effective_length_factor: 1.0,
+               l_ef_ltb_m: null, _result: null } },
+  { type: 'masonry_wall',  label: 'Masonry wall',      icon: 'MSN', color: '#78350f', component: MasonryWallBlock,
+    default: { title: 'Masonry Wall Check', label: 'W1', height_m: 3.0, thickness_mm: 228,
+               length_m: 5.0, N_k_kN: 100.0, f_b_MPa: 10.0, f_m_MPa: 6.0, gamma_M: 2.5,
+               K: 0.55, alpha: 0.7, beta: 0.3, _result: null } },
+  { type: 'beam_fem',      label: 'Beam FEM',          icon: 'FEM', color: '#0f766e', component: BeamFemBlock,
+    default: { title: 'Beam FEM Analysis', L: 6.0, E_GPa: 210.0, I_cm4: 3000.0,
+               supports: [{ x: 0, type: 'pin' }, { x: 6.0, type: 'roller' }],
+               loads: [{ type: 'udl', w_kNm: 10.0, x1: 0, x2: 6.0 }],
+               _fig_b64: null, _summary: null, _result: null } },
+  { type: 'wind_load',     label: 'Wind load',         icon: 'WND', color: '#0369a1', component: WindLoadBlock,
+    default: { title: 'Wind Load', label: 'W1', terrain_category: 'II',
+               v_b0_ms: 24.0, z_ref_m: 8.0, h_m: 8.0, b_m: 10.0, d_m: 12.0,
+               c_dir: 1.0, c_season: 1.0, c_pe_windward: 0.8, c_pe_leeward: -0.5,
+               c_pi: 0.2, rho_air: 1.25, _result: null } },
+  { type: 'snow_load',     label: 'Snow load',         icon: 'SNW', color: '#0369a1', component: SnowLoadBlock,
+    default: { title: 'Snow Load', label: 'SN1', roof_type: 'pitched',
+               alpha_deg: 20.0, s_k_kNm2: 1.0, dk_zone: '1',
+               C_e: 1.0, C_t: 1.0, roof_span_m: 8.0, eave_height_m: 3.0,
+               gamma_s: 1.5, _result: null } },
+  { type: 'foundation',    label: 'Foundation',        icon: 'FND', color: '#57534e', component: FoundationBlock,
+    default: { title: 'Foundation Bearing Check', label: 'F1',
+               B_m: 1.5, L_m: 2.0, D_m: 0.8,
+               c_kPa: 5.0, phi_deg: 30.0, gamma_kNm3: 18.0, gamma_b_kNm3: 10.0,
+               water_table: false, V_Ed_kN: 300.0, H_Ed_kN: 0.0, M_Ed_kNm: 0.0,
+               gamma_phi: 1.0, gamma_c: 1.0, gamma_Rv: 1.4, _result: null } },
+  { type: 'load_combo',    label: 'Load combinations', icon: 'LC',  color: '#9333ea', component: LoadComboBlock,
+    default: { title: 'Load Combinations', label: 'LC1', unit: 'kN/m',
+               G_k: 5.0, G_fav: false, loads: [], method: '6.10ab', _result: null } },
+  { type: 'beam_column',   label: 'Beam-column (N+M)', icon: 'BC',  color: '#1e3a5f', component: BeamColumnBlock,
+    default: { title: 'Beam-Column Check', label: 'BC1', section: 'HEB200', grade: 'S355',
+               N_Ed_kN: 200, My_Ed_kNm: 50, Mz_Ed_kNm: 0,
+               L_y_m: 4.0, L_z_m: 4.0, L_LTB_m: 4.0,
+               k_y: 1.0, k_z: 1.0, C_my: 1.0, C_mz: 1.0, C_mLT: 1.0,
+               ltb_restrained: false, gamma_M0: 1.0, gamma_M1: 1.0, _result: null } },
+  { type: 'bolt_group',    label: 'Bolt group',        icon: 'BLT', color: '#1e3a5f', component: BoltConnectionBlock,
+    default: { title: 'Connection Check', label: 'BG1', mode: 'bolts',
+               n_bolts: 4, bolt_class: '8.8', d_mm: 20, shear_plane: 'thread',
+               n_shear_planes: 1, t_plate_mm: 10, f_u_plate_MPa: 510,
+               e1_mm: 40, e2_mm: 40, p1_mm: 60, V_Ed_kN: 100, gamma_M2: 1.25,
+               _result: null } },
+  { type: 'fillet_weld',   label: 'Fillet weld',       icon: 'WLD', color: '#1e3a5f', component: BoltConnectionBlock,
+    default: { title: 'Weld Check', label: 'W1', mode: 'weld',
+               a_mm: 6, L_mm: 200, F_Ed_kN: 80, steel_grade: 'S355',
+               gamma_M2: 1.25, _result: null } },
+  { type: 'plate_girder',  label: 'Plate girder',       icon: 'PG',  color: '#1e3a5f', component: PlateGirderBlock,
+    default: { title: 'Plate Girder Check', label: 'PG1', grade: 'S355',
+               h_w_mm: 1200, t_w_mm: 12, b_f_mm: 400, t_f_mm: 25,
+               a_mm: 2000, eta: 1.0, rigid_end_post: true,
+               V_Ed_kN: 0, M_Ed_kNm: 0,
+               gamma_M0: 1.0, gamma_M1: 1.0, _result: null } },
+  { type: 'saved_calc',    label: 'My Calculation',     icon: 'TPL', color: '#2563eb', component: SavedCalcBlock,
+    default: { title: '', template_id: null, params: {}, _result: null } },
+]
+
+const TYPE_MAP = Object.fromEntries(BLOCK_TYPES.map(t => [t.type, t]))
+
+// ── Panel groups ──────────────────────────────────────────────────────────────
+
+const PANEL_GROUPS = [
+  {
+    label: 'Content',
+    types: ['heading', 'text', 'image'],
+  },
+  {
+    label: 'Loads  (EN 1990)',
+    types: ['load_combo'],
+  },
+  {
+    label: 'Steel  (EC3)',
+    types: ['steel_beam', 'steel_column', 'beam_column', 'plate_girder', 'bolt_group', 'fillet_weld'],
+  },
+  {
+    label: 'Concrete  (EC2)',
+    types: ['rc_beam', 'rc_column', 'rc_slab'],
+  },
+  {
+    label: 'Timber  (EC5)',
+    types: ['timber_beam', 'timber_column'],
+  },
+  {
+    label: 'Masonry  (EC6)',
+    types: ['masonry_wall'],
+  },
+  {
+    label: 'Actions  (EC1)',
+    types: ['wind_load', 'snow_load'],
+  },
+  {
+    label: 'Geotechnical  (EC7)',
+    types: ['foundation'],
+  },
+  {
+    label: 'Analysis',
+    types: ['beam_fem'],
+  },
+  {
+    label: 'Custom',
+    types: ['custom_calc', 'python_calc'],
+  },
+]
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function countChecks(result) {
+  if (!result) return null
+  let pass = 0, fail = 0
+  result.forEach(b => b.type === 'check' && (b.passes !== false ? pass++ : fail++))
+  return (pass + fail) > 0 ? { pass, fail } : null
+}
+
+const mkBadge = ok => ({
+  fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 2,
+  background: ok ? '#e8f8ef' : '#fdf3f2',
+  color:      ok ? '#27ae60' : '#c0392b',
+})
+
+// ── Block preview (rendered document content) ─────────────────────────────────
+
+function BlockPreview({ block }) {
+  const d = block.data
+  switch (block.type) {
+
+    case 'heading': {
+      const sz = { 1: 26, 2: 20, 3: 16 }[d.level] || 18
+      return (
+        <div style={{ fontSize: sz, fontWeight: 700, lineHeight: 1.3, padding: '2px 0',
+                      color: d.text ? '#1c1c1e' : '#ccc' }}>
+          {d.text || 'Untitled heading'}
+        </div>
+      )
+    }
+
+    case 'text':
+      return (
+        <p style={{ fontSize: 14, lineHeight: 1.75, margin: 0, whiteSpace: 'pre-wrap',
+                    color: d.text ? '#333' : '#bbb' }}>
+          {d.text || 'Empty paragraph — click to edit'}
+        </p>
+      )
+
+    case 'image':
+      return d.image_b64
+        ? <div>
+            <img src={d.image_b64} alt={d.caption || ''}
+                 style={{ maxWidth: (d.width_pct || 100) + '%', display: 'block' }} />
+            {d.caption && <p style={{ fontSize: 12, color: '#888', marginTop: 6, fontStyle: 'italic' }}>{d.caption}</p>}
+          </div>
+        : <div style={{ color: '#bbb', fontSize: 13, padding: '10px 0' }}>🖼 Click to add an image</div>
+
+    default: {
+      // calc blocks — show title + key params + badges
+      const checks = countChecks(d._result)
+      const done   = (block.type === 'python_calc' && !!(d._output_text || (d._figs_b64||[]).length))
+                  || (block.type === 'beam_fem'    && !!d._summary)
+      const err    = (block.type === 'python_calc' && !!d._error)
+
+      let sub = ''
+      if (block.type === 'steel_beam')      sub = [d.label, d.section, d.grade, d.span_m && `L=${d.span_m} m`].filter(Boolean).join('  ·  ')
+      else if (block.type === 'rc_beam')    sub = [d.label, `${d.b_mm}×${d.h_mm} mm`, d.span_m && `L=${d.span_m} m`].filter(Boolean).join('  ·  ')
+      else if (block.type === 'timber_beam')    sub = [d.label, d.timber_grade, `L=${d.span_m} m`].filter(Boolean).join('  ·  ')
+      else if (block.type === 'timber_column')  sub = [d.label, d.timber_grade, `H=${d.length_m} m`].filter(Boolean).join('  ·  ')
+      else if (block.type === 'masonry_wall')   sub = [d.label, `t=${d.thickness_mm} mm`, `H=${d.height_m} m`].filter(Boolean).join('  ·  ')
+      else if (block.type === 'python_calc')    sub = (d.code || '').split('\n').length + ' lines'
+      else if (block.type === 'custom_calc')    sub = (d.items || []).length + ' items'
+      else if (block.type === 'beam_fem')       sub = `L=${d.L ?? 6} m  ·  E=${d.E_GPa ?? 210} GPa  ·  I=${d.I_cm4 ?? '?'} cm⁴`
+
+      return (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', padding: '2px 0' }}>
+          <span style={{ fontSize: 15, fontWeight: 600, color: '#1c1c1e' }}>
+            {d.title || TYPE_MAP[block.type]?.label || block.type}
+          </span>
+          {sub && <span style={{ fontSize: 12, color: '#aaa', fontFamily: 'monospace' }}>{sub}</span>}
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+            {checks && checks.pass > 0 && <span style={mkBadge(true)}>✓ {checks.pass}</span>}
+            {checks && checks.fail > 0 && <span style={mkBadge(false)}>✗ {checks.fail}</span>}
+            {done  && <span style={mkBadge(true)}>✓ Done</span>}
+            {err   && <span style={mkBadge(false)}>✗ Error</span>}
+          </span>
+        </div>
+      )
+    }
+  }
+}
+
+// ── + gap button between blocks ───────────────────────────────────────────────
+
+function AddZone({ onAdd, templates = [], onAddTemplate, clipboard, onPaste }) {
+  const [hover, setHover] = useState(false)
+  const [open,  setOpen]  = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [open])
+
+  return (
+    <div
+      ref={ref}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => { if (!open) setHover(false) }}
+      style={{ position: 'relative', height: 20, display: 'flex', alignItems: 'center' }}
+    >
+      {/* Rule */}
+      <div style={{
+        position: 'absolute', left: -64, right: -64, height: hover || open ? 2 : 1,
+        background: hover || open ? '#4a90d9' : 'transparent',
+        transition: 'all 0.12s', pointerEvents: 'none',
+      }} />
+
+      {/* + button */}
+      {(hover || open) && (
+        <button
+          onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+          style={{
+            position: 'relative', zIndex: 2,
+            width: 20, height: 20, borderRadius: '50%',
+            background: '#4a90d9', color: '#fff', border: 'none',
+            fontSize: 16, lineHeight: 1, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginLeft: -10,
+          }}
+        >+</button>
+      )}
+
+      {/* Block type menu — grouped */}
+      {open && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'absolute', top: 24, left: 0, zIndex: 200,
+            background: '#fff', border: '1px solid #e0e0e0',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
+            padding: '4px 0 6px', minWidth: 200,
+          }}
+        >
+          {PANEL_GROUPS.map((group, gi) => (
+            <div key={group.label}>
+              <div style={{
+                fontSize: 9, fontWeight: 700, color: '#bbb',
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                padding: gi === 0 ? '6px 14px 4px' : '10px 14px 4px',
+                borderTop: gi === 0 ? 'none' : '1px solid #f0f0f0',
+              }}>
+                {group.label}
+              </div>
+              {group.types.map(type => {
+                const def = TYPE_MAP[type]
+                if (!def) return null
+                return (
+                  <button
+                    key={def.type}
+                    onClick={() => { onAdd(def.type); setOpen(false); setHover(false) }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 9,
+                      background: 'none', border: 'none',
+                      padding: '6px 12px', fontSize: 12, color: '#334155',
+                      cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                      width: '100%',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  >
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 28, height: 18, flexShrink: 0,
+                      background: def.color ?? '#64748b',
+                      color: '#fff', fontSize: 9, fontWeight: 700,
+                      fontFamily: 'var(--font-mono, monospace)',
+                      letterSpacing: '0.04em',
+                    }}>
+                      {def.icon}
+                    </span>
+                    {def.label}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+
+          {/* Paste from clipboard */}
+          {clipboard && (
+            <div>
+              <div style={{
+                fontSize: 9, fontWeight: 700, color: '#4a90d9',
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                padding: '10px 14px 4px',
+                borderTop: '1px solid #f0f0f0',
+              }}>
+                Clipboard
+              </div>
+              <button
+                onClick={() => { onPaste?.(); setOpen(false); setHover(false) }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'none', border: 'none',
+                  padding: '6px 14px', fontSize: 12, color: '#4a90d9',
+                  cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                  width: '100%',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              >
+                <span style={{ width: 18, fontFamily: 'monospace', fontSize: 10, flexShrink: 0 }}>📋</span>
+                Paste {clipboard.type}
+              </button>
+            </div>
+          )}
+
+          {/* My Calculations — dynamic section */}
+          {templates.length > 0 && (
+            <div>
+              <div style={{
+                fontSize: 9, fontWeight: 700, color: '#bbb',
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                padding: '10px 14px 4px',
+                borderTop: '1px solid #f0f0f0',
+              }}>
+                My Calculations
+              </div>
+              {templates.map(tmpl => (
+                <button
+                  key={tmpl.id}
+                  onClick={() => { onAddTemplate?.(tmpl); setOpen(false); setHover(false) }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    background: 'none', border: 'none',
+                    padding: '6px 14px', fontSize: 12, color: '#333',
+                    cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                    width: '100%',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f5f5f7'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  <span style={{ width: 18, fontFamily: 'monospace', fontSize: 10, color: '#999', flexShrink: 0 }}>⚙</span>
+                  {tmpl.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock }) {
+  const [selectedId,  setSelectedId]  = useState(null)
+  // IDs of selected blocks where the editor is collapsed (preview only, blue border)
+  const [minimised,   setMinimised]   = useState(() => new Set())
+  const [dragIdx,     setDragIdx]     = useState(null)
+  const [dropIdx,     setDropIdx]     = useState(null)
+  const pageRef = useRef(null)
+
+  // Click outside page → deselect
+  useEffect(() => {
+    const fn = e => { if (pageRef.current && !pageRef.current.contains(e.target)) setSelectedId(null) }
+    document.addEventListener('pointerdown', fn)
+    return () => document.removeEventListener('pointerdown', fn)
+  }, [])
+
+  // ── Mutations ──────────────────────────────────────────────────────────
+
+  function updateBlock(i, b) { const n = [...blocks]; n[i] = b; onChange(n) }
+
+  function addBlock(type, atIndex) {
+    const def = TYPE_MAP[type]; if (!def) return
+    const nb = { id: Date.now(), type, data: { ...def.default } }
+    const n  = [...blocks]; n.splice(atIndex, 0, nb); onChange(n)
+    setSelectedId(nb.id)
+    setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
+  }
+
+  function duplicateBlock(i) {
+    const src = blocks[i]
+    const nb  = { ...JSON.parse(JSON.stringify(src)), id: Date.now() }
+    const n   = [...blocks]; n.splice(i + 1, 0, nb); onChange(n)
+    setSelectedId(nb.id)
+    setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
+  }
+
+  function pasteBlock(atIndex) {
+    if (!clipboard) return
+    const nb = { ...JSON.parse(JSON.stringify(clipboard)), id: Date.now() }
+    const n  = [...blocks]; n.splice(atIndex, 0, nb); onChange(n)
+    setSelectedId(nb.id)
+    setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
+  }
+
+  function addSavedCalcBlock(template, atIndex) {
+    const nb = {
+      id: Date.now(),
+      type: 'saved_calc',
+      data: { title: template.name, template_id: template.id, params: {}, _result: null },
+    }
+    const n = [...blocks]; n.splice(atIndex, 0, nb); onChange(n)
+    setSelectedId(nb.id)
+    setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
+  }
+
+  function deleteBlock(i, e) {
+    e.stopPropagation()
+    if (!window.confirm('Delete this block?')) return
+    if (blocks[i].id === selectedId) setSelectedId(null)
+    onChange(blocks.filter((_, j) => j !== i))
+  }
+
+  function moveUp(i)   { if (i === 0) return; const n = [...blocks]; [n[i-1],n[i]]=[n[i],n[i-1]]; onChange(n) }
+  function moveDown(i) { if (i === blocks.length-1) return; const n = [...blocks]; [n[i],n[i+1]]=[n[i+1],n[i]]; onChange(n) }
+
+  function toggleMinimise(id, e) {
+    e.stopPropagation()
+    setMinimised(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  }
+
+  function selectBlock(id) {
+    setSelectedId(id)
+    // Auto-expand when selecting
+    setMinimised(prev => { const s = new Set(prev); s.delete(id); return s })
+  }
+
+  // ── Drag ──────────────────────────────────────────────────────────────
+
+  function onDragStart(e, i) { setDragIdx(i); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', i) }
+  function onDragOver(e, i)  { e.preventDefault(); if (i !== dragIdx) setDropIdx(i) }
+  function onDrop(e, i) {
+    e.preventDefault()
+    if (dragIdx !== null && dragIdx !== i) {
+      const n = [...blocks]; const [m] = n.splice(dragIdx, 1); n.splice(i, 0, m); onChange(n)
+    }
+    setDragIdx(null); setDropIdx(null)
+  }
+  function onDragEnd() { setDragIdx(null); setDropIdx(null) }
+
+  // ── Render ─────────────────────────────────────────────────────────────
+
+  return (
+    <div style={s.outer}>
+
+      {/* ── Left block-type panel ── */}
+      <aside style={s.panel}>
+        {PANEL_GROUPS.map((group, gi) => (
+          <div key={group.label}>
+            <div style={{ ...s.panelSection, borderTop: gi === 0 ? 'none' : '1px solid #f0f0f0' }}>
+              {group.label}
+            </div>
+            {group.types.map(type => {
+              const def = TYPE_MAP[type]
+              if (!def) return null
+              return (
+                <button
+                  key={def.type}
+                  style={s.panelBtn}
+                  onClick={() => addBlock(def.type, blocks.length)}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = '#f1f5f9'
+                    e.currentTarget.style.borderLeftColor = def.color ?? '#1e3a5f'
+                    e.currentTarget.style.color = '#0f172a'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'none'
+                    e.currentTarget.style.borderLeftColor = 'transparent'
+                    e.currentTarget.style.color = '#475569'
+                  }}
+                >
+                  <span style={{
+                    ...s.panelIcon,
+                    background: def.color ?? '#64748b',
+                    color: '#fff',
+                  }}>{def.icon}</span>
+                  {def.label}
+                </button>
+              )
+            })}
+          </div>
+        ))}
+
+        {/* ── My Calculations ── */}
+        <div>
+          <div style={{ ...s.panelSection, borderTop: '1px solid #f0f0f0' }}>
+            My Calculations
+          </div>
+
+          {templates.length === 0 && (
+            <div style={{ padding: '4px 12px 6px', fontSize: 11, color: '#bbb', fontStyle: 'italic' }}>
+              No templates yet
+            </div>
+          )}
+
+          {templates.map(tmpl => (
+            <button
+              key={tmpl.id}
+              style={s.panelBtn}
+              onClick={() => addSavedCalcBlock(tmpl, blocks.length)}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = '#f5f5f7'
+                e.currentTarget.style.borderLeftColor = '#4a90d9'
+                e.currentTarget.style.color = '#1c1c1e'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'none'
+                e.currentTarget.style.borderLeftColor = 'transparent'
+                e.currentTarget.style.color = '#555'
+              }}
+            >
+              <span style={{ ...s.panelIcon, background: '#eef2ff', color: '#4a90d9' }}>⚙</span>
+              {tmpl.name}
+            </button>
+          ))}
+
+          {onManageTemplates && (
+            <button
+              style={{ ...s.panelBtn, color: '#4a90d9', marginTop: 2 }}
+              onClick={onManageTemplates}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = '#f0f7ff'
+                e.currentTarget.style.borderLeftColor = '#4a90d9'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'none'
+                e.currentTarget.style.borderLeftColor = 'transparent'
+              }}
+            >
+              <span style={{ ...s.panelIcon, background: '#e8f0fe', color: '#4a90d9' }}>✎</span>
+              Manage templates
+            </button>
+          )}
+        </div>
+
+      </aside>
+
+      {/* ── Document page ── */}
+      <div ref={pageRef} style={s.page} onClick={() => setSelectedId(null)}>
+
+        {blocks.length === 0 && (
+          <div style={s.empty}>
+            Click a block type on the left, or hover here to use <strong>+</strong>
+          </div>
+        )}
+
+        <AddZone
+          onAdd={t => addBlock(t, 0)}
+          templates={templates}
+          onAddTemplate={t => addSavedCalcBlock(t, 0)}
+          clipboard={clipboard}
+          onPaste={() => pasteBlock(0)}
+        />
+
+        {blocks.map((block, index) => {
+          const Comp        = TYPE_MAP[block.type]?.component
+          const isSelected  = selectedId === block.id
+          const isMinimised = minimised.has(block.id)
+          const showEditor  = isSelected && !isMinimised && !!Comp
+          const isDragging  = dragIdx === index
+          const isTarget    = dropIdx === index && dragIdx !== index
+
+          return (
+            <React.Fragment key={block.id}>
+              <div
+                draggable
+                onDragStart={e => onDragStart(e, index)}
+                onDragOver={e  => onDragOver(e, index)}
+                onDrop={e      => onDrop(e, index)}
+                onDragEnd={onDragEnd}
+                onClick={e => { e.stopPropagation(); selectBlock(block.id) }}
+                style={{
+                  ...s.block,
+                  ...(isSelected ? s.blockSelected : {}),
+                  ...(isTarget   ? { borderTop: '2px solid #4a90d9' } : {}),
+                  opacity: isDragging ? 0.3 : 1,
+                }}
+              >
+                {/* Floating controls — drag handle always, others when selected */}
+                <div style={s.floatControls}>
+                  <span
+                    style={s.dragHandle}
+                    onPointerDown={e => e.stopPropagation()}
+                    title="Drag to reorder"
+                  >⠿</span>
+                  {isSelected && (
+                    <span style={s.floatBtns} onClick={e => e.stopPropagation()}>
+                      <button style={s.fb} onClick={e => toggleMinimise(block.id, e)}
+                        title={isMinimised ? 'Expand' : 'Minimise'}>
+                        {isMinimised ? '▼' : '▲'}
+                      </button>
+                      <button style={s.fb} onClick={e => { e.stopPropagation(); moveUp(index) }}   disabled={index === 0}                title="Move up">↑</button>
+                      <button style={s.fb} onClick={e => { e.stopPropagation(); moveDown(index) }} disabled={index === blocks.length-1} title="Move down">↓</button>
+                      <button style={s.fb} onClick={e => { e.stopPropagation(); duplicateBlock(index) }} title="Duplicate block">⧉</button>
+                      <button style={s.fb} onClick={e => { e.stopPropagation(); onCopyBlock?.(blocks[index]) }} title="Copy block (paste in any document)">📋</button>
+                      {clipboard && (
+                        <button style={{ ...s.fb, color: '#4a90d9' }}
+                          onClick={e => { e.stopPropagation(); pasteBlock(index + 1) }}
+                          title="Paste copied block after this one">📋+</button>
+                      )}
+                      <button style={{ ...s.fb, ...s.fbDel }} onClick={e => deleteBlock(index, e)} title="Delete">✕</button>
+                    </span>
+                  )}
+                </div>
+
+                {/* Content */}
+                <div style={s.blockBody}>
+                  {/* Preview is always shown */}
+                  <BlockPreview block={block} />
+
+                  {/* Editor — only when selected AND not minimised */}
+                  {showEditor && (
+                    <div
+                      style={s.editor}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <Comp
+                        block={block}
+                        onChange={b => updateBlock(index, b)}
+                        onOpenTemplateEditor={onOpenTemplateEditor}
+                      />
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              <AddZone
+                onAdd={t => addBlock(t, index + 1)}
+                templates={templates}
+                onAddTemplate={t => addSavedCalcBlock(t, index + 1)}
+                clipboard={clipboard}
+                onPaste={() => pasteBlock(index + 1)}
+              />
+            </React.Fragment>
+          )
+        })}
+
+      </div>
+    </div>
+  )
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const s = {
+  outer: {
+    display:    'flex',
+    gap:        24,
+    alignItems: 'flex-start',
+    minHeight:  '100%',
+  },
+
+  // ── Left panel ────────────────────────────────────────────────────────
+  panel: {
+    width:      172,
+    flexShrink: 0,
+    background: '#fff',
+    border:     '1px solid #e2e8f0',
+    paddingBottom: 12,
+    position:   'sticky',
+    top:        0,
+    maxHeight:  'calc(100vh - 48px)',
+    overflowY:  'auto',
+  },
+  panelSection: {
+    fontSize:      9,
+    fontWeight:    700,
+    color:         '#94a3b8',
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase',
+    padding:       '12px 12px 4px',
+  },
+  panelBtn: {
+    display:    'flex',
+    alignItems: 'center',
+    gap:        8,
+    width:      '100%',
+    background: 'none',
+    border:     'none',
+    borderLeft: '3px solid transparent',
+    padding:    '5px 12px',
+    fontSize:   11,
+    color:      '#475569',
+    textAlign:  'left',
+    cursor:     'pointer',
+    fontFamily: 'inherit',
+    transition: 'background 0.12s, border-color 0.12s, color 0.12s',
+  },
+  panelIcon: {
+    display:        'inline-flex',
+    alignItems:     'center',
+    justifyContent: 'center',
+    width:  28,
+    height: 18,
+    fontSize:   9,
+    fontWeight: 700,
+    fontFamily: 'var(--font-mono, monospace)',
+    letterSpacing: '0.04em',
+    flexShrink: 0,
+    color: '#fff',
+  },
+
+  // ── Document page ─────────────────────────────────────────────────────
+  page: {
+    flex:       1,
+    minWidth:   0,
+    maxWidth:   720,
+    background: '#fff',
+    padding:    '48px 64px 80px',
+    boxShadow:  '0 1px 4px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.04)',
+    boxSizing:  'border-box',
+  },
+  empty: {
+    color: '#bbb', fontSize: 13, padding: '32px 0 8px', textAlign: 'center',
+  },
+
+  // ── Individual block ──────────────────────────────────────────────────
+  block: {
+    position:    'relative',
+    paddingLeft: 12,
+    marginLeft:  -12,
+    borderLeft:  '3px solid transparent',
+    transition:  'border-color 0.1s',
+    cursor:      'pointer',
+  },
+  blockSelected: {
+    borderLeft: '3px solid #4a90d9',
+    cursor:     'default',
+  },
+
+  // Floating control strip (top-right, only visible when selected)
+  floatControls: {
+    position:   'absolute',
+    top:        8,
+    right:      -8,
+    display:    'flex',
+    alignItems: 'center',
+    gap:        2,
+    zIndex:     10,
+  },
+  dragHandle: {
+    color: '#ccc', cursor: 'grab', fontSize: 13,
+    padding: '2px 3px', userSelect: 'none', lineHeight: 1,
+  },
+  floatBtns: {
+    display: 'flex', gap: 2,
+  },
+  fb: {
+    background: '#f5f5f7', border: '1px solid #e0e0e0',
+    padding: '2px 6px', fontSize: 10, color: '#666',
+    cursor: 'pointer', lineHeight: 1.5,
+  },
+  fbDel: {
+    color: '#c0392b', background: '#fdf3f2', border: '1px solid #f5c6c6',
+  },
+
+  blockBody: {
+    padding: '10px 0 10px 0',
+  },
+
+  // Editor that appears below the preview when expanded
+  editor: {
+    marginTop:  14,
+    paddingTop: 14,
+    borderTop:  '1px solid #eef2f8',
+  },
+}
