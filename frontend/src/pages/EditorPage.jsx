@@ -22,7 +22,7 @@ const DOC_DEFS = {
   B3: 'Statisk tilsynsrapport',
 }
 
-// ── A1 template ───────────────────────────────────────────────────────────────
+// ── Document templates ────────────────────────────────────────────────────────
 
 function makeA1Template() {
   let id = Date.now()
@@ -52,6 +52,155 @@ function makeA1Template() {
   ]
 }
 
+function makeB1Template() {
+  let id = Date.now()
+  return [
+    { id: id++, type: 'heading', data: { level: 1, text: 'Statisk projekteringsrapport' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Projekt- og konstruktionstype' } },
+    { id: id++, type: 'text',    data: { text: 'Projektets betegnelse: …\nBygherre: …\nAdresse/matrikel: …\nKonstruktionstype: Nybyggeri / Ombygning / Tilbygning\nAnvendelse: Beboelse / Erhverv / Industri / Offentlig' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Konstruktivt system' } },
+    { id: id++, type: 'text',    data: { text: 'Overordnet beskrivelse af det konstruktive system:\n• Bærende elementer (bjælker, søjler, dæk, vægge)\n• Primær bærende retning\n• Spændvidder og etageantal\n• Principper for lastaflastning' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Fundering' } },
+    { id: id++, type: 'text',    data: { text: 'Funderingsprincip: Direkte / Pælfundering\nFundamenteringskote: +… m DVR90\nFundamenttype: Punktfundamenter / Stribefundamenter / Pladefundament\nBæredygtig jordbundsydelse: σ = … kN/m²' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Stabilisering' } },
+    { id: id++, type: 'text',    data: { text: 'Vandret stabilisering: Skiver / Rammer / Kerner / Kryds\nLodrette laster: Bærende vægge / Søjlesystem\nTværvæggenes placering og funktion beskrives.' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Konsekvensklasse og kontrolklasse' } },
+    { id: id++, type: 'text',    data: { text: 'Konsekvensklasse (DS/EN 1990 + DS 1140): CC… (KK1 / KK2 / KK3 / KK4)\nSikkerhedsklasse (DS 409): SK…\nKontrolklasse: Normal / Udvidet / Særlig\n\nBegrundelse for klassevalg:\n…' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Projektmaterialets omfang' } },
+    { id: id++, type: 'text',    data: { text: 'Det statiske projektmateriale består af:\n• A1: Projektgrundlag\n• A2: Statiske beregninger\n• A3: Konstruktionstegninger og modeller\n• B2: Statisk kontrolplan\n• B3: Statisk kontrolrapport' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Særlige konstruktive forhold og forudsætninger' } },
+    { id: id++, type: 'text',    data: { text: 'Angiv eventuelle særlige forudsætninger, begrænsninger eller opmærksomhedspunkter:\n…' } },
+  ]
+}
+
+function makeA3Template() {
+  let id = Date.now()
+  return [
+    { id: id++, type: 'heading', data: { level: 1, text: 'Konstruktionstegninger og modeller' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Tegneliste' } },
+    { id: id++, type: 'text',    data: { text: 'Nedenstående tegninger indgår i det statiske projektmateriale.\n\nTegn.nr. | Emne                          | Mål   | Rev. | Dato\n---------|-------------------------------|-------|------|----------\n001      | Planer – etage 1              | 1:100 | A    | …\n002      | Snit A-A og B-B               | 1:50  | A    | …\n003      | Fundering – plan og detaljer  | 1:100 | A    | …\n004      | Bjælkeplaner                  | 1:100 | A    | …\n005      | Armeringsplaner – dæk         | 1:50  | A    | …\n006      | Detaljetegninger – samlinger  | 1:10  | A    | …' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Beregningsmodeller' } },
+    { id: id++, type: 'text',    data: { text: 'Software og modeller anvendt i projekteringen:\n\nProgram       | Version | Formål              | Fil\n--------------|---------|---------------------|--------\nRevit         | 2024    | BIM-model           | …\nRFEM / Robot  | …       | FEM-analyse         | …\nOther         | …       | …                   | …' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Tegningsstatus' } },
+    { id: id++, type: 'text',    data: { text: 'Tegningsstatus ved projektaflevering:\n□ Tegningerne er godkendt til udførelse\n□ Tegningerne er godkendt som bygget (A5)' } },
+  ]
+}
+
+function makeA4Template() {
+  let id = Date.now()
+  return [
+    { id: id++, type: 'heading', data: { level: 1, text: 'Konstruktionsændringer' } },
+
+    { id: id++, type: 'text',    data: { text: 'Dette afsnit dokumenterer alle godkendte ændringer til det statiske projektmateriale efter første udgivelse. Ændringerne er nummeret fortløbende og beskriver baggrund, omfang og konsekvenser for de øvrige dokumenter.' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Ændringslog' } },
+    { id: id++, type: 'text',    data: { text: 'Æ-nr. | Dato       | Beskrivelse                     | Årsag              | Godkendt af | Berørte dokumenter\n------|------------|---------------------------------|--------------------|-------------|-------------------\nÆ-01  | …          | Ændring af søjle S3 fra IPE300  | Ændret last        | …           | A2, A3/003\n      |            | til IPE360 pga. øget last       | fra bygherre       |             |\nÆ-02  | …          | …                               | …                  | …           | …' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Ændringsbeskrivelse' } },
+    { id: id++, type: 'heading', data: { level: 3, text: 'Æ-01 — [Emne]' } },
+    { id: id++, type: 'text',    data: { text: 'Dato: …\nBaggrund: …\nÆndringens omfang: …\nStatisk vurdering: …\nBerørte dokumenter opdateres med revision …\nGodkendt af: …' } },
+  ]
+}
+
+function makeB2Template() {
+  let id = Date.now()
+  return [
+    { id: id++, type: 'heading', data: { level: 1, text: 'Statisk kontrolplan' } },
+
+    { id: id++, type: 'text',    data: { text: 'Udarbejdet i henhold til DS 1140 og DS/EN 1990.\nKontrolklasse: KK… · Projekt: …' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Projekteringskontrol' } },
+    { id: id++, type: 'control_plan', data: {
+      title: 'Projekteringskontrol',
+      mode: 'plan',
+      items: [
+        { pos: '1',  description: 'Konstruktionsgrundlag (A1) er gennemgået og godkendt', kk: 'KK1', control: 'E', responsible: '', reference: 'A1' },
+        { pos: '2',  description: 'Gældende normer og nationale annekser er identificeret', kk: 'KK1', control: 'E', responsible: '', reference: 'A1' },
+        { pos: '3',  description: 'Laster og lastkombinationer er korrekte', kk: 'KK1', control: 'E', responsible: '', reference: 'A2' },
+        { pos: '4',  description: 'Geometriske mål og tværsnitsparametre er korrekte', kk: 'KK1', control: 'E', responsible: '', reference: 'A2, A3' },
+        { pos: '5',  description: 'Materialeparametre er korrekte og dokumenterede', kk: 'KK1', control: 'E', responsible: '', reference: 'A1, A2' },
+        { pos: '6',  description: 'Beregningsmodeller er repræsentative for den faktiske konstruktion', kk: 'KK2', control: 'E', responsible: '', reference: 'A2' },
+        { pos: '7',  description: 'Brudgrænsetilstand (STR/GEO) er kontrolleret', kk: 'KK1', control: 'E', responsible: '', reference: 'A2' },
+        { pos: '8',  description: 'Anvendelsesgrænsetilstand (SLS – nedbøjning, revnedannelse) er kontrolleret', kk: 'KK2', control: 'E', responsible: '', reference: 'A2' },
+        { pos: '9',  description: 'Stabiliteten (lodret og vandret) er sikret', kk: 'KK1', control: 'E', responsible: '', reference: 'A2, B1' },
+        { pos: '10', description: 'Funderingen er kontrolleret (EC7/DS 415)', kk: 'KK1', control: 'E', responsible: '', reference: 'A2' },
+        { pos: '11', description: 'Konstruktionstegninger er i overensstemmelse med beregningerne', kk: 'KK2', control: 'E', responsible: '', reference: 'A3' },
+        { pos: '12', description: 'Uvildig kontrol udført (kræves ved KK2+)', kk: 'KK2', control: 'U', responsible: '', reference: '' },
+      ]
+    }},
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Udførelseskontrol' } },
+    { id: id++, type: 'control_plan', data: {
+      title: 'Udførelseskontrol',
+      mode: 'plan',
+      items: [
+        { pos: '1', description: 'Materialer kontrolleret (leverandørattester, CE-mærkning)', kk: 'KK1', control: 'E', responsible: '', reference: '' },
+        { pos: '2', description: 'Geometriske afvigelser er inden for tolerancer (DS/ISO 4463)', kk: 'KK1', control: 'E', responsible: '', reference: '' },
+        { pos: '3', description: 'Samlinger og forbindelser er udført korrekt', kk: 'KK1', control: 'E', responsible: '', reference: 'A3' },
+        { pos: '4', description: 'Fundering og jordarbejder er udført og godkendt', kk: 'KK1', control: 'E', responsible: '', reference: 'A3' },
+        { pos: '5', description: 'Armeringsplacering kontrolleret inden støbning', kk: 'KK2', control: 'E', responsible: '', reference: 'A3' },
+        { pos: '6', description: 'Konstruktionen er i overensstemmelse med tegningerne', kk: 'KK1', control: 'E', responsible: '', reference: 'A3' },
+      ]
+    }},
+  ]
+}
+
+function makeB3Template() {
+  let id = Date.now()
+  return [
+    { id: id++, type: 'heading', data: { level: 1, text: 'Statisk kontrolrapport' } },
+
+    { id: id++, type: 'text',    data: { text: 'Udarbejdet i henhold til DS 1140.\nKontrolplan reference: B2 · Projekt: …\nKontrolperiode: … til …' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Projekteringskontrol — rapportering' } },
+    { id: id++, type: 'control_plan', data: {
+      title: 'Projekteringskontrol',
+      mode: 'report',
+      items: [
+        { pos: '1',  description: 'Konstruktionsgrundlag (A1) er gennemgået og godkendt', kk: 'KK1', control: 'E', responsible: '', reference: 'A1',    status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '2',  description: 'Gældende normer og nationale annekser er identificeret', kk: 'KK1', control: 'E', responsible: '', reference: 'A1',    status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '3',  description: 'Laster og lastkombinationer er korrekte', kk: 'KK1', control: 'E', responsible: '', reference: 'A2',    status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '4',  description: 'Geometriske mål og tværsnitsparametre er korrekte', kk: 'KK1', control: 'E', responsible: '', reference: 'A2, A3', status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '5',  description: 'Materialeparametre er korrekte og dokumenterede', kk: 'KK1', control: 'E', responsible: '', reference: 'A1, A2', status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '6',  description: 'Beregningsmodeller er repræsentative for den faktiske konstruktion', kk: 'KK2', control: 'E', responsible: '', reference: 'A2',    status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '7',  description: 'Brudgrænsetilstand (STR/GEO) er kontrolleret', kk: 'KK1', control: 'E', responsible: '', reference: 'A2',    status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '8',  description: 'Anvendelsesgrænsetilstand (SLS) er kontrolleret', kk: 'KK2', control: 'E', responsible: '', reference: 'A2',    status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '9',  description: 'Stabiliteten (lodret og vandret) er sikret', kk: 'KK1', control: 'E', responsible: '', reference: 'A2, B1', status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '10', description: 'Funderingen er kontrolleret', kk: 'KK1', control: 'E', responsible: '', reference: 'A2',    status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '11', description: 'Konstruktionstegninger er i overensstemmelse med beregningerne', kk: 'KK2', control: 'E', responsible: '', reference: 'A3',    status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '12', description: 'Uvildig kontrol udført', kk: 'KK2', control: 'U', responsible: '', reference: '',      status: '', date: '', performed_by: '', remarks: '' },
+      ]
+    }},
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Udførelseskontrol — rapportering' } },
+    { id: id++, type: 'control_plan', data: {
+      title: 'Udførelseskontrol',
+      mode: 'report',
+      items: [
+        { pos: '1', description: 'Materialer kontrolleret (leverandørattester, CE-mærkning)', kk: 'KK1', control: 'E', responsible: '', reference: '',  status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '2', description: 'Geometriske afvigelser inden for tolerancer', kk: 'KK1', control: 'E', responsible: '', reference: '',  status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '3', description: 'Samlinger og forbindelser udført korrekt', kk: 'KK1', control: 'E', responsible: '', reference: 'A3', status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '4', description: 'Fundering og jordarbejder udført og godkendt', kk: 'KK1', control: 'E', responsible: '', reference: 'A3', status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '5', description: 'Armeringsplacering kontrolleret inden støbning', kk: 'KK2', control: 'E', responsible: '', reference: 'A3', status: '', date: '', performed_by: '', remarks: '' },
+        { pos: '6', description: 'Konstruktionen er i overensstemmelse med tegningerne', kk: 'KK1', control: 'E', responsible: '', reference: 'A3', status: '', date: '', performed_by: '', remarks: '' },
+      ]
+    }},
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Konklusion og underskrifter' } },
+    { id: id++, type: 'text',    data: { text: 'Det er hermed bekræftet, at kontrollen er gennemført i henhold til kontrolplanen (B2) og at det statiske projektmateriale er i overensstemmelse med de gældende normer og standarder.\n\nProjekterende:  ________________  Dato: ________\n\nKontrollant:    ________________  Dato: ________' } },
+  ]
+}
+
 const DOC_GROUPS = [
   { label: 'Konstruktionsdokumentation', docs: ['A1', 'A2', 'A3', 'A4'] },
   { label: 'Projektdokumentation',       docs: ['B1', 'B2', 'B3'] },
@@ -69,7 +218,41 @@ const DOC_TEMPLATES = {
       make:        makeA1Template,
     },
   ],
-  // A2: [...], B1: [...], etc.
+  A3: [
+    {
+      label:       'Tegneliste og modeller',
+      description: 'Tegneliste med tegningsnumre · Beregningsmodeller og software · Tegningsstatus',
+      make:        makeA3Template,
+    },
+  ],
+  A4: [
+    {
+      label:       'Ændringslog',
+      description: 'Fortløbende log over godkendte konstruktionsændringer med baggrund og konsekvenser',
+      make:        makeA4Template,
+    },
+  ],
+  B1: [
+    {
+      label:       'Statisk projekteringsrapport',
+      description: 'Konstruktivt system · Fundering · Stabilisering · Konsekvensklasse · Projektomfang',
+      make:        makeB1Template,
+    },
+  ],
+  B2: [
+    {
+      label:       'Statisk kontrolplan (DS 1140)',
+      description: 'Projekteringskontrol + udførelseskontrol med KK-krav og kontroltype (E/U/T)',
+      make:        makeB2Template,
+    },
+  ],
+  B3: [
+    {
+      label:       'Statisk kontrolrapport (DS 1140)',
+      description: 'Udfyldes efter kontrol: status, dato, udøver og bemærkninger pr. kontrolpunkt',
+      make:        makeB3Template,
+    },
+  ],
 }
 
 const NAVY = '#1e3a5f'

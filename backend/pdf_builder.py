@@ -24,6 +24,12 @@ from pathlib import Path
 from calc_core import COVER, TOC, PAGEBREAK, S, T, N, H1, FIG
 from holst_layout import generate_pdf_holst
 
+from reportlab.lib.units import mm
+from reportlab.lib import colors as rl_colors
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.platypus import Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
 
 # ── Block converters ──────────────────────────────────────────────────────────
 
@@ -166,6 +172,153 @@ def _beam_fem_block(block: dict, tmp_files: list) -> list:
     return flat
 
 
+# ── DS 1140 Control plan block ────────────────────────────────────────────────
+
+def _control_plan(block: dict) -> list:
+    """
+    Render a control_plan block as a formatted DS 1140 table.
+    Supports both plan mode (B2) and report mode (B3).
+    """
+    d        = block["data"]
+    title    = d.get("title", "Kontrolplan")
+    is_report = d.get("mode", "plan") == "report"
+    items    = d.get("items", [])
+
+    result = [S(title)]
+
+    if not items:
+        result.append(N("Ingen kontrolpunkter defineret."))
+        return result
+
+    # ── Styles ────────────────────────────────────────────────────────────────
+    NAVY  = rl_colors.HexColor("#1e3a5f")
+    WHITE = rl_colors.white
+    LIGHT = rl_colors.HexColor("#f8fafc")
+    RULE  = rl_colors.HexColor("#e2e8f0")
+    GREEN = rl_colors.HexColor("#16a34a")
+    RED   = rl_colors.HexColor("#dc2626")
+    AMBER = rl_colors.HexColor("#b45309")
+    GREY  = rl_colors.HexColor("#94a3b8")
+
+    hdr_style = ParagraphStyle("cpHdr",  fontSize=8,  textColor=WHITE, fontName="Helvetica-Bold",   leading=10, spaceAfter=0)
+    cell_style= ParagraphStyle("cpCell", fontSize=8,  textColor=rl_colors.HexColor("#1e293b"),       leading=10, spaceAfter=0)
+    mono_style= ParagraphStyle("cpMono", fontSize=7,  textColor=rl_colors.HexColor("#475569"),       leading=9,  spaceAfter=0, fontName="Courier")
+
+    # ── Column definitions ────────────────────────────────────────────────────
+    # plan  cols: Pos | Beskrivelse | KK | Kontroltype | Ansvarlig | Reference
+    # report cols: same + Status | Dato | Udøver | Bemærkninger
+    if is_report:
+        col_widths = [10*mm, 52*mm, 12*mm, 22*mm, 16*mm, 14*mm,
+                      16*mm, 17*mm, 16*mm, 25*mm]
+        headers = ["Pos", "Beskrivelse", "KK", "Kontroltype",
+                   "Ansvarlig", "Ref.",
+                   "Status", "Dato", "Udøver", "Bemærkninger"]
+    else:
+        col_widths = [10*mm, 78*mm, 12*mm, 28*mm, 20*mm, 22*mm]
+        headers    = ["Pos", "Beskrivelse", "KK", "Kontroltype",
+                      "Ansvarlig", "Reference"]
+
+    # ── Header row ────────────────────────────────────────────────────────────
+    rows = [[Paragraph(h, hdr_style) for h in headers]]
+
+    # ── Control-type mapping ──────────────────────────────────────────────────
+    _CTRL_LABEL = {"E": "E – Egenkontrol", "U": "U – Uvildig", "T": "T – Tilsyn"}
+
+    # ── Status colour mapping ─────────────────────────────────────────────────
+    _STATUS_COLOUR = {
+        "OK":       GREEN,
+        "N/A":      GREY,
+        "Afventer": AMBER,
+        "Fejl":     RED,
+    }
+
+    for item in items:
+        pos    = str(item.get("pos", "")).strip()
+        desc   = item.get("description", "").strip()
+        kk     = item.get("kk", "").strip()
+        ctrl   = item.get("control", "E")
+        resp   = item.get("responsible", "").strip()
+        ref    = item.get("reference", "").strip()
+
+        ctrl_label = _CTRL_LABEL.get(ctrl, ctrl)
+
+        row = [
+            Paragraph(pos,        cell_style),
+            Paragraph(desc,       cell_style),
+            Paragraph(kk,         mono_style),
+            Paragraph(ctrl_label, mono_style),
+            Paragraph(resp,       cell_style),
+            Paragraph(ref,        mono_style),
+        ]
+
+        if is_report:
+            status     = item.get("status", "").strip()
+            date_val   = item.get("date", "").strip()
+            performer  = item.get("performed_by", "").strip()
+            remarks    = item.get("remarks", "").strip()
+            row += [
+                Paragraph(status or "—",  cell_style),
+                Paragraph(date_val,       mono_style),
+                Paragraph(performer,      cell_style),
+                Paragraph(remarks,        cell_style),
+            ]
+
+        rows.append(row)
+
+    # ── Build table ───────────────────────────────────────────────────────────
+    tbl = Table(rows, colWidths=col_widths, repeatRows=1)
+
+    n_cols = len(headers)
+    n_rows = len(rows)
+
+    style_cmds = [
+        # Header row background
+        ("BACKGROUND",  (0, 0), (-1, 0),         NAVY),
+        ("TEXTCOLOR",   (0, 0), (-1, 0),          WHITE),
+        ("FONTNAME",    (0, 0), (-1, 0),           "Helvetica-Bold"),
+        # Alternating rows
+        ("BACKGROUND",  (0, 1), (-1, -1),         WHITE),
+        # Grid
+        ("GRID",        (0, 0), (-1, -1),          0.4, RULE),
+        ("LINEABOVE",   (0, 0), (-1, 0),           1,   NAVY),
+        # Padding
+        ("TOPPADDING",  (0, 0), (-1, -1),          3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1),        3),
+        ("LEFTPADDING", (0, 0), (-1, -1),          4),
+        ("RIGHTPADDING",(0, 0), (-1, -1),          4),
+        # Vertical alignment
+        ("VALIGN",      (0, 0), (-1, -1),          "TOP"),
+    ]
+
+    # Alternating row shading
+    for r in range(1, n_rows):
+        if r % 2 == 0:
+            style_cmds.append(("BACKGROUND", (0, r), (-1, r), LIGHT))
+
+    # Colour status column cells (if report mode)
+    if is_report:
+        STATUS_COL = 6  # 0-based index
+        for r, item in enumerate(items, start=1):
+            status = item.get("status", "").strip()
+            clr = _STATUS_COLOUR.get(status)
+            if clr:
+                style_cmds.append(("TEXTCOLOR", (STATUS_COL, r), (STATUS_COL, r), clr))
+
+    tbl.setStyle(TableStyle(style_cmds))
+    result.append(tbl)
+    result.append(Spacer(1, 4*mm))
+
+    # Legend
+    ctrl_legend = "  ·  ".join(f"{v[0]} = {v[2:]}" for v in
+                                ["E – Egenkontrol", "U – Uvildig kontrol", "T – Tilsyn"])
+    legend_st = ParagraphStyle("legend", fontSize=7, textColor=rl_colors.HexColor("#64748b"),
+                                leading=9, fontName="Helvetica-Oblique")
+    result.append(Paragraph(f"Kontroltype: {ctrl_legend}", legend_st))
+    result.append(Spacer(1, 2*mm))
+
+    return result
+
+
 # ── Dispatch table ────────────────────────────────────────────────────────────
 
 _CALC_TYPES = {
@@ -195,6 +348,8 @@ def _convert_block(block: dict, tmp_files: list) -> list:
         return _python_calc(block, tmp_files)
     if t == "beam_fem":
         return _beam_fem_block(block, tmp_files)
+    if t == "control_plan":
+        return _control_plan(block)
     # bolt_group and fillet_weld share the BoltConnectionBlock data shape
     # but are stored as distinct types — both render via _calc_block
     if t in _CALC_TYPES:

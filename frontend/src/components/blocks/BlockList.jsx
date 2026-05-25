@@ -33,6 +33,7 @@ import BeamColumnBlock     from './BeamColumnBlock.jsx'
 import BoltConnectionBlock from './BoltConnectionBlock.jsx'
 import PlateGirderBlock    from './PlateGirderBlock.jsx'
 import SavedCalcBlock      from './SavedCalcBlock.jsx'
+import ControlPlanBlock    from './ControlPlanBlock.jsx'
 
 // ── Block registry ────────────────────────────────────────────────────────────
 
@@ -134,6 +135,8 @@ const BLOCK_TYPES = [
                gamma_M0: 1.0, gamma_M1: 1.0, _result: null } },
   { type: 'saved_calc',    label: 'My Calculation',     icon: 'TPL', color: '#2563eb', component: SavedCalcBlock,
     default: { title: '', template_id: null, params: {}, _result: null } },
+  { type: 'control_plan', label: 'Kontrolplan (DS 1140)', icon: 'KP', color: '#1e3a5f', component: ControlPlanBlock,
+    default: { title: 'Kontrolplan', mode: 'plan', items: [] } },
 ]
 
 const TYPE_MAP = Object.fromEntries(BLOCK_TYPES.map(t => [t.type, t]))
@@ -184,6 +187,10 @@ const PANEL_GROUPS = [
     // Existing python_calc blocks still render normally (TYPE_MAP is unaffected).
     types: ['custom_calc'],
   },
+  {
+    label: 'DS 1140 — Dokumentation',
+    types: ['control_plan'],
+  },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -233,6 +240,28 @@ function BlockPreview({ block }) {
             {d.caption && <p style={{ fontSize: 12, color: '#888', marginTop: 6, fontStyle: 'italic' }}>{d.caption}</p>}
           </div>
         : <div style={{ color: '#bbb', fontSize: 13, padding: '10px 0' }}>🖼 Click to add an image</div>
+
+    case 'control_plan': {
+      const isReport = d.mode === 'report'
+      const items    = d.items || []
+      const done     = isReport ? items.filter(it => it.status === 'OK' || it.status === 'N/A').length : null
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 0' }}>
+          <span style={{
+            background: isReport ? '#1a7f37' : '#1e3a5f',
+            color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 3,
+          }}>
+            {isReport ? 'B3' : 'B2'}
+          </span>
+          <span style={{ fontSize: 15, fontWeight: 600, color: '#1c1c1e' }}>
+            {d.title || (isReport ? 'Kontrolrapport' : 'Kontrolplan')}
+          </span>
+          <span style={{ fontSize: 12, color: '#aaa', fontFamily: 'monospace' }}>
+            {items.length} punkter{isReport && done !== null ? ` · ${done}/${items.length} afsluttet` : ''}
+          </span>
+        </div>
+      )
+    }
 
     default: {
       // calc blocks — show title + key params + badges
