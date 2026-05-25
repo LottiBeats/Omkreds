@@ -34,6 +34,7 @@ def timber_beam(
     f_mk=None,
     f_vk=None,
     E_0_05=None,
+    G_0_05=None,
     service_class=1,
     load_duration="medium",
     gamma_M=1.3,
@@ -69,6 +70,10 @@ def timber_beam(
         E_0_05 = grade_data["E_0_05"]
     if E_0_05 is None:
         E_0_05 = 7_400 * MPa
+    if G_0_05 is None and grade_data is not None:
+        G_0_05 = grade_data["G_0_05"]
+    if G_0_05 is None:
+        G_0_05 = E_0_05 / 16     # EN 1995-1-1 default assumption
     if f_c_90_k is None and grade_data is not None:
         f_c_90_k = grade_data["f_c_90_k"]
     if f_c_90_k is None:
@@ -102,6 +107,7 @@ def timber_beam(
         CALC_ROW("f_m,k",    "char. bending strength",      str(f_mk)),
         CALC_ROW("f_v,k",    "char. shear strength",        str(f_vk)),
         CALC_ROW("E_0,05",   "5th-percentile modulus",      str(E_0_05)),
+        CALC_ROW("G_0,05",   "5th-percentile shear mod.",   str(G_0_05)),
         CALC_ROW("f_c,90,k", "perp-grain bearing strength", str(f_c_90_k)),
         CALC_ROW("k_mod",    "modification factor",         f"{kmod:.2f}"),
         CALC_ROW("γ_M",      "partial factor",              f"{gamma_M:.2f}"),
@@ -191,13 +197,25 @@ def timber_beam(
         else:
             blocks.append(N(f"Effective buckling length: l_ef = {l_ef}."))
 
-        sigma_m_crit  = 0.78 * E_0_05 * b**2 / (h * l_ef)
-        lambda_rel_m  = float(f_mk / sigma_m_crit) ** 0.5
+        # Section constants for a solid rectangular cross-section
+        # I_z  = h·b³/12  (2nd moment of area about weak axis)
+        # I_T  = h·b³/3   (Saint-Venant torsion constant, h >> b approximation
+        #                   — consistent with the EN 1995-1-1 derivation of the 0.78 formula)
+        I_z_ltb = h * b**3 / 12
+        I_T_ltb = h * b**3 / 3
+
+        from math import pi as _pi
+        M_crit       = _pi * (E_0_05 * I_z_ltb * G_0_05 * I_T_ltb) ** 0.5 / l_ef
+        sigma_m_crit = M_crit / W_y          # W_y = b·h²/6 already computed above
+        lambda_rel_m = float(f_mk / sigma_m_crit) ** 0.5
 
         blocks.extend([
-            CALC_ROW("l_ef",       "effective buckling length",       str(l_ef)),
-            CALC_ROW("σ_m,crit",   "= 0.78·E_0,05·b²/(h·l_ef)",     str(sigma_m_crit)),
-            CALC_ROW("λ_rel,m",    "= √(f_m,k / σ_m,crit)",          f"{lambda_rel_m:.3f}"),
+            CALC_ROW("l_ef",      "effective buckling length",              str(l_ef)),
+            CALC_ROW("I_z",       "= h·b³/12  [weak-axis 2nd moment]",     str(I_z_ltb)),
+            CALC_ROW("I_T",       "= h·b³/3   [torsion constant, rect.]",  str(I_T_ltb)),
+            CALC_ROW("M_crit",    "= π·√(E_0,05·I_z·G_0,05·I_T) / l_ef", str(M_crit)),
+            CALC_ROW("σ_m,crit",  "= M_crit / W_y",                        str(sigma_m_crit)),
+            CALC_ROW("λ_rel,m",   "= √(f_m,k / σ_m,crit)",                f"{lambda_rel_m:.3f}"),
         ])
 
         if lambda_rel_m <= 0.75:
