@@ -212,13 +212,13 @@ def timber_column_bending_and_axial(
 
     eta_19 = (sigma_c0d / f_c0d)**2 + sigma_m1d / f_md + k_m * sigma_m2d / f_md
     blocks.append(CALC_ROW("η_6.19",
-        "= (σ_c,0,d/f_c,0,d)² + σ_m,1,d/f_m,d + k_m·σ_m,2,d/f_m,d",
+        "= (σ_c,0,d/f_c,0,d)² + σ_m,1,d / f_m,d + k_m·σ_m,2,d / f_m,d",
         f"{float(eta_19):.3f}"))
     blocks.append(cc.check("Section eq. 6.19", float(eta_19), 1.0))
 
     eta_20 = (sigma_c0d / f_c0d)**2 + k_m * sigma_m1d / f_md + sigma_m2d / f_md
     blocks.append(CALC_ROW("η_6.20",
-        "= (σ_c,0,d/f_c,0,d)² + k_m·σ_m,1,d/f_m,d + σ_m,2,d/f_m,d",
+        "= (σ_c,0,d/f_c,0,d)² + k_m·σ_m,1,d / f_m,d + σ_m,2,d / f_m,d",
         f"{float(eta_20):.3f}"))
     blocks.append(cc.check("Section eq. 6.20", float(eta_20), 1.0))
 
@@ -291,7 +291,7 @@ def timber_column_bending_and_axial(
         blocks.append(S("Interaction check – eq. 6.23 (axis 1 buckling)"))
         eta_23 = sigma_c0d / (k_c1 * f_c0d) + sigma_m1d / f_md + k_m * sigma_m2d / f_md
         blocks.append(CALC_ROW("η_6.23",
-            "= σ_c,0,d/(k_c,1·f_c,0,d) + σ_m,1,d/f_m,d + k_m·σ_m,2,d/f_m,d",
+            "= σ_c,0,d / (k_c,1·f_c,0,d) + σ_m,1,d / f_m,d + k_m·σ_m,2,d / f_m,d",
             f"{float(eta_23):.3f}"))
         blocks.append(cc.check("Interaction eq. 6.23 (axis 1 buckling)", float(eta_23), 1.0))
 
@@ -302,7 +302,7 @@ def timber_column_bending_and_axial(
         blocks.append(S("Interaction check – eq. 6.24 (axis 2 buckling)"))
         eta_24 = sigma_c0d / (k_c2 * f_c0d) + k_m * sigma_m1d / f_md + sigma_m2d / f_md
         blocks.append(CALC_ROW("η_6.24",
-            "= σ_c,0,d/(k_c,2·f_c,0,d) + k_m·σ_m,1,d/f_m,d + σ_m,2,d/f_m,d",
+            "= σ_c,0,d / (k_c,2·f_c,0,d) + k_m·σ_m,1,d / f_m,d + σ_m,2,d / f_m,d",
             f"{float(eta_24):.3f}"))
         blocks.append(cc.check("Interaction eq. 6.24 (axis 2 buckling)", float(eta_24), 1.0))
 
@@ -342,7 +342,7 @@ def timber_column_bending_and_axial(
         blocks.append(CALC_ROW("σ_m,crit", "= π·√(E·I₂·G·I_t) / (l_ef·W_y)", str(sigma_m_crit)))
 
         lambda_rel_m = float((f_mk / sigma_m_crit)**0.5)
-        blocks.append(CALC_ROW("λ_rel,m", "= √(f_m,k / σ_m,crit)", f"{lambda_rel_m:.3f}"))
+        blocks.append(CALC_ROW("λ_rel,m", "= √(f_m,k/σ_m,crit)", f"{lambda_rel_m:.3f}"))
 
         lrm = lambda_rel_m
         if lrm <= 0.75:
@@ -365,7 +365,7 @@ def timber_column_bending_and_axial(
         ratio_c = float(sigma_c0d / (k_c2 * f_c0d))
         eta_35  = ratio_m**2 + ratio_c
         blocks.append(CALC_ROW("η_6.35",
-            "= (σ_m,d/(k_crit·f_m,d))² + σ_c,0,d/(k_c,2·f_c,0,d)",
+            "= (σ_m,d/(k_crit·f_m,d))² + σ_c,0,d / (k_c,2·f_c,0,d)",
             f"{eta_35:.3f}"))
         blocks.append(cc.check("LTB eq. 6.35: combined", eta_35, 1.0))
 

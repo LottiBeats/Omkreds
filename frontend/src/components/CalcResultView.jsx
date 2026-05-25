@@ -285,8 +285,9 @@ function Check({ block }) {
 // ── Calc text formatter — converts _x → <sub>x</sub>, ^x → <sup>x</sup>,
 // and " a / b " (space-padded slash) → stacked horizontal fraction.
 // Subscript/superscript stops at whitespace, operators, or brackets so that
-// e.g. N_Ed/A → N<sub>Ed</sub>/A.
-// Units like kN/m (no spaces) are left untouched.
+// e.g. N_Ed/A → N<sub>Ed</sub>/A  (no spaces = not a fraction, left as-is).
+// Formulas with multiple fractions are all converted, e.g.:
+//   σ_m,1,d / f_m,d + k_m·σ_m,2,d / f_m,d  → two stacked fractions
 function fmtCalcText(text) {
   if (!text) return ''
   // 1. sub / superscripts
@@ -297,20 +298,22 @@ function fmtCalcText(text) {
   //    e.g. "= a / b" → "= " + fraction(a, b), not fraction("= a", b)
   const eqMatch = s.match(/^(=\s*)/)
   const prefix = eqMatch ? eqMatch[1] : ''
-  const body   = prefix ? s.slice(prefix.length) : s
-  // 3. horizontal fraction — only when body has exactly one " / "
-  const parts = body.split(' / ')
-  if (parts.length === 2) {
-    s = prefix +
+  let body = prefix ? s.slice(prefix.length) : s
+  // 3. Replace every  token / token  with a stacked horizontal fraction.
+  //    A token is any non-whitespace sequence (may contain HTML tags, parens, dots…).
+  //    Slashes without surrounding spaces (e.g. kN/m, b·h²/6) are left untouched.
+  body = body.replace(
+    /([^\s]+)\s+\/\s+([^\s]+)/g,
+    (_, num, den) =>
       '<span style="display:inline-flex;flex-direction:column;' +
       'align-items:center;vertical-align:middle;margin:0 3px;font-size:0.9em">' +
         '<span style="border-bottom:1.5px solid currentColor;padding:1px 5px;' +
-        'line-height:1.3;white-space:nowrap">' + parts[0].trim() + '</span>' +
+        'line-height:1.3;white-space:nowrap">' + num + '</span>' +
         '<span style="padding:1px 5px;line-height:1.3;white-space:nowrap">' +
-        parts[1].trim() + '</span>' +
+        den + '</span>' +
       '</span>'
-  }
-  return s
+  )
+  return prefix + body
 }
 
 // ── Calc row (pre-formatted single equation row) ──────────────────────────────
