@@ -55,6 +55,7 @@ def init_db(path: Path | None = None) -> None:
         for col_def in [
             "parameters TEXT DEFAULT '[]'",
             "code       TEXT DEFAULT ''",
+            "items      TEXT DEFAULT '[]'",
         ]:
             try:
                 conn.execute(f"ALTER TABLE calc_library ADD COLUMN {col_def}")
@@ -136,7 +137,7 @@ def load_template(template_id: str, path: Path | None = None) -> dict | None:
     init_db(path)
     with sqlite3.connect(p) as conn:
         row = conn.execute(
-            "SELECT id, name, description, blocks, parameters, code, created_by, created_at "
+            "SELECT id, name, description, blocks, parameters, code, created_by, created_at, items "
             "FROM calc_library WHERE id = ?", (template_id,)
         ).fetchone()
     if not row:
@@ -151,6 +152,7 @@ def load_template(template_id: str, path: Path | None = None) -> dict | None:
             "code":        row[5] or "",
             "created_by":  row[6],
             "created_at":  row[7],
+            "items":       json.loads(row[8] or "[]"),
         }
     except Exception:
         return None
@@ -162,7 +164,7 @@ def load_all_templates(path: Path | None = None) -> list[dict]:
     init_db(path)
     with sqlite3.connect(p) as conn:
         rows = conn.execute("""
-            SELECT id, name, description, blocks, parameters, code, created_by, created_at
+            SELECT id, name, description, blocks, parameters, code, created_by, created_at, items
             FROM calc_library ORDER BY created_at DESC
         """).fetchall()
     templates = []
@@ -177,6 +179,7 @@ def load_all_templates(path: Path | None = None) -> list[dict]:
                 "code":        row[5] or "",
                 "created_by":  row[6],
                 "created_at":  row[7],
+                "items":       json.loads(row[8] or "[]"),
             })
         except Exception:
             pass
@@ -191,6 +194,7 @@ def save_template(
     blocks: list | None = None,
     parameters: list | None = None,
     code: str = "",
+    items: list | None = None,
     user: str = "",
     path: Path | None = None,
 ) -> str:
@@ -204,14 +208,15 @@ def save_template(
         with sqlite3.connect(p) as conn:
             conn.execute("""
                 INSERT INTO calc_library
-                    (id, name, description, blocks, parameters, code, created_by, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, name, description, blocks, parameters, code, created_by, created_at, items)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 tid, name, description,
                 json.dumps(blocks or [], ensure_ascii=False),
                 json.dumps(parameters or [], ensure_ascii=False),
                 code or "",
                 user, now,
+                json.dumps(items or [], ensure_ascii=False),
             ))
             conn.commit()
     return tid
@@ -223,6 +228,7 @@ def update_template(
     description: str = "",
     parameters: list | None = None,
     code: str = "",
+    items: list | None = None,
     user: str = "",
     path: Path | None = None,
 ) -> None:
@@ -232,12 +238,13 @@ def update_template(
         with sqlite3.connect(p) as conn:
             conn.execute("""
                 UPDATE calc_library
-                SET name=?, description=?, parameters=?, code=?
+                SET name=?, description=?, parameters=?, code=?, items=?
                 WHERE id=?
             """, (
                 name, description,
                 json.dumps(parameters or [], ensure_ascii=False),
                 code or "",
+                json.dumps(items or [], ensure_ascii=False),
                 template_id,
             ))
             conn.commit()

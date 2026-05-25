@@ -1385,6 +1385,7 @@ class CalcTemplateInput(BaseModel):
     description: str  = ""
     parameters:  list = []
     code:        str  = ""
+    items:       list = []   # custom-calc items (alternative to code)
 
 
 @protected.get("/calc-templates", tags=["Templates"])
@@ -1396,7 +1397,7 @@ def list_calc_templates():
 def create_calc_template(data: CalcTemplateInput):
     tid = _db.save_template(
         name=data.name, description=data.description,
-        parameters=data.parameters, code=data.code,
+        parameters=data.parameters, code=data.code, items=data.items,
     )
     return _db.load_template(tid)
 
@@ -1416,7 +1417,7 @@ def update_calc_template(template_id: str, data: CalcTemplateInput):
         raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
     _db.update_template(
         template_id=template_id, name=data.name, description=data.description,
-        parameters=data.parameters, code=data.code,
+        parameters=data.parameters, code=data.code, items=data.items,
     )
     return _db.load_template(template_id)
 
@@ -1431,8 +1432,12 @@ def delete_calc_template(template_id: str):
 def run_calc_template(template_id: str, params: dict = Body(default={})):
     """
     Execute a user-defined calc template.
-    Parameter values are injected as local variables.
-    The code must set  blocks = [...]
+
+    Two modes:
+      items — template was saved from a Custom Calc block (no Python needed).
+              Param values are substituted into the variable items and the
+              custom-calc eval loop runs.
+      code  — legacy: Python code that sets blocks = [...]
     """
     import traceback as _tb
 
@@ -1440,6 +1445,96 @@ def run_calc_template(template_id: str, params: dict = Body(default={})):
     if not tmpl:
         raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
 
+    # ── Items mode (saved from Custom Calc "Save as module") ─────────────────
+    items = tmpl.get("items") or []
+    if items:
+        try:
+            from calc_core import S, T, N, CALC_ROW, CheckContext
+
+            # Substitute incoming param values into the variable items
+            merged = []
+            for item in items:
+                if item.get("type") == "var":
+                    name_key = item.get("name", "")
+                    if name_key in params:
+                        item = {**item, "value": params[name_key]}
+                merged.append(item)
+
+            # Re-use the same eval loop as /calc/custom-calc
+            title  = tmpl.get("name", "Calculation")
+            blocks_out = []
+            blocks_out.append(S(title))
+            ns:  dict = {}
+            chk = CheckContext()
+
+            for item in merged:
+                itype = item.get("type", "")
+
+                if itype == "text":
+                    content = item.get("content", "").strip()
+                    if content:
+                        blocks_out.append(T(content))
+
+                elif itype == "heading":
+                    content = item.get("content", "").strip()
+                    if content:
+                        blocks_out.append(S(content))
+
+                elif itype == "var":
+                    name = item.get("name", "").strip()
+                    if not name:
+                        continue
+                    try:
+                        unit_str = item.get("unit", "-")
+                        qty      = _parse_qty(float(item.get("value", 0.0)), unit_str)
+                        ns[name] = qty
+                        val_str  = (f"{item['value']:g}" if unit_str == "-"
+                                    else f"{item['value']:g} {unit_str.replace('**','').replace('*','·')}")
+                        desc = item.get("description", "").strip()
+                        blocks_out.append(CALC_ROW(name, desc, val_str))
+                    except Exception as exc:
+                        blocks_out.append(N(f"Variable '{name}': {exc}"))
+
+                elif itype == "formula":
+                    raw = item.get("expr", "").strip()
+                    if not raw or "=" not in raw:
+                        continue
+                    lhs, rhs = raw.split("=", 1)
+                    lhs = lhs.strip()
+                    rhs = rhs.strip()
+                    try:
+                        result     = eval(_preprocess_expr(rhs), _UNIT_NS, ns)
+                        ns[lhs]    = result
+                        result_str = _fmt_qty(result)
+                        formula_disp = (rhs
+                            .replace("**", "^").replace("*", " × ").replace("/", " / "))
+                        blocks_out.append(CALC_ROW(lhs, formula_disp, result_str))
+                    except Exception as exc:
+                        blocks_out.append(N(f"Formula '{raw}': {exc}"))
+
+                elif itype == "check":
+                    label   = item.get("label", "Check")
+                    d_expr  = item.get("demand", "").strip()
+                    cap_raw = item.get("capacity", 1.0)
+                    cap_unt = item.get("unit", "-")
+                    if not d_expr:
+                        continue
+                    try:
+                        demand = eval(_preprocess_expr(d_expr), _UNIT_NS, ns)
+                        try:
+                            capacity = _parse_qty(float(cap_raw), cap_unt)
+                        except (ValueError, TypeError):
+                            capacity = eval(_preprocess_expr(str(cap_raw).strip()), _UNIT_NS, ns)
+                        blocks_out.append(chk.check(label, demand, capacity))
+                    except Exception as exc:
+                        blocks_out.append(N(f"Check error in '{label}': {exc}"))
+
+            return blocks_out
+
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+    # ── Code mode (Python template) ───────────────────────────────────────────
     code = (tmpl.get("code") or "").strip()
     if not code:
         raise HTTPException(status_code=422, detail="Template has no code yet — open the template editor and add some Python.")

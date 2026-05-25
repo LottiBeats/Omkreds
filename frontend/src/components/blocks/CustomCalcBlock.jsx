@@ -17,7 +17,7 @@
  *   onChange — function(updatedBlock)
  */
 import React, { useState, useEffect, useRef } from 'react'
-import { calcCustomCalc } from '../../api/client.js'
+import { calcCustomCalc, createCalcTemplate } from '../../api/client.js'
 import CalcResultView from '../CalcResultView.jsx'
 
 // ── Template storage (localStorage) ──────────────────────────────────────────
@@ -96,6 +96,8 @@ export default function CustomCalcBlock({ block, onChange }) {
   const [resultOpen,   setResultOpen]   = useState(false)
   const [tplOpen,      setTplOpen]      = useState(false)
   const [templates,    setTemplatesState] = useState(readTemplates)
+  const [saving,       setSaving]       = useState(false)
+  const [saveMsg,      setSaveMsg]      = useState('')
   const tplRef = useRef(null)
 
   useEffect(() => { if (d._result) setResultOpen(true) }, [d._result])
@@ -166,6 +168,47 @@ export default function CustomCalcBlock({ block, onChange }) {
     delete updated[name]
     writeTemplates(updated)
     setTemplatesState({ ...updated })
+  }
+
+  // ── Save as module ────────────────────────────────────────────────────────
+
+  async function handleSaveAsModule() {
+    const varItems = items.filter(i => i.type === 'var')
+    if (varItems.length === 0 && items.filter(i => i.type === 'formula').length === 0) {
+      alert('Add at least one variable or formula before saving as a module.')
+      return
+    }
+    const name = window.prompt(
+      'Name for this module (will appear in "My Calculations"):',
+      d.title?.trim() || 'My Calculation'
+    )
+    if (!name?.trim()) return
+
+    setSaving(true)
+    setSaveMsg('')
+    try {
+      // Derive parameter definitions from variable items
+      const parameters = varItems.map(v => ({
+        name:    v.name,
+        label:   v.description || v.name,
+        unit:    v.unit ?? '-',
+        type:    'number',
+        default: v.value ?? 0,
+      }))
+      await createCalcTemplate({
+        name:        name.trim(),
+        description: `Saved from "${d.title || 'Custom Calculation'}"`,
+        parameters,
+        items,        // full definition for running
+        code:        '',
+      })
+      setSaveMsg(`✓ Saved as "${name.trim()}" — find it in My Calculations`)
+      setTimeout(() => setSaveMsg(''), 4000)
+    } catch (err) {
+      setSaveMsg(`✗ ${err.message ?? 'Save failed'}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ── Run / Clear ───────────────────────────────────────────────────────────
@@ -291,7 +334,7 @@ export default function CustomCalcBlock({ block, onChange }) {
         ))}
       </div>
 
-      {/* Run / Clear */}
+      {/* Run / Clear / Save as module */}
       <div style={s.actionRow}>
         <button
           style={{ ...s.btn, ...s.btnRun }}
@@ -305,7 +348,27 @@ export default function CustomCalcBlock({ block, onChange }) {
             ✕ Clear results
           </button>
         )}
+        <button
+          style={{ ...s.btn, marginLeft: 'auto', ...s.btnSave }}
+          onClick={handleSaveAsModule}
+          disabled={saving || items.length === 0}
+          title="Save this calculation as a reusable module in My Calculations"
+        >
+          {saving ? '⏳ Saving…' : '⊞ Save as module'}
+        </button>
       </div>
+
+      {/* Save feedback */}
+      {saveMsg && (
+        <div style={{
+          fontSize: 11, padding: '6px 10px',
+          background: saveMsg.startsWith('✓') ? '#f0fdf4' : '#fdf3f2',
+          border: `1px solid ${saveMsg.startsWith('✓') ? '#bbf7d0' : '#f5c6c6'}`,
+          color:  saveMsg.startsWith('✓') ? '#166534' : '#c0392b',
+        }}>
+          {saveMsg}
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -840,6 +903,12 @@ const s = {
     background: '#111',
     color:      '#fff',
     border:     '1px solid #111',
+  },
+  btnSave: {
+    background: '#eef2ff',
+    color:      '#2563eb',
+    border:     '1px solid #bfdbfe',
+    fontWeight: 600,
   },
   errorBox: {
     background:  '#fdf3f2',
