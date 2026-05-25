@@ -255,8 +255,8 @@ const DOC_TEMPLATES = {
   ],
 }
 
-const NAVY = '#1e3a5f'
-const NAVY_LT = '#2a4f82'
+const BRAND    = '#d94a2b'   // Omkreds orange-red
+const BRAND_LT = '#e05a3a'   // lighter variant
 
 const styles = {
   layout: {
@@ -280,9 +280,11 @@ const styles = {
   sidebarBrand: {
     display:    'flex',
     alignItems: 'center',
-    padding:    '10px 16px',
+    padding:    '0 16px',
+    height:     46,
+    overflow:   'hidden',
     background: '#fff',
-    borderBottom: '1px solid #e2e8f0',
+    borderBottom: '1px solid #e8e4e0',
   },
   backBtn: {
     background:   'none',
@@ -336,10 +338,10 @@ const styles = {
     textAlign:   'left',
     background:  active ? '#eff6ff' : 'none',
     border:      'none',
-    borderLeft:  active ? `3px solid ${NAVY}` : '3px solid transparent',
+    borderLeft:  active ? `3px solid ${BRAND}` : '3px solid transparent',
     padding:     '7px 16px',
     fontSize:    12,
-    color:       active ? NAVY : '#475569',
+    color:       active ? BRAND : '#475569',
     fontWeight:  active ? 600 : 400,
     cursor:      'pointer',
     fontFamily:  'inherit',
@@ -352,10 +354,10 @@ const styles = {
     textAlign:   'left',
     background:  active ? '#eff6ff' : 'none',
     border:      'none',
-    borderLeft:  active ? `3px solid ${NAVY}` : '3px solid transparent',
+    borderLeft:  active ? `3px solid ${BRAND}` : '3px solid transparent',
     padding:     '8px 16px',
     fontSize:    11,
-    color:       active ? NAVY : '#94a3b8',
+    color:       active ? BRAND : '#94a3b8',
     fontWeight:  active ? 600 : 400,
     cursor:      'pointer',
     fontFamily:  'inherit',
@@ -447,7 +449,7 @@ const styles = {
     fontStyle: 'italic',
   },
   pdfBtn: {
-    background:    NAVY,
+    background:    BRAND,
     color:         '#fff',
     border:        'none',
     padding:       '7px 18px',
@@ -515,7 +517,7 @@ const styles = {
     width:          '100%',
   },
   pdfDownloadBtn: {
-    background:     NAVY,
+    background:     BRAND,
     color:          '#fff',
     border:         'none',
     padding:        '6px 14px',
@@ -877,7 +879,7 @@ export default function EditorPage() {
         <div style={styles.sidebarHeader}>
           {/* Logo row */}
           <div style={styles.sidebarBrand}>
-            <img src="/logo.png" alt="Omkreds" style={{ height: 36, width: 'auto' }} />
+            <img src="/logo.png" alt="Omkreds" style={{ height: 90, width: 'auto', marginTop: -22, marginBottom: -22 }} />
           </div>
 
           {/* Back link + project info */}
@@ -977,7 +979,7 @@ export default function EditorPage() {
                         />
                         <button
                           onClick={confirmAddSubdoc}
-                          style={{ fontSize: 11, padding: '3px 7px', background: NAVY, color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}
+                          style={{ fontSize: 11, padding: '3px 7px', background: BRAND, color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}
                         >✓</button>
                         <button
                           onClick={() => setAddingSubdocFor(null)}
@@ -992,7 +994,7 @@ export default function EditorPage() {
                           textAlign: 'left', paddingLeft: 28, paddingTop: 3, paddingBottom: 5,
                           fontSize: 11, color: '#94a3b8', cursor: 'pointer', fontFamily: 'inherit',
                         }}
-                        onMouseEnter={e => e.currentTarget.style.color = NAVY}
+                        onMouseEnter={e => e.currentTarget.style.color = BRAND}
                         onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
                       >
                         + Add sub-document
@@ -1026,7 +1028,7 @@ export default function EditorPage() {
           {/* Back button when inside a sub-document */}
           {activeSubdoc !== null && (
             <button
-              style={{ ...styles.tplBtn, marginRight: 4, color: NAVY, borderColor: '#c7d2fe' }}
+              style={{ ...styles.tplBtn, marginRight: 4, color: BRAND, borderColor: '#c7d2fe' }}
               onClick={() => setActiveSubdoc(null)}
               title={`Back to ${activeDoc}`}
             >
@@ -1108,8 +1110,8 @@ export default function EditorPage() {
                 style={{ ...styles.pdfBtn, opacity: pdfGenerating ? 0.6 : 1 }}
                 onClick={handleGeneratePdf}
                 disabled={pdfGenerating}
-                onMouseEnter={e => { if (!pdfGenerating) e.currentTarget.style.background = NAVY_LT }}
-                onMouseLeave={e => { if (!pdfGenerating) e.currentTarget.style.background = NAVY }}
+                onMouseEnter={e => { if (!pdfGenerating) e.currentTarget.style.background = BRAND_LT }}
+                onMouseLeave={e => { if (!pdfGenerating) e.currentTarget.style.background = BRAND }}
               >
                 ↓ Export PDF
               </button>

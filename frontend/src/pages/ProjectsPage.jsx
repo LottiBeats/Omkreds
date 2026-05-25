@@ -11,14 +11,13 @@ import { getProjects, deleteProject } from '../api/client.js'
 import CreateProjectModal from '../components/CreateProjectModal.jsx'
 
 // ── tokens ────────────────────────────────────────────────────────────────────
-const DARK   = '#0a0f1a'
-const NAVY   = '#1e3a5f'
-const BLUE   = '#2563eb'
+const BRAND      = '#d94a2b'   // Omkreds orange-red
+const BRAND_DARK = '#b83d22'   // hover / pressed
 const WHITE  = '#ffffff'
-const OFF    = '#f8fafc'
-const BORDER = '#e2e8f0'
-const TEXT   = '#0f172a'
-const MUTED  = '#64748b'
+const OFF    = '#faf9f8'       // warm off-white to complement the brand
+const BORDER = '#e8e4e0'       // warm border
+const TEXT   = '#1a1614'       // warm near-black
+const MUTED  = '#78716c'       // warm muted
 const GREEN  = '#16a34a'
 const SANS   = "system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
 const MONO   = "'Courier New', Courier, monospace"
@@ -81,8 +80,8 @@ function NavBar({ onNew }) {
       transition:     'background 0.3s',
     }}>
       {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', cursor: 'default' }}>
-        <img src="/logo.png" alt="Omkreds" style={{ height: 40, width: 'auto' }} />
+      <div style={{ display: 'flex', alignItems: 'center', cursor: 'default', overflow: 'hidden', height: 60 }}>
+        <img src="/logo.png" alt="Omkreds" style={{ height: 120, width: 'auto', marginTop: -30, marginBottom: -30 }} />
       </div>
 
       {/* Links */}
@@ -110,12 +109,12 @@ function NavBar({ onNew }) {
             <button
               onClick={onNew}
               style={{
-                background: NAVY, color: WHITE, border: 'none',
+                background: BRAND, color: WHITE, border: 'none',
                 padding: '8px 20px', fontFamily: SANS, fontSize: 13, fontWeight: 700,
                 cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.2s',
               }}
-              onMouseEnter={e => e.currentTarget.style.background = DARK}
-              onMouseLeave={e => e.currentTarget.style.background = NAVY}
+              onMouseEnter={e => e.currentTarget.style.background = BRAND_DARK}
+              onMouseLeave={e => e.currentTarget.style.background = BRAND}
             >
               Nyt projekt
             </button>
@@ -134,7 +133,7 @@ function NavBar({ onNew }) {
             </SignInButton>
             <SignUpButton mode="modal">
               <button style={{
-                background: NAVY, color: WHITE, border: 'none',
+                background: BRAND, color: WHITE, border: 'none',
                 padding: '8px 20px', fontFamily: SANS, fontSize: 13, fontWeight: 700,
                 cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.2s',
               }}>
@@ -154,7 +153,7 @@ function AppPreview() {
     <div style={{
       background:   WHITE,
       border:       '1px solid ' + BORDER,
-      borderTop:    '3px solid ' + NAVY,
+      borderTop:    '3px solid ' + BRAND,
       boxShadow:    '0 24px 64px rgba(0,0,0,0.5)',
       fontFamily:   SANS,
       overflow:     'hidden',
@@ -177,8 +176,8 @@ function AppPreview() {
 
         {/* Steel section */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px solid ' + NAVY, paddingBottom: 5, marginBottom: 10 }}>
-            <span style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, color: NAVY, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px solid ' + BRAND, paddingBottom: 5, marginBottom: 10 }}>
+            <span style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Steel Beam Design
             </span>
             <span style={{ fontFamily: MONO, fontSize: 9, color: MUTED }}>EC3 §6.3.3</span>
@@ -200,8 +199,8 @@ function AppPreview() {
 
         {/* RC section */}
         <div style={{ borderTop: '1px solid ' + BORDER, paddingTop: 14, marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px solid ' + NAVY, paddingBottom: 5, marginBottom: 10 }}>
-            <span style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, color: NAVY, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px solid ' + BRAND, paddingBottom: 5, marginBottom: 10 }}>
+            <span style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               RC Beam Design
             </span>
             <span style={{ fontFamily: MONO, fontSize: 9, color: MUTED }}>EC2 §6.1</span>
@@ -222,7 +221,7 @@ function AppPreview() {
 
         {/* Export button */}
         <button style={{
-          width: '100%', background: NAVY, color: WHITE, border: 'none',
+          width: '100%', background: BRAND, color: WHITE, border: 'none',
           padding: '9px 0', fontFamily: SANS, fontSize: 12, fontWeight: 700,
           letterSpacing: '0.04em', cursor: 'pointer',
         }}>
@@ -281,12 +280,12 @@ function HeroSection({ onNew }) {
             <button
               onClick={onNew}
               style={{
-                background: NAVY, color: WHITE, border: 'none',
+                background: BRAND, color: WHITE, border: 'none',
                 padding: '12px 28px', fontFamily: SANS, fontSize: 14, fontWeight: 700,
                 cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.2s',
               }}
-              onMouseEnter={e => e.currentTarget.style.background = DARK}
-              onMouseLeave={e => e.currentTarget.style.background = NAVY}
+              onMouseEnter={e => e.currentTarget.style.background = BRAND_DARK}
+              onMouseLeave={e => e.currentTarget.style.background = BRAND}
             >
               Kom i gang →
             </button>
@@ -342,7 +341,7 @@ function FeaturesSection() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 40 }}>
           {FEATURES.map((f, i) => (
             <Reveal key={f.title} delay={i * 0.1}>
-              <div style={{ borderTop: '2px solid ' + NAVY, paddingTop: 24 }}>
+              <div style={{ borderTop: '2px solid ' + BRAND, paddingTop: 24 }}>
                 <div style={{ fontFamily: SANS, fontSize: 15, fontWeight: 700, color: TEXT, marginBottom: 10 }}>
                   {f.title}
                 </div>
@@ -393,7 +392,7 @@ function HowItWorksSection() {
                 <div style={{ fontFamily: MONO, fontSize: 40, fontWeight: 700, color: BORDER, lineHeight: 1, marginBottom: 16 }}>
                   {s.n}
                 </div>
-                <div style={{ width: 28, height: 2, background: NAVY, marginBottom: 16 }} />
+                <div style={{ width: 28, height: 2, background: BRAND, marginBottom: 16 }} />
                 <div style={{ fontFamily: SANS, fontSize: 15, fontWeight: 700, color: TEXT, marginBottom: 10 }}>
                   {s.title}
                 </div>
@@ -426,12 +425,12 @@ function CtaSection({ onNew }) {
           <button
             onClick={onNew}
             style={{
-              background: NAVY, color: WHITE, border: 'none',
+              background: BRAND, color: WHITE, border: 'none',
               padding: '14px 32px', fontFamily: SANS, fontSize: 14, fontWeight: 700,
               cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.2s',
             }}
-            onMouseEnter={e => e.currentTarget.style.background = DARK}
-            onMouseLeave={e => e.currentTarget.style.background = NAVY}
+            onMouseEnter={e => e.currentTarget.style.background = BRAND_DARK}
+            onMouseLeave={e => e.currentTarget.style.background = BRAND}
           >
             Opret dit første projekt →
           </button>
@@ -452,7 +451,7 @@ function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, is
         </p>
         <SignInButton mode="modal">
           <button style={{
-            background: NAVY, color: WHITE, border: 'none',
+            background: BRAND, color: WHITE, border: 'none',
             padding: '12px 32px', fontFamily: SANS, fontSize: 14, fontWeight: 700,
             cursor: 'pointer', letterSpacing: '0.02em',
           }}>
@@ -480,13 +479,13 @@ function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, is
           <button
             onClick={onNew}
             style={{
-              background: NAVY, color: WHITE, border: 'none',
+              background: BRAND, color: WHITE, border: 'none',
               padding: '10px 22px', fontFamily: SANS, fontSize: 13, fontWeight: 700,
               cursor: 'pointer', letterSpacing: '0.02em',
               transition: 'background 0.2s',
             }}
-            onMouseEnter={e => e.currentTarget.style.background = DARK}
-            onMouseLeave={e => e.currentTarget.style.background = NAVY}
+            onMouseEnter={e => e.currentTarget.style.background = BRAND_DARK}
+            onMouseLeave={e => e.currentTarget.style.background = BRAND}
           >
             + New Project
           </button>
@@ -514,7 +513,7 @@ function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, is
             </div>
             <button
               onClick={onNew}
-              style={{ background: NAVY, color: WHITE, border: 'none', padding: '10px 24px', fontFamily: SANS, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+              style={{ background: BRAND, color: WHITE, border: 'none', padding: '10px 24px', fontFamily: SANS, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
             >
               + New Project
             </button>
@@ -527,7 +526,7 @@ function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, is
                 className="project-card"
                 style={{
                   background: WHITE, border: '1px solid ' + BORDER,
-                  borderTop: '2px solid ' + NAVY,
+                  borderTop: '2px solid ' + BRAND,
                   padding: '20px', cursor: 'pointer',
                   transition: 'box-shadow 0.2s, transform 0.2s',
                 }}
@@ -564,7 +563,7 @@ function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, is
                 </div>
                 <div style={{ borderTop: '1px solid ' + BORDER, paddingTop: 12, display: 'flex', gap: 8 }}>
                   <button
-                    style={{ flex: 1, background: NAVY, color: WHITE, border: 'none', padding: '8px 0', fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', cursor: 'pointer' }}
+                    style={{ flex: 1, background: BRAND, color: WHITE, border: 'none', padding: '8px 0', fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', cursor: 'pointer' }}
                     onClick={(e) => { e.stopPropagation(); onOpen(project.id) }}
                   >
                     Open
