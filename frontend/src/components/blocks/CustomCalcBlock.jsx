@@ -73,6 +73,7 @@ const UNIT_OPTIONS = [
 // Badge colour per item type
 const TYPE_BADGE = {
   text:    { label: 'TXT', bg: '#6E6E73' },
+  heading: { label: 'HDG', bg: '#1e3a5f' },
   var:     { label: 'VAR', bg: '#12788E' },
   formula: { label: 'FML', bg: '#032E38' },
   check:   { label: 'CHK', bg: '#E74825' },
@@ -80,9 +81,10 @@ const TYPE_BADGE = {
 
 const DEFAULT_ITEM = {
   text:    { type: 'text',    content: '' },
-  var:     { type: 'var',     name: '',  value: 0,   unit: '-'  },
+  heading: { type: 'heading', content: '' },
+  var:     { type: 'var',     name: '',  value: 0,   unit: '-', description: '' },
   formula: { type: 'formula', expr: '' },
-  check:   { type: 'check',   label: 'Check', demand: '', capacity: 1.0, unit: 'kN' },
+  check:   { type: 'check',   label: 'Check', demand: '', capacity: '1.0', unit: 'kN' },
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -276,9 +278,15 @@ export default function CustomCalcBlock({ block, onChange }) {
       {/* Add-item buttons */}
       <div style={s.addRow}>
         <span style={s.addLabel}>Add:</span>
-        {['text','var','formula','check'].map(type => (
+        {[
+          ['heading', '+ Heading'],
+          ['var',     '+ Variable'],
+          ['formula', '+ Formula'],
+          ['check',   '+ Check'],
+          ['text',    '+ Text'],
+        ].map(([type, label]) => (
           <button key={type} style={s.addBtn} onClick={() => addItem(type)}>
-            {type === 'text' ? '+ Text' : type === 'var' ? '+ Variable' : type === 'formula' ? '+ Formula' : '+ Check'}
+            {label}
           </button>
         ))}
       </div>
@@ -366,6 +374,7 @@ function ItemRow({ item, index, total, onChange, onMoveUp, onMoveDown, onDelete 
       {/* Type-specific fields */}
       <div style={s.itemContent}>
         {itype === 'text'    && <TextItem    item={item} onChange={onChange} />}
+        {itype === 'heading' && <HeadingItem item={item} onChange={onChange} />}
         {itype === 'var'     && <VarItem     item={item} onChange={onChange} />}
         {itype === 'formula' && <FormulaItem item={item} onChange={onChange} />}
         {itype === 'check'   && <CheckItem   item={item} onChange={onChange} />}
@@ -389,33 +398,56 @@ function TextItem({ item, onChange }) {
   )
 }
 
+function HeadingItem({ item, onChange }) {
+  return (
+    <input
+      style={{ ...s.input, fontWeight: 700, fontSize: 13, letterSpacing: '0.01em' }}
+      value={item.content ?? ''}
+      onChange={e => onChange({ content: e.target.value })}
+      placeholder="Section heading, e.g. Loads  or  Section check"
+      spellCheck={false}
+    />
+  )
+}
+
 function VarItem({ item, onChange }) {
   return (
-    <div style={s.varRow}>
-      <div style={s.varField}>
-        <label style={s.fieldLabel}>Name</label>
-        <input
-          style={s.input}
-          value={item.name ?? ''}
-          onChange={e => onChange({ name: e.target.value })}
-          placeholder="e.g. g_k"
-          spellCheck={false}
-        />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      {/* Name / value / unit row */}
+      <div style={s.varRow}>
+        <div style={s.varField}>
+          <label style={s.fieldLabel}>Symbol</label>
+          <input
+            style={{ ...s.input, fontFamily: 'monospace' }}
+            value={item.name ?? ''}
+            onChange={e => onChange({ name: e.target.value })}
+            placeholder="e.g. g_k"
+            spellCheck={false}
+          />
+        </div>
+        <div style={{ ...s.varField, maxWidth: 130 }}>
+          <label style={s.fieldLabel}>Value</label>
+          <input
+            style={s.input}
+            type="number"
+            value={item.value ?? 0}
+            onChange={e => onChange({ value: parseFloat(e.target.value) || 0 })}
+            step="any"
+          />
+        </div>
+        <div style={{ ...s.varField, maxWidth: 110 }}>
+          <label style={s.fieldLabel}>Unit</label>
+          <UnitSelect value={item.unit ?? '-'} onChange={v => onChange({ unit: v })} />
+        </div>
       </div>
-      <div style={{ ...s.varField, maxWidth: 120 }}>
-        <label style={s.fieldLabel}>Value</label>
-        <input
-          style={s.input}
-          type="number"
-          value={item.value ?? 0}
-          onChange={e => onChange({ value: parseFloat(e.target.value) || 0 })}
-          step="any"
-        />
-      </div>
-      <div style={{ ...s.varField, maxWidth: 100 }}>
-        <label style={s.fieldLabel}>Unit</label>
-        <UnitSelect value={item.unit ?? '-'} onChange={v => onChange({ unit: v })} />
-      </div>
+      {/* Optional description */}
+      <input
+        style={{ ...s.input, color: '#666', fontSize: 11 }}
+        value={item.description ?? ''}
+        onChange={e => onChange({ description: e.target.value })}
+        placeholder="Description (optional) — e.g. Characteristic dead load"
+        spellCheck={false}
+      />
     </div>
   )
 }
@@ -423,17 +455,20 @@ function VarItem({ item, onChange }) {
 function FormulaItem({ item, onChange }) {
   return (
     <div>
-      <label style={s.fieldLabel}>Expression</label>
+      <label style={s.fieldLabel}>Expression  (lhs = rhs)</label>
       <input
-        style={{ ...s.input, fontFamily: 'monospace' }}
+        style={{ ...s.input, fontFamily: 'monospace', fontSize: 13 }}
         value={item.expr ?? ''}
         onChange={e => onChange({ expr: e.target.value })}
-        placeholder="e.g.  F_Ed = g_k * L   or   sigma = F_Ed / A"
+        placeholder="e.g.  M_Ed = q * L^2 / 8   or   sigma = N_Ed / A"
         spellCheck={false}
       />
       <div style={s.hint}>
-        Use variable names defined above. Operators: <code>+  -  *  /  **</code>.
-        Units are resolved automatically (e.g. multiplying kN by m gives kN·m).
+        Reference any variable defined above. Power: <code>^</code>.&ensp;
+        Multiply: <code>*</code> or <code>×</code>.&ensp;
+        Functions: <code>sqrt &nbsp;sin &nbsp;cos &nbsp;tan &nbsp;log &nbsp;exp &nbsp;abs &nbsp;min &nbsp;max</code>.&ensp;
+        Constants: <code>pi &nbsp;e</code>.&ensp;
+        Units are carried automatically.
       </div>
     </div>
   )
@@ -452,27 +487,27 @@ function CheckItem({ item, onChange }) {
         />
       </div>
       <div style={s.varField}>
-        <label style={s.fieldLabel}>Demand expression</label>
+        <label style={s.fieldLabel}>Demand (expression)</label>
         <input
           style={{ ...s.input, fontFamily: 'monospace' }}
           value={item.demand ?? ''}
           onChange={e => onChange({ demand: e.target.value })}
-          placeholder="e.g.  sigma  or  F_Ed / A"
+          placeholder="e.g.  sigma  or  N_Ed / A"
           spellCheck={false}
         />
       </div>
-      <div style={{ ...s.varField, maxWidth: 120 }}>
-        <label style={s.fieldLabel}>Capacity value</label>
+      <div style={s.varField}>
+        <label style={s.fieldLabel}>Capacity (value or expression)</label>
         <input
-          style={s.input}
-          type="number"
-          value={item.capacity ?? 1.0}
-          onChange={e => onChange({ capacity: parseFloat(e.target.value) || 0 })}
-          step="any"
+          style={{ ...s.input, fontFamily: 'monospace' }}
+          value={String(item.capacity ?? '1.0')}
+          onChange={e => onChange({ capacity: e.target.value })}
+          placeholder="e.g.  160  or  f_cd  or  kmod * f_ck / gamma_M"
+          spellCheck={false}
         />
       </div>
-      <div style={{ ...s.varField, maxWidth: 100 }}>
-        <label style={s.fieldLabel}>Unit</label>
+      <div style={{ ...s.varField, maxWidth: 110 }}>
+        <label style={s.fieldLabel}>Unit (if number)</label>
         <UnitSelect value={item.unit ?? 'kN'} onChange={v => onChange({ unit: v })} />
       </div>
     </div>

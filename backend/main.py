@@ -62,6 +62,17 @@ _UNIT_NS.update({
     "abs": abs, "min": min, "max": max, "round": round,
 })
 
+
+def _preprocess_expr(expr: str) -> str:
+    """Convert natural engineering notation to Python syntax before eval.
+
+    Handles:
+      ^   → **   (power: x^2  becomes  x**2)
+      ×   → *    (multiplication symbol)
+      ·   → *    (middle dot multiplication)
+    """
+    return expr.replace('^', '**').replace('×', '*').replace('·', '*')
+
 try:
     import db as _db
 except ImportError:
@@ -547,6 +558,12 @@ def calc_custom(data: CustomCalcInput):
                 if content:
                     blocks.append(T(content))
 
+            elif itype == "heading":
+                # Section heading — breaks a long calculation into named sections
+                content = item.get("content", "").strip()
+                if content:
+                    blocks.append(S(content))
+
             elif itype == "var":
                 name = item.get("name", "").strip()
                 if not name:
@@ -557,7 +574,8 @@ def calc_custom(data: CustomCalcInput):
                     ns[name] = qty
                     val_str  = (f"{item['value']:g}" if unit_str == "-"
                                 else f"{item['value']:g} {unit_str.replace('**', '').replace('*', '·')}")
-                    blocks.append(CALC_ROW(name, "", val_str))
+                    desc = item.get("description", "").strip()
+                    blocks.append(CALC_ROW(name, desc, val_str))
                 except Exception as exc:
                     blocks.append(N(f"Variable '{name}': {exc}"))
 
@@ -569,11 +587,14 @@ def calc_custom(data: CustomCalcInput):
                 lhs = lhs.strip()
                 rhs = rhs.strip()
                 try:
-                    result    = eval(rhs, _UNIT_NS, ns)
-                    ns[lhs]   = result
+                    # Pre-process: ^ → **, × → *, · → * for eval
+                    result     = eval(_preprocess_expr(rhs), _UNIT_NS, ns)
+                    ns[lhs]    = result
                     result_str = _fmt_qty(result)
+                    # Display: normalise to ^ and × notation (fmtCalcText handles the rest)
                     formula_disp = (rhs
                         .replace("**", "^")
+                        .replace("×", "×").replace("·", "·")   # keep explicit symbols
                         .replace("*", " × ")
                         .replace("/", " / "))
                     blocks.append(CALC_ROW(lhs, formula_disp, result_str))
@@ -583,13 +604,18 @@ def calc_custom(data: CustomCalcInput):
             elif itype == "check":
                 label   = item.get("label", "Check")
                 d_expr  = item.get("demand", "").strip()
-                cap_val = float(item.get("capacity", 1.0))
+                cap_raw = item.get("capacity", 1.0)
                 cap_unt = item.get("unit", "-")
                 if not d_expr:
                     continue
                 try:
-                    demand   = eval(d_expr, _UNIT_NS, ns)
-                    capacity = _parse_qty(cap_val, cap_unt)
+                    demand = eval(_preprocess_expr(d_expr), _UNIT_NS, ns)
+                    # Capacity can be a number (with unit) or an expression string
+                    try:
+                        capacity = _parse_qty(float(cap_raw), cap_unt)
+                    except (ValueError, TypeError):
+                        # Not a plain number — evaluate as an expression
+                        capacity = eval(_preprocess_expr(str(cap_raw).strip()), _UNIT_NS, ns)
                     blocks.append(chk.check(label, demand, capacity))
                 except Exception as exc:
                     blocks.append(N(f"Check error in '{label}': {exc}"))
