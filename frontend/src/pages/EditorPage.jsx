@@ -557,6 +557,7 @@ export default function EditorPage() {
 
   const [project,         setProject]         = useState(null)
   const [activeDoc,       setActiveDoc]       = useState(null)   // e.g. "A2", or null = show metadata
+  const [activeSubdoc,    setActiveSubdoc]    = useState(null)   // index into subdocs[], or null
   const [loading,         setLoading]         = useState(true)
   const [saving,          setSaving]          = useState(false)
   const [error,           setError]           = useState(null)
@@ -569,9 +570,13 @@ export default function EditorPage() {
   const [canRedo,         setCanRedo]         = useState(false)
   const [pdfPreviewUrl,   setPdfPreviewUrl]   = useState(null)   // blob URL for preview modal
   const [pdfGenerating,   setPdfGenerating]   = useState(false)  // shared spinner for both buttons
+  // Adding sub-document: which parent doc is being expanded
+  const [addingSubdocFor, setAddingSubdocFor] = useState(null)
+  const [newSubdocName,   setNewSubdocName]   = useState('')
   const undoStack = useRef([])   // past block arrays
   const redoStack = useRef([])   // future block arrays
-  const tplRef = useRef(null)
+  const tplRef    = useRef(null)
+  const subdocInputRef = useRef(null)
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -623,15 +628,32 @@ export default function EditorPage() {
     }
   }, [])
 
-  /** Low-level: save blocks without touching undo/redo history */
+  /** Read the currently active blocks (parent doc OR active subdoc) */
+  function _currentBlocks(p = project) {
+    if (!activeDoc || !p) return []
+    const doc = p.documents[activeDoc]
+    if (activeSubdoc !== null) return doc?.subdocs?.[activeSubdoc]?.blocks ?? []
+    return doc?.blocks ?? []
+  }
+
+  /** Low-level: write blocks to the active location without touching undo/redo */
   function _applyBlocks(newBlocks) {
     if (!activeDoc || !project) return
-    const updated = {
-      ...project,
-      documents: {
-        ...project.documents,
-        [activeDoc]: { ...project.documents[activeDoc], blocks: newBlocks },
-      },
+    const doc = project.documents[activeDoc]
+    let updated
+    if (activeSubdoc !== null) {
+      const newSubdocs = (doc.subdocs ?? []).map((sd, i) =>
+        i === activeSubdoc ? { ...sd, blocks: newBlocks } : sd
+      )
+      updated = {
+        ...project,
+        documents: { ...project.documents, [activeDoc]: { ...doc, subdocs: newSubdocs } },
+      }
+    } else {
+      updated = {
+        ...project,
+        documents: { ...project.documents, [activeDoc]: { ...doc, blocks: newBlocks } },
+      }
     }
     save(updated)
   }
@@ -639,7 +661,7 @@ export default function EditorPage() {
   /** Called by BlockList when blocks change — pushes to undo stack */
   function updateBlocks(newBlocks) {
     if (!activeDoc || !project) return
-    const current = project.documents[activeDoc]?.blocks ?? []
+    const current = _currentBlocks()
     undoStack.current = [...undoStack.current.slice(-49), current]
     redoStack.current = []
     setCanUndo(true)
@@ -647,29 +669,39 @@ export default function EditorPage() {
     _applyBlocks(newBlocks)
   }
 
+  function _writeBlocks(p, newBlocks) {
+    /** Pure helper: return updated project with newBlocks at the active location */
+    const doc = p.documents[activeDoc]
+    if (activeSubdoc !== null) {
+      const newSubdocs = (doc.subdocs ?? []).map((sd, i) =>
+        i === activeSubdoc ? { ...sd, blocks: newBlocks } : sd
+      )
+      return { ...p, documents: { ...p.documents, [activeDoc]: { ...doc, subdocs: newSubdocs } } }
+    }
+    return { ...p, documents: { ...p.documents, [activeDoc]: { ...doc, blocks: newBlocks } } }
+  }
+
+  function _readBlocks(p) {
+    /** Pure helper: read blocks from active location in a given project snapshot */
+    const doc = p.documents[activeDoc]
+    if (activeSubdoc !== null) return doc?.subdocs?.[activeSubdoc]?.blocks ?? []
+    return doc?.blocks ?? []
+  }
+
   const handleUndo = useCallback(() => {
     if (undoStack.current.length === 0) return
     const prev = undoStack.current[undoStack.current.length - 1]
     undoStack.current = undoStack.current.slice(0, -1)
-    // Need access to current blocks — read from DOM project state via ref
     setProject(p => {
       if (!p || !activeDoc) return p
-      const current = p.documents[activeDoc]?.blocks ?? []
-      redoStack.current = [...redoStack.current.slice(-49), current]
+      redoStack.current = [...redoStack.current.slice(-49), _readBlocks(p)]
       setCanUndo(undoStack.current.length > 0)
       setCanRedo(true)
-      const updated = {
-        ...p,
-        documents: {
-          ...p.documents,
-          [activeDoc]: { ...p.documents[activeDoc], blocks: prev },
-        },
-      }
-      // fire save asynchronously
+      const updated = _writeBlocks(p, prev)
       saveProject(updated).catch(() => {})
       return updated
     })
-  }, [activeDoc])
+  }, [activeDoc, activeSubdoc])
 
   const handleRedo = useCallback(() => {
     if (redoStack.current.length === 0) return
@@ -677,29 +709,22 @@ export default function EditorPage() {
     redoStack.current = redoStack.current.slice(0, -1)
     setProject(p => {
       if (!p || !activeDoc) return p
-      const current = p.documents[activeDoc]?.blocks ?? []
-      undoStack.current = [...undoStack.current.slice(-49), current]
+      undoStack.current = [...undoStack.current.slice(-49), _readBlocks(p)]
       setCanUndo(true)
       setCanRedo(redoStack.current.length > 0)
-      const updated = {
-        ...p,
-        documents: {
-          ...p.documents,
-          [activeDoc]: { ...p.documents[activeDoc], blocks: next },
-        },
-      }
+      const updated = _writeBlocks(p, next)
       saveProject(updated).catch(() => {})
       return updated
     })
-  }, [activeDoc])
+  }, [activeDoc, activeSubdoc])
 
-  // Reset undo/redo stacks when switching documents
+  // Reset undo/redo stacks when switching documents or sub-documents
   useEffect(() => {
     undoStack.current = []
     redoStack.current = []
     setCanUndo(false)
     setCanRedo(false)
-  }, [activeDoc])
+  }, [activeDoc, activeSubdoc])
 
   // Keyboard shortcuts: Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z
   useEffect(() => {
@@ -717,6 +742,78 @@ export default function EditorPage() {
   function updateMeta(newMeta) {
     if (!project) return
     const updated = { ...project, metadata: newMeta }
+    save(updated)
+  }
+
+  // ── Sub-document management ────────────────────────────────────────────────
+
+  function openAddSubdoc(docId) {
+    setAddingSubdocFor(docId)
+    setNewSubdocName('')
+    // Focus the input on next tick
+    setTimeout(() => subdocInputRef.current?.focus(), 50)
+  }
+
+  function confirmAddSubdoc() {
+    const docId = addingSubdocFor
+    const name  = newSubdocName.trim()
+    if (!name || !docId || !project) { setAddingSubdocFor(null); return }
+    const doc          = project.documents[docId]
+    const existingBlocks = doc.blocks ?? []
+    const currentSubdocs = doc.subdocs ?? []
+    // If this is the first subdoc and there are existing blocks, adopt them
+    const newSubdoc = { name, blocks: currentSubdocs.length === 0 ? existingBlocks : [] }
+    const newSubdocs = [...currentSubdocs, newSubdoc]
+    const updated = {
+      ...project,
+      documents: {
+        ...project.documents,
+        [docId]: {
+          ...doc,
+          blocks:  currentSubdocs.length === 0 ? [] : existingBlocks, // clear parent only on first
+          subdocs: newSubdocs,
+        },
+      },
+    }
+    save(updated)
+    setAddingSubdocFor(null)
+    setNewSubdocName('')
+    // Navigate into the new subdoc
+    setActiveDoc(docId)
+    setActiveSubdoc(newSubdocs.length - 1)
+  }
+
+  function deleteSubdoc(docId, idx) {
+    const doc  = project.documents[docId]
+    const sd   = doc.subdocs?.[idx]
+    if (!sd) return
+    if (!window.confirm(`Delete sub-document "${sd.name}"? This cannot be undone.`)) return
+    const newSubdocs = (doc.subdocs ?? []).filter((_, i) => i !== idx)
+    const updated = {
+      ...project,
+      documents: {
+        ...project.documents,
+        [docId]: { ...doc, subdocs: newSubdocs },
+      },
+    }
+    save(updated)
+    // If we were inside the deleted subdoc, go back to parent
+    if (activeDoc === docId && activeSubdoc === idx) {
+      setActiveSubdoc(null)
+    } else if (activeDoc === docId && activeSubdoc > idx) {
+      setActiveSubdoc(activeSubdoc - 1)
+    }
+  }
+
+  function renameSubdoc(docId, idx, newName) {
+    const doc = project.documents[docId]
+    const newSubdocs = (doc.subdocs ?? []).map((sd, i) =>
+      i === idx ? { ...sd, name: newName } : sd
+    )
+    const updated = {
+      ...project,
+      documents: { ...project.documents, [docId]: { ...doc, subdocs: newSubdocs } },
+    }
     save(updated)
   }
 
@@ -760,7 +857,7 @@ export default function EditorPage() {
 
   function handleApplyTemplate(tpl) {
     setTplOpen(false)
-    const existing = project.documents[activeDoc]?.blocks ?? []
+    const existing = _currentBlocks()
     if (existing.length > 0) {
       if (!window.confirm(`Apply template "${tpl.label}"? This will replace the existing content.`)) return
     }
@@ -770,12 +867,19 @@ export default function EditorPage() {
   if (loading) return <div style={{ padding: 40 }}>Loading…</div>
   if (!project) return <div style={{ padding: 40 }}>Project not found.</div>
 
-  const currentDoc = activeDoc ? project.documents[activeDoc] : null
+  const currentDoc    = activeDoc ? project.documents[activeDoc] : null
+  const currentBlocks = activeDoc
+    ? (activeSubdoc !== null
+        ? (currentDoc?.subdocs?.[activeSubdoc]?.blocks ?? [])
+        : (currentDoc?.blocks ?? []))
+    : []
 
-  // What to show in the toolbar title
-  const toolbarTitle = activeDoc
-    ? `${activeDoc} — ${DOC_DEFS[activeDoc]}`
-    : 'Project Information'
+  // Toolbar title
+  const toolbarTitle = !activeDoc
+    ? 'Project Information'
+    : activeSubdoc !== null
+      ? `${activeDoc}.${activeSubdoc + 1} — ${currentDoc?.subdocs?.[activeSubdoc]?.name || 'Sub-document'}`
+      : `${activeDoc} — ${DOC_DEFS[activeDoc]}`
 
   return (
     <>
@@ -819,22 +923,101 @@ export default function EditorPage() {
             <div key={group.label}>
               <div style={styles.groupLabel}>{group.label}</div>
               {group.docs.map(docId => {
-                const doc    = project.documents[docId]
-                const blocks = doc?.blocks ?? []
+                const doc     = project.documents[docId]
+                const subdocs = doc?.subdocs ?? []
+                const blocks  = doc?.blocks  ?? []
+                const isParentActive = activeDoc === docId && activeSubdoc === null
                 return (
-                  <button
-                    key={docId}
-                    style={styles.docBtn(activeDoc === docId)}
-                    onClick={() => setActiveDoc(docId)}
-                  >
-                    <span style={styles.docId}>{docId}</span>
-                    {DOC_DEFS[docId]}
-                    {blocks.length > 0 && (
-                      <span style={{ fontSize: 10, color: '#aaa', marginLeft: 6 }}>
-                        ({blocks.length})
-                      </span>
+                  <React.Fragment key={docId}>
+
+                    {/* Parent doc button */}
+                    <button
+                      style={styles.docBtn(isParentActive)}
+                      onClick={() => { setActiveDoc(docId); setActiveSubdoc(null) }}
+                    >
+                      <span style={styles.docId}>{docId}</span>
+                      {DOC_DEFS[docId]}
+                      {subdocs.length > 0
+                        ? <span style={{ fontSize: 10, color: '#aaa', marginLeft: 'auto' }}>{subdocs.length} sub</span>
+                        : blocks.length > 0
+                          ? <span style={{ fontSize: 10, color: '#aaa', marginLeft: 6 }}>({blocks.length})</span>
+                          : null
+                      }
+                    </button>
+
+                    {/* Sub-documents */}
+                    {subdocs.map((sd, si) => (
+                      <div key={si} style={{ display: 'flex', alignItems: 'center' }}>
+                        <button
+                          style={{
+                            ...styles.docBtn(activeDoc === docId && activeSubdoc === si),
+                            flex: 1,
+                            paddingLeft: 28,
+                            fontSize: 11,
+                          }}
+                          onClick={() => { setActiveDoc(docId); setActiveSubdoc(si) }}
+                        >
+                          <span style={{ ...styles.docId, fontSize: 9 }}>{docId}.{si + 1}</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {sd.name || `Sub-document ${si + 1}`}
+                          </span>
+                        </button>
+                        <button
+                          title="Delete sub-document"
+                          onClick={() => deleteSubdoc(docId, si)}
+                          style={{
+                            flexShrink: 0, background: 'none', border: 'none',
+                            color: '#ccc', cursor: 'pointer', padding: '0 6px',
+                            fontSize: 12, lineHeight: 1,
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
+                          onMouseLeave={e => e.currentTarget.style.color = '#ccc'}
+                        >✕</button>
+                      </div>
+                    ))}
+
+                    {/* Add sub-document row */}
+                    {addingSubdocFor === docId ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px 4px 28px' }}>
+                        <input
+                          ref={subdocInputRef}
+                          value={newSubdocName}
+                          onChange={e => setNewSubdocName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') confirmAddSubdoc()
+                            if (e.key === 'Escape') setAddingSubdocFor(null)
+                          }}
+                          placeholder="Name…"
+                          style={{
+                            flex: 1, minWidth: 0, fontSize: 11, padding: '3px 6px',
+                            border: '1px solid #cbd5e1', borderRadius: 3, outline: 'none',
+                          }}
+                        />
+                        <button
+                          onClick={confirmAddSubdoc}
+                          style={{ fontSize: 11, padding: '3px 7px', background: NAVY, color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}
+                        >✓</button>
+                        <button
+                          onClick={() => setAddingSubdocFor(null)}
+                          style={{ fontSize: 11, padding: '3px 6px', background: 'none', border: '1px solid #e2e8f0', borderRadius: 3, cursor: 'pointer', color: '#94a3b8' }}
+                        >✕</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => openAddSubdoc(docId)}
+                        style={{
+                          display: 'block', width: '100%', background: 'none', border: 'none',
+                          textAlign: 'left', paddingLeft: 28, paddingTop: 3, paddingBottom: 5,
+                          fontSize: 11, color: '#94a3b8', cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.color = NAVY}
+                        onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
+                      >
+                        + Add sub-document
+                      </button>
                     )}
-                  </button>
+
+                  </React.Fragment>
                 )
               })}
             </div>
@@ -858,6 +1041,16 @@ export default function EditorPage() {
 
         {/* Toolbar */}
         <div style={styles.toolbar}>
+          {/* Back button when inside a sub-document */}
+          {activeSubdoc !== null && (
+            <button
+              style={{ ...styles.tplBtn, marginRight: 4, color: NAVY, borderColor: '#c7d2fe' }}
+              onClick={() => setActiveSubdoc(null)}
+              title={`Back to ${activeDoc}`}
+            >
+              ← {activeDoc}
+            </button>
+          )}
           <span style={styles.docTitle}>{toolbarTitle}</span>
           {saving && <span style={styles.saving}>Saving…</span>}
 
@@ -955,7 +1148,7 @@ export default function EditorPage() {
           ) : (
             // Document selected — show block editor
             <BlockList
-              blocks={currentDoc?.blocks ?? []}
+              blocks={currentBlocks}
               onChange={updateBlocks}
               templates={templates}
               onManageTemplates={() => { setTmplEditorInitId(null); setTmplEditorOpen(true) }}

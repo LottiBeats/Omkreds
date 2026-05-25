@@ -285,7 +285,24 @@ def generate_pdf(project_id: str, doc_id: str):
     try:
         from pdf_builder import build_pdf
 
-        pdf_bytes = build_pdf(project, doc.get("blocks", []), doc_id=doc_id)
+        # If the document has sub-documents, combine all their blocks in order.
+        # Sub-document names become H1 section headers in the combined PDF.
+        subdocs = doc.get("subdocs", [])
+        if subdocs:
+            combined: list = []
+            for i, sd in enumerate(subdocs):
+                sd_name = sd.get("name") or f"Sub-document {i + 1}"
+                # Insert a heading block so each sub-doc starts a named section
+                combined.append({
+                    "type": "heading",
+                    "data": {"level": 1, "text": f"{doc_id}.{i + 1}  {sd_name}"},
+                })
+                combined.extend(sd.get("blocks", []))
+            blocks = combined
+        else:
+            blocks = doc.get("blocks", [])
+
+        pdf_bytes = build_pdf(project, blocks, doc_id=doc_id)
 
         filename = f"{project['metadata'].get('project_ref', project_id)}_{doc_id}.pdf"
         filename = filename.replace(" ", "_").replace("/", "-")
