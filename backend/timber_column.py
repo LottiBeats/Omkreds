@@ -212,13 +212,13 @@ def timber_column_bending_and_axial(
 
     eta_19 = (sigma_c0d / f_c0d)**2 + sigma_m1d / f_md + k_m * sigma_m2d / f_md
     blocks.append(CALC_ROW("η_6.19",
-        "= (σ_c,0,d/f_c,0,d)² + σ_m,1,d / f_m,d + k_m·σ_m,2,d / f_m,d",
+        "= (σ_c,0,d / f_c,0,d)² + σ_m,1,d / f_m,d + k_m·σ_m,2,d / f_m,d",
         f"{float(eta_19):.3f}"))
     blocks.append(cc.check("Section eq. 6.19", float(eta_19), 1.0))
 
     eta_20 = (sigma_c0d / f_c0d)**2 + k_m * sigma_m1d / f_md + sigma_m2d / f_md
     blocks.append(CALC_ROW("η_6.20",
-        "= (σ_c,0,d/f_c,0,d)² + k_m·σ_m,1,d / f_m,d + σ_m,2,d / f_m,d",
+        "= (σ_c,0,d / f_c,0,d)² + k_m·σ_m,1,d / f_m,d + σ_m,2,d / f_m,d",
         f"{float(eta_20):.3f}"))
     blocks.append(cc.check("Section eq. 6.20", float(eta_20), 1.0))
 

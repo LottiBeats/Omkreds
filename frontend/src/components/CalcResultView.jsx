@@ -286,8 +286,7 @@ function Check({ block }) {
 // and " a / b " (space-padded slash) → stacked horizontal fraction.
 // Subscript/superscript stops at whitespace, operators, or brackets so that
 // e.g. N_Ed/A → N<sub>Ed</sub>/A  (no spaces = not a fraction, left as-is).
-// Formulas with multiple fractions are all converted, e.g.:
-//   σ_m,1,d / f_m,d + k_m·σ_m,2,d / f_m,d  → two stacked fractions
+// Handles multiple fractions per formula and (num / den)suffix patterns.
 function fmtCalcText(text) {
   if (!text) return ''
   // 1. sub / superscripts
@@ -295,24 +294,35 @@ function fmtCalcText(text) {
     .replace(/_([^\s_^<>=+\-*/×÷·()[\]{}]+)/g, '<sub>$1</sub>')
     .replace(/\^([^\s_^<>=+\-*/×÷·()[\]{}]+)/g, '<sup>$1</sup>')
   // 2. Extract leading "= " so it stays outside the fraction
-  //    e.g. "= a / b" → "= " + fraction(a, b), not fraction("= a", b)
   const eqMatch = s.match(/^(=\s*)/)
   const prefix = eqMatch ? eqMatch[1] : ''
   let body = prefix ? s.slice(prefix.length) : s
-  // 3. Replace every  token / token  with a stacked horizontal fraction.
-  //    A token is any non-whitespace sequence (may contain HTML tags, parens, dots…).
-  //    Slashes without surrounding spaces (e.g. kN/m, b·h²/6) are left untouched.
+
+  // Helper: build one stacked fraction span
+  const frac = (num, den) =>
+    '<span style="display:inline-flex;flex-direction:column;' +
+    'align-items:center;vertical-align:middle;margin:0 3px;font-size:0.9em">' +
+      '<span style="border-bottom:1.5px solid currentColor;padding:1px 5px;' +
+      'line-height:1.3;white-space:nowrap">' + num + '</span>' +
+      '<span style="padding:1px 5px;line-height:1.3;white-space:nowrap">' +
+      den + '</span>' +
+    '</span>'
+
+  // 3a. Handle  (num / den)suffix  — e.g. (σ_c,0,d / f_c,0,d)²
+  //     Keeps the outer parens and any trailing suffix (², ³, …) outside the fraction.
+  //     numerator/denominator must not themselves contain parens or whitespace.
+  body = body.replace(
+    /\(([^\s()]+)\s+\/\s+([^\s()]+)\)([\S]*)/g,
+    (_, num, den, suffix) => '(' + frac(num, den) + ')' + suffix
+  )
+
+  // 3b. Replace every remaining  token / token  with a stacked fraction.
+  //     Slashes without surrounding spaces (kN/m, b·h²/6) are left untouched.
   body = body.replace(
     /([^\s]+)\s+\/\s+([^\s]+)/g,
-    (_, num, den) =>
-      '<span style="display:inline-flex;flex-direction:column;' +
-      'align-items:center;vertical-align:middle;margin:0 3px;font-size:0.9em">' +
-        '<span style="border-bottom:1.5px solid currentColor;padding:1px 5px;' +
-        'line-height:1.3;white-space:nowrap">' + num + '</span>' +
-        '<span style="padding:1px 5px;line-height:1.3;white-space:nowrap">' +
-        den + '</span>' +
-      '</span>'
+    (_, num, den) => frac(num, den)
   )
+
   return prefix + body
 }
 
