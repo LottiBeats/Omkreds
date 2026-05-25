@@ -287,6 +287,11 @@ function Check({ block }) {
 // Subscript/superscript stops at whitespace, operators, or brackets so that
 // e.g. N_Ed/A → N<sub>Ed</sub>/A  (no spaces = not a fraction, left as-is).
 // Handles multiple fractions per formula and (num / den)suffix patterns.
+//
+// Vault pattern: step 3a stores generated HTML under \x02N\x02 placeholders
+// so step 3b never re-matches fragments inside an already-rendered fraction.
+// (Without this, e.g. "(L_cr,y / i_y) / λ₁" produces a second fraction
+// whose "numerator" is just ")" — leaking raw CSS text into the display.)
 function fmtCalcText(text) {
   if (!text) return ''
   // 1. sub / superscripts
@@ -308,22 +313,30 @@ function fmtCalcText(text) {
       den + '</span>' +
     '</span>'
 
+  // Vault: stash generated HTML under placeholder tokens (\x02N\x02)
+  // so step 3b regex never sees — or partially re-matches — already-built HTML.
+  const vault  = []
+  const stash  = (html) => { vault.push(html); return `\x02${vault.length - 1}\x02` }
+  const unstash = (s)   => s.replace(/\x02(\d+)\x02/g, (_, i) => vault[+i])
+
   // 3a. Handle  (num / den)suffix  — e.g. (σ_c,0,d / f_c,0,d)²
   //     Keeps the outer parens and any trailing suffix (², ³, …) outside the fraction.
   //     numerator/denominator must not themselves contain parens or whitespace.
   body = body.replace(
     /\(([^\s()]+)\s+\/\s+([^\s()]+)\)([\S]*)/g,
-    (_, num, den, suffix) => '(' + frac(num, den) + ')' + suffix
+    (_, num, den, suffix) => stash('(' + frac(num, den) + ')' + suffix)
   )
 
   // 3b. Replace every remaining  token / token  with a stacked fraction.
   //     Slashes without surrounding spaces (kN/m, b·h²/6) are left untouched.
+  //     \x02 is excluded from token chars so placeholders from 3a are never
+  //     split and their closing ")" never becomes a dangling numerator.
   body = body.replace(
-    /([^\s]+)\s+\/\s+([^\s]+)/g,
-    (_, num, den) => frac(num, den)
+    /([^\s\x02]+)\s+\/\s+([^\s\x02]+)/g,
+    (_, num, den) => stash(frac(num, den))
   )
 
-  return prefix + body
+  return prefix + unstash(body)
 }
 
 // ── Calc row (pre-formatted single equation row) ──────────────────────────────
