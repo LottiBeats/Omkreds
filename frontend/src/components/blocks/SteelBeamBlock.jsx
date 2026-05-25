@@ -49,10 +49,11 @@ export default function SteelBeamBlock({ block, onChange }) {
         q_k_kNm:  d.q_k_kNm  ?? 3.0,
         gamma_M0:  d.gamma_M0 ?? 1.0,
         gamma_M1:  d.gamma_M1 ?? 1.0,
-        ltb_restrained:    d.ltb_restrained   ?? false,
-        ltb_length_m:      d.ltb_length_m     ?? null,
-        buck_y_restrained: d.buck_y_restrained ?? false,
-        buck_x_restrained: d.buck_x_restrained ?? false,
+        ltb_restrained:    d.ltb_restrained    ?? false,
+        ltb_length_m:      d.ltb_length_m      ?? null,
+        buck_y_restrained: d.buck_y_restrained  ?? false,
+        buck_x_restrained: d.buck_x_restrained  ?? false,
+        deflection_limit:  d.deflection_limit   ?? 200,
       })
       update({ _result: blocks })
     } catch (err) {
@@ -127,6 +128,15 @@ export default function SteelBeamBlock({ block, onChange }) {
       <Field label="x-axis restrained">
         <input type="checkbox" checked={d.buck_x_restrained ?? false}
           onChange={e => update({ buck_x_restrained: e.target.checked })} />
+      </Field>
+      <Field label="Deflection limit" hint="SLS — EN 1990 Annex A1.4">
+        <select style={s.input} value={d.deflection_limit ?? 200}
+          onChange={e => update({ deflection_limit: Number(e.target.value) })}>
+          <option value={200}>L / 200 — total (final)</option>
+          <option value={250}>L / 250 — total (finishes)</option>
+          <option value={350}>L / 350 — net (after perm.)</option>
+          <option value={500}>L / 500 — sensitive finishes</option>
+        </select>
       </Field>
     </CalcBlockShell>
   )

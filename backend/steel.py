@@ -38,6 +38,7 @@ def steel_beam_ipe(
     ltb_restrained=False,
     buck_y_restrained=False,
     buck_x_restrained=False,
+    deflection_limit=200,
 ):
     if f_y is None:
         f_y = 355 * MPa
@@ -245,6 +246,70 @@ def steel_beam_ipe(
         "With actual fillets, A_v (and hence V_Rd) is slightly larger."
     ))
 
+    # ── Shear buckling susceptibility — EN 1993-1-1 cl. 6.2.6(6) ─────────────
+    blocks.append(S("Shear buckling susceptibility — EN 1993-1-1 cl. 6.2.6(6)"))
+
+    if b is not None and t_f is not None:
+        f_y_mpa_sb = float(f_y / MPa)
+        eps_sb     = (235.0 / f_y_mpa_sb) ** 0.5
+        eta_sb     = 1.0                        # η per EN 1993-1-5 §5, conservatively 1.0
+        h_w_sb     = h - 2 * t_f
+        slend_sb   = float(h_w_sb / t_w)        # h_w / t_w (dimensionless)
+        limit_sb   = 72 * eps_sb / eta_sb
+        blocks.extend([
+            CALC_ROW("h_w",       "= h − 2·t_f",                        str(h_w_sb)),
+            CALC_ROW("h_w / t_w", "web slenderness",                    f"{slend_sb:.1f}"),
+            CALC_ROW("72ε / η",   f"= 72 × {eps_sb:.3f} / {eta_sb:.1f}", f"{limit_sb:.1f}"),
+        ])
+        if slend_sb < limit_sb:
+            blocks.append(N(
+                f"h_w/t_w = {slend_sb:.1f} < 72ε/η = {limit_sb:.1f}: "
+                "Shear buckling need not be considered (cl. 6.2.6(6)). "
+                "Full plastic shear resistance V_pl,Rd governs."
+            ))
+        else:
+            blocks.append(N(
+                f"⚠  h_w/t_w = {slend_sb:.1f} ≥ 72ε/η = {limit_sb:.1f}: "
+                "Shear buckling may reduce V_Rd (EN 1993-1-5 §5). "
+                "This module reports V_pl,Rd only — a plate-girder check is required. "
+                "Intermediate stiffeners can raise the limit."
+            ))
+    else:
+        blocks.append(N("Shear buckling check skipped — flange dimensions not available."))
+
+    # ── Combined bending and shear — EN 1993-1-1 cl. 6.2.8 ───────────────────
+    blocks.append(S("Combined bending and shear — EN 1993-1-1 cl. 6.2.8"))
+
+    half_V_Rd = 0.5 * V_Rd
+    blocks.extend([
+        CALC_ROW("V_Ed",     "design shear force",  str(V_Ed)),
+        CALC_ROW("0.5·V_Rd", "= 0.5 × V_pl,Rd",    str(half_V_Rd)),
+    ])
+    if float(V_Ed) <= float(half_V_Rd):
+        blocks.append(N(
+            "V_Ed ≤ 0.5·V_pl,Rd — no reduction to bending resistance is required "
+            "(cl. 6.2.8(2)). Cross-section bending resistance M_Rd governs."
+        ))
+    else:
+        if b is not None and t_f is not None:
+            rho_mv  = (2.0 * float(V_Ed / V_Rd) - 1.0) ** 2
+            h_w_mv  = h - 2 * t_f
+            A_w_mv  = h_w_mv * t_w
+            W_red   = W_eff - rho_mv * A_w_mv**2 / (4 * t_w)
+            M_yV_Rd = W_red * f_y / gamma_M0
+            blocks.extend([
+                CALC_ROW("ρ",        "= (2·V_Ed/V_pl,Rd − 1)²",  f"{rho_mv:.3f}"),
+                CALC_ROW("A_w",      "= h_w · t_w",               str(A_w_mv)),
+                CALC_ROW("W_red",    "= W_eff − ρ·A_w²/(4t_w)",  str(W_red)),
+                CALC_ROW("M_y,V,Rd", "= W_red · f_y / γ_M0",      str(M_yV_Rd)),
+            ])
+            blocks.append(cc.check("M+V check: M_Ed / M_y,V,Rd", M_Ed, M_yV_Rd))
+        else:
+            blocks.append(N(
+                "⚠  V_Ed > 0.5·V_pl,Rd — bending resistance must be reduced per cl. 6.2.8. "
+                "Flange dimensions are required to compute ρ and M_y,V,Rd."
+            ))
+
     # ── Lateral-torsional buckling — EN 1993-1-1 cl. 6.3.2 ───────────────────
     blocks.append(S("Lateral-torsional buckling — EN 1993-1-1 cl. 6.3.2"))
 
@@ -265,7 +330,7 @@ def steel_beam_ipe(
             f"Effective LTB length L_cr = {l_cr_ltb}. "
             f"Equivalent uniform moment factor C₁ = {C1} "
             "(1.0 = uniform moment, conservative; "
-            "≈ 1.13 triangular moment, ≈ 1.29 parabolic / UDL). "
+            "≈ 1.13 UDL / parabolic; ≈ 1.35 central point load; ≈ 1.75 triangular). "
             "Section constants I_z, I_w, I_t derived from nominal I-section geometry "
             "(fillets neglected — conservative)."
         ))
@@ -326,6 +391,53 @@ def steel_beam_ipe(
             "lateral restraints to the compression flange) in the block settings to "
             "enable the full cl. 6.3.2.2 check. Alternatively tick 'Restrained — LTB' "
             "if continuous restraint is provided."
+        ))
+
+    # ── Serviceability — Deflection — EN 1990 Annex A1.4 ─────────────────────
+    blocks.append(S("Serviceability — Deflection — EN 1990 Annex A1.4"))
+
+    if Iy is not None:
+        E_sls = 210_000 * MPa
+        if beam_results is None:
+            w_sls     = g_k + q_k
+            delta_mid = 5 * w_sls * span**4 / (384 * E_sls * Iy)
+            delta_lim = span / deflection_limit
+            blocks.extend([
+                CALC_ROW("w_sls",  "= g_k + q_k  [characteristic combo]",  str(w_sls)),
+                CALC_ROW("I_y",    "second moment of area",                  str(Iy)),
+                CALC_ROW("δ",      "= 5·w_sls·L⁴ / (384·E·I_y)  [UDL]",    str(delta_mid)),
+                CALC_ROW("δ_lim",  f"= L / {deflection_limit}",              str(delta_lim)),
+            ])
+            blocks.append(cc.check(
+                f"Deflection: δ / δ_lim  (limit L/{deflection_limit})",
+                delta_mid, delta_lim
+            ))
+            blocks.append(N(
+                "Characteristic combination (g_k + q_k) used for deflection per "
+                "EN 1990 Annex A1.4. "
+                f"Limit L/{deflection_limit} — adjust to L/250 or L/500 as required."
+            ))
+        else:
+            delta_max_imp = beam_results.get("delta_max")
+            if delta_max_imp is not None:
+                delta_lim = span / deflection_limit
+                blocks.extend([
+                    CALC_ROW("δ",      "imported maximum deflection", str(delta_max_imp)),
+                    CALC_ROW("δ_lim",  f"= L / {deflection_limit}",    str(delta_lim)),
+                ])
+                blocks.append(cc.check(
+                    f"Deflection: δ / δ_lim  (limit L/{deflection_limit})",
+                    delta_max_imp, delta_lim
+                ))
+            else:
+                blocks.append(N(
+                    "Imported beam results do not include delta_max — "
+                    "deflection check skipped."
+                ))
+    else:
+        blocks.append(N(
+            f"Deflection check skipped — I_y not available in the section catalog. "
+            f"Limit: L / {deflection_limit} per EN 1990 Annex A1.4."
         ))
 
     # ── Out-of-plane stability — y-axis ──────────────────────────────────────

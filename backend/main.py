@@ -371,6 +371,7 @@ class SteelBeamInput(BaseModel):
     ltb_length_m:       float | None = None  # effective LTB length → enables cl. 6.3.2.2 check
     buck_y_restrained:  bool  = False
     buck_x_restrained:  bool  = False
+    deflection_limit:   int   = 200          # L/n SLS limit (200 = final, 350 = net, 500 = finish)
 
 
 @protected.post("/calc/steel-beam", tags=["Calculations"])
@@ -420,6 +421,7 @@ def calc_steel_beam(data: SteelBeamInput):
             ltb_restrained     = data.ltb_restrained,
             buck_y_restrained  = data.buck_y_restrained,
             buck_x_restrained  = data.buck_x_restrained,
+            deflection_limit   = data.deflection_limit,
         )
         if data.ltb_length_m is not None and not data.ltb_restrained:
             kwargs_sb["l_cr_ltb"] = data.ltb_length_m * m
