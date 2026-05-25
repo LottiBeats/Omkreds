@@ -560,10 +560,11 @@ export default function EditorPage() {
   // Adding sub-document: which parent doc is being expanded
   const [addingSubdocFor, setAddingSubdocFor] = useState(null)
   const [newSubdocName,   setNewSubdocName]   = useState('')
-  const undoStack = useRef([])   // past block arrays
-  const redoStack = useRef([])   // future block arrays
-  const tplRef    = useRef(null)
+  const undoStack      = useRef([])   // past block arrays
+  const redoStack      = useRef([])   // future block arrays
+  const tplRef         = useRef(null)
   const subdocInputRef = useRef(null)
+  const autoSaveTimer  = useRef(null)  // debounce handle for block saves
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -604,10 +605,11 @@ export default function EditorPage() {
    * Save the full project to the backend.
    */
   const save = useCallback(async (updatedProject) => {
+    // Optimistic update first — state is correct immediately, no overwrite race
+    setProject(updatedProject)
     try {
       setSaving(true)
       await saveProject(updatedProject)
-      setProject(updatedProject)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -642,7 +644,16 @@ export default function EditorPage() {
         documents: { ...project.documents, [activeDoc]: { ...doc, blocks: newBlocks } },
       }
     }
-    save(updated)
+    // Update state immediately so UI never lags or reverts while typing
+    setProject(updated)
+    // Debounce the API save — one request per typing pause, not per keystroke
+    clearTimeout(autoSaveTimer.current)
+    autoSaveTimer.current = setTimeout(() => {
+      setSaving(true)
+      saveProject(updated)
+        .catch(err => setError(err.message))
+        .finally(() => setSaving(false))
+    }, 800)
   }
 
   /** Called by BlockList when blocks change — pushes to undo stack */

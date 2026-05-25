@@ -7,6 +7,7 @@ import React, { useState } from 'react'
 import { calcRcColumn } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 export default function RCColumnBlock({ block, onChange }) {
   const d = block.data
@@ -15,16 +16,6 @@ export default function RCColumnBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function numVal(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
-  }
-
-  function intVal(field, e) {
-    const v = parseInt(e.target.value, 10)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   // Load cases stored as [{label, NEd_kN, M0Ed_kNm}]
@@ -91,48 +82,48 @@ export default function RCColumnBlock({ block, onChange }) {
           onChange={e => update({ label: e.target.value })} />
       </Field>
       <Field label="h (mm)" hint="Section height">
-        <input style={s.input} type="number" step="10" min="100"
-          value={d.h_mm ?? 300} onChange={e => numVal('h_mm', e)} />
+        <NumericInput style={s.input} value={d.h_mm ?? 300}
+          onChange={v => update({ h_mm: v })} />
       </Field>
       <Field label="b (mm)" hint="Section width">
-        <input style={s.input} type="number" step="10" min="100"
-          value={d.b_mm ?? 300} onChange={e => numVal('b_mm', e)} />
+        <NumericInput style={s.input} value={d.b_mm ?? 300}
+          onChange={v => update({ b_mm: v })} />
       </Field>
       <Field label="Cover c (mm)">
-        <input style={s.input} type="number" step="5" min="10"
-          value={d.c_mm ?? 40} onChange={e => numVal('c_mm', e)} />
+        <NumericInput style={s.input} value={d.c_mm ?? 40}
+          onChange={v => update({ c_mm: v })} />
       </Field>
       <Field label="f_ck (MPa)">
-        <input style={s.input} type="number" step="5" min="12"
-          value={d.fck_mpa ?? 30} onChange={e => numVal('fck_mpa', e)} />
+        <NumericInput style={s.input} value={d.fck_mpa ?? 30}
+          onChange={v => update({ fck_mpa: v })} />
       </Field>
       <Field label="f_yk (MPa)">
-        <input style={s.input} type="number" step="50" min="400"
-          value={d.fyk_mpa ?? 500} onChange={e => numVal('fyk_mpa', e)} />
+        <NumericInput style={s.input} value={d.fyk_mpa ?? 500}
+          onChange={v => update({ fyk_mpa: v })} />
       </Field>
       <Field label="Comp. bars ø (mm)">
-        <input style={s.input} type="number" step="2" min="8"
-          value={d.da_c_mm ?? 16} onChange={e => numVal('da_c_mm', e)} />
+        <NumericInput style={s.input} value={d.da_c_mm ?? 16}
+          onChange={v => update({ da_c_mm: v })} />
       </Field>
       <Field label="Comp. bars n">
-        <input style={s.input} type="number" step="1" min="1"
-          value={d.n_c ?? 2} onChange={e => intVal('n_c', e)} />
+        <NumericInput style={s.input} value={d.n_c ?? 2}
+          onChange={v => update({ n_c: Math.round(v) })} />
       </Field>
       <Field label="Tens. bars ø (mm)">
-        <input style={s.input} type="number" step="2" min="8"
-          value={d.da_t_mm ?? 16} onChange={e => numVal('da_t_mm', e)} />
+        <NumericInput style={s.input} value={d.da_t_mm ?? 16}
+          onChange={v => update({ da_t_mm: v })} />
       </Field>
       <Field label="Tens. bars n">
-        <input style={s.input} type="number" step="1" min="1"
-          value={d.n_t ?? 2} onChange={e => intVal('n_t', e)} />
+        <NumericInput style={s.input} value={d.n_t ?? 2}
+          onChange={v => update({ n_t: Math.round(v) })} />
       </Field>
       <Field label="Ls (mm)" hint="Column height">
-        <input style={s.input} type="number" step="100" min="500"
-          value={d.Ls_mm ?? 3500} onChange={e => numVal('Ls_mm', e)} />
+        <NumericInput style={s.input} value={d.Ls_mm ?? 3500}
+          onChange={v => update({ Ls_mm: v })} />
       </Field>
       <Field label="β_eff" hint="Effective length factor">
-        <input style={s.input} type="number" step="0.1" min="0.5" max="2.0"
-          value={d.beta_eff ?? 1.0} onChange={e => numVal('beta_eff', e)} />
+        <NumericInput style={s.input} value={d.beta_eff ?? 1.0}
+          onChange={v => update({ beta_eff: v })} />
       </Field>
 
       {/* Load cases */}
@@ -144,10 +135,10 @@ export default function RCColumnBlock({ block, onChange }) {
           <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 4, alignItems: 'center' }}>
             <input style={{ ...s.input, width: 60 }} placeholder="Label"
               value={lc.label} onChange={e => updateLC(i, 'label', e.target.value)} />
-            <input style={{ ...s.input, width: 80 }} type="number" step="10" placeholder="N_Ed kN"
-              value={lc.NEd_kN} onChange={e => updateLC(i, 'NEd_kN', parseFloat(e.target.value) || 0)} />
-            <input style={{ ...s.input, width: 90 }} type="number" step="1" placeholder="M0Ed kNm"
-              value={lc.M0Ed_kNm} onChange={e => updateLC(i, 'M0Ed_kNm', parseFloat(e.target.value) || 0)} />
+            <NumericInput style={{ ...s.input, width: 80 }} placeholder="N_Ed kN"
+              value={lc.NEd_kN} onChange={v => updateLC(i, 'NEd_kN', v)} />
+            <NumericInput style={{ ...s.input, width: 90 }} placeholder="M0Ed kNm"
+              value={lc.M0Ed_kNm} onChange={v => updateLC(i, 'M0Ed_kNm', v)} />
             <button onClick={() => removeLC(i)}
               style={{ background: 'none', border: '1px solid #ddd', padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
               ✕

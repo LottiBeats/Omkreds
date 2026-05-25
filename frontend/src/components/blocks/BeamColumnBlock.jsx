@@ -9,6 +9,7 @@ import React, { useState } from 'react'
 import { calcBeamColumn } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const SECTIONS = [
   'HEA100','HEA120','HEA140','HEA160','HEA180','HEA200',
@@ -88,50 +89,48 @@ export default function BeamColumnBlock({ block, onChange }) {
 
       {/* Design actions */}
       <Field label="N_Ed" hint="kN">
-        <input style={s.input} type="number" step="any" value={d.N_Ed_kN ?? 200}
-          onChange={e => update({ N_Ed_kN: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.N_Ed_kN ?? 200}
+          onChange={v => update({ N_Ed_kN: v })} />
       </Field>
       <Field label="M_y,Ed" hint="kNm">
-        <input style={s.input} type="number" step="any" value={d.My_Ed_kNm ?? 50}
-          onChange={e => update({ My_Ed_kNm: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.My_Ed_kNm ?? 50}
+          onChange={v => update({ My_Ed_kNm: v })} />
       </Field>
       <Field label="M_z,Ed" hint="kNm">
-        <input style={s.input} type="number" step="any" value={d.Mz_Ed_kNm ?? 0}
-          onChange={e => update({ Mz_Ed_kNm: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.Mz_Ed_kNm ?? 0}
+          onChange={v => update({ Mz_Ed_kNm: v })} />
       </Field>
 
       {/* Buckling lengths */}
       <Field label="L_cr,y" hint="m">
-        <input style={s.input} type="number" step="any" value={d.L_y_m ?? 4.0}
-          onChange={e => update({ L_y_m: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.L_y_m ?? 4.0}
+          onChange={v => update({ L_y_m: v })} />
       </Field>
       <Field label="L_cr,z" hint="m">
-        <input style={s.input} type="number" step="any" value={d.L_z_m ?? 4.0}
-          onChange={e => update({ L_z_m: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.L_z_m ?? 4.0}
+          onChange={v => update({ L_z_m: v })} />
       </Field>
       <Field label="L_LTB" hint="m">
-        <input style={s.input} type="number" step="any" value={d.L_LTB_m ?? 4.0}
-          onChange={e => update({ L_LTB_m: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.L_LTB_m ?? 4.0}
+          onChange={v => update({ L_LTB_m: v })} />
       </Field>
 
       {/* Factors */}
       <Field label="k_y">
-        <input style={s.input} type="number" step="0.01" value={d.k_y ?? 1.0}
-          onChange={e => update({ k_y: parseFloat(e.target.value) || 1 })} />
+        <NumericInput style={s.input} value={d.k_y ?? 1.0}
+          onChange={v => update({ k_y: v })} />
       </Field>
       <Field label="k_z">
-        <input style={s.input} type="number" step="0.01" value={d.k_z ?? 1.0}
-          onChange={e => update({ k_z: parseFloat(e.target.value) || 1 })} />
+        <NumericInput style={s.input} value={d.k_z ?? 1.0}
+          onChange={v => update({ k_z: v })} />
       </Field>
       <Field label="C_my" hint="0.9=parabolic">
-        <input style={s.input} type="number" step="0.01" min="0.4" max="1.0"
-          value={d.C_my ?? 1.0}
-          onChange={e => update({ C_my: parseFloat(e.target.value) || 1 })} />
+        <NumericInput style={s.input} value={d.C_my ?? 1.0}
+          onChange={v => update({ C_my: v })} />
       </Field>
       <Field label="C_mz">
-        <input style={s.input} type="number" step="0.01" min="0.4" max="1.0"
-          value={d.C_mz ?? 1.0}
-          onChange={e => update({ C_mz: parseFloat(e.target.value) || 1 })} />
+        <NumericInput style={s.input} value={d.C_mz ?? 1.0}
+          onChange={v => update({ C_mz: v })} />
       </Field>
       <Field label="LTB restrained?">
         <label style={s.checkLabel}>
@@ -141,12 +140,12 @@ export default function BeamColumnBlock({ block, onChange }) {
         </label>
       </Field>
       <Field label="γ_M0">
-        <input style={s.input} type="number" step="0.01" value={d.gamma_M0 ?? 1.0}
-          onChange={e => update({ gamma_M0: parseFloat(e.target.value) || 1 })} />
+        <NumericInput style={s.input} value={d.gamma_M0 ?? 1.0}
+          onChange={v => update({ gamma_M0: v })} />
       </Field>
       <Field label="γ_M1">
-        <input style={s.input} type="number" step="0.01" value={d.gamma_M1 ?? 1.0}
-          onChange={e => update({ gamma_M1: parseFloat(e.target.value) || 1 })} />
+        <NumericInput style={s.input} value={d.gamma_M1 ?? 1.0}
+          onChange={v => update({ gamma_M1: v })} />
       </Field>
     </CalcBlockShell>
   )

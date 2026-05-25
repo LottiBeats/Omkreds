@@ -9,6 +9,7 @@ import React, { useState } from 'react'
 import { calcTimberColumn } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const GRADES = [
   'C14','C16','C18','C20','C22','C24','C27','C30','C35','C40',
@@ -25,11 +26,6 @@ export default function TimberColumnBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function num(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   async function handleRun() {
@@ -73,24 +69,24 @@ export default function TimberColumnBlock({ block, onChange }) {
           onChange={e => update({ label: e.target.value })} />
       </Field>
       <Field label="Length (m)">
-        <input style={s} type="number" step="0.1" min="0.1"
-          value={d.length_m ?? 3.0} onChange={e => num('length_m', e)} />
+        <NumericInput style={s} value={d.length_m ?? 3.0}
+          onChange={v => update({ length_m: v })} />
       </Field>
       <Field label="N_Ed (kN)" hint="Axial compression">
-        <input style={s} type="number" step="1" min="0"
-          value={d.N_Ed_kN ?? 50.0} onChange={e => num('N_Ed_kN', e)} />
+        <NumericInput style={s} value={d.N_Ed_kN ?? 50.0}
+          onChange={v => update({ N_Ed_kN: v })} />
       </Field>
       <Field label="M_Ed (kNm)" hint="Bending, strong axis">
-        <input style={s} type="number" step="0.1"
-          value={d.M_Ed_kNm ?? 0.0} onChange={e => num('M_Ed_kNm', e)} />
+        <NumericInput style={s} value={d.M_Ed_kNm ?? 0.0}
+          onChange={v => update({ M_Ed_kNm: v })} />
       </Field>
       <Field label="Width b (mm)">
-        <input style={s} type="number" step="5" min="38"
-          value={d.b_mm ?? 120} onChange={e => num('b_mm', e)} />
+        <NumericInput style={s} value={d.b_mm ?? 120}
+          onChange={v => update({ b_mm: v })} />
       </Field>
       <Field label="Depth h (mm)">
-        <input style={s} type="number" step="5" min="38"
-          value={d.h_mm ?? 120} onChange={e => num('h_mm', e)} />
+        <NumericInput style={s} value={d.h_mm ?? 120}
+          onChange={v => update({ h_mm: v })} />
       </Field>
       <Field label="Timber grade">
         <select style={s} value={d.timber_grade ?? 'C24'}
@@ -113,16 +109,15 @@ export default function TimberColumnBlock({ block, onChange }) {
         </select>
       </Field>
       <Field label="Eff. length factor μ" hint="1.0=pin-pin, 0.7=pin-fixed">
-        <input style={s} type="number" step="0.1" min="0.5" max="2.0"
-          value={d.effective_length_factor ?? 1.0}
-          onChange={e => num('effective_length_factor', e)} />
+        <NumericInput style={s} value={d.effective_length_factor ?? 1.0}
+          onChange={v => update({ effective_length_factor: v })} />
       </Field>
       <Field label="γ_M">
-        <input style={s} type="number" step="0.05" min="1"
-          value={d.gamma_M ?? 1.3} onChange={e => num('gamma_M', e)} />
+        <NumericInput style={s} value={d.gamma_M ?? 1.3}
+          onChange={v => update({ gamma_M: v })} />
       </Field>
       <Field label="l_ef,LTB (m)" hint="optional — enables LTB check">
-        <input style={s} type="number" step="0.1" min="0"
+        <input style={s} inputMode="decimal"
           value={d.l_ef_ltb_m ?? ''}
           placeholder="leave blank to skip"
           onChange={e => update({ l_ef_ltb_m: e.target.value ? parseFloat(e.target.value) : null })} />

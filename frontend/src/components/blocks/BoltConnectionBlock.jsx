@@ -9,6 +9,7 @@ import React, { useState } from 'react'
 import { calcBoltGroup, calcFilletWeld } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const BOLT_CLASSES = ['4.6', '5.6', '6.8', '8.8', '10.9']
 const DIAMETERS    = [10, 12, 14, 16, 20, 22, 24, 27, 30, 36]
@@ -99,9 +100,8 @@ export default function BoltConnectionBlock({ block, onChange }) {
       {mode === 'bolts' ? (
         <>
           <Field label="n bolts">
-            <input style={s.input} type="number" min="1" step="1"
-              value={d.n_bolts ?? 4}
-              onChange={e => update({ n_bolts: parseInt(e.target.value) || 1 })} />
+            <NumericInput style={s.input} value={d.n_bolts ?? 4}
+              onChange={v => update({ n_bolts: Math.round(v) })} />
           </Field>
           <Field label="Bolt class">
             <select style={s.input} value={d.bolt_class ?? '8.8'}
@@ -123,52 +123,51 @@ export default function BoltConnectionBlock({ block, onChange }) {
             </select>
           </Field>
           <Field label="n shear planes">
-            <input style={s.input} type="number" min="1" max="4" step="1"
-              value={d.n_shear_planes ?? 1}
-              onChange={e => update({ n_shear_planes: parseInt(e.target.value) || 1 })} />
+            <NumericInput style={s.input} value={d.n_shear_planes ?? 1}
+              onChange={v => update({ n_shear_planes: Math.round(v) })} />
           </Field>
           <Field label="Plate thickness" hint="mm">
-            <input style={s.input} type="number" step="any" value={d.t_plate_mm ?? 10}
-              onChange={e => update({ t_plate_mm: parseFloat(e.target.value) || 0 })} />
+            <NumericInput style={s.input} value={d.t_plate_mm ?? 10}
+              onChange={v => update({ t_plate_mm: v })} />
           </Field>
           <Field label="f_u plate" hint="MPa">
-            <input style={s.input} type="number" step="any" value={d.f_u_plate_MPa ?? 510}
-              onChange={e => update({ f_u_plate_MPa: parseFloat(e.target.value) || 0 })} />
+            <NumericInput style={s.input} value={d.f_u_plate_MPa ?? 510}
+              onChange={v => update({ f_u_plate_MPa: v })} />
           </Field>
           <Field label="e₁" hint="mm  end dist.">
-            <input style={s.input} type="number" step="any" value={d.e1_mm ?? 40}
-              onChange={e => update({ e1_mm: parseFloat(e.target.value) || 0 })} />
+            <NumericInput style={s.input} value={d.e1_mm ?? 40}
+              onChange={v => update({ e1_mm: v })} />
           </Field>
           <Field label="e₂" hint="mm  edge dist.">
-            <input style={s.input} type="number" step="any" value={d.e2_mm ?? 40}
-              onChange={e => update({ e2_mm: parseFloat(e.target.value) || 0 })} />
+            <NumericInput style={s.input} value={d.e2_mm ?? 40}
+              onChange={v => update({ e2_mm: v })} />
           </Field>
           <Field label="p₁" hint="mm  bolt pitch">
-            <input style={s.input} type="number" step="any" value={d.p1_mm ?? 60}
-              onChange={e => update({ p1_mm: parseFloat(e.target.value) || 0 })} />
+            <NumericInput style={s.input} value={d.p1_mm ?? 60}
+              onChange={v => update({ p1_mm: v })} />
           </Field>
           <Field label="V_Ed" hint="kN  total">
-            <input style={s.input} type="number" step="any" value={d.V_Ed_kN ?? 100}
-              onChange={e => update({ V_Ed_kN: parseFloat(e.target.value) || 0 })} />
+            <NumericInput style={s.input} value={d.V_Ed_kN ?? 100}
+              onChange={v => update({ V_Ed_kN: v })} />
           </Field>
           <Field label="γ_M2">
-            <input style={s.input} type="number" step="0.01" value={d.gamma_M2 ?? 1.25}
-              onChange={e => update({ gamma_M2: parseFloat(e.target.value) || 1.25 })} />
+            <NumericInput style={s.input} value={d.gamma_M2 ?? 1.25}
+              onChange={v => update({ gamma_M2: v })} />
           </Field>
         </>
       ) : (
         <>
           <Field label="Throat a" hint="mm">
-            <input style={s.input} type="number" step="any" value={d.a_mm ?? 6}
-              onChange={e => update({ a_mm: parseFloat(e.target.value) || 0 })} />
+            <NumericInput style={s.input} value={d.a_mm ?? 6}
+              onChange={v => update({ a_mm: v })} />
           </Field>
           <Field label="Length L" hint="mm  total">
-            <input style={s.input} type="number" step="any" value={d.L_mm ?? 200}
-              onChange={e => update({ L_mm: parseFloat(e.target.value) || 0 })} />
+            <NumericInput style={s.input} value={d.L_mm ?? 200}
+              onChange={v => update({ L_mm: v })} />
           </Field>
           <Field label="F_Ed" hint="kN  resultant">
-            <input style={s.input} type="number" step="any" value={d.F_Ed_kN ?? 80}
-              onChange={e => update({ F_Ed_kN: parseFloat(e.target.value) || 0 })} />
+            <NumericInput style={s.input} value={d.F_Ed_kN ?? 80}
+              onChange={v => update({ F_Ed_kN: v })} />
           </Field>
           <Field label="Steel grade">
             <select style={s.input} value={d.steel_grade ?? 'S355'}
@@ -177,8 +176,8 @@ export default function BoltConnectionBlock({ block, onChange }) {
             </select>
           </Field>
           <Field label="γ_M2">
-            <input style={s.input} type="number" step="0.01" value={d.gamma_M2 ?? 1.25}
-              onChange={e => update({ gamma_M2: parseFloat(e.target.value) || 1.25 })} />
+            <NumericInput style={s.input} value={d.gamma_M2 ?? 1.25}
+              onChange={v => update({ gamma_M2: v })} />
           </Field>
         </>
       )}

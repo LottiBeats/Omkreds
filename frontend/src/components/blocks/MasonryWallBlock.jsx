@@ -7,6 +7,7 @@ import React, { useState } from 'react'
 import { calcMasonryWall } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 export default function MasonryWallBlock({ block, onChange }) {
   const d = block.data
@@ -15,11 +16,6 @@ export default function MasonryWallBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function num(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   async function handleRun() {
@@ -62,44 +58,44 @@ export default function MasonryWallBlock({ block, onChange }) {
           onChange={e => update({ label: e.target.value })} />
       </Field>
       <Field label="Height (m)">
-        <input style={s} type="number" step="0.1" min="0.1"
-          value={d.height_m ?? 3.0} onChange={e => num('height_m', e)} />
+        <NumericInput style={s} value={d.height_m ?? 3.0}
+          onChange={v => update({ height_m: v })} />
       </Field>
       <Field label="Thickness (mm)">
-        <input style={s} type="number" step="14" min="70"
-          value={d.thickness_mm ?? 228} onChange={e => num('thickness_mm', e)} />
+        <NumericInput style={s} value={d.thickness_mm ?? 228}
+          onChange={v => update({ thickness_mm: v })} />
       </Field>
       <Field label="Length (m)">
-        <input style={s} type="number" step="0.5" min="0.5"
-          value={d.length_m ?? 5.0} onChange={e => num('length_m', e)} />
+        <NumericInput style={s} value={d.length_m ?? 5.0}
+          onChange={v => update({ length_m: v })} />
       </Field>
       <Field label="N_k (kN)" hint="Characteristic vertical load">
-        <input style={s} type="number" step="5" min="0"
-          value={d.N_k_kN ?? 100.0} onChange={e => num('N_k_kN', e)} />
+        <NumericInput style={s} value={d.N_k_kN ?? 100.0}
+          onChange={v => update({ N_k_kN: v })} />
       </Field>
       <Field label="f_b (MPa)" hint="Unit compressive strength">
-        <input style={s} type="number" step="0.5" min="1"
-          value={d.f_b_MPa ?? 10.0} onChange={e => num('f_b_MPa', e)} />
+        <NumericInput style={s} value={d.f_b_MPa ?? 10.0}
+          onChange={v => update({ f_b_MPa: v })} />
       </Field>
       <Field label="f_m (MPa)" hint="Mortar strength">
-        <input style={s} type="number" step="0.5" min="1"
-          value={d.f_m_MPa ?? 6.0} onChange={e => num('f_m_MPa', e)} />
+        <NumericInput style={s} value={d.f_m_MPa ?? 6.0}
+          onChange={v => update({ f_m_MPa: v })} />
       </Field>
       <Field label="γ_M">
-        <input style={s} type="number" step="0.1" min="1.5"
-          value={d.gamma_M ?? 2.5} onChange={e => num('gamma_M', e)} />
+        <NumericInput style={s} value={d.gamma_M ?? 2.5}
+          onChange={v => update({ gamma_M: v })} />
       </Field>
       <Field label="K" hint="Eq. 3.1 constant">
-        <input style={s} type="number" step="0.05" min="0.1" max="1"
-          value={d.K ?? 0.55} onChange={e => num('K', e)} />
+        <NumericInput style={s} value={d.K ?? 0.55}
+          onChange={v => update({ K: v })} />
       </Field>
       <Field label="α">
-        <input style={s} type="number" step="0.05" min="0.1" max="1"
-          value={d.alpha ?? 0.7} onChange={e => num('alpha', e)} />
+        <NumericInput style={s} value={d.alpha ?? 0.7}
+          onChange={v => update({ alpha: v })} />
       </Field>
       <Field label="β">
-        <input style={s} type="number" step="0.05" min="0.1" max="1"
-          value={d.beta ?? 0.3} onChange={e => num('beta', e)} />
+        <NumericInput style={s} value={d.beta ?? 0.3}
+          onChange={v => update({ beta: v })} />
       </Field>
     </CalcBlockShell>
   )

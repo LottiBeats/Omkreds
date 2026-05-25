@@ -131,10 +131,7 @@ export default function SavedCalcBlock({ block, onChange, onOpenTemplateEditor }
             ) : (
               <input
                 style={s.input}
-                type="number"
-                step={param.step ?? 'any'}
-                min={param.min ?? undefined}
-                max={param.max ?? undefined}
+                inputMode="decimal"
                 value={val ?? ''}
                 onChange={e => {
                   const v = parseFloat(e.target.value)

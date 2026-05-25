@@ -7,6 +7,7 @@ import React, { useState } from 'react'
 import { calcRcSlab } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 export default function RCSlabBlock({ block, onChange }) {
   const d = block.data
@@ -15,11 +16,6 @@ export default function RCSlabBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function numVal(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   async function handleRun() {
@@ -63,35 +59,35 @@ export default function RCSlabBlock({ block, onChange }) {
           onChange={e => update({ label: e.target.value })} />
       </Field>
       <Field label="Span (m)">
-        <input style={s.input} type="number" step="0.1" min="1"
-          value={d.span_m ?? 5.0} onChange={e => numVal('span_m', e)} />
+        <NumericInput style={s.input} value={d.span_m ?? 5.0}
+          onChange={v => update({ span_m: v })} />
       </Field>
       <Field label="h (mm)" hint="Slab thickness">
-        <input style={s.input} type="number" step="10" min="60"
-          value={d.h_mm ?? 200} onChange={e => numVal('h_mm', e)} />
+        <NumericInput style={s.input} value={d.h_mm ?? 200}
+          onChange={v => update({ h_mm: v })} />
       </Field>
       <Field label="d (mm)" hint="Effective depth">
-        <input style={s.input} type="number" step="5" min="40"
-          value={d.d_mm ?? 165} onChange={e => numVal('d_mm', e)} />
+        <NumericInput style={s.input} value={d.d_mm ?? 165}
+          onChange={v => update({ d_mm: v })} />
       </Field>
       <Field label="g_k (kN/m²)" hint="Permanent">
-        <input style={s.input} type="number" step="0.1" min="0"
-          value={d.g_k_kNm2 ?? 3.5} onChange={e => numVal('g_k_kNm2', e)} />
+        <NumericInput style={s.input} value={d.g_k_kNm2 ?? 3.5}
+          onChange={v => update({ g_k_kNm2: v })} />
       </Field>
       <Field label="q_k (kN/m²)" hint="Variable">
-        <input style={s.input} type="number" step="0.1" min="0"
-          value={d.q_k_kNm2 ?? 2.5} onChange={e => numVal('q_k_kNm2', e)} />
+        <NumericInput style={s.input} value={d.q_k_kNm2 ?? 2.5}
+          onChange={v => update({ q_k_kNm2: v })} />
       </Field>
       <Field label="f_ck (MPa)">
-        <input style={s.input} type="number" step="5" min="12"
-          value={d.fck_MPa ?? 30} onChange={e => numVal('fck_MPa', e)} />
+        <NumericInput style={s.input} value={d.fck_MPa ?? 30}
+          onChange={v => update({ fck_MPa: v })} />
       </Field>
       <Field label="f_yk (MPa)">
-        <input style={s.input} type="number" step="50" min="400"
-          value={d.fyk_MPa ?? 500} onChange={e => numVal('fyk_MPa', e)} />
+        <NumericInput style={s.input} value={d.fyk_MPa ?? 500}
+          onChange={v => update({ fyk_MPa: v })} />
       </Field>
       <Field label="As,prov (mm²/m)" hint="Leave blank = use As,req">
-        <input style={s.input} type="number" step="50" min="0"
+        <input style={s.input} inputMode="decimal"
           placeholder="auto"
           value={d.As_prov_mm2m ?? ''}
           onChange={e => {
@@ -100,16 +96,16 @@ export default function RCSlabBlock({ block, onChange }) {
           }} />
       </Field>
       <Field label="Cover (mm)">
-        <input style={s.input} type="number" step="5" min="10"
-          value={d.cover_mm ?? 35} onChange={e => numVal('cover_mm', e)} />
+        <NumericInput style={s.input} value={d.cover_mm ?? 35}
+          onChange={v => update({ cover_mm: v })} />
       </Field>
       <Field label="γ_C">
-        <input style={s.input} type="number" step="0.05" min="1"
-          value={d.gamma_C ?? 1.5} onChange={e => numVal('gamma_C', e)} />
+        <NumericInput style={s.input} value={d.gamma_C ?? 1.5}
+          onChange={v => update({ gamma_C: v })} />
       </Field>
       <Field label="γ_S">
-        <input style={s.input} type="number" step="0.05" min="1"
-          value={d.gamma_S ?? 1.15} onChange={e => numVal('gamma_S', e)} />
+        <NumericInput style={s.input} value={d.gamma_S ?? 1.15}
+          onChange={v => update({ gamma_S: v })} />
       </Field>
     </CalcBlockShell>
   )

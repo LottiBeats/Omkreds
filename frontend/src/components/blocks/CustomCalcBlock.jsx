@@ -19,6 +19,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { calcCustomCalc, createCalcTemplate } from '../../api/client.js'
 import CalcResultView from '../CalcResultView.jsx'
+import NumericInput from './NumericInput.jsx'
 
 // ── Template storage (localStorage) ──────────────────────────────────────────
 
@@ -500,12 +501,10 @@ function VarItem({ item, onChange }) {
         </div>
         <div style={{ ...s.varField, maxWidth: 130 }}>
           <label style={s.fieldLabel}>Value</label>
-          <input
+          <NumericInput
             style={s.input}
-            type="number"
             value={item.value ?? 0}
-            onChange={e => onChange({ value: parseFloat(e.target.value) || 0 })}
-            step="any"
+            onChange={v => onChange({ value: v })}
           />
         </div>
         <div style={{ ...s.varField, maxWidth: 110 }}>

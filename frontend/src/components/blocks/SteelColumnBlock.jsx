@@ -9,6 +9,7 @@ import React, { useState } from 'react'
 import { calcSteelColumn } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const SECTIONS = [
   'HEA100','HEA120','HEA140','HEA160','HEA180','HEA200',
@@ -35,11 +36,6 @@ export default function SteelColumnBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function numVal(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   async function handleRun() {
@@ -97,38 +93,38 @@ export default function SteelColumnBlock({ block, onChange }) {
         </select>
       </Field>
       <Field label="Buckling length (m)">
-        <input style={s.input} type="number" step="0.1" min="0.5"
-          value={d.length_m ?? 4.0} onChange={e => numVal('length_m', e)} />
+        <NumericInput style={s.input} value={d.length_m ?? 4.0}
+          onChange={v => update({ length_m: v })} />
       </Field>
       <Field label="N_Ed (kN)" hint="Design axial compression">
-        <input style={s.input} type="number" step="10" min="0"
-          value={d.N_Ed_kN ?? 500.0} onChange={e => numVal('N_Ed_kN', e)} />
+        <NumericInput style={s.input} value={d.N_Ed_kN ?? 500.0}
+          onChange={v => update({ N_Ed_kN: v })} />
       </Field>
       <Field label="k_y" hint="Eff. length factor y-y">
-        <input style={s.input} type="number" step="0.05" min="0.5" max="2.0"
-          value={d.k_y ?? 1.0} onChange={e => numVal('k_y', e)} />
+        <NumericInput style={s.input} value={d.k_y ?? 1.0}
+          onChange={v => update({ k_y: v })} />
       </Field>
       <Field label="k_z" hint="Eff. length factor z-z">
-        <input style={s.input} type="number" step="0.05" min="0.5" max="2.0"
-          value={d.k_z ?? 1.0} onChange={e => numVal('k_z', e)} />
+        <NumericInput style={s.input} value={d.k_z ?? 1.0}
+          onChange={v => update({ k_z: v })} />
       </Field>
       <Field label="γ_M0">
-        <input style={s.input} type="number" step="0.05" min="1"
-          value={d.gamma_M0 ?? 1.0} onChange={e => numVal('gamma_M0', e)} />
+        <NumericInput style={s.input} value={d.gamma_M0 ?? 1.0}
+          onChange={v => update({ gamma_M0: v })} />
       </Field>
       <Field label="γ_M1">
-        <input style={s.input} type="number" step="0.05" min="1"
-          value={d.gamma_M1 ?? 1.0} onChange={e => numVal('gamma_M1', e)} />
+        <NumericInput style={s.input} value={d.gamma_M1 ?? 1.0}
+          onChange={v => update({ gamma_M1: v })} />
       </Field>
 
       {/* ── Beam-column moments (leave 0 for pure compression) ── */}
       <Field label="M_y,Ed (kNm)" hint="Strong-axis moment — 0 = pure compression">
-        <input style={s.input} type="number" step="1" min="0"
-          value={d.M_y_Ed_kNm ?? 0.0} onChange={e => numVal('M_y_Ed_kNm', e)} />
+        <NumericInput style={s.input} value={d.M_y_Ed_kNm ?? 0.0}
+          onChange={v => update({ M_y_Ed_kNm: v })} />
       </Field>
       <Field label="M_z,Ed (kNm)" hint="Weak-axis moment">
-        <input style={s.input} type="number" step="0.5" min="0"
-          value={d.M_z_Ed_kNm ?? 0.0} onChange={e => numVal('M_z_Ed_kNm', e)} />
+        <NumericInput style={s.input} value={d.M_z_Ed_kNm ?? 0.0}
+          onChange={v => update({ M_z_Ed_kNm: v })} />
       </Field>
       <Field label="C_my" hint="Equiv. moment factor y — Annex B Table B.3">
         <select style={s.input} value={d.C_my ?? 1.0}

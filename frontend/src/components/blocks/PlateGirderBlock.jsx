@@ -11,6 +11,7 @@ import React, { useState } from 'react'
 import { calcPlateGirder } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const GRADES = ['S235', 'S275', 'S355', 'S420', 'S460']
 
@@ -76,30 +77,30 @@ export default function PlateGirderBlock({ block, onChange }) {
       {/* Web */}
       <div style={s.groupHeader}>Web</div>
       <Field label="Web height h_w" hint="mm">
-        <input style={s.input} type="number" step="any" value={d.h_w_mm ?? 1200}
-          onChange={e => update({ h_w_mm: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.h_w_mm ?? 1200}
+          onChange={v => update({ h_w_mm: v })} />
       </Field>
       <Field label="Web thickness t_w" hint="mm">
-        <input style={s.input} type="number" step="any" value={d.t_w_mm ?? 12}
-          onChange={e => update({ t_w_mm: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.t_w_mm ?? 12}
+          onChange={v => update({ t_w_mm: v })} />
       </Field>
 
       {/* Flanges */}
       <div style={s.groupHeader}>Flanges (equal top &amp; bottom)</div>
       <Field label="Flange width b_f" hint="mm">
-        <input style={s.input} type="number" step="any" value={d.b_f_mm ?? 400}
-          onChange={e => update({ b_f_mm: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.b_f_mm ?? 400}
+          onChange={v => update({ b_f_mm: v })} />
       </Field>
       <Field label="Flange thickness t_f" hint="mm">
-        <input style={s.input} type="number" step="any" value={d.t_f_mm ?? 25}
-          onChange={e => update({ t_f_mm: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.t_f_mm ?? 25}
+          onChange={v => update({ t_f_mm: v })} />
       </Field>
 
       {/* Panel */}
       <div style={s.groupHeader}>Stiffener layout</div>
       <Field label="Panel length a" hint="mm  (stiffener spacing)">
-        <input style={s.input} type="number" step="any" value={d.a_mm ?? 2000}
-          onChange={e => update({ a_mm: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.a_mm ?? 2000}
+          onChange={v => update({ a_mm: v })} />
       </Field>
       <Field label="End post">
         <select style={s.input} value={d.rigid_end_post ?? true ? 'rigid' : 'non-rigid'}
@@ -119,23 +120,23 @@ export default function PlateGirderBlock({ block, onChange }) {
       {/* Design actions */}
       <div style={s.groupHeader}>Design actions</div>
       <Field label="V_Ed" hint="kN">
-        <input style={s.input} type="number" step="any" value={d.V_Ed_kN ?? 0}
-          onChange={e => update({ V_Ed_kN: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.V_Ed_kN ?? 0}
+          onChange={v => update({ V_Ed_kN: v })} />
       </Field>
       <Field label="M_Ed" hint="kNm">
-        <input style={s.input} type="number" step="any" value={d.M_Ed_kNm ?? 0}
-          onChange={e => update({ M_Ed_kNm: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.M_Ed_kNm ?? 0}
+          onChange={v => update({ M_Ed_kNm: v })} />
       </Field>
 
       {/* Partial factors */}
       <div style={s.groupHeader}>Partial factors</div>
       <Field label="γ_M0">
-        <input style={s.input} type="number" step="0.01" value={d.gamma_M0 ?? 1.0}
-          onChange={e => update({ gamma_M0: parseFloat(e.target.value) || 1 })} />
+        <NumericInput style={s.input} value={d.gamma_M0 ?? 1.0}
+          onChange={v => update({ gamma_M0: v })} />
       </Field>
       <Field label="γ_M1">
-        <input style={s.input} type="number" step="0.01" value={d.gamma_M1 ?? 1.0}
-          onChange={e => update({ gamma_M1: parseFloat(e.target.value) || 1 })} />
+        <NumericInput style={s.input} value={d.gamma_M1 ?? 1.0}
+          onChange={v => update({ gamma_M1: v })} />
       </Field>
     </CalcBlockShell>
   )

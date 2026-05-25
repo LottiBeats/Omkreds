@@ -7,6 +7,7 @@ import React, { useState } from 'react'
 import { calcSnowLoad } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const ROOF_TYPES = [
   { value: 'flat',       label: 'Flat (α = 0°)' },
@@ -30,11 +31,6 @@ export default function SnowLoadBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function numVal(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   function handleZoneChange(zone) {
@@ -88,8 +84,8 @@ export default function SnowLoadBlock({ block, onChange }) {
         </select>
       </Field>
       <Field label="s_k (kN/m²)" hint="Ground snow load">
-        <input style={s.input} type="number" step="0.1" min="0"
-          value={d.s_k_kNm2 ?? 1.0} onChange={e => numVal('s_k_kNm2', e)} />
+        <NumericInput style={s.input} value={d.s_k_kNm2 ?? 1.0}
+          onChange={v => update({ s_k_kNm2: v })} />
       </Field>
       <Field label="Roof type">
         <select style={s.input} value={d.roof_type ?? 'pitched'}
@@ -100,28 +96,28 @@ export default function SnowLoadBlock({ block, onChange }) {
         </select>
       </Field>
       <Field label="α (°)" hint="Roof pitch angle">
-        <input style={s.input} type="number" step="1" min="0" max="90"
-          value={d.alpha_deg ?? 20.0} onChange={e => numVal('alpha_deg', e)} />
+        <NumericInput style={s.input} value={d.alpha_deg ?? 20.0}
+          onChange={v => update({ alpha_deg: v })} />
       </Field>
       <Field label="Roof span (m)">
-        <input style={s.input} type="number" step="0.5" min="1"
-          value={d.roof_span_m ?? 8.0} onChange={e => numVal('roof_span_m', e)} />
+        <NumericInput style={s.input} value={d.roof_span_m ?? 8.0}
+          onChange={v => update({ roof_span_m: v })} />
       </Field>
       <Field label="Eave height (m)">
-        <input style={s.input} type="number" step="0.1" min="0"
-          value={d.eave_height_m ?? 3.0} onChange={e => numVal('eave_height_m', e)} />
+        <NumericInput style={s.input} value={d.eave_height_m ?? 3.0}
+          onChange={v => update({ eave_height_m: v })} />
       </Field>
       <Field label="C_e" hint="Exposure coeff.">
-        <input style={s.input} type="number" step="0.1" min="0.5" max="1.5"
-          value={d.C_e ?? 1.0} onChange={e => numVal('C_e', e)} />
+        <NumericInput style={s.input} value={d.C_e ?? 1.0}
+          onChange={v => update({ C_e: v })} />
       </Field>
       <Field label="C_t" hint="Thermal coeff.">
-        <input style={s.input} type="number" step="0.1" min="0.5" max="1.5"
-          value={d.C_t ?? 1.0} onChange={e => numVal('C_t', e)} />
+        <NumericInput style={s.input} value={d.C_t ?? 1.0}
+          onChange={v => update({ C_t: v })} />
       </Field>
       <Field label="γ_s" hint="Snow partial factor">
-        <input style={s.input} type="number" step="0.1" min="1"
-          value={d.gamma_s ?? 1.5} onChange={e => numVal('gamma_s', e)} />
+        <NumericInput style={s.input} value={d.gamma_s ?? 1.5}
+          onChange={v => update({ gamma_s: v })} />
       </Field>
     </CalcBlockShell>
   )

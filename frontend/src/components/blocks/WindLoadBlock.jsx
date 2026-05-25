@@ -8,6 +8,7 @@ import React, { useState } from 'react'
 import { calcWindLoad } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const TERRAIN_CATEGORIES = [
   { value: 'I',   label: 'I — Sea / open water' },
@@ -23,11 +24,6 @@ export default function WindLoadBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function numVal(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   async function handleRun() {
@@ -80,36 +76,36 @@ export default function WindLoadBlock({ block, onChange }) {
         </select>
       </Field>
       <Field label="v_b,0 (m/s)" hint="DK: 24 m/s zone 1">
-        <input style={s.input} type="number" step="0.5" min="10" max="50"
-          value={d.v_b0_ms ?? 24.0} onChange={e => numVal('v_b0_ms', e)} />
+        <NumericInput style={s.input} value={d.v_b0_ms ?? 24.0}
+          onChange={v => update({ v_b0_ms: v })} />
       </Field>
       <Field label="z_ref (m)" hint="Reference height">
-        <input style={s.input} type="number" step="0.5" min="1"
-          value={d.z_ref_m ?? 8.0} onChange={e => numVal('z_ref_m', e)} />
+        <NumericInput style={s.input} value={d.z_ref_m ?? 8.0}
+          onChange={v => update({ z_ref_m: v })} />
       </Field>
       <Field label="h (m)" hint="Building height">
-        <input style={s.input} type="number" step="0.5" min="1"
-          value={d.h_m ?? 8.0} onChange={e => numVal('h_m', e)} />
+        <NumericInput style={s.input} value={d.h_m ?? 8.0}
+          onChange={v => update({ h_m: v })} />
       </Field>
       <Field label="b (m)" hint="Breadth (crosswind)">
-        <input style={s.input} type="number" step="0.5" min="1"
-          value={d.b_m ?? 10.0} onChange={e => numVal('b_m', e)} />
+        <NumericInput style={s.input} value={d.b_m ?? 10.0}
+          onChange={v => update({ b_m: v })} />
       </Field>
       <Field label="d (m)" hint="Depth (along wind)">
-        <input style={s.input} type="number" step="0.5" min="1"
-          value={d.d_m ?? 12.0} onChange={e => numVal('d_m', e)} />
+        <NumericInput style={s.input} value={d.d_m ?? 12.0}
+          onChange={v => update({ d_m: v })} />
       </Field>
       <Field label="c_pe windward">
-        <input style={s.input} type="number" step="0.05"
-          value={d.c_pe_windward ?? 0.8} onChange={e => numVal('c_pe_windward', e)} />
+        <NumericInput style={s.input} value={d.c_pe_windward ?? 0.8}
+          onChange={v => update({ c_pe_windward: v })} />
       </Field>
       <Field label="c_pe leeward">
-        <input style={s.input} type="number" step="0.05"
-          value={d.c_pe_leeward ?? -0.5} onChange={e => numVal('c_pe_leeward', e)} />
+        <NumericInput style={s.input} value={d.c_pe_leeward ?? -0.5}
+          onChange={v => update({ c_pe_leeward: v })} />
       </Field>
       <Field label="c_pi" hint="Internal pressure">
-        <input style={s.input} type="number" step="0.05"
-          value={d.c_pi ?? 0.2} onChange={e => numVal('c_pi', e)} />
+        <NumericInput style={s.input} value={d.c_pi ?? 0.2}
+          onChange={v => update({ c_pi: v })} />
       </Field>
     </CalcBlockShell>
   )

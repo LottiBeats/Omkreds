@@ -8,6 +8,7 @@ import React, { useState } from 'react'
 import { calcLoadCombo } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const CATEGORIES = [
   { value: 'A', label: 'A — Domestic/residential' },
@@ -98,8 +99,8 @@ export default function LoadComboBlock({ block, onChange }) {
 
       {/* Permanent load */}
       <Field label="G_k  (permanent)" hint={d.unit ?? 'kN/m'}>
-        <input style={s.input} type="number" step="any" value={d.G_k ?? 5.0}
-          onChange={e => update({ G_k: parseFloat(e.target.value) || 0 })} />
+        <NumericInput style={s.input} value={d.G_k ?? 5.0}
+          onChange={v => update({ G_k: v })} />
       </Field>
       <Field label="G favourable?">
         <label style={s.checkLabel}>
@@ -125,9 +126,9 @@ export default function LoadComboBlock({ block, onChange }) {
                 <input style={s.loadInput} value={load.label ?? ''}
                   placeholder={`Q${i + 1}`}
                   onChange={e => setLoad(i, 'label', e.target.value)} />
-                <input style={s.loadInput} type="number" step="any"
+                <NumericInput style={s.loadInput}
                   value={load.Q_k ?? 0}
-                  onChange={e => setLoad(i, 'Q_k', parseFloat(e.target.value) || 0)} />
+                  onChange={v => setLoad(i, 'Q_k', v)} />
                 <select style={s.loadInput} value={load.category ?? 'B'}
                   onChange={e => setLoad(i, 'category', e.target.value)}>
                   {CATEGORIES.map(c => (

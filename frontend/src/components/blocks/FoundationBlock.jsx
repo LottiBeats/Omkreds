@@ -7,6 +7,7 @@ import React, { useState } from 'react'
 import { calcFoundation } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 export default function FoundationBlock({ block, onChange }) {
   const d = block.data
@@ -15,11 +16,6 @@ export default function FoundationBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function numVal(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   async function handleRun() {
@@ -66,52 +62,52 @@ export default function FoundationBlock({ block, onChange }) {
           onChange={e => update({ label: e.target.value })} />
       </Field>
       <Field label="B (m)" hint="Footing width">
-        <input style={s.input} type="number" step="0.1" min="0.3"
-          value={d.B_m ?? 1.5} onChange={e => numVal('B_m', e)} />
+        <NumericInput style={s.input} value={d.B_m ?? 1.5}
+          onChange={v => update({ B_m: v })} />
       </Field>
       <Field label="L (m)" hint="Footing length">
-        <input style={s.input} type="number" step="0.1" min="0.3"
-          value={d.L_m ?? 2.0} onChange={e => numVal('L_m', e)} />
+        <NumericInput style={s.input} value={d.L_m ?? 2.0}
+          onChange={v => update({ L_m: v })} />
       </Field>
       <Field label="D (m)" hint="Embedment depth">
-        <input style={s.input} type="number" step="0.1" min="0"
-          value={d.D_m ?? 0.8} onChange={e => numVal('D_m', e)} />
+        <NumericInput style={s.input} value={d.D_m ?? 0.8}
+          onChange={v => update({ D_m: v })} />
       </Field>
       <Field label="c' (kPa)" hint="Effective cohesion">
-        <input style={s.input} type="number" step="1" min="0"
-          value={d.c_kPa ?? 5.0} onChange={e => numVal('c_kPa', e)} />
+        <NumericInput style={s.input} value={d.c_kPa ?? 5.0}
+          onChange={v => update({ c_kPa: v })} />
       </Field>
       <Field label="φ' (°)" hint="Friction angle">
-        <input style={s.input} type="number" step="1" min="1" max="54"
-          value={d.phi_deg ?? 30.0} onChange={e => numVal('phi_deg', e)} />
+        <NumericInput style={s.input} value={d.phi_deg ?? 30.0}
+          onChange={v => update({ phi_deg: v })} />
       </Field>
       <Field label="γ (kN/m³)" hint="Soil unit weight">
-        <input style={s.input} type="number" step="0.5" min="8" max="25"
-          value={d.gamma_kNm3 ?? 18.0} onChange={e => numVal('gamma_kNm3', e)} />
+        <NumericInput style={s.input} value={d.gamma_kNm3 ?? 18.0}
+          onChange={v => update({ gamma_kNm3: v })} />
       </Field>
       <Field label="γ' (kN/m³)" hint="Buoyant weight">
-        <input style={s.input} type="number" step="0.5" min="4" max="15"
-          value={d.gamma_b_kNm3 ?? 10.0} onChange={e => numVal('gamma_b_kNm3', e)} />
+        <NumericInput style={s.input} value={d.gamma_b_kNm3 ?? 10.0}
+          onChange={v => update({ gamma_b_kNm3: v })} />
       </Field>
       <Field label="Water table at base">
         <input type="checkbox" checked={d.water_table ?? false}
           onChange={e => update({ water_table: e.target.checked })} />
       </Field>
       <Field label="V_Ed (kN)" hint="Design vertical load">
-        <input style={s.input} type="number" step="10" min="1"
-          value={d.V_Ed_kN ?? 300.0} onChange={e => numVal('V_Ed_kN', e)} />
+        <NumericInput style={s.input} value={d.V_Ed_kN ?? 300.0}
+          onChange={v => update({ V_Ed_kN: v })} />
       </Field>
       <Field label="H_Ed (kN)" hint="Horizontal load (B-dir)">
-        <input style={s.input} type="number" step="5" min="0"
-          value={d.H_Ed_kN ?? 0.0} onChange={e => numVal('H_Ed_kN', e)} />
+        <NumericInput style={s.input} value={d.H_Ed_kN ?? 0.0}
+          onChange={v => update({ H_Ed_kN: v })} />
       </Field>
       <Field label="M_Ed (kNm)" hint="Moment about L-axis">
-        <input style={s.input} type="number" step="5"
-          value={d.M_Ed_kNm ?? 0.0} onChange={e => numVal('M_Ed_kNm', e)} />
+        <NumericInput style={s.input} value={d.M_Ed_kNm ?? 0.0}
+          onChange={v => update({ M_Ed_kNm: v })} />
       </Field>
       <Field label="γ_R,v" hint="Resistance factor GEO">
-        <input style={s.input} type="number" step="0.1" min="1.0"
-          value={d.gamma_Rv ?? 1.4} onChange={e => numVal('gamma_Rv', e)} />
+        <NumericInput style={s.input} value={d.gamma_Rv ?? 1.4}
+          onChange={v => update({ gamma_Rv: v })} />
       </Field>
     </CalcBlockShell>
   )

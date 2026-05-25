@@ -9,6 +9,7 @@ import React, { useState } from 'react'
 import { calcSteelBeam } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const SECTIONS = [
   'IPE100','IPE120','IPE140','IPE160','IPE180','IPE200',
@@ -29,11 +30,6 @@ export default function SteelBeamBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function numVal(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   async function handleRun() {
@@ -90,24 +86,24 @@ export default function SteelBeamBlock({ block, onChange }) {
         </select>
       </Field>
       <Field label="Span (m)">
-        <input style={s.input} type="number" step="0.1" min="0.1"
-          value={d.span_m ?? 5.0} onChange={e => numVal('span_m', e)} />
+        <NumericInput style={s.input} value={d.span_m ?? 5.0}
+          onChange={v => update({ span_m: v })} />
       </Field>
       <Field label="g_k (kN/m)" hint="Permanent">
-        <input style={s.input} type="number" step="0.1" min="0"
-          value={d.g_k_kNm ?? 5.0} onChange={e => numVal('g_k_kNm', e)} />
+        <NumericInput style={s.input} value={d.g_k_kNm ?? 5.0}
+          onChange={v => update({ g_k_kNm: v })} />
       </Field>
       <Field label="q_k (kN/m)" hint="Variable">
-        <input style={s.input} type="number" step="0.1" min="0"
-          value={d.q_k_kNm ?? 3.0} onChange={e => numVal('q_k_kNm', e)} />
+        <NumericInput style={s.input} value={d.q_k_kNm ?? 3.0}
+          onChange={v => update({ q_k_kNm: v })} />
       </Field>
       <Field label="γ_M0">
-        <input style={s.input} type="number" step="0.05" min="1"
-          value={d.gamma_M0 ?? 1.0} onChange={e => numVal('gamma_M0', e)} />
+        <NumericInput style={s.input} value={d.gamma_M0 ?? 1.0}
+          onChange={v => update({ gamma_M0: v })} />
       </Field>
       <Field label="γ_M1">
-        <input style={s.input} type="number" step="0.05" min="1"
-          value={d.gamma_M1 ?? 1.0} onChange={e => numVal('gamma_M1', e)} />
+        <NumericInput style={s.input} value={d.gamma_M1 ?? 1.0}
+          onChange={v => update({ gamma_M1: v })} />
       </Field>
       {/* Restraint checkboxes span 2 columns each */}
       <Field label="LTB restrained" hint="compression flange continuously restrained">
@@ -115,7 +111,7 @@ export default function SteelBeamBlock({ block, onChange }) {
           onChange={e => update({ ltb_restrained: e.target.checked })} />
       </Field>
       <Field label="LTB length (m)" hint="Between lateral restraints — runs cl. 6.3.2.2 check">
-        <input style={s.input} type="number" step="0.5" min="0"
+        <input style={s.input} inputMode="decimal"
           placeholder="leave blank or tick Restrained"
           value={d.ltb_length_m ?? ''}
           disabled={d.ltb_restrained ?? false}

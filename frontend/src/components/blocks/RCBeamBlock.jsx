@@ -7,6 +7,7 @@ import React, { useState } from 'react'
 import { calcRcBeam } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const F_CK_OPTIONS = [20, 25, 28, 30, 32, 35, 40, 45, 50]
 
@@ -17,11 +18,6 @@ export default function RCBeamBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function num(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   async function handleRun() {
@@ -65,28 +61,28 @@ export default function RCBeamBlock({ block, onChange }) {
           onChange={e => update({ label: e.target.value })} />
       </Field>
       <Field label="Span (m)">
-        <input style={s} type="number" step="0.1" min="0.1"
-          value={d.span_m ?? 5.0} onChange={e => num('span_m', e)} />
+        <NumericInput style={s} value={d.span_m ?? 5.0}
+          onChange={v => update({ span_m: v })} />
       </Field>
       <Field label="Width b (mm)">
-        <input style={s} type="number" step="25" min="100"
-          value={d.b_mm ?? 300} onChange={e => num('b_mm', e)} />
+        <NumericInput style={s} value={d.b_mm ?? 300}
+          onChange={v => update({ b_mm: v })} />
       </Field>
       <Field label="Total depth h (mm)">
-        <input style={s} type="number" step="25" min="100"
-          value={d.h_mm ?? 500} onChange={e => num('h_mm', e)} />
+        <NumericInput style={s} value={d.h_mm ?? 500}
+          onChange={v => update({ h_mm: v })} />
       </Field>
       <Field label="Eff. depth d (mm)">
-        <input style={s} type="number" step="5" min="50"
-          value={d.d_mm ?? 450} onChange={e => num('d_mm', e)} />
+        <NumericInput style={s} value={d.d_mm ?? 450}
+          onChange={v => update({ d_mm: v })} />
       </Field>
       <Field label="g_k (kN/m)" hint="Permanent">
-        <input style={s} type="number" step="0.5" min="0"
-          value={d.g_k_kNm ?? 10.0} onChange={e => num('g_k_kNm', e)} />
+        <NumericInput style={s} value={d.g_k_kNm ?? 10.0}
+          onChange={v => update({ g_k_kNm: v })} />
       </Field>
       <Field label="q_k (kN/m)" hint="Variable">
-        <input style={s} type="number" step="0.5" min="0"
-          value={d.q_k_kNm ?? 6.0} onChange={e => num('q_k_kNm', e)} />
+        <NumericInput style={s} value={d.q_k_kNm ?? 6.0}
+          onChange={v => update({ q_k_kNm: v })} />
       </Field>
       <Field label="f_ck (MPa)">
         <select style={s} value={d.f_ck_MPa ?? 30}
@@ -101,18 +97,18 @@ export default function RCBeamBlock({ block, onChange }) {
         </select>
       </Field>
       <Field label="As,prov (mm²)" hint="optional">
-        <input style={s} type="number" step="100" min="0"
+        <input style={s} inputMode="decimal"
           value={d.As_prov_mm2 ?? ''}
           placeholder="leave blank"
           onChange={e => update({ As_prov_mm2: e.target.value ? parseFloat(e.target.value) : null })} />
       </Field>
       <Field label="γ_C">
-        <input style={s} type="number" step="0.05" min="1"
-          value={d.gamma_C ?? 1.5} onChange={e => num('gamma_C', e)} />
+        <NumericInput style={s} value={d.gamma_C ?? 1.5}
+          onChange={v => update({ gamma_C: v })} />
       </Field>
       <Field label="γ_S">
-        <input style={s} type="number" step="0.05" min="1"
-          value={d.gamma_S ?? 1.15} onChange={e => num('gamma_S', e)} />
+        <NumericInput style={s} value={d.gamma_S ?? 1.15}
+          onChange={v => update({ gamma_S: v })} />
       </Field>
     </CalcBlockShell>
   )

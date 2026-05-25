@@ -13,6 +13,7 @@
 import React, { useState, useEffect } from 'react'
 import { calcBeamFem } from '../../api/client.js'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 // ── Material presets ──────────────────────────────────────────────────────────
 
@@ -32,9 +33,8 @@ function SupportRow({ sup, L, onChange, onRemove }) {
       <div style={s.listRowInner}>
         <div style={s.fieldWrap}>
           <label style={s.miniLabel}>x (m)</label>
-          <input style={s.smallInput} type="number" step="0.1" min="0" max={L}
-            value={sup.x ?? 0}
-            onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange({ ...sup, x: v }) }} />
+          <NumericInput style={s.smallInput} value={sup.x ?? 0}
+            onChange={v => onChange({ ...sup, x: v })} />
         </div>
         <div style={s.fieldWrap}>
           <label style={s.miniLabel}>Type</label>
@@ -112,12 +112,11 @@ function LoadRow({ load, L, onChange, onRemove }) {
 }
 
 // Tiny numeric field used inside list rows
-function NumField({ label, val, step, set }) {
+function NumField({ label, val, set }) {
   return (
     <div style={s.fieldWrap}>
       <label style={s.miniLabel}>{label}</label>
-      <input style={s.smallInput} type="number" step={step ?? '1'} value={val}
-        onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) set(v) }} />
+      <NumericInput style={s.smallInput} value={val} onChange={set} />
     </div>
   )
 }
@@ -226,11 +225,6 @@ export default function BeamFemBlock({ block, onChange }) {
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
   }
-  function num(field, val) {
-    const v = parseFloat(val)
-    if (!isNaN(v)) update({ [field]: v })
-  }
-
   // Supports
   const supports = d.supports ?? [
     { x: 0,       type: 'pin' },
@@ -307,9 +301,8 @@ export default function BeamFemBlock({ block, onChange }) {
       <div style={s.sectionLabel}>Beam properties</div>
       <div style={s.grid}>
         <Field label="Span L (m)">
-          <input style={s.input} type="number" step="0.1" min="0.1"
-            value={d.L ?? 6}
-            onChange={e => num('L', e.target.value)} />
+          <NumericInput style={s.input} value={d.L ?? 6}
+            onChange={v => update({ L: v })} />
         </Field>
 
         <Field label="Material">
@@ -324,15 +317,13 @@ export default function BeamFemBlock({ block, onChange }) {
         </Field>
 
         <Field label="E (GPa)">
-          <input style={s.input} type="number" step="1" min="1"
-            value={d.E_GPa ?? 210}
-            onChange={e => { setEPreset('Custom'); num('E_GPa', e.target.value) }} />
+          <NumericInput style={s.input} value={d.E_GPa ?? 210}
+            onChange={v => { setEPreset('Custom'); update({ E_GPa: v }) }} />
         </Field>
 
         <Field label="I (cm⁴)">
-          <input style={s.input} type="number" step="100" min="0.01"
-            value={d.I_cm4 ?? 3000}
-            onChange={e => num('I_cm4', e.target.value)} />
+          <NumericInput style={s.input} value={d.I_cm4 ?? 3000}
+            onChange={v => update({ I_cm4: v })} />
         </Field>
       </div>
 

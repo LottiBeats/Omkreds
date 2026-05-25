@@ -7,6 +7,7 @@ import React, { useState } from 'react'
 import { calcTimberBeam } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 const GRADES = [
   'C14','C16','C18','C20','C22','C24','C27','C30','C35','C40',
@@ -24,11 +25,6 @@ export default function TimberBeamBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function num(field, e) {
-    const v = parseFloat(e.target.value)
-    if (!isNaN(v)) update({ [field]: v })
   }
 
   async function handleRun() {
@@ -73,24 +69,24 @@ export default function TimberBeamBlock({ block, onChange }) {
           onChange={e => update({ label: e.target.value })} />
       </Field>
       <Field label="Span (m)">
-        <input style={s} type="number" step="0.1" min="0.1"
-          value={d.span_m ?? 4.0} onChange={e => num('span_m', e)} />
+        <NumericInput style={s} value={d.span_m ?? 4.0}
+          onChange={v => update({ span_m: v })} />
       </Field>
       <Field label="Width b (mm)">
-        <input style={s} type="number" step="5" min="38"
-          value={d.b_mm ?? 90} onChange={e => num('b_mm', e)} />
+        <NumericInput style={s} value={d.b_mm ?? 90}
+          onChange={v => update({ b_mm: v })} />
       </Field>
       <Field label="Depth h (mm)">
-        <input style={s} type="number" step="10" min="50"
-          value={d.h_mm ?? 220} onChange={e => num('h_mm', e)} />
+        <NumericInput style={s} value={d.h_mm ?? 220}
+          onChange={v => update({ h_mm: v })} />
       </Field>
       <Field label="g_k (kN/m)" hint="Permanent">
-        <input style={s} type="number" step="0.1" min="0"
-          value={d.g_k_kNm ?? 3.0} onChange={e => num('g_k_kNm', e)} />
+        <NumericInput style={s} value={d.g_k_kNm ?? 3.0}
+          onChange={v => update({ g_k_kNm: v })} />
       </Field>
       <Field label="q_k (kN/m)" hint="Variable">
-        <input style={s} type="number" step="0.1" min="0"
-          value={d.q_k_kNm ?? 2.0} onChange={e => num('q_k_kNm', e)} />
+        <NumericInput style={s} value={d.q_k_kNm ?? 2.0}
+          onChange={v => update({ q_k_kNm: v })} />
       </Field>
       <Field label="Timber grade">
         <select style={s} value={d.timber_grade ?? 'C24'}
@@ -115,8 +111,8 @@ export default function TimberBeamBlock({ block, onChange }) {
         </select>
       </Field>
       <Field label="γ_M">
-        <input style={s} type="number" step="0.05" min="1"
-          value={d.gamma_M ?? 1.3} onChange={e => num('gamma_M', e)} />
+        <NumericInput style={s} value={d.gamma_M ?? 1.3}
+          onChange={v => update({ gamma_M: v })} />
       </Field>
       <Field label="Comp. edge restrained" hint="prevents LTB / kipning">
         <input type="checkbox"
@@ -129,7 +125,7 @@ export default function TimberBeamBlock({ block, onChange }) {
           onChange={e => update({ torsional_restraint_at_supports: e.target.checked })} />
       </Field>
       <Field label="Support length (mm)" hint="Bearing length → enables compression ⊥ grain check">
-        <input style={s} type="number" step="10" min="10"
+        <input style={s} inputMode="decimal"
           placeholder="e.g. 100 — leave blank to skip"
           value={d.support_length_mm ?? ''}
           onChange={e => update({ support_length_mm: e.target.value ? parseFloat(e.target.value) : null })} />
