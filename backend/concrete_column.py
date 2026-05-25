@@ -160,8 +160,8 @@ def _nm_plot(N_curve, M_curve, load_pts, h_mm, tmp_dir):
 def _section_plot_column(h_mm, b_mm, c_mm, da_c_mm, n_c, da_t_mm, n_t, tmp_dir):
     """Draw column cross-section with bars and dimension annotations."""
     aspect = h_mm / b_mm
-    fig_h  = max(4.5, 4.0 * aspect) + 1.2
-    fig, ax = plt.subplots(figsize=(4.2, fig_h))
+    fig_h  = max(3.0, 2.8 * aspect) + 0.8
+    fig, ax = plt.subplots(figsize=(2.8, fig_h))
 
     # Concrete outline
     ax.add_patch(mpatches.Rectangle(
@@ -309,7 +309,7 @@ def concrete_column_rect(
     _sec_out   = Path(tempfile.gettempdir()) / f'section_col_{_sec_hash}.png'
     if not _sec_out.exists():
         _sec_out.write_bytes(_sec_bytes)
-    blocks.append(FIG(str(_sec_out), 'Reinforced concrete column cross-section.'))
+    blocks.append(FIG(str(_sec_out), 'Reinforced concrete column cross-section.', width_mm=85))
 
     # ── Material properties ───────────────────────────────────────────────────
     blocks.append(S("Material properties  — EN 1992-1-1 cl. 3.1"))

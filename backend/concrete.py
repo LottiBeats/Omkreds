@@ -24,8 +24,8 @@ from calc_core import S, T, N, MH, CheckContext, FIG, CALC_ROW
 def _section_plot_beam(b_mm, h_mm, d_mm, As_req_mm2, As_prov_mm2, tmp_dir):
     """Draw beam cross-section with steel at effective depth and dimension annotations."""
     aspect = h_mm / b_mm
-    fig_h  = max(4.5, 3.6 * aspect) + 1.0
-    fig, ax = plt.subplots(figsize=(3.8, fig_h))
+    fig_h  = max(3.0, 2.4 * aspect) + 0.7
+    fig, ax = plt.subplots(figsize=(2.6, fig_h))
 
     # Concrete outline
     ax.add_patch(mpatches.Rectangle(
@@ -219,7 +219,7 @@ def rc_beam_bending(
     _sec_out   = Path(tempfile.gettempdir()) / f'section_beam_{_sec_hash}.png'
     if not _sec_out.exists():
         _sec_out.write_bytes(_sec_bytes)
-    blocks.append(FIG(str(_sec_out), 'Reinforced concrete beam cross-section.'))
+    blocks.append(FIG(str(_sec_out), 'Reinforced concrete beam cross-section.', width_mm=85))
 
     blocks.append(S("Minimum reinforcement — EN 1992-1-1 cl. 9.2.1.1"))
     f_ctm    = 0.3 * (f_ck / MPa)**(2/3) * MPa

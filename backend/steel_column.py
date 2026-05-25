@@ -142,164 +142,206 @@ def steel_column_check(
 
     # ── Header ────────────────────────────────────────────────────────────────
     blocks.append(MH(
-        f"{label} — Steel Column / Beam-Column  EC3 §6.3",
-        f"{section} · {grade}  ·  L = {length_m:.2f} m",
-        "steel"
+        f"Steel column — {section}",
+        f"{label}  |  EN 1993-1-1",
+        "steel",
     ))
 
-    # ── Section properties ────────────────────────────────────────────────────
-    blocks.append(S("Section properties"))
-    blocks += [
-        CALC_ROW("A",      "gross area",               f"{A_cm2:.2f} cm²"),
-        CALC_ROW("I_y",    "strong-axis 2nd moment",   f"{Iy_cm4:.1f} cm⁴"),
-        CALC_ROW("I_z",    "weak-axis 2nd moment",     f"{Iz_cm4:.1f} cm⁴"),
-        CALC_ROW("i_y",    "= √(I_y / A)",             f"{iy:.1f} mm"),
-        CALC_ROW("i_z",    "= √(I_z / A)",             f"{iz:.1f} mm"),
-        CALC_ROW("W_pl,y", "plastic modulus — y",      f"{W_pl_y:.1f} cm³"),
+    # ── Design parameters ─────────────────────────────────────────────────────
+    blocks.append(S("Design parameters"))
+    blocks.append(T(
+        f"Hot-rolled steel column / beam-column check to EN 1993-1-1 §6.3.  "
+        f"Section {section}, grade {grade}.  "
+        f"Column length L = {length_m:.2f} m, "
+        f"effective-length factors k_y = {k_y:.2f}, k_z = {k_z:.2f}."
+    ))
+
+    param_rows = [
+        ["Section",                        "—",       section],
+        ["Steel grade",                    "—",       grade],
+        ["Column length",                  "L",       f"{length_m:.2f} m"],
+        ["Effective-length factor y–y",    "k_y",     f"{k_y:.2f}"],
+        ["Effective-length factor z–z",    "k_z",     f"{k_z:.2f}"],
+        ["Design axial force",             "N_Ed",    f"{N_Ed_kN:.1f} kN"],
     ]
-    if W_pl_z is not None:
-        blocks.append(CALC_ROW("W_pl,z", "plastic modulus — z",  f"{W_pl_z:.1f} cm³"))
-    else:
+    if have_moments:
+        param_rows += [
+            ["Design moment — strong axis",    "M_y,Ed",  f"{M_y_Ed_kNm:.1f} kNm"],
+            ["Design moment — weak axis",      "M_z,Ed",  f"{M_z_Ed_kNm:.1f} kNm"],
+            ["Unif. moment factor y",          "C_my",    f"{C_my:.2f}"],
+            ["Unif. moment factor z",          "C_mz",    f"{C_mz:.2f}"],
+        ]
+    param_rows += [
+        ["Partial factor cross-section",   "γ_M0",    str(gamma_M0)],
+        ["Partial factor member buckling", "γ_M1",    str(gamma_M1)],
+    ]
+    blocks.append(TBL(["Parameter", "Symbol", "Value"], param_rows))
+
+    # ── Section properties ────────────────────────────────────────────────────
+    blocks.append(S("Section properties  — EN 1993-1-1 §6.1"))
+    blocks.append(TBL(
+        ["Property", "Symbol", "Value"],
+        [
+            ["Gross area",                 "A",        f"{A_cm2:.2f} cm²"],
+            ["2nd moment — strong axis",   "I_y",      f"{Iy_cm4:.1f} cm⁴"],
+            ["2nd moment — weak axis",     "I_z",      f"{Iz_cm4:.1f} cm⁴"],
+            ["Radius of gyration y",       "i_y",      f"{iy:.1f} mm"],
+            ["Radius of gyration z",       "i_z",      f"{iz:.1f} mm"],
+            ["Plastic modulus y",          "W_pl,y",   f"{W_pl_y:.1f} cm³"],
+            ["Plastic modulus z",          "W_pl,z",   f"{W_pl_z:.1f} cm³" if W_pl_z is not None else "—"],
+            ["Yield strength",             "f_y",      f"{fy:.0f} MPa"],
+        ],
+    ))
+    if W_pl_z is None:
         blocks.append(N("W_pl,z not derived — provide tw_mm to enable weak-axis bending check."))
-    blocks.append(CALC_ROW("f_y", "yield strength", f"{fy:.0f} MPa"))
 
     if have_moments:
         blocks.append(N(
-            f"C_my = {C_my:.2f}  ·  C_mz = {C_mz:.2f} — equivalent uniform moment factors "
-            "(EN 1993-1-1 Annex B Table B.3). "
-            "For uniform moment: C = 1.0.  "
-            "For linear gradient (ψ=0, moment at one end only): C = 0.6.  "
-            "For UDL parabolic diagram (α_h=0): C ≈ 0.95."
+            f"C_my = {C_my:.2f}, C_mz = {C_mz:.2f} — equivalent uniform moment factors "
+            "(EN 1993-1-1 Annex B Table B.3).  "
+            "For uniform moment use C = 1.0; linear gradient (one end only) C = 0.6; "
+            "UDL parabolic diagram C ≈ 0.95."
         ))
         blocks.append(N(
-            "Annex B Method 2 interaction check — not susceptible to torsional deformations "
-            f"({'✓ LTB restrained — χ_LT = 1.0' if ltb_restrained else '⚠ LTB not restrained — χ_LT = 1.0 assumed (conservative for closed sections)'})."
+            "Annex B Method 2 interaction factors — sections not susceptible to torsional "
+            f"deformations.  "
+            f"{'LTB restrained — χ_LT = 1.0.' if ltb_restrained else 'LTB not restrained — χ_LT = 1.0 assumed (conservative).'}"
         ))
 
     # ── Slenderness ───────────────────────────────────────────────────────────
-    blocks.append(S("Slenderness — EN 1993-1-1 §6.3.1.3"))
+    blocks.append(S("Slenderness  — EN 1993-1-1 §6.3.1.3"))
+    blocks.append(N(
+        f"Effective-length factors k_y = {k_y:.2f}, k_z = {k_z:.2f} — set by engineer.  "
+        "For pin–pin: k = 1.0.  Verify from frame analysis when rotational end-restraint is assumed."
+    ))
     blocks += [
         CALC_ROW("λ₁",     "= π·√(E/f_y)",                               f"{lambda_1:.2f}"),
-        CALC_ROW("L_cr,y", f"= k_y·L = {k_y:.2f} × {length_m:.2f} m",   f"{L_cr_y/1000:.2f} m"),
-        CALC_ROW("L_cr,z", f"= k_z·L = {k_z:.2f} × {length_m:.2f} m",   f"{L_cr_z/1000:.2f} m"),
+        CALC_ROW("L_cr,y", f"= k_y·L = {k_y:.2f} × {length_m:.2f} m",   f"{L_cr_y/1000:.3f} m"),
+        CALC_ROW("L_cr,z", f"= k_z·L = {k_z:.2f} × {length_m:.2f} m",   f"{L_cr_z/1000:.3f} m"),
         CALC_ROW("i_y",    "= √(I_y / A)",                                f"{iy:.1f} mm"),
         CALC_ROW("i_z",    "= √(I_z / A)",                                f"{iz:.1f} mm"),
         CALC_ROW("λ̄_y",   "= (L_cr,y / i_y) / λ₁",                      f"{lam_y:.3f}"),
         CALC_ROW("λ̄_z",   "= (L_cr,z / i_z) / λ₁",                      f"{lam_z:.3f}"),
     ]
-    blocks.append(N(
-        f"Effective-length factors k_y = {k_y:.2f}, k_z = {k_z:.2f} — set by engineer. "
-        "For pin–pin: k = 1.0 (conservative). "
-        "Verify from frame analysis for columns with rotational end-restraint."
-    ))
 
-    # ── Buckling resistance — y and z separately ──────────────────────────────
-    blocks.append(S("Flexural buckling resistance — EN 1993-1-1 §6.3.1.2"))
+    # ── Flexural buckling resistance ──────────────────────────────────────────
+    blocks.append(S("Flexural buckling resistance  — EN 1993-1-1 §6.3.1.2"))
+    blocks.append(T(
+        f"Buckling curves assigned per EC3 Table 6.2 (hot-rolled I/H section, "
+        f"h/b = {h_mm/b_mm:.2f}, t_f = {tf_mm:.1f} mm):  "
+        f"y–y → curve {curve_y.upper()} (α = {_ALPHA[curve_y]}),  "
+        f"z–z → curve {curve_z.upper()} (α = {_ALPHA[curve_z]})."
+    ))
     blocks += [
-        T(f"Buckling curves (EC3 Table 6.2):  y–y → {curve_y.upper()} (α={_ALPHA[curve_y]})  "
-          f"·  z–z → {curve_z.upper()} (α={_ALPHA[curve_z]})"),
-        CALC_ROW("χ_y",      f"Curve {curve_y.upper()}, λ̄_y = {lam_y:.3f}",  f"{chi_y:.3f}"),
-        CALC_ROW("χ_z",      f"Curve {curve_z.upper()}, λ̄_z = {lam_z:.3f}",  f"{chi_z:.3f}"),
-        CALC_ROW("N_pl,Rd",  "= A·f_y / γ_M0",                                f"{N_pl_Rd:.1f} kN"),
-        CALC_ROW("N_b,y,Rd", "= χ_y·A·f_y / γ_M1",                           f"{N_b_y_Rd:.1f} kN"),
-        CALC_ROW("N_b,z,Rd", "= χ_z·A·f_y / γ_M1",                           f"{N_b_z_Rd:.1f} kN"),
+        CALC_ROW("χ_y",      f"= curve {curve_y.upper()}, λ̄_y = {lam_y:.3f}",  f"{chi_y:.3f}"),
+        CALC_ROW("χ_z",      f"= curve {curve_z.upper()}, λ̄_z = {lam_z:.3f}",  f"{chi_z:.3f}"),
+        CALC_ROW("N_pl,Rd",  "= A·f_y / γ_M0",                                   f"{N_pl_Rd:.1f} kN"),
+        CALC_ROW("N_b,y,Rd", "= χ_y·A·f_y / γ_M1",                              f"{N_b_y_Rd:.1f} kN"),
+        CALC_ROW("N_b,z,Rd", "= χ_z·A·f_y / γ_M1",                              f"{N_b_z_Rd:.1f} kN"),
     ]
 
-    # ── Verification — axial only ─────────────────────────────────────────────
-    blocks.append(S("Axial verification — EN 1993-1-1 §6.2.4 / §6.3.1"))
+    # ── Axial verification ────────────────────────────────────────────────────
+    blocks.append(S("Axial verification  — EN 1993-1-1 §6.2.4 / §6.3.1"))
+    blocks.append(CALC_ROW("N_Ed", "design axial force", f"{N_Ed_kN:.1f} kN"))
     blocks += [
-        CALC_ROW("N_Ed", "design axial force", f"{N_Ed_kN:.1f} kN"),
-        chk.check("Cross-section resistance  N_Ed / N_pl,Rd  (§6.2.4)", N_Ed_kN, N_pl_Rd),
+        chk.check("Cross-section resistance  N_Ed / N_pl,Rd  (§6.2.4)",  N_Ed_kN, N_pl_Rd),
         chk.check("Flexural buckling y–y      N_Ed / N_b,y,Rd  (§6.3.1)", N_Ed_kN, N_b_y_Rd),
         chk.check("Flexural buckling z–z      N_Ed / N_b,z,Rd  (§6.3.1)", N_Ed_kN, N_b_z_Rd),
     ]
 
     # ── Combined bending + compression — cl. 6.3.3 / Annex B ─────────────────
     if have_moments:
-        blocks.append(S("Combined bending + compression — EN 1993-1-1 cl. 6.3.3"))
-        blocks.append(T(
-            "Annex B Method 2 (Table B.1). "
-            "Interaction factors for sections not susceptible to torsional deformation. "
-            "χ_LT = 1.0 applied (LTB restrained or closed section)."
-        ))
-
-        # Axial utilisation ratios on each buckling resistance
+        # Axial utilisation ratios
         n_y = N_Ed_kN / N_b_y_Rd
         n_z = N_Ed_kN / N_b_z_Rd
 
-        # λ̄ capped at 1.0 in k-factor formula (as shown in the worked example)
+        # λ̄ capped at 1.0 in k-factor formula (Annex B)
         lam_y_k = min(lam_y, 1.0)
         lam_z_k = min(lam_z, 1.0)
 
-        # Annex B Table B.1 — not susceptible to torsional deformations
+        # Interaction factors — Table B.1, not susceptible to torsional deformations
         k_yy_raw = C_my * (1.0 + (lam_y_k - 0.2) * n_y)
         k_yy_max = C_my * (1.0 + 0.8 * n_y)
         k_yy     = min(k_yy_raw, k_yy_max)
-
-        k_zy = 0.6 * k_yy
+        k_zy     = 0.6 * k_yy
 
         k_zz_raw = C_mz * (1.0 + (lam_z_k - 0.2) * n_z)
         k_zz_max = C_mz * (1.0 + 0.8 * n_z)
         k_zz     = min(k_zz_raw, k_zz_max)
+        k_yz     = 0.6 * k_zz
 
-        k_yz = 0.6 * k_zz
+        chi_LT = 1.0
 
-        chi_LT = 1.0  # LTB not governing (per input)
-
-        # Bending moment utilisations (about plastic resistance)
         m_y = M_y_Ed_kNm / M_pl_y_Rd if M_pl_y_Rd > 0 else 0.0
-
-        # Display interaction factor derivation
-        blocks.extend([
-            CALC_ROW("n_y",     "= N_Ed / N_b,y,Rd",                         f"{n_y:.3f}"),
-            CALC_ROW("n_z",     "= N_Ed / N_b,z,Rd",                         f"{n_z:.3f}"),
-            CALC_ROW("M_pl,y,Rd", "= W_pl,y · f_y / γ_M1",                   f"{M_pl_y_Rd:.2f} kNm"),
-        ])
-        if M_pl_z_Rd is not None:
-            blocks.append(CALC_ROW("M_pl,z,Rd", "= W_pl,z · f_y / γ_M1",    f"{M_pl_z_Rd:.2f} kNm"))
-
-        blocks.extend([
-            CALC_ROW("m_y",     "= M_y,Ed / M_pl,y,Rd",                       f"{m_y:.3f}"),
-        ])
 
         if M_pl_z_Rd is not None and M_pl_z_Rd > 0:
             m_z = M_z_Ed_kNm / M_pl_z_Rd
-            blocks.append(CALC_ROW("m_z", "= M_z,Ed / M_pl,z,Rd",            f"{m_z:.3f}"))
         else:
             m_z = 0.0
             if abs(M_z_Ed_kNm) > 1e-9:
-                blocks.append(N("⚠  M_z,Ed is non-zero but W_pl,z is not available — m_z set to 0."))
+                blocks.append(N("W_pl,z unavailable — M_z,Ed contribution ignored."))
+
+        blocks.append(S("Combined bending + compression  — EN 1993-1-1 cl. 6.3.3"))
+        blocks.append(T(
+            "Annex B Method 2 (Table B.1) — sections not susceptible to torsional deformations.  "
+            "χ_LT = 1.0."
+        ))
 
         if lam_y > 1.0:
             blocks.append(N(f"λ̄_y = {lam_y:.3f} > 1.0 — capped at 1.0 in k-factor formula (Annex B)."))
         if lam_z > 1.0:
             blocks.append(N(f"λ̄_z = {lam_z:.3f} > 1.0 — capped at 1.0 in k-factor formula (Annex B)."))
 
-        blocks.extend([
-            CALC_ROW("k_yy",   f"= C_my·(1+(λ̄_y-0.2)·n_y) ≤ C_my·(1+0.8·n_y)", f"{k_yy:.3f}"),
-            CALC_ROW("k_zy",   "= 0.6·k_yy",                                       f"{k_zy:.3f}"),
-            CALC_ROW("k_zz",   f"= C_mz·(1+(λ̄_z-0.2)·n_z) ≤ C_mz·(1+0.8·n_z)", f"{k_zz:.3f}"),
-            CALC_ROW("k_yz",   "= 0.6·k_zz",                                       f"{k_yz:.3f}"),
-        ])
+        blocks += [
+            CALC_ROW("M_pl,y,Rd", "= W_pl,y·f_y / γ_M1",    f"{M_pl_y_Rd:.2f} kNm"),
+        ]
+        if M_pl_z_Rd is not None:
+            blocks.append(CALC_ROW("M_pl,z,Rd", "= W_pl,z·f_y / γ_M1", f"{M_pl_z_Rd:.2f} kNm"))
+
+        blocks += [
+            CALC_ROW("n_y",   "= N_Ed / N_b,y,Rd",          f"{n_y:.3f}"),
+            CALC_ROW("n_z",   "= N_Ed / N_b,z,Rd",          f"{n_z:.3f}"),
+            CALC_ROW("m_y",   "= M_y,Ed / M_pl,y,Rd",       f"{m_y:.3f}"),
+        ]
+        if M_pl_z_Rd is not None and M_pl_z_Rd > 0:
+            blocks.append(CALC_ROW("m_z", "= M_z,Ed / M_pl,z,Rd", f"{m_z:.3f}"))
+
+        blocks.append(TBL(
+            ["Factor", "Formula", "Value"],
+            [
+                ["k_yy", f"C_my·(1+(λ̄_y-0.2)·n_y) ≤ C_my·(1+0.8·n_y)", f"{k_yy:.3f}"],
+                ["k_zy", "= 0.6·k_yy",                                     f"{k_zy:.3f}"],
+                ["k_zz", f"C_mz·(1+(λ̄_z-0.2)·n_z) ≤ C_mz·(1+0.8·n_z)", f"{k_zz:.3f}"],
+                ["k_yz", "= 0.6·k_zz",                                     f"{k_yz:.3f}"],
+            ],
+        ))
 
         # Interaction equations (Eq. 6.61 and 6.62)
-        blocks.append(S("Interaction equations — Eq. 6.61 and 6.62"))
+        blocks.append(S("Interaction equations  — Eq. 6.61 and 6.62"))
         blocks.append(T(
-            "Eq. 6.61:  N_Ed/N_b,y,Rd  +  k_yy·M_y,Ed/(χ_LT·M_pl,y,Rd)  +  k_yz·M_z,Ed/M_pl,z,Rd  ≤  1.0"
+            "Eq. 6.61:  N_Ed/N_b,y,Rd  +  k_yy·M_y,Ed/(χ_LT·M_pl,y,Rd)  "
+            "+  k_yz·M_z,Ed/M_pl,z,Rd  ≤  1.0"
         ))
         blocks.append(T(
-            "Eq. 6.62:  N_Ed/N_b,z,Rd  +  k_zy·M_y,Ed/(χ_LT·M_pl,y,Rd)  +  k_zz·M_z,Ed/M_pl,z,Rd  ≤  1.0"
+            "Eq. 6.62:  N_Ed/N_b,z,Rd  +  k_zy·M_y,Ed/(χ_LT·M_pl,y,Rd)  "
+            "+  k_zz·M_z,Ed/M_pl,z,Rd  ≤  1.0"
         ))
 
         util_eq1 = n_y + k_yy * m_y / chi_LT + k_yz * m_z
         util_eq2 = n_z + k_zy * m_y / chi_LT + k_zz * m_z
 
-        blocks.extend([
-            CALC_ROW("Eq. 6.61", f"= {n_y:.3f} + {k_yy:.3f}·{m_y:.3f}/{chi_LT:.1f} + {k_yz:.3f}·{m_z:.3f}", f"{util_eq1:.3f}"),
-            CALC_ROW("Eq. 6.62", f"= {n_z:.3f} + {k_zy:.3f}·{m_y:.3f}/{chi_LT:.1f} + {k_zz:.3f}·{m_z:.3f}", f"{util_eq2:.3f}"),
-        ])
+        blocks += [
+            CALC_ROW("Eq. 6.61",
+                     f"{n_y:.3f} + {k_yy:.3f}·{m_y:.3f}/{chi_LT:.1f} + {k_yz:.3f}·{m_z:.3f}",
+                     f"{util_eq1:.3f}"),
+            CALC_ROW("Eq. 6.62",
+                     f"{n_z:.3f} + {k_zy:.3f}·{m_y:.3f}/{chi_LT:.1f} + {k_zz:.3f}·{m_z:.3f}",
+                     f"{util_eq2:.3f}"),
+        ]
 
-        blocks.append(chk.check("Beam-column Eq. 6.61  (y-axis governs)", util_eq1, 1.0))
-        blocks.append(chk.check("Beam-column Eq. 6.62  (z-axis governs)", util_eq2, 1.0))
+        blocks += [
+            chk.check("Beam-column Eq. 6.61  (y-axis governs)", util_eq1, 1.0),
+            chk.check("Beam-column Eq. 6.62  (z-axis governs)", util_eq2, 1.0),
+        ]
 
     return blocks
