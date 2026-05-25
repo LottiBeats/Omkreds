@@ -705,25 +705,40 @@ def build_story(all_blocks, styles):
             result  = b.get("result", "")
             lbl     = b.get("label", "")
 
+            # Strip leading "= " that calc modules include in formula/result strings.
+            # The PDF table already renders explicit "=" separator cells, so including
+            # "=" in the text itself produces "name = = formula = = result".
+            def _strip_eq(s):
+                s = s.strip()
+                if s.startswith("="):
+                    s = s[1:].strip()
+                return s
+
+            formula = _strip_eq(formula)
+            result  = _strip_eq(result)
+
             if formula:
                 cells  = [Paragraph(_fmt(name),    styles["hc_var"]),
                           Paragraph("=",            styles["hc_eq"]),
                           Paragraph(_fmt(formula),  styles["hc_sym"]),
                           Paragraph("=",            styles["hc_eq"]),
                           Paragraph(_fmt(result),   styles["hc_res"])]
-                widths = [26*mm, 4*mm, 86*mm, 4*mm, 30*mm]
+                widths = [26*mm, 4*mm, 80*mm, 4*mm, 36*mm]
             else:
                 cells  = [Paragraph(_fmt(name),    styles["hc_var"]),
                           Paragraph("=",            styles["hc_eq"]),
                           Paragraph(_fmt(result),   styles["hc_res"])]
                 widths = [26*mm, 4*mm, 120*mm]
 
-            tbl = Table([cells], colWidths=widths, rowHeights=[7*mm])
+            # No fixed rowHeights — let ReportLab auto-size so long values
+            # (e.g. "Class 1 — plastic (full rotation capacity)") wrap cleanly
+            # instead of being clipped or spilling onto the next row.
+            tbl = Table([cells], colWidths=widths)
             tbl.setStyle(TableStyle([
                 ("LEFTPADDING",   (0,0),(-1,-1), 4),
                 ("RIGHTPADDING",  (0,0),(-1,-1), 3),
-                ("TOPPADDING",    (0,0),(-1,-1), 1),
-                ("BOTTOMPADDING", (0,0),(-1,-1), 1),
+                ("TOPPADDING",    (0,0),(-1,-1), 2),
+                ("BOTTOMPADDING", (0,0),(-1,-1), 2),
                 ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
                 # No fill — just a thin bottom rule
                 ("LINEBELOW",     (0,0),(-1,-1), 0.3, C["rule_light"]),
