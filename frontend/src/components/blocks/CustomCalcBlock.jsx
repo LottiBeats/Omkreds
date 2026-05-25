@@ -411,6 +411,7 @@ function HeadingItem({ item, onChange }) {
 }
 
 function VarItem({ item, onChange }) {
+  const [nameRef, insertName] = useSymbolInsert(item.name, v => onChange({ name: v }))
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
       {/* Name / value / unit row */}
@@ -418,12 +419,14 @@ function VarItem({ item, onChange }) {
         <div style={s.varField}>
           <label style={s.fieldLabel}>Symbol</label>
           <input
+            ref={nameRef}
             style={{ ...s.input, fontFamily: 'monospace' }}
             value={item.name ?? ''}
             onChange={e => onChange({ name: e.target.value })}
-            placeholder="e.g. g_k"
+            placeholder="e.g. γ_M  or  g_k"
             spellCheck={false}
           />
+          <SymbolBar onInsert={insertName} />
         </div>
         <div style={{ ...s.varField, maxWidth: 130 }}>
           <label style={s.fieldLabel}>Value</label>
@@ -453,65 +456,146 @@ function VarItem({ item, onChange }) {
 }
 
 function FormulaItem({ item, onChange }) {
+  const [exprRef, insertExpr] = useSymbolInsert(item.expr, v => onChange({ expr: v }))
   return (
     <div>
-      <label style={s.fieldLabel}>Expression  (lhs = rhs)</label>
+      <label style={s.fieldLabel}>Expression  (symbol = expression)</label>
       <input
+        ref={exprRef}
         style={{ ...s.input, fontFamily: 'monospace', fontSize: 13 }}
         value={item.expr ?? ''}
         onChange={e => onChange({ expr: e.target.value })}
-        placeholder="e.g.  M_Ed = q * L^2 / 8   or   sigma = N_Ed / A"
+        placeholder="e.g.  M_Ed = q * L^2 / 8   or   σ = N_Ed / A"
         spellCheck={false}
       />
+      <SymbolBar onInsert={insertExpr} />
       <div style={s.hint}>
         Reference any variable defined above. Power: <code>^</code>.&ensp;
         Multiply: <code>*</code> or <code>×</code>.&ensp;
         Functions: <code>sqrt &nbsp;sin &nbsp;cos &nbsp;tan &nbsp;log &nbsp;exp &nbsp;abs &nbsp;min &nbsp;max</code>.&ensp;
         Constants: <code>pi &nbsp;e</code>.&ensp;
-        Units are carried automatically.
+        Units carried automatically.
       </div>
     </div>
   )
 }
 
 function CheckItem({ item, onChange }) {
+  const [demandRef,   insertDemand]   = useSymbolInsert(item.demand,            v => onChange({ demand: v }))
+  const [capacityRef, insertCapacity] = useSymbolInsert(String(item.capacity ?? ''), v => onChange({ capacity: v }))
   return (
-    <div style={s.checkGrid}>
-      <div style={s.varField}>
-        <label style={s.fieldLabel}>Label</label>
-        <input
-          style={s.input}
-          value={item.label ?? 'Check'}
-          onChange={e => onChange({ label: e.target.value })}
-          placeholder="Check label"
-        />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={s.checkGrid}>
+        <div style={s.varField}>
+          <label style={s.fieldLabel}>Label</label>
+          <input
+            style={s.input}
+            value={item.label ?? 'Check'}
+            onChange={e => onChange({ label: e.target.value })}
+            placeholder="Check label"
+          />
+        </div>
+        <div style={{ ...s.varField, maxWidth: 110 }}>
+          <label style={s.fieldLabel}>Unit (if number)</label>
+          <UnitSelect value={item.unit ?? 'kN'} onChange={v => onChange({ unit: v })} />
+        </div>
       </div>
       <div style={s.varField}>
         <label style={s.fieldLabel}>Demand (expression)</label>
         <input
+          ref={demandRef}
           style={{ ...s.input, fontFamily: 'monospace' }}
           value={item.demand ?? ''}
           onChange={e => onChange({ demand: e.target.value })}
-          placeholder="e.g.  sigma  or  N_Ed / A"
+          placeholder="e.g.  σ  or  N_Ed / A"
           spellCheck={false}
         />
+        <SymbolBar onInsert={insertDemand} />
       </div>
       <div style={s.varField}>
         <label style={s.fieldLabel}>Capacity (value or expression)</label>
         <input
+          ref={capacityRef}
           style={{ ...s.input, fontFamily: 'monospace' }}
           value={String(item.capacity ?? '1.0')}
           onChange={e => onChange({ capacity: e.target.value })}
-          placeholder="e.g.  160  or  f_cd  or  kmod * f_ck / gamma_M"
+          placeholder="e.g.  160  or  f_cd  or  γ_M * f_ck"
           spellCheck={false}
         />
-      </div>
-      <div style={{ ...s.varField, maxWidth: 110 }}>
-        <label style={s.fieldLabel}>Unit (if number)</label>
-        <UnitSelect value={item.unit ?? 'kN'} onChange={v => onChange({ unit: v })} />
+        <SymbolBar onInsert={insertCapacity} />
       </div>
     </div>
   )
+}
+
+// ── Symbol bar ────────────────────────────────────────────────────────────────
+
+const SYMBOLS = [
+  // Common structural Greek (lowercase)
+  'α','β','γ','δ','ε','η','θ','λ','μ','ν','π','ρ','σ','τ','φ','χ','ψ','ω',
+  // Uppercase
+  'Δ','Σ','Φ','Ψ','Ω',
+  // Math / superscripts
+  '²','³','√','·','×','±','≤','≥',
+]
+
+/**
+ * SymbolBar — row of small clickable symbol buttons.
+ * Uses onMouseDown + preventDefault so the active input keeps focus
+ * and selectionStart / selectionEnd stay valid.
+ */
+function SymbolBar({ onInsert }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, marginTop: 4 }}>
+      {SYMBOLS.map(sym => (
+        <button
+          key={sym}
+          type="button"
+          onMouseDown={e => { e.preventDefault(); onInsert(sym) }}
+          style={{
+            background:  'none',
+            border:      '1px solid #dde3ef',
+            padding:     '1px 5px',
+            fontSize:    13,
+            fontFamily:  'inherit',
+            lineHeight:  1.5,
+            color:       '#1e3a5f',
+            cursor:      'pointer',
+            minWidth:    26,
+            textAlign:   'center',
+            userSelect:  'none',
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = '#eef2fb'}
+          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+        >
+          {sym}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * useSymbolInsert — returns [ref, insertFn].
+ * Attach ref to the <input>; call insertFn(symbol) from a SymbolBar.
+ * Inserts at the current cursor position and restores focus + caret.
+ */
+function useSymbolInsert(value, onChangeFn) {
+  const ref = useRef(null)
+  function insert(sym) {
+    const el  = ref.current
+    const val = value ?? ''
+    if (!el) { onChangeFn(val + sym); return }
+    const start = el.selectionStart ?? val.length
+    const end   = el.selectionEnd   ?? val.length
+    const next  = val.slice(0, start) + sym + val.slice(end)
+    onChangeFn(next)
+    requestAnimationFrame(() => {
+      el.selectionStart = el.selectionEnd = start + sym.length
+      el.focus()
+    })
+  }
+  return [ref, insert]
 }
 
 // ── Shared unit select ────────────────────────────────────────────────────────
