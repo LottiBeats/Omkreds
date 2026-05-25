@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserButton, useUser } from '@clerk/react'
+import { UserButton, useUser, useClerk, SignInButton, SignUpButton } from '@clerk/react'
 import { getProjects, deleteProject } from '../api/client.js'
 import CreateProjectModal from '../components/CreateProjectModal.jsx'
 
@@ -106,29 +106,49 @@ function NavBar({ onNew }) {
         ))}
       </div>
 
-      {/* Right: New Project + Clerk UserButton (avatar + sign-out dropdown) */}
+      {/* Right: auth-aware controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-        {user && (
-          <span style={{ fontFamily: SANS, fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
-            {user.fullName || user.primaryEmailAddress?.emailAddress}
-          </span>
+        {user ? (
+          <>
+            <span style={{ fontFamily: SANS, fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+              {user.fullName || user.primaryEmailAddress?.emailAddress}
+            </span>
+            <button
+              onClick={onNew}
+              style={{
+                background: WHITE, color: DARK, border: 'none',
+                padding: '8px 20px', fontFamily: SANS, fontSize: 13, fontWeight: 700,
+                cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.2s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
+              onMouseLeave={e => e.currentTarget.style.background = WHITE}
+            >
+              New Project
+            </button>
+            <UserButton afterSignOutUrl="/" />
+          </>
+        ) : (
+          <>
+            <SignInButton mode="modal">
+              <button style={{
+                background: 'transparent', color: WHITE, border: '1px solid rgba(255,255,255,0.3)',
+                padding: '8px 20px', fontFamily: SANS, fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', letterSpacing: '0.01em', transition: 'border-color 0.2s',
+              }}>
+                Sign in
+              </button>
+            </SignInButton>
+            <SignUpButton mode="modal">
+              <button style={{
+                background: WHITE, color: DARK, border: 'none',
+                padding: '8px 20px', fontFamily: SANS, fontSize: 13, fontWeight: 700,
+                cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.2s',
+              }}>
+                Get started
+              </button>
+            </SignUpButton>
+          </>
         )}
-        <button
-          onClick={onNew}
-          style={{
-            background: WHITE, color: DARK, border: 'none',
-            padding: '8px 20px', fontFamily: SANS, fontSize: 13, fontWeight: 700,
-            cursor: 'pointer', letterSpacing: '0.01em',
-            transition: 'background 0.2s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
-          onMouseLeave={e => e.currentTarget.style.background = WHITE}
-        >
-          New Project
-        </button>
-        {/* Clerk's UserButton: shows avatar, opens a popover with
-            profile settings, sign-out, etc. */}
-        <UserButton afterSignOutUrl="/sign-in" />
       </div>
     </nav>
   )
@@ -619,7 +639,26 @@ function CtaSection({ onNew }) {
 }
 
 // ── projects dashboard ────────────────────────────────────────────────────────
-function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew }) {
+function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, isSignedIn }) {
+  if (!isSignedIn) return (
+    <section id="projects-section" style={{ background: OFF, borderTop: '1px solid ' + BORDER, padding: '80px 40px' }}>
+      <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+        <h2 style={{ fontFamily: SANS, fontSize: 22, fontWeight: 800, color: TEXT, marginBottom: 12 }}>Your Projects</h2>
+        <p style={{ fontFamily: SANS, fontSize: 14, color: MUTED, marginBottom: 28, lineHeight: 1.7 }}>
+          Sign in to access your structural calculation projects.
+        </p>
+        <SignInButton mode="modal">
+          <button style={{
+            background: NAVY, color: WHITE, border: 'none',
+            padding: '12px 32px', fontFamily: SANS, fontSize: 14, fontWeight: 700,
+            cursor: 'pointer', letterSpacing: '0.02em',
+          }}>
+            Sign in to continue →
+          </button>
+        </SignInButton>
+      </div>
+    </section>
+  )
   return (
     <section id="projects-section" style={{ background: OFF, borderTop: '1px solid ' + BORDER, padding: '64px 40px 96px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -734,13 +773,20 @@ function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew }) 
 
 // ── root ──────────────────────────────────────────────────────────────────────
 export default function ProjectsPage() {
+  const { user, isSignedIn, isLoaded } = useUser()
+  const { openSignIn } = useClerk()
   const [projects,  setProjects]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState(null)
   const [showModal, setShowModal] = useState(false)
   const navigate = useNavigate()
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (!isLoaded) return
+    if (isSignedIn) load()
+    else setLoading(false)
+  }, [isSignedIn, isLoaded])
+
   async function load() {
     try { setLoading(true); setProjects(await getProjects()) }
     catch (e) { setError(e.message) }
@@ -755,7 +801,10 @@ export default function ProjectsPage() {
     catch (e) { setError(e.message) }
   }
 
-  const openModal = () => setShowModal(true)
+  const openModal = () => {
+    if (!isSignedIn) { openSignIn(); return }
+    setShowModal(true)
+  }
 
   return (
     <div style={{ background: WHITE, minHeight: '100vh' }}>
@@ -769,6 +818,7 @@ export default function ProjectsPage() {
         projects={projects} loading={loading} error={error}
         onOpen={(id) => navigate(`/projects/${id}`)}
         onDelete={onDelete} onNew={openModal}
+        isSignedIn={isSignedIn}
       />
       {showModal && (
         <CreateProjectModal onCreated={onCreated} onCancel={() => setShowModal(false)} />

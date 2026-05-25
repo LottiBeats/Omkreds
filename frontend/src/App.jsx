@@ -105,7 +105,7 @@ export default function App() {
       <ClerkTokenBridge />
 
       <Routes>
-        <Route path="/" element={<ProtectedRoute><ProjectsPage /></ProtectedRoute>} />
+        <Route path="/" element={<ProjectsPage />} />
         <Route path="/projects/:id" element={<ProtectedRoute><EditorPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
