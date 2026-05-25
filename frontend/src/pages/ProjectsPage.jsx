@@ -81,13 +81,8 @@ function NavBar({ onNew }) {
       transition:     'background 0.3s',
     }}>
       {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'default' }}>
-        <div style={{ width: 26, height: 26, background: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 11, height: 11, background: WHITE, clipPath: 'polygon(50% 0%,100% 100%,0% 100%)' }} />
-        </div>
-        <span style={{ fontFamily: SANS, fontSize: 14, fontWeight: 700, color: TEXT, letterSpacing: '0.01em' }}>
-          Omkreds
-        </span>
+      <div style={{ display: 'flex', alignItems: 'center', cursor: 'default' }}>
+        <img src="/logo.png" alt="Omkreds" style={{ height: 40, width: 'auto' }} />
       </div>
 
       {/* Links */}

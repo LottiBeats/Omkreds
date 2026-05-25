@@ -276,28 +276,13 @@ const styles = {
     padding:      '0 0 12px',
     borderBottom: '1px solid #e2e8f0',
   },
-  // Logo stripe at top of sidebar (matches landing page)
+  // Logo stripe at top of sidebar
   sidebarBrand: {
     display:    'flex',
     alignItems: 'center',
-    gap:        9,
-    padding:    '14px 16px 10px',
-    background: NAVY,
-  },
-  sidebarLogoBox: {
-    width: 22, height: 22,
+    padding:    '10px 16px',
     background: '#fff',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
-  sidebarLogoMark: {
-    width: 9, height: 9,
-    background: NAVY,
-    clipPath: 'polygon(50% 0%,100% 100%,0% 100%)',
-  },
-  sidebarBrandName: {
-    fontSize: 12, fontWeight: 700, color: '#fff',
-    letterSpacing: '0.01em',
+    borderBottom: '1px solid #e2e8f0',
   },
   backBtn: {
     background:   'none',
@@ -892,10 +877,7 @@ export default function EditorPage() {
         <div style={styles.sidebarHeader}>
           {/* Logo row */}
           <div style={styles.sidebarBrand}>
-            <div style={styles.sidebarLogoBox}>
-              <div style={styles.sidebarLogoMark} />
-            </div>
-            <span style={styles.sidebarBrandName}>Structural Calc</span>
+            <img src="/logo.png" alt="Omkreds" style={{ height: 36, width: 'auto' }} />
           </div>
 
           {/* Back link + project info */}
