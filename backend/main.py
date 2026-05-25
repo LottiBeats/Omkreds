@@ -167,6 +167,30 @@ DOC_DEFS = {
     "B3": "Statisk tilsynsrapport",
 }
 
+VALID_VISIBILITIES = {"personal", "team"}
+
+
+def _clean_visibility(value: str | None) -> str:
+    return value if value in VALID_VISIBILITIES else "team"
+
+
+def _is_visible(item: dict, user: dict) -> bool:
+    return item.get("visibility", "team") == "team" or item.get("owner_id") == user["id"]
+
+
+def _visible_project(project_id: str, user: dict) -> dict:
+    project = _db.load_project(project_id)
+    if not project or not _is_visible(project, user):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+def _visible_template(template_id: str, user: dict) -> dict:
+    template = _db.load_template(template_id)
+    if not template or not _is_visible(template, user):
+        raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
+    return template
+
 
 # â”€â”€ Health check (unprotected) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -195,13 +219,18 @@ def me(user: dict = Depends(get_current_user)):
 # â”€â”€ Projects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @protected.get("/projects", tags=["Projects"])
-def list_projects():
-    """Return all projects from the database."""
-    return _db.load_all_projects()
+def list_projects(user: dict = Depends(get_current_user)):
+    """Return team projects plus the current user's personal projects."""
+    return _db.load_all_projects(user_id=user["id"])
 
 
 @protected.post("/projects", tags=["Projects"])
-def create_project(name: str = "New Project", ref: str = ""):
+def create_project(
+    name: str = "New Project",
+    ref: str = "",
+    visibility: str = "team",
+    user: dict = Depends(get_current_user),
+):
     """
     Create a new empty project.
 
@@ -209,6 +238,9 @@ def create_project(name: str = "New Project", ref: str = ""):
     """
     project = {
         "id": uuid.uuid4().hex[:8],
+        "owner_id": user["id"],
+        "owner_email": user.get("email", ""),
+        "visibility": _clean_visibility(visibility),
         "metadata": {
             "project_name": name,
             "project_ref":  ref,
@@ -225,38 +257,41 @@ def create_project(name: str = "New Project", ref: str = ""):
         },
         "created": str(date.today()),
     }
-    _db.save_project(project, user="")
+    _db.save_project(project, user=user["id"])
     return project
 
 
 @protected.get("/projects/{project_id}", tags=["Projects"])
-def get_project(project_id: str):
-    """Get a single project by its ID."""
-    projects = _db.load_all_projects()
-    for p in projects:
-        if p["id"] == project_id:
-            return p
-    raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+def get_project(project_id: str, user: dict = Depends(get_current_user)):
+    """Get a single visible project by ID."""
+    return _visible_project(project_id, user)
 
 
 @protected.put("/projects/{project_id}", tags=["Projects"])
-def save_project(project_id: str, project: dict):
+def save_project(project_id: str, project: dict, user: dict = Depends(get_current_user)):
     """
     Save (overwrite) a complete project.
 
-    The frontend sends the full project dict after any change â€”
+    The frontend sends the full project dict after any change -
     blocks added/removed, metadata updated, etc.
     """
     if project.get("id") != project_id:
         raise HTTPException(status_code=400, detail="Project ID mismatch")
-    user = project.pop("_user", "")   # optional author field, not stored in the dict
-    _db.save_project(project, user=user)
+
+    existing = _visible_project(project_id, user)
+    project.pop("_user", "")
+    project["owner_id"] = existing.get("owner_id") or user["id"]
+    project["owner_email"] = existing.get("owner_email", project.get("owner_email", ""))
+    project["visibility"] = _clean_visibility(project.get("visibility", existing.get("visibility")))
+
+    _db.save_project(project, user=user["id"])
     return {"status": "saved"}
 
 
 @protected.delete("/projects/{project_id}", tags=["Projects"])
-def delete_project(project_id: str):
-    """Permanently delete a project."""
+def delete_project(project_id: str, user: dict = Depends(get_current_user)):
+    """Permanently delete a visible project."""
+    _visible_project(project_id, user)
     _db.delete_project(project_id)
     return {"status": "deleted"}
 
@@ -264,18 +299,14 @@ def delete_project(project_id: str):
 # â”€â”€ PDF generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @protected.post("/projects/{project_id}/pdf/{doc_id}", tags=["PDF"])
-def generate_pdf(project_id: str, doc_id: str):
+def generate_pdf(project_id: str, doc_id: str, user: dict = Depends(get_current_user)):
     """
     Generate a PDF for one document within a project.
 
     Returns the PDF file as a binary download (application/pdf).
     The frontend triggers a browser download when it receives this response.
     """
-    # Find the project
-    projects = _db.load_all_projects()
-    project = next((p for p in projects if p["id"] == project_id), None)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = _visible_project(project_id, user)
 
     # Find the document
     doc = project["documents"].get(doc_id)
@@ -1499,51 +1530,54 @@ class CalcTemplateInput(BaseModel):
     description: str  = ""
     parameters:  list = []
     code:        str  = ""
-    items:       list = []   # custom-calc items (alternative to code)
+    items:       list = []
+    visibility:  str  = "team"   # 'personal' | 'team'
 
 
 @protected.get("/calc-templates", tags=["Templates"])
-def list_calc_templates():
-    return _db.load_all_templates()
+def list_calc_templates(user: dict = Depends(get_current_user)):
+    return _db.load_all_templates(user_id=user["id"])
 
 
 @protected.post("/calc-templates", tags=["Templates"])
-def create_calc_template(data: CalcTemplateInput):
+def create_calc_template(data: CalcTemplateInput, user: dict = Depends(get_current_user)):
     tid = _db.save_template(
         name=data.name, description=data.description,
         parameters=data.parameters, code=data.code, items=data.items,
+        owner_id=user["id"], visibility=_clean_visibility(data.visibility), user=user["id"],
     )
     return _db.load_template(tid)
 
 
 @protected.get("/calc-templates/{template_id}", tags=["Templates"])
-def get_calc_template(template_id: str):
-    tmpl = _db.load_template(template_id)
-    if not tmpl:
-        raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
-    return tmpl
+def get_calc_template(template_id: str, user: dict = Depends(get_current_user)):
+    return _visible_template(template_id, user)
 
 
 @protected.put("/calc-templates/{template_id}", tags=["Templates"])
-def update_calc_template(template_id: str, data: CalcTemplateInput):
-    tmpl = _db.load_template(template_id)
-    if not tmpl:
-        raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
+def update_calc_template(template_id: str, data: CalcTemplateInput, user: dict = Depends(get_current_user)):
+    _visible_template(template_id, user)
     _db.update_template(
         template_id=template_id, name=data.name, description=data.description,
         parameters=data.parameters, code=data.code, items=data.items,
+        visibility=_clean_visibility(data.visibility),
     )
     return _db.load_template(template_id)
 
 
 @protected.delete("/calc-templates/{template_id}", tags=["Templates"])
-def delete_calc_template(template_id: str):
+def delete_calc_template(template_id: str, user: dict = Depends(get_current_user)):
+    _visible_template(template_id, user)
     _db.delete_template(template_id)
     return {"status": "deleted"}
 
 
 @protected.post("/calc-templates/{template_id}/run", tags=["Templates"])
-def run_calc_template(template_id: str, params: dict = Body(default={})):
+def run_calc_template(
+    template_id: str,
+    params: dict = Body(default={}),
+    user: dict = Depends(get_current_user),
+):
     """
     Execute a user-defined calc template.
 
@@ -1555,9 +1589,7 @@ def run_calc_template(template_id: str, params: dict = Body(default={})):
     """
     import traceback as _tb
 
-    tmpl = _db.load_template(template_id)
-    if not tmpl:
-        raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
+    tmpl = _visible_template(template_id, user)
 
     # â”€â”€ Items mode (saved from Custom Calc "Save as module") â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     items = tmpl.get("items") or []

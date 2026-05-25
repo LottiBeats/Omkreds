@@ -542,11 +542,22 @@ function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, is
                   <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: TEXT, flex: 1, marginRight: 8, lineHeight: 1.3 }}>
                     {project.metadata.project_name || 'Untitled project'}
                   </div>
-                  {project.metadata.revision && (
-                    <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: MUTED, background: OFF, padding: '2px 6px', border: '1px solid ' + BORDER, whiteSpace: 'nowrap' }}>
-                      Rev {project.metadata.revision}
-                    </span>
-                  )}
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                    {project.visibility === 'personal' && (
+                      <span title="Personal — only visible to you" style={{
+                        fontFamily: SANS, fontSize: 10, fontWeight: 700, color: '#4b5563',
+                        background: '#f3f4f6', border: '1px solid #d1d5db',
+                        padding: '2px 6px', whiteSpace: 'nowrap',
+                      }}>
+                        Personal
+                      </span>
+                    )}
+                    {project.metadata.revision && (
+                      <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: MUTED, background: OFF, padding: '2px 6px', border: '1px solid ' + BORDER, whiteSpace: 'nowrap' }}>
+                        Rev {project.metadata.revision}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div style={{ fontFamily: SANS, fontSize: 12, color: MUTED, marginBottom: 12 }}>
                   {project.metadata.project_ref || '—'}

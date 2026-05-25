@@ -20,10 +20,11 @@ import React, { useState, useEffect, useRef } from 'react'
 import { createProject } from '../api/client.js'
 
 export default function CreateProjectModal({ onCreated, onCancel }) {
-  const [name,    setName]    = useState('')
-  const [ref,     setRef]     = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState(null)
+  const [name,       setName]       = useState('')
+  const [ref,        setRef]        = useState('')
+  const [visibility, setVisibility] = useState('team')
+  const [loading,    setLoading]    = useState(false)
+  const [error,      setError]      = useState(null)
 
   // Auto-focus the first field when the modal opens
   const firstInputRef = useRef(null)
@@ -47,7 +48,7 @@ export default function CreateProjectModal({ onCreated, onCancel }) {
     setLoading(true)
     setError(null)
     try {
-      const project = await createProject(name.trim(), ref.trim())
+      const project = await createProject(name.trim(), ref.trim(), visibility)
       onCreated(project)
     } catch (err) {
       setError(err.message)
@@ -64,7 +65,7 @@ export default function CreateProjectModal({ onCreated, onCancel }) {
 
         <div style={styles.header}>
           <div style={styles.title}>New Project</div>
-          <button style={styles.closeBtn} onClick={onCancel}>✕</button>
+          <button style={styles.closeBtn} onClick={onCancel}>x</button>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -99,6 +100,18 @@ export default function CreateProjectModal({ onCreated, onCancel }) {
               />
             </div>
 
+            <div style={styles.field}>
+              <label style={styles.label}>Visibility</label>
+              <select
+                value={visibility}
+                onChange={e => setVisibility(e.target.value)}
+                style={styles.input}
+              >
+                <option value="team">Team - visible to signed-in users</option>
+                <option value="personal">Personal - only visible to you</option>
+              </select>
+            </div>
+
           </div>
 
           {error && <div style={styles.error}>{error}</div>}
@@ -120,7 +133,7 @@ export default function CreateProjectModal({ onCreated, onCancel }) {
               }}
               disabled={loading || !name.trim()}
             >
-              {loading ? 'Creating…' : 'Create project'}
+              {loading ? 'Creating...' : 'Create project'}
             </button>
           </div>
         </form>

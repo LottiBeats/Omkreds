@@ -77,8 +77,10 @@ export const getProjects = () =>
   request('GET', '/projects')
 
 /** Create a new empty project. Returns the created project. */
-export const createProject = (name, ref = '') =>
-  request('POST', `/projects?name=${encodeURIComponent(name)}&ref=${encodeURIComponent(ref)}`)
+export function createProject(name, ref = '', visibility = 'team') {
+  const params = new URLSearchParams({ name, ref, visibility })
+  return request('POST', `/projects?${params}`)
+}
 
 /** Fetch one project by ID. */
 export const getProject = (projectId) =>

@@ -51,14 +51,18 @@ def init_db(path: Path | None = None) -> None:
                 created_at  TEXT NOT NULL
             )
         """)
-        # Add template columns to existing databases (idempotent)
-        for col_def in [
-            "parameters TEXT DEFAULT '[]'",
-            "code       TEXT DEFAULT ''",
-            "items      TEXT DEFAULT '[]'",
+        # Add columns to existing databases (idempotent migrations).
+        for table, col_def in [
+            ("calc_library", "parameters TEXT DEFAULT '[]'"),
+            ("calc_library", "code       TEXT DEFAULT ''"),
+            ("calc_library", "items      TEXT DEFAULT '[]'"),
+            ("projects",     "owner_id   TEXT DEFAULT ''"),
+            ("projects",     "visibility TEXT DEFAULT 'team'"),
+            ("calc_library", "owner_id   TEXT DEFAULT ''"),
+            ("calc_library", "visibility TEXT DEFAULT 'team'"),
         ]:
             try:
-                conn.execute(f"ALTER TABLE calc_library ADD COLUMN {col_def}")
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
             except sqlite3.OperationalError:
                 pass   # column already exists
         conn.commit()
@@ -66,14 +70,22 @@ def init_db(path: Path | None = None) -> None:
 
 # -- Projects: read -----------------------------------------------------------
 
-def load_all_projects(path: Path | None = None) -> list[dict]:
-    """Return all projects, newest first."""
+def load_all_projects(user_id: str = "", path: Path | None = None) -> list[dict]:
+    """Return projects visible to user_id, newest first."""
     p = str(path or DB_PATH)
     init_db(path)
     with sqlite3.connect(p) as conn:
-        rows = conn.execute(
-            "SELECT data FROM projects ORDER BY updated_at DESC"
-        ).fetchall()
+        if user_id:
+            rows = conn.execute(
+                "SELECT data FROM projects "
+                "WHERE owner_id = ? OR visibility = 'team' "
+                "ORDER BY updated_at DESC",
+                (user_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT data FROM projects ORDER BY updated_at DESC"
+            ).fetchall()
     projects = []
     for (data_str,) in rows:
         try:
@@ -107,16 +119,20 @@ def save_project(project: dict, user: str = "", path: Path | None = None) -> Non
     project["_updated_at"] = now
     project["_updated_by"] = user
     data_str = json.dumps(project, ensure_ascii=False)
+    owner_id   = project.get("owner_id",   "")
+    visibility = project.get("visibility", "team")
     with _lock:
         with sqlite3.connect(p) as conn:
             conn.execute("""
-                INSERT INTO projects (id, data, updated_at, updated_by)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO projects (id, data, updated_at, updated_by, owner_id, visibility)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     data       = excluded.data,
                     updated_at = excluded.updated_at,
-                    updated_by = excluded.updated_by
-            """, (project["id"], data_str, now, user))
+                    updated_by = excluded.updated_by,
+                    owner_id   = excluded.owner_id,
+                    visibility = excluded.visibility
+            """, (project["id"], data_str, now, user, owner_id, visibility))
             conn.commit()
 
 
@@ -136,10 +152,12 @@ def load_template(template_id: str, path: Path | None = None) -> dict | None:
     p = str(path or DB_PATH)
     init_db(path)
     with sqlite3.connect(p) as conn:
-        row = conn.execute(
-            "SELECT id, name, description, blocks, parameters, code, created_by, created_at, items "
-            "FROM calc_library WHERE id = ?", (template_id,)
-        ).fetchone()
+        row = conn.execute("""
+            SELECT id, name, description, blocks, parameters, code, created_by,
+                   created_at, items, owner_id, visibility
+            FROM calc_library
+            WHERE id = ?
+        """, (template_id,)).fetchone()
     if not row:
         return None
     try:
@@ -153,20 +171,32 @@ def load_template(template_id: str, path: Path | None = None) -> dict | None:
             "created_by":  row[6],
             "created_at":  row[7],
             "items":       json.loads(row[8] or "[]"),
+            "owner_id":    row[9] or "",
+            "visibility":  row[10] or "team",
         }
     except Exception:
         return None
 
 
-def load_all_templates(path: Path | None = None) -> list[dict]:
-    """Return all saved calc templates, newest first."""
+def load_all_templates(user_id: str = "", path: Path | None = None) -> list[dict]:
+    """Return calc templates visible to user_id (own + team), newest first."""
     p = str(path or DB_PATH)
     init_db(path)
     with sqlite3.connect(p) as conn:
-        rows = conn.execute("""
-            SELECT id, name, description, blocks, parameters, code, created_by, created_at, items
-            FROM calc_library ORDER BY created_at DESC
-        """).fetchall()
+        if user_id:
+            rows = conn.execute("""
+                SELECT id, name, description, blocks, parameters, code, created_by,
+                       created_at, items, owner_id, visibility
+                FROM calc_library
+                WHERE owner_id = ? OR visibility = 'team'
+                ORDER BY created_at DESC
+            """, (user_id,)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT id, name, description, blocks, parameters, code, created_by,
+                       created_at, items, owner_id, visibility
+                FROM calc_library ORDER BY created_at DESC
+            """).fetchall()
     templates = []
     for row in rows:
         try:
@@ -180,6 +210,8 @@ def load_all_templates(path: Path | None = None) -> list[dict]:
                 "created_by":  row[6],
                 "created_at":  row[7],
                 "items":       json.loads(row[8] or "[]"),
+                "owner_id":    row[9] or "",
+                "visibility":  row[10] or "team",
             })
         except Exception:
             pass
@@ -195,6 +227,8 @@ def save_template(
     parameters: list | None = None,
     code: str = "",
     items: list | None = None,
+    owner_id: str = "",
+    visibility: str = "team",
     user: str = "",
     path: Path | None = None,
 ) -> str:
@@ -208,8 +242,8 @@ def save_template(
         with sqlite3.connect(p) as conn:
             conn.execute("""
                 INSERT INTO calc_library
-                    (id, name, description, blocks, parameters, code, created_by, created_at, items)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, name, description, blocks, parameters, code, created_by, created_at, items, owner_id, visibility)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 tid, name, description,
                 json.dumps(blocks or [], ensure_ascii=False),
@@ -217,6 +251,7 @@ def save_template(
                 code or "",
                 user, now,
                 json.dumps(items or [], ensure_ascii=False),
+                owner_id, visibility,
             ))
             conn.commit()
     return tid
@@ -229,7 +264,7 @@ def update_template(
     parameters: list | None = None,
     code: str = "",
     items: list | None = None,
-    user: str = "",
+    visibility: str = "team",
     path: Path | None = None,
 ) -> None:
     """Update an existing calc template."""
@@ -238,13 +273,14 @@ def update_template(
         with sqlite3.connect(p) as conn:
             conn.execute("""
                 UPDATE calc_library
-                SET name=?, description=?, parameters=?, code=?, items=?
+                SET name=?, description=?, parameters=?, code=?, items=?, visibility=?
                 WHERE id=?
             """, (
                 name, description,
                 json.dumps(parameters or [], ensure_ascii=False),
                 code or "",
                 json.dumps(items or [], ensure_ascii=False),
+                visibility,
                 template_id,
             ))
             conn.commit()
