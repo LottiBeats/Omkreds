@@ -312,6 +312,60 @@ const styles = {
     margin:     '0 0 16px',
     borderLeft: '3px solid #dc2626',
   },
+
+  // ── PDF preview modal ───────────────────────────────────────────────────────
+  pdfOverlay: {
+    position:       'fixed',
+    inset:          0,
+    background:     'rgba(0,0,0,0.6)',
+    zIndex:         2000,
+    display:        'flex',
+    alignItems:     'center',
+    justifyContent: 'center',
+  },
+  pdfModal: {
+    width:          '90vw',
+    height:         '92vh',
+    background:     '#fff',
+    display:        'flex',
+    flexDirection:  'column',
+    boxShadow:      '0 24px 80px rgba(0,0,0,0.35)',
+    overflow:       'hidden',
+  },
+  pdfModalHeader: {
+    display:        'flex',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    padding:        '10px 16px',
+    borderBottom:   '1px solid #e8e8e8',
+    background:     '#fafafa',
+    flexShrink:     0,
+  },
+  pdfIframe: {
+    flex:           1,
+    border:         'none',
+    width:          '100%',
+  },
+  pdfDownloadBtn: {
+    background:     NAVY,
+    color:          '#fff',
+    border:         'none',
+    padding:        '6px 14px',
+    fontSize:       11,
+    fontWeight:     700,
+    cursor:         'pointer',
+    fontFamily:     'inherit',
+    letterSpacing:  '0.05em',
+  },
+  pdfCloseBtn: {
+    background:     'none',
+    border:         '1px solid #ddd',
+    padding:        '5px 10px',
+    fontSize:       14,
+    cursor:         'pointer',
+    color:          '#666',
+    fontFamily:     'inherit',
+  },
 }
 
 export default function EditorPage() {
@@ -330,6 +384,8 @@ export default function EditorPage() {
   const [clipboard,       setClipboard]       = useState(null)   // copied block
   const [canUndo,         setCanUndo]         = useState(false)
   const [canRedo,         setCanRedo]         = useState(false)
+  const [pdfPreviewUrl,   setPdfPreviewUrl]   = useState(null)   // blob URL for preview modal
+  const [pdfGenerating,   setPdfGenerating]   = useState(false)  // shared spinner for both buttons
   const undoStack = useRef([])   // past block arrays
   const redoStack = useRef([])   // future block arrays
   const tplRef = useRef(null)
@@ -483,6 +539,7 @@ export default function EditorPage() {
 
   async function handleGeneratePdf() {
     if (!activeDoc) return
+    setPdfGenerating(true)
     try {
       const blob     = await generatePdf(projectId, activeDoc)
       const url      = URL.createObjectURL(blob)
@@ -493,7 +550,29 @@ export default function EditorPage() {
       URL.revokeObjectURL(url)
     } catch (err) {
       setError(`PDF generation failed: ${err.message}`)
+    } finally {
+      setPdfGenerating(false)
     }
+  }
+
+  async function handlePreviewPdf() {
+    if (!activeDoc) return
+    setPdfGenerating(true)
+    try {
+      const blob = await generatePdf(projectId, activeDoc)
+      // Revoke any previous preview URL to free memory
+      if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl)
+      setPdfPreviewUrl(URL.createObjectURL(blob))
+    } catch (err) {
+      setError(`PDF preview failed: ${err.message}`)
+    } finally {
+      setPdfGenerating(false)
+    }
+  }
+
+  function handleClosePdfPreview() {
+    if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl)
+    setPdfPreviewUrl(null)
   }
 
   function handleApplyTemplate(tpl) {
@@ -656,14 +735,27 @@ export default function EditorPage() {
           )}
 
           {activeDoc && (
-            <button
-              style={styles.pdfBtn}
-              onClick={handleGeneratePdf}
-              onMouseEnter={e => e.currentTarget.style.background = NAVY_LT}
-              onMouseLeave={e => e.currentTarget.style.background = NAVY}
-            >
-              ↓ Export PDF
-            </button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                style={{ ...styles.pdfBtn, background: '#4a5568' }}
+                onClick={handlePreviewPdf}
+                disabled={pdfGenerating}
+                onMouseEnter={e => { if (!pdfGenerating) e.currentTarget.style.background = '#2d3748' }}
+                onMouseLeave={e => { if (!pdfGenerating) e.currentTarget.style.background = '#4a5568' }}
+                title="Preview PDF in browser"
+              >
+                {pdfGenerating ? '⏳' : '👁 Preview'}
+              </button>
+              <button
+                style={{ ...styles.pdfBtn, opacity: pdfGenerating ? 0.6 : 1 }}
+                onClick={handleGeneratePdf}
+                disabled={pdfGenerating}
+                onMouseEnter={e => { if (!pdfGenerating) e.currentTarget.style.background = NAVY_LT }}
+                onMouseLeave={e => { if (!pdfGenerating) e.currentTarget.style.background = NAVY }}
+              >
+                ↓ Export PDF
+              </button>
+            </div>
           )}
         </div>
 
@@ -702,6 +794,35 @@ export default function EditorPage() {
         onClose={() => { setTmplEditorOpen(false); setTmplEditorInitId(null) }}
         onTemplatesChanged={loadTemplates}
       />
+    )}
+
+    {/* ── PDF preview modal ── */}
+    {pdfPreviewUrl && (
+      <div style={styles.pdfOverlay} onClick={e => e.target === e.currentTarget && handleClosePdfPreview()}>
+        <div style={styles.pdfModal}>
+          {/* Header */}
+          <div style={styles.pdfModalHeader}>
+            <span style={{ fontWeight: 700, fontSize: 13 }}>
+              PDF Preview — {activeDoc}
+            </span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                style={styles.pdfDownloadBtn}
+                onClick={handleGeneratePdf}
+              >
+                ↓ Download
+              </button>
+              <button style={styles.pdfCloseBtn} onClick={handleClosePdfPreview}>✕</button>
+            </div>
+          </div>
+          {/* PDF iframe — browsers render PDFs natively */}
+          <iframe
+            src={pdfPreviewUrl}
+            style={styles.pdfIframe}
+            title="PDF Preview"
+          />
+        </div>
+      </div>
     )}
     </>
   )
