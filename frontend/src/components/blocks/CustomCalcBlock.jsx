@@ -87,9 +87,12 @@ const DEFAULT_ITEM = {
   check:   { type: 'check',   label: 'Check', demand: '', capacity: '1.0', unit: 'kN' },
 }
 
+// ── Exports for use in TemplateEditorModal ────────────────────────────────────
+export { UNIT_OPTIONS, TYPE_BADGE, DEFAULT_ITEM, ItemRow, SymbolBar, useSymbolInsert, UnitSelect }
+
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function CustomCalcBlock({ block, onChange }) {
+export default function CustomCalcBlock({ block, onChange, hideModuleActions }) {
   const d = block.data
   const [running,      setRunning]      = useState(false)
   const [error,        setError]        = useState('')

@@ -16,6 +16,7 @@ import {
   deleteCalcTemplate, runCalcTemplate,
 } from '../api/client.js'
 import CalcResultView from './CalcResultView.jsx'
+import { DEFAULT_ITEM, ItemRow } from './blocks/CustomCalcBlock.jsx'
 
 // ── Starter code shown for new templates ─────────────────────────────────────
 const STARTER_CODE = `# Available: S, T, N, CALC_ROW, MH, CheckContext, math, np
@@ -92,6 +93,9 @@ export default function TemplateEditorModal({ initialTemplateId, onClose, onTemp
     setDirty(true)
   }
 
+  // Items-based detection — templates saved from CustomCalcBlock have an items array
+  const isItemsBased = Array.isArray(selected?.items)
+
   // ── Parameters ─────────────────────────────────────────────────────────────
 
   function addParam() {
@@ -110,6 +114,33 @@ export default function TemplateEditorModal({ initialTemplateId, onClose, onTemp
     update({ parameters: p })
   }
 
+  // ── Items (visual editor mode) ──────────────────────────────────────────────
+
+  function addItem(type) {
+    const next = [...(selected.items || []), { ...DEFAULT_ITEM[type] }]
+    update({ items: next })
+  }
+
+  function removeItemAt(i) {
+    const next = [...(selected.items || [])]
+    next.splice(i, 1)
+    update({ items: next })
+  }
+
+  function moveItemAt(i, dir) {
+    const next = [...(selected.items || [])]
+    const j = i + dir
+    if (j < 0 || j >= next.length) return
+    ;[next[i], next[j]] = [next[j], next[i]]
+    update({ items: next })
+  }
+
+  function updateItemAt(i, changes) {
+    const next = [...(selected.items || [])]
+    next[i] = { ...next[i], ...changes }
+    update({ items: next })
+  }
+
   // ── Save ───────────────────────────────────────────────────────────────────
 
   async function handleSave() {
@@ -119,11 +150,25 @@ export default function TemplateEditorModal({ initialTemplateId, onClose, onTemp
     }
     setSaving(true)
     try {
+      // For items-based templates, auto-derive parameters from variable items
+      const parameters = isItemsBased
+        ? (selected.items || [])
+            .filter(it => it.type === 'var' && it.name?.trim())
+            .map(it => ({
+              name:    it.name,
+              label:   it.description || it.name,
+              unit:    it.unit ?? '-',
+              type:    'number',
+              default: it.value ?? 0,
+            }))
+        : (selected.parameters || []).filter(p => p.name.trim())
+
       const payload = {
         name:        selected.name.trim(),
         description: selected.description,
-        parameters:  selected.parameters.filter(p => p.name.trim()),
-        code:        selected.code,
+        parameters,
+        code:        isItemsBased ? '' : (selected.code || ''),
+        items:       isItemsBased ? (selected.items || []) : [],
       }
       let saved
       if (selected.id) {
@@ -164,11 +209,19 @@ export default function TemplateEditorModal({ initialTemplateId, onClose, onTemp
     setTestResult(null)
     setTestError(null)
 
-    // Build params from defaults
+    // Build params from defaults (or from var items for items-based templates)
     const testParams = {}
-    for (const p of (selected.parameters || [])) {
-      if (!p.name) continue
-      testParams[p.name] = p.type === 'number' ? (parseFloat(p.default) || 0) : (p.default || '')
+    if (isItemsBased) {
+      for (const it of (selected.items || [])) {
+        if (it.type === 'var' && it.name?.trim()) {
+          testParams[it.name] = it.value ?? 0
+        }
+      }
+    } else {
+      for (const p of (selected.parameters || [])) {
+        if (!p.name) continue
+        testParams[p.name] = p.type === 'number' ? (parseFloat(p.default) || 0) : (p.default || '')
+      }
     }
 
     try {
@@ -265,90 +318,137 @@ export default function TemplateEditorModal({ initialTemplateId, onClose, onTemp
                 </div>
               </div>
 
-              {/* Parameters */}
-              <div style={s.paramSection}>
-                <div style={s.sectionHead}>
-                  Parameters
-                  <span style={s.sectionHint}> — these become the input fields in the document</span>
+              {/* ── Items-based (visual) editor ── */}
+              {isItemsBased ? (
+                <div style={s.paramSection}>
+                  <div style={s.sectionHead}>
+                    Calculation items
+                    <span style={s.sectionHint}> — variables, formulas and checks (input fields are derived from variables)</span>
+                  </div>
+
+                  {(selected.items || []).length === 0 && (
+                    <div style={{ color: '#bbb', fontSize: 12, padding: '10px 0' }}>
+                      No items yet — use the buttons below to add variables, formulas and checks.
+                    </div>
+                  )}
+
+                  {(selected.items || []).map((item, i) => (
+                    <ItemRow
+                      key={i}
+                      item={item}
+                      index={i}
+                      total={(selected.items || []).length}
+                      onChange={ch => updateItemAt(i, ch)}
+                      onMoveUp={()  => moveItemAt(i, -1)}
+                      onMoveDown={() => moveItemAt(i, +1)}
+                      onDelete={()  => removeItemAt(i)}
+                    />
+                  ))}
+
+                  {/* Add-item buttons */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: '#888', alignSelf: 'center' }}>Add:</span>
+                    {[
+                      ['heading', '+ Heading'],
+                      ['var',     '+ Variable'],
+                      ['formula', '+ Formula'],
+                      ['check',   '+ Check'],
+                      ['text',    '+ Text'],
+                    ].map(([type, label]) => (
+                      <button key={type} style={s.addParamBtn} onClick={() => addItem(type)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-
-                {(selected.parameters || []).map((p, i) => (
-                  <div key={i} style={s.paramCard}>
-                    <div style={s.paramGrid}>
-
-                      <div style={s.paramField}>
-                        <label style={s.paramLabel}>Name (Python)</label>
-                        <input style={s.paramInput} value={p.name}
-                          placeholder="span_m"
-                          onChange={e => updateParam(i, 'name', e.target.value)} />
-                      </div>
-
-                      <div style={s.paramField}>
-                        <label style={s.paramLabel}>Label</label>
-                        <input style={s.paramInput} value={p.label}
-                          placeholder="Span"
-                          onChange={e => updateParam(i, 'label', e.target.value)} />
-                      </div>
-
-                      <div style={s.paramField}>
-                        <label style={s.paramLabel}>Unit</label>
-                        <input style={s.paramInput} value={p.unit}
-                          placeholder="m"
-                          onChange={e => updateParam(i, 'unit', e.target.value)} />
-                      </div>
-
-                      <div style={s.paramField}>
-                        <label style={s.paramLabel}>Type</label>
-                        <select style={s.paramInput} value={p.type}
-                          onChange={e => updateParam(i, 'type', e.target.value)}>
-                          <option value="number">number</option>
-                          <option value="select">select</option>
-                        </select>
-                      </div>
-
-                      <div style={s.paramField}>
-                        <label style={s.paramLabel}>
-                          {p.type === 'select' ? 'Options (comma-sep.)' : 'Default'}
-                        </label>
-                        {p.type === 'select' ? (
-                          <input style={s.paramInput} value={p.default}
-                            placeholder="S235,S275,S355"
-                            onChange={e => updateParam(i, 'default', e.target.value)} />
-                        ) : (
-                          <input style={s.paramInput} type="number" step="any"
-                            value={p.default}
-                            onChange={e => updateParam(i, 'default', parseFloat(e.target.value) || 0)} />
-                        )}
-                      </div>
-
+              ) : (
+                <>
+                  {/* Parameters — only shown for Python-code templates */}
+                  <div style={s.paramSection}>
+                    <div style={s.sectionHead}>
+                      Parameters
+                      <span style={s.sectionHint}> — these become the input fields in the document</span>
                     </div>
 
-                    <button style={s.removeBtn} onClick={() => removeParam(i)} title="Remove parameter">✕</button>
+                    {(selected.parameters || []).map((p, i) => (
+                      <div key={i} style={s.paramCard}>
+                        <div style={s.paramGrid}>
+
+                          <div style={s.paramField}>
+                            <label style={s.paramLabel}>Name (Python)</label>
+                            <input style={s.paramInput} value={p.name}
+                              placeholder="span_m"
+                              onChange={e => updateParam(i, 'name', e.target.value)} />
+                          </div>
+
+                          <div style={s.paramField}>
+                            <label style={s.paramLabel}>Label</label>
+                            <input style={s.paramInput} value={p.label}
+                              placeholder="Span"
+                              onChange={e => updateParam(i, 'label', e.target.value)} />
+                          </div>
+
+                          <div style={s.paramField}>
+                            <label style={s.paramLabel}>Unit</label>
+                            <input style={s.paramInput} value={p.unit}
+                              placeholder="m"
+                              onChange={e => updateParam(i, 'unit', e.target.value)} />
+                          </div>
+
+                          <div style={s.paramField}>
+                            <label style={s.paramLabel}>Type</label>
+                            <select style={s.paramInput} value={p.type}
+                              onChange={e => updateParam(i, 'type', e.target.value)}>
+                              <option value="number">number</option>
+                              <option value="select">select</option>
+                            </select>
+                          </div>
+
+                          <div style={s.paramField}>
+                            <label style={s.paramLabel}>
+                              {p.type === 'select' ? 'Options (comma-sep.)' : 'Default'}
+                            </label>
+                            {p.type === 'select' ? (
+                              <input style={s.paramInput} value={p.default}
+                                placeholder="S235,S275,S355"
+                                onChange={e => updateParam(i, 'default', e.target.value)} />
+                            ) : (
+                              <input style={s.paramInput} type="number" step="any"
+                                value={p.default}
+                                onChange={e => updateParam(i, 'default', parseFloat(e.target.value) || 0)} />
+                            )}
+                          </div>
+
+                        </div>
+
+                        <button style={s.removeBtn} onClick={() => removeParam(i)} title="Remove parameter">✕</button>
+                      </div>
+                    ))}
+
+                    <button style={s.addParamBtn} onClick={addParam}>+ Add parameter</button>
                   </div>
-                ))}
 
-                <button style={s.addParamBtn} onClick={addParam}>+ Add parameter</button>
-              </div>
-
-              {/* Code editor */}
-              <div style={s.codeSection}>
-                <div style={s.sectionHead}>
-                  Python code
-                  <span style={s.sectionHint}> — must set <code>blocks = [...]</code></span>
-                </div>
-                <div style={s.codeHint}>
-                  Available: <code>S</code>, <code>T</code>, <code>N</code>, <code>CALC_ROW</code>,{' '}
-                  <code>MH</code>, <code>CheckContext</code>, <code>math</code>, <code>np</code>
-                  {' — '}parameters injected as local variables ({(selected.parameters || []).filter(p => p.name).map(p => p.name).join(', ') || 'none yet'})
-                </div>
-                <textarea
-                  style={s.code}
-                  value={selected.code}
-                  onChange={e => update({ code: e.target.value })}
-                  spellCheck={false}
-                  rows={16}
-                />
-              </div>
+                  {/* Code editor — only shown for Python-code templates */}
+                  <div style={s.codeSection}>
+                    <div style={s.sectionHead}>
+                      Python code
+                      <span style={s.sectionHint}> — must set <code>blocks = [...]</code></span>
+                    </div>
+                    <div style={s.codeHint}>
+                      Available: <code>S</code>, <code>T</code>, <code>N</code>, <code>CALC_ROW</code>,{' '}
+                      <code>MH</code>, <code>CheckContext</code>, <code>math</code>, <code>np</code>
+                      {' — '}parameters injected as local variables ({(selected.parameters || []).filter(p => p.name).map(p => p.name).join(', ') || 'none yet'})
+                    </div>
+                    <textarea
+                      style={s.code}
+                      value={selected.code || ''}
+                      onChange={e => update({ code: e.target.value })}
+                      spellCheck={false}
+                      rows={16}
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Action bar */}
               <div style={s.actions}>
