@@ -368,6 +368,7 @@ class SteelBeamInput(BaseModel):
     gamma_M0:           float = 1.0
     gamma_M1:           float = 1.0
     ltb_restrained:     bool  = False
+    ltb_length_m:       float | None = None  # effective LTB length → enables cl. 6.3.2.2 check
     buck_y_restrained:  bool  = False
     buck_x_restrained:  bool  = False
 
@@ -401,7 +402,7 @@ def calc_steel_beam(data: SteelBeamInput):
         t_f   = sec["tf_mm"]     * 1e-3 * m
         Iy    = sec["Iy_cm4"]    * 1e-8 * m**4  # cmâ´ â†’ mâ´  (needed for W_el in Class 3)
 
-        blocks = steel_beam_ipe(
+        kwargs_sb: dict = dict(
             label         = data.label,
             section       = data.section,
             span          = data.span_m   * m,
@@ -420,6 +421,9 @@ def calc_steel_beam(data: SteelBeamInput):
             buck_y_restrained  = data.buck_y_restrained,
             buck_x_restrained  = data.buck_x_restrained,
         )
+        if data.ltb_length_m is not None and not data.ltb_restrained:
+            kwargs_sb["l_cr_ltb"] = data.ltb_length_m * m
+        blocks = steel_beam_ipe(**kwargs_sb)
         return blocks
 
     except HTTPException:
@@ -491,6 +495,7 @@ class TimberBeamInput(BaseModel):
     gamma_M:        float = 1.3
     compression_edge_restrained:     bool = True
     torsional_restraint_at_supports: bool = True
+    support_length_mm: float | None = None   # bearing length at each support → enables ⊥ grain check
 
 
 @protected.post("/calc/timber-beam", tags=["Calculations"])
@@ -499,7 +504,7 @@ def calc_timber_beam(data: TimberBeamInput):
     try:
         from timber import timber_beam
 
-        blocks = timber_beam(
+        kwargs_tb: dict = dict(
             label         = data.label,
             span          = data.span_m  * m,
             g_k           = data.g_k_kNm * kN / m,
@@ -513,6 +518,9 @@ def calc_timber_beam(data: TimberBeamInput):
             compression_edge_restrained     = data.compression_edge_restrained,
             torsional_restraint_at_supports = data.torsional_restraint_at_supports,
         )
+        if data.support_length_mm is not None:
+            kwargs_tb["support_length"] = data.support_length_mm * mm
+        blocks = timber_beam(**kwargs_tb)
         return blocks
 
     except HTTPException:
@@ -1036,15 +1044,20 @@ def calc_steel_column(data: SteelColumnInput):
         tf_mm = sec["tf_mm"]
         tw_mm = sec["tw_mm"]
 
-        # Compute area and Iz from geometry (not stored in catalog)
+        # Compute section properties from geometry (fillet radius not in catalog).
+        # Iy is taken from the catalog (includes fillets); A and Iz are derived
+        # from idealised rectangular elements — slightly conservative.
         tf_cm = tf_mm / 10.0
         b_cm  = b_mm  / 10.0
         tw_cm = tw_mm / 10.0
         hw_cm = (h_mm - 2 * tf_mm) / 10.0
+        h_cm  = h_mm / 10.0
 
-        A_cm2  = 2 * b_cm * tf_cm + hw_cm * tw_cm
-        Iy_cm4 = sec["Iy_cm4"]
-        Iz_cm4 = 2 * (tf_cm * b_cm**3 / 12.0) + hw_cm * (tw_cm**3 / 12.0)
+        A_cm2  = 2 * b_cm * tf_cm + hw_cm * tw_cm           # flanges + web
+        Iy_cm4 = sec["Iy_cm4"]                               # from catalog (with fillets)
+        # I_z: two flanges + web
+        Iz_cm4 = (2 * tf_cm * b_cm**3 / 12.0               # flanges (b³×t_f / 6 total)
+                  + hw_cm * tw_cm**3 / 12.0)                 # web
 
         blocks = steel_column_check(
             label     = data.label,

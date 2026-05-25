@@ -49,7 +49,8 @@ export default function SteelBeamBlock({ block, onChange }) {
         q_k_kNm:  d.q_k_kNm  ?? 3.0,
         gamma_M0:  d.gamma_M0 ?? 1.0,
         gamma_M1:  d.gamma_M1 ?? 1.0,
-        ltb_restrained:   d.ltb_restrained   ?? false,
+        ltb_restrained:    d.ltb_restrained   ?? false,
+        ltb_length_m:      d.ltb_length_m     ?? null,
         buck_y_restrained: d.buck_y_restrained ?? false,
         buck_x_restrained: d.buck_x_restrained ?? false,
       })
@@ -108,9 +109,16 @@ export default function SteelBeamBlock({ block, onChange }) {
           value={d.gamma_M1 ?? 1.0} onChange={e => numVal('gamma_M1', e)} />
       </Field>
       {/* Restraint checkboxes span 2 columns each */}
-      <Field label="LTB restrained" hint="compression flange">
+      <Field label="LTB restrained" hint="compression flange continuously restrained">
         <input type="checkbox" checked={d.ltb_restrained ?? false}
           onChange={e => update({ ltb_restrained: e.target.checked })} />
+      </Field>
+      <Field label="LTB length (m)" hint="Between lateral restraints — runs cl. 6.3.2.2 check">
+        <input style={s.input} type="number" step="0.5" min="0"
+          placeholder="leave blank or tick Restrained"
+          value={d.ltb_length_m ?? ''}
+          disabled={d.ltb_restrained ?? false}
+          onChange={e => update({ ltb_length_m: e.target.value ? parseFloat(e.target.value) : null })} />
       </Field>
       <Field label="y-axis restrained">
         <input type="checkbox" checked={d.buck_y_restrained ?? false}

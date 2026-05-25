@@ -182,10 +182,11 @@ def timber_beam(
         ))
     else:
         if l_ef is None:
-            l_ef = span + 0.2 * h
+            l_ef = 0.9 * span + 2 * h
             blocks.append(N(
                 "No effective buckling length provided. "
-                "Using l_ef = L + 0.2h for a simply supported rectangular beam."
+                "Using l_ef = 0.9·L + 2h for a simply supported beam under UDL "
+                "(EN 1995-1-1 Table 6.1)."
             ))
         else:
             blocks.append(N(f"Effective buckling length: l_ef = {l_ef}."))

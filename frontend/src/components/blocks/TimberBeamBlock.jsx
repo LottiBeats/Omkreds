@@ -48,6 +48,7 @@ export default function TimberBeamBlock({ block, onChange }) {
         gamma_M:        d.gamma_M       ?? 1.3,
         compression_edge_restrained:     d.compression_edge_restrained ?? true,
         torsional_restraint_at_supports: d.torsional_restraint_at_supports ?? true,
+        support_length_mm: d.support_length_mm ?? null,
       })
       update({ _result: blocks })
     } catch (err) {
@@ -117,7 +118,7 @@ export default function TimberBeamBlock({ block, onChange }) {
         <input style={s} type="number" step="0.05" min="1"
           value={d.gamma_M ?? 1.3} onChange={e => num('gamma_M', e)} />
       </Field>
-      <Field label="Comp. edge restrained" hint="prevents kipning">
+      <Field label="Comp. edge restrained" hint="prevents LTB / kipning">
         <input type="checkbox"
           checked={d.compression_edge_restrained ?? true}
           onChange={e => update({ compression_edge_restrained: e.target.checked })} />
@@ -126,6 +127,12 @@ export default function TimberBeamBlock({ block, onChange }) {
         <input type="checkbox"
           checked={d.torsional_restraint_at_supports ?? true}
           onChange={e => update({ torsional_restraint_at_supports: e.target.checked })} />
+      </Field>
+      <Field label="Support length (mm)" hint="Bearing length → enables compression ⊥ grain check">
+        <input style={s} type="number" step="10" min="10"
+          placeholder="e.g. 100 — leave blank to skip"
+          value={d.support_length_mm ?? ''}
+          onChange={e => update({ support_length_mm: e.target.value ? parseFloat(e.target.value) : null })} />
       </Field>
     </CalcBlockShell>
   )

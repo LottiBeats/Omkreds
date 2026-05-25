@@ -217,21 +217,32 @@ def steel_beam_ipe(
     # ── Shear resistance ──────────────────────────────────────────────────────
     blocks.append(S("Shear resistance — EN 1993-1-1 cl. 6.2.6"))
 
-    A_v  = h * t_w
+    # EN 1993-1-1 §6.2.6(3): A_v = A − 2b·t_f + (t_w + 2r)·t_f ≥ η·h_w·t_w
+    # Fillet radius r not stored in catalog → conservative: A_v ≈ (h − t_f)·t_w
+    # (equivalent to A − 2b·t_f + t_w·t_f with A = 2b·t_f + h_w·t_w)
+    if b is not None and t_f is not None:
+        A_v  = (h - t_f) * t_w
+        h_w  = h - 2 * t_f
+        A_v_min = h_w * t_w              # η·h_w·t_w, η = 1.0
+        if float(A_v) < float(A_v_min):
+            A_v = A_v_min
+        av_note = "= (h − t_f)·t_w  [EN 1993-1-1 §6.2.6(3), fillet neglected]"
+    else:
+        A_v  = h * t_w
+        av_note = "= h·t_w  [simplified — section dims not available]"
+
     V_Rk = A_v * f_y / 3**0.5
     V_Rd = V_Rk / gamma_M0
     blocks.extend([
-        CALC_ROW("A_v",  "= h·t_w",       str(A_v)),
+        CALC_ROW("A_v",  av_note,          str(A_v)),
         CALC_ROW("V_Rk", "= A_v·f_y/√3",  str(V_Rk)),
         CALC_ROW("V_Rd", "= V_Rk / γ_M0", str(V_Rd)),
     ])
     blocks.append(cc.check("Shear check: V_Ed / V_Rd", V_Ed, V_Rd))
     blocks.append(N(
-        "Shear area: A_v = h × t_w (conservative). The precise EN 1993-1-1 §6.2.6(3) formula "
-        "A_v = A − 2b·t_f + (t_w + 2r)·t_f requires the total section area A and fillet radius r, "
-        "which are not currently stored in the section catalog. "
-        "The simplified formula typically gives A_v 15–25 % lower than the standard value, "
-        "i.e. V_Rd is underestimated by the same factor."
+        "Shear area A_v per EN 1993-1-1 §6.2.6(3). Fillet radius r not stored in the "
+        "section catalog — r is conservatively set to zero, giving A_v = (h − t_f)·t_w. "
+        "With actual fillets, A_v (and hence V_Rd) is slightly larger."
     ))
 
     # ── Lateral-torsional buckling — EN 1993-1-1 cl. 6.3.2 ───────────────────
