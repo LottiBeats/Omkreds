@@ -179,7 +179,10 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Custom',
-    types: ['custom_calc', 'python_calc'],
+    // python_calc is intentionally excluded from the add panel — it runs
+    // unrestricted exec() on the server and is an admin/developer tool only.
+    // Existing python_calc blocks still render normally (TYPE_MAP is unaffected).
+    types: ['custom_calc'],
   },
 ]
 

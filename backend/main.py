@@ -49,9 +49,23 @@ si.environment("structural", top_level=True)
 
 # ── Unit namespace for custom calc eval ───────────────────────────────────────
 # si.environment() injects unit names (kN, m, mm, MPa …) into builtins.
-# We snapshot builtins here (after the injection) so custom-calc formulas
-# can reference them by name inside eval().
-_UNIT_NS: dict = {k: v for k, v in vars(_builtins).items() if not k.startswith("_")}
+# We snapshot only the unit/quantity objects (those are the forallpeople objects,
+# not standard builtins like exec/open/eval).
+# __builtins__ is explicitly set to {} so eval() cannot access exec, open,
+# __import__, or any other dangerous builtin — only what we put here explicitly.
+_UNIT_NS: dict = {
+    # All forallpeople unit objects injected by si.environment()
+    k: v for k, v in vars(_builtins).items()
+    if not k.startswith("_")
+    and k not in {
+        # Strip out anything that could be used to escape the sandbox
+        "exec", "eval", "compile", "open", "input", "breakpoint",
+        "__import__", "importlib", "globals", "locals", "vars", "dir",
+        "getattr", "setattr", "delattr", "hasattr",
+        "type", "object", "super", "classmethod", "staticmethod",
+        "property", "help", "copyright", "credits", "license",
+    }
+}
 _UNIT_NS.update({
     "pi": math.pi, "e": math.e,
     "sqrt": math.sqrt, "sin": math.sin, "cos": math.cos,
@@ -60,6 +74,10 @@ _UNIT_NS.update({
     "log": math.log, "log10": math.log10, "exp": math.exp,
     "floor": math.floor, "ceil": math.ceil,
     "abs": abs, "min": min, "max": max, "round": round,
+    # Explicitly block builtins inside eval() — this is the key safety lock.
+    # Without this, Python auto-injects the full __builtins__ module into any
+    # dict used as eval() globals, giving access to exec/open/__import__ etc.
+    "__builtins__": {},
 })
 
 
@@ -666,13 +684,34 @@ class PythonScriptInput(BaseModel):
 
 
 @protected.post("/calc/python-script", tags=["Calculations"])
-def run_python_script(data: PythonScriptInput):
+def run_python_script(data: PythonScriptInput, user: dict = Depends(get_current_user)):
     """
     Execute arbitrary Python code and return stdout + base64-encoded figures.
 
-    This is the backend equivalent of the Streamlit python_calc block.
-    The frontend sends the code; this route runs it and returns the output.
+    ⚠ SECURITY: exec() cannot be safely sandboxed at the Python level.
+    Access is restricted to an explicit allow-list of trusted email addresses.
+    Set the PYTHON_SCRIPT_ALLOWED_EMAILS env var (comma-separated) to control access.
+    If the env var is not set, only the ADMIN_EMAIL is allowed.
     """
+    import os as _os
+
+    # ── Access control ────────────────────────────────────────────────────────
+    # PYTHON_SCRIPT_ALLOWED_EMAILS = "alice@firm.com,bob@firm.com"
+    # If not set, falls back to ADMIN_EMAIL (the account owner).
+    raw_allowed = _os.environ.get("PYTHON_SCRIPT_ALLOWED_EMAILS", "").strip()
+    admin_email = _os.environ.get("ADMIN_EMAIL", "").strip()
+    allowed = {e.strip().lower() for e in raw_allowed.split(",") if e.strip()}
+    if admin_email:
+        allowed.add(admin_email.lower())
+
+    caller = (user.get("email") or "").strip().lower()
+    if allowed and caller not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="Python Script blocks are restricted to admin users. "
+                   "Contact the system administrator.",
+        )
+
     import io
     import contextlib
     import traceback
