@@ -17,7 +17,11 @@ import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <ClerkProvider afterSignOutUrl="/">
+    <ClerkProvider
+      afterSignInUrl="/"
+      afterSignUpUrl="/"
+      afterSignOutUrl="/"
+    >
       <App />
     </ClerkProvider>
   </React.StrictMode>
