@@ -1,7 +1,9 @@
 /**
- * SteelColumnBlock.jsx — EN 1993-1-1 §6.3.1 steel column check
+ * SteelColumnBlock.jsx — EN 1993-1-1 §6.3.1 + §6.3.3 steel column check
  *
- * Compression + flexural buckling check for hot-rolled I/H sections.
+ * Pure compression: N_Ed only (leave M_y = M_z = 0)
+ * Beam-column: fill M_y,Ed and/or M_z,Ed to enable the cl. 6.3.3
+ *              interaction check (Annex B Method 2).
  */
 import React, { useState } from 'react'
 import { calcSteelColumn } from '../../api/client.js'
@@ -17,6 +19,14 @@ const SECTIONS = [
 ]
 
 const GRADES = ['S235', 'S275', 'S355', 'S420', 'S460']
+
+// Common C_m values per Annex B Table B.3
+const CM_OPTIONS = [
+  { value: 1.0,  label: 'C = 1.00 — uniform moment (ψ=1)' },
+  { value: 0.95, label: 'C = 0.95 — UDL / parabolic (α_h=0)' },
+  { value: 0.6,  label: 'C = 0.60 — end moment only (ψ=0)' },
+  { value: 0.4,  label: 'C = 0.40 — antisymmetric (ψ=−1)' },
+]
 
 export default function SteelColumnBlock({ block, onChange }) {
   const d = block.data
@@ -37,15 +47,20 @@ export default function SteelColumnBlock({ block, onChange }) {
     setError(null)
     try {
       const blocks = await calcSteelColumn({
-        label:    d.label    ?? 'SC1',
-        section:  d.section  ?? 'HEB200',
-        grade:    d.grade    ?? 'S355',
-        length_m: d.length_m ?? 4.0,
-        N_Ed_kN:  d.N_Ed_kN  ?? 500.0,
-        k_y:      d.k_y      ?? 1.0,
-        k_z:      d.k_z      ?? 1.0,
-        gamma_M0: d.gamma_M0 ?? 1.0,
-        gamma_M1: d.gamma_M1 ?? 1.0,
+        label:          d.label          ?? 'SC1',
+        section:        d.section        ?? 'HEB200',
+        grade:          d.grade          ?? 'S355',
+        length_m:       d.length_m       ?? 4.0,
+        N_Ed_kN:        d.N_Ed_kN        ?? 500.0,
+        k_y:            d.k_y            ?? 1.0,
+        k_z:            d.k_z            ?? 1.0,
+        gamma_M0:       d.gamma_M0       ?? 1.0,
+        gamma_M1:       d.gamma_M1       ?? 1.0,
+        M_y_Ed_kNm:     d.M_y_Ed_kNm    ?? 0.0,
+        M_z_Ed_kNm:     d.M_z_Ed_kNm    ?? 0.0,
+        C_my:           d.C_my           ?? 1.0,
+        C_mz:           d.C_mz           ?? 1.0,
+        ltb_restrained: d.ltb_restrained ?? true,
       })
       update({ _result: blocks })
     } catch (err) {
@@ -85,7 +100,7 @@ export default function SteelColumnBlock({ block, onChange }) {
         <input style={s.input} type="number" step="0.1" min="0.5"
           value={d.length_m ?? 4.0} onChange={e => numVal('length_m', e)} />
       </Field>
-      <Field label="N_Ed (kN)" hint="Design axial force">
+      <Field label="N_Ed (kN)" hint="Design axial compression">
         <input style={s.input} type="number" step="10" min="0"
           value={d.N_Ed_kN ?? 500.0} onChange={e => numVal('N_Ed_kN', e)} />
       </Field>
@@ -104,6 +119,33 @@ export default function SteelColumnBlock({ block, onChange }) {
       <Field label="γ_M1">
         <input style={s.input} type="number" step="0.05" min="1"
           value={d.gamma_M1 ?? 1.0} onChange={e => numVal('gamma_M1', e)} />
+      </Field>
+
+      {/* ── Beam-column moments (leave 0 for pure compression) ── */}
+      <Field label="M_y,Ed (kNm)" hint="Strong-axis moment — 0 = pure compression">
+        <input style={s.input} type="number" step="1" min="0"
+          value={d.M_y_Ed_kNm ?? 0.0} onChange={e => numVal('M_y_Ed_kNm', e)} />
+      </Field>
+      <Field label="M_z,Ed (kNm)" hint="Weak-axis moment">
+        <input style={s.input} type="number" step="0.5" min="0"
+          value={d.M_z_Ed_kNm ?? 0.0} onChange={e => numVal('M_z_Ed_kNm', e)} />
+      </Field>
+      <Field label="C_my" hint="Equiv. moment factor y — Annex B Table B.3">
+        <select style={s.input} value={d.C_my ?? 1.0}
+          onChange={e => update({ C_my: Number(e.target.value) })}>
+          {CM_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </Field>
+      <Field label="C_mz" hint="Equiv. moment factor z">
+        <select style={s.input} value={d.C_mz ?? 1.0}
+          onChange={e => update({ C_mz: Number(e.target.value) })}>
+          {CM_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </Field>
+      <Field label="LTB restrained" hint="χ_LT = 1.0 (closed section or comp. flange restrained)">
+        <input type="checkbox"
+          checked={d.ltb_restrained ?? true}
+          onChange={e => update({ ltb_restrained: e.target.checked })} />
       </Field>
     </CalcBlockShell>
   )

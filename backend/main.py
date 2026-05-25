@@ -1013,15 +1013,21 @@ def calc_beam_fem(data: BeamFemInput):
 # â”€â”€ EN 1993-1-1 â€” Steel column â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class SteelColumnInput(BaseModel):
-    label:    str   = "SC1"
-    section:  str   = "HEB200"
-    grade:    str   = "S355"
-    length_m: float = 4.0
-    N_Ed_kN:  float = 500.0
-    k_y:      float = 1.0
-    k_z:      float = 1.0
-    gamma_M0: float = 1.0
-    gamma_M1: float = 1.0
+    label:          str   = "SC1"
+    section:        str   = "HEB200"
+    grade:          str   = "S355"
+    length_m:       float = 4.0
+    N_Ed_kN:        float = 500.0
+    k_y:            float = 1.0
+    k_z:            float = 1.0
+    gamma_M0:       float = 1.0
+    gamma_M1:       float = 1.0
+    # Beam-column (cl. 6.3.3) — leave at 0 for pure compression
+    M_y_Ed_kNm:     float = 0.0
+    M_z_Ed_kNm:     float = 0.0
+    C_my:           float = 1.0   # equiv. uniform moment factor y (Annex B Table B.3)
+    C_mz:           float = 1.0   # equiv. uniform moment factor z
+    ltb_restrained: bool  = True  # True → χ_LT = 1.0
 
 
 @protected.post("/calc/steel-column", tags=["Calculations"])
@@ -1057,27 +1063,46 @@ def calc_steel_column(data: SteelColumnInput):
 
         A_cm2  = 2 * b_cm * tf_cm + hw_cm * tw_cm           # flanges + web
         Iy_cm4 = sec["Iy_cm4"]                               # from catalog (with fillets)
-        # I_z: two flanges + web
-        Iz_cm4 = (2 * tf_cm * b_cm**3 / 12.0               # flanges (b³×t_f / 6 total)
-                  + hw_cm * tw_cm**3 / 12.0)                 # web
+        # I_z: two flanges + web (no fillets — slightly conservative)
+        Iz_cm4 = (2 * tf_cm * b_cm**3 / 12.0
+                  + hw_cm * tw_cm**3 / 12.0)
+
+        # Plastic section moduli from idealised geometry (no fillets):
+        # W_pl,y = b·t_f·(h-t_f)/2 + t_w·h_w²/4   (flanges + web halves)
+        # W_pl,z = b²·t_f/2 + t_w²·h_w/4           (weak-axis — exact for rect I)
+        W_pl_y_cm3 = (b_cm * tf_cm * (h_cm - tf_cm) / 2.0
+                      + tw_cm * hw_cm**2 / 4.0)
+        W_pl_z_cm3 = (b_cm**2 * tf_cm / 2.0
+                      + tw_cm**2 * hw_cm / 4.0)
+        # Prefer catalog Wply if available (includes fillets)
+        if sec.get("Wply_cm3"):
+            W_pl_y_cm3 = sec["Wply_cm3"]
 
         blocks = steel_column_check(
-            label     = data.label,
-            section   = data.section,
-            grade     = data.grade,
-            length_m  = data.length_m,
-            N_Ed_kN   = data.N_Ed_kN,
-            A_cm2     = A_cm2,
-            Iy_cm4    = Iy_cm4,
-            Iz_cm4    = Iz_cm4,
-            h_mm      = h_mm,
-            b_mm      = b_mm,
-            tf_mm     = tf_mm,
-            f_y_MPa   = f_y,
-            gamma_M0  = data.gamma_M0,
-            gamma_M1  = data.gamma_M1,
-            k_y       = data.k_y,
-            k_z       = data.k_z,
+            label          = data.label,
+            section        = data.section,
+            grade          = data.grade,
+            length_m       = data.length_m,
+            N_Ed_kN        = data.N_Ed_kN,
+            A_cm2          = A_cm2,
+            Iy_cm4         = Iy_cm4,
+            Iz_cm4         = Iz_cm4,
+            h_mm           = h_mm,
+            b_mm           = b_mm,
+            tf_mm          = tf_mm,
+            tw_mm          = tw_mm,
+            W_pl_y_cm3     = W_pl_y_cm3,
+            W_pl_z_cm3     = W_pl_z_cm3,
+            M_y_Ed_kNm     = data.M_y_Ed_kNm,
+            M_z_Ed_kNm     = data.M_z_Ed_kNm,
+            C_my           = data.C_my,
+            C_mz           = data.C_mz,
+            ltb_restrained = data.ltb_restrained,
+            f_y_MPa        = f_y,
+            gamma_M0       = data.gamma_M0,
+            gamma_M1       = data.gamma_M1,
+            k_y            = data.k_y,
+            k_z            = data.k_z,
         )
         return blocks
 
