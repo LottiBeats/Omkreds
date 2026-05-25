@@ -293,10 +293,15 @@ function fmtCalcText(text) {
   let s = text
     .replace(/_([^\s_^<>=+\-*/×÷·()[\]{}]+)/g, '<sub>$1</sub>')
     .replace(/\^([^\s_^<>=+\-*/×÷·()[\]{}]+)/g, '<sup>$1</sup>')
-  // 2. horizontal fraction — only when there is exactly one " / "
-  const parts = s.split(' / ')
+  // 2. Extract leading "= " so it stays outside the fraction
+  //    e.g. "= a / b" → "= " + fraction(a, b), not fraction("= a", b)
+  const eqMatch = s.match(/^(=\s*)/)
+  const prefix = eqMatch ? eqMatch[1] : ''
+  const body   = prefix ? s.slice(prefix.length) : s
+  // 3. horizontal fraction — only when body has exactly one " / "
+  const parts = body.split(' / ')
   if (parts.length === 2) {
-    s =
+    s = prefix +
       '<span style="display:inline-flex;flex-direction:column;' +
       'align-items:center;vertical-align:middle;margin:0 3px;font-size:0.9em">' +
         '<span style="border-bottom:1.5px solid currentColor;padding:1px 5px;' +
@@ -496,7 +501,7 @@ const styles = {
     display:             'grid',
     gridTemplateColumns: '120px 1fr auto auto',
     gap:                 '0 12px',
-    alignItems:          'baseline',
+    alignItems:          'center',
     padding:             '3px 0',
     fontSize:            12,
     fontFamily:          'var(--font-mono, monospace)',
