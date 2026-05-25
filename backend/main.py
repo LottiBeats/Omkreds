@@ -70,8 +70,18 @@ def _preprocess_expr(expr: str) -> str:
       ^   → **   (power: x^2  becomes  x**2)
       ×   → *    (multiplication symbol)
       ·   → *    (middle dot multiplication)
+      ≤   → <=   (less-than-or-equal, used in conditions)
+      ≥   → >=   (greater-than-or-equal, used in conditions)
+      ≠   → !=   (not-equal, used in conditions)
     """
-    return expr.replace('^', '**').replace('×', '*').replace('·', '*')
+    return (expr
+        .replace('^',  '**')
+        .replace('×',  '*')
+        .replace('·',  '*')
+        .replace('≤',  '<=')
+        .replace('≥',  '>=')
+        .replace('≠',  '!=')
+    )
 
 try:
     import db as _db
@@ -619,6 +629,30 @@ def calc_custom(data: CustomCalcInput):
                     blocks.append(chk.check(label, demand, capacity))
                 except Exception as exc:
                     blocks.append(N(f"Check error in '{label}': {exc}"))
+
+            elif itype == "conditional":
+                name       = item.get("name", "").strip()
+                cond_raw   = item.get("condition", "").strip()
+                true_raw   = item.get("true_expr", "0").strip()
+                false_raw  = item.get("false_expr", "0").strip()
+                unit_str   = item.get("unit", "-")
+                if not cond_raw:
+                    continue
+                try:
+                    cond_result  = bool(eval(_preprocess_expr(cond_raw), _UNIT_NS, ns))
+                    chosen_raw   = true_raw  if cond_result else false_raw
+                    result       = eval(_preprocess_expr(chosen_raw), _UNIT_NS, ns)
+                    if name:
+                        ns[name] = _parse_qty(float(result), unit_str) if unit_str != "-" else result
+                    result_str   = _fmt_qty(ns[name]) if name else _fmt_qty(result)
+                    branch_sym   = "✓" if cond_result else "✗"
+                    chosen_disp  = (chosen_raw
+                        .replace("**", "^").replace("*", "×").replace("/", " / "))
+                    formula_disp = f"= {chosen_disp}  [{cond_raw} {branch_sym}]"
+                    if name:
+                        blocks.append(CALC_ROW(name, formula_disp, result_str))
+                except Exception as exc:
+                    blocks.append(N(f"Conditional '{name}': {exc}"))
 
         return blocks
 
@@ -1528,6 +1562,30 @@ def run_calc_template(template_id: str, params: dict = Body(default={})):
                         blocks_out.append(chk.check(label, demand, capacity))
                     except Exception as exc:
                         blocks_out.append(N(f"Check error in '{label}': {exc}"))
+
+                elif itype == "conditional":
+                    name       = item.get("name", "").strip()
+                    cond_raw   = item.get("condition", "").strip()
+                    true_raw   = item.get("true_expr", "0").strip()
+                    false_raw  = item.get("false_expr", "0").strip()
+                    unit_str   = item.get("unit", "-")
+                    if not cond_raw:
+                        continue
+                    try:
+                        cond_result  = bool(eval(_preprocess_expr(cond_raw), _UNIT_NS, ns))
+                        chosen_raw   = true_raw  if cond_result else false_raw
+                        result       = eval(_preprocess_expr(chosen_raw), _UNIT_NS, ns)
+                        if name:
+                            ns[name] = _parse_qty(float(result), unit_str) if unit_str != "-" else result
+                        result_str   = _fmt_qty(ns[name]) if name else _fmt_qty(result)
+                        branch_sym   = "✓" if cond_result else "✗"
+                        chosen_disp  = (chosen_raw
+                            .replace("**", "^").replace("*", "×").replace("/", " / "))
+                        formula_disp = f"= {chosen_disp}  [{cond_raw} {branch_sym}]"
+                        if name:
+                            blocks_out.append(CALC_ROW(name, formula_disp, result_str))
+                    except Exception as exc:
+                        blocks_out.append(N(f"Conditional '{name}': {exc}"))
 
             return blocks_out
 

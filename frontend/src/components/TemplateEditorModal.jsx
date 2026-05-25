@@ -349,11 +349,12 @@ export default function TemplateEditorModal({ initialTemplateId, onClose, onTemp
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                     <span style={{ fontSize: 11, color: '#888', alignSelf: 'center' }}>Add:</span>
                     {[
-                      ['heading', '+ Heading'],
-                      ['var',     '+ Variable'],
-                      ['formula', '+ Formula'],
-                      ['check',   '+ Check'],
-                      ['text',    '+ Text'],
+                      ['heading',     '+ Heading'],
+                      ['var',         '+ Variable'],
+                      ['formula',     '+ Formula'],
+                      ['conditional', '+ If/Else'],
+                      ['check',       '+ Check'],
+                      ['text',        '+ Text'],
                     ].map(([type, label]) => (
                       <button key={type} style={s.addParamBtn} onClick={() => addItem(type)}>
                         {label}

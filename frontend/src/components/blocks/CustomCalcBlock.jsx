@@ -72,19 +72,21 @@ const UNIT_OPTIONS = [
 
 // Badge colour per item type
 const TYPE_BADGE = {
-  text:    { label: 'TXT', bg: '#6E6E73' },
-  heading: { label: 'HDG', bg: '#1e3a5f' },
-  var:     { label: 'VAR', bg: '#12788E' },
-  formula: { label: 'FML', bg: '#032E38' },
-  check:   { label: 'CHK', bg: '#E74825' },
+  text:        { label: 'TXT', bg: '#6E6E73' },
+  heading:     { label: 'HDG', bg: '#1e3a5f' },
+  var:         { label: 'VAR', bg: '#12788E' },
+  formula:     { label: 'FML', bg: '#032E38' },
+  check:       { label: 'CHK', bg: '#E74825' },
+  conditional: { label: 'IF',  bg: '#2d7a4f' },
 }
 
 const DEFAULT_ITEM = {
-  text:    { type: 'text',    content: '' },
-  heading: { type: 'heading', content: '' },
-  var:     { type: 'var',     name: '',  value: 0,   unit: '-', description: '' },
-  formula: { type: 'formula', expr: '' },
-  check:   { type: 'check',   label: 'Check', demand: '', capacity: '1.0', unit: 'kN' },
+  text:        { type: 'text',    content: '' },
+  heading:     { type: 'heading', content: '' },
+  var:         { type: 'var',     name: '',  value: 0,   unit: '-', description: '' },
+  formula:     { type: 'formula', expr: '' },
+  check:       { type: 'check',   label: 'Check', demand: '', capacity: '1.0', unit: 'kN' },
+  conditional: { type: 'conditional', name: '', condition: '', true_expr: '', false_expr: '', unit: '-' },
 }
 
 // ── Exports for use in TemplateEditorModal ────────────────────────────────────
@@ -325,11 +327,12 @@ export default function CustomCalcBlock({ block, onChange, hideModuleActions }) 
       <div style={s.addRow}>
         <span style={s.addLabel}>Add:</span>
         {[
-          ['heading', '+ Heading'],
-          ['var',     '+ Variable'],
-          ['formula', '+ Formula'],
-          ['check',   '+ Check'],
-          ['text',    '+ Text'],
+          ['heading',     '+ Heading'],
+          ['var',         '+ Variable'],
+          ['formula',     '+ Formula'],
+          ['conditional', '+ If/Else'],
+          ['check',       '+ Check'],
+          ['text',        '+ Text'],
         ].map(([type, label]) => (
           <button key={type} style={s.addBtn} onClick={() => addItem(type)}>
             {label}
@@ -439,11 +442,12 @@ function ItemRow({ item, index, total, onChange, onMoveUp, onMoveDown, onDelete 
 
       {/* Type-specific fields */}
       <div style={s.itemContent}>
-        {itype === 'text'    && <TextItem    item={item} onChange={onChange} />}
-        {itype === 'heading' && <HeadingItem item={item} onChange={onChange} />}
-        {itype === 'var'     && <VarItem     item={item} onChange={onChange} />}
-        {itype === 'formula' && <FormulaItem item={item} onChange={onChange} />}
-        {itype === 'check'   && <CheckItem   item={item} onChange={onChange} />}
+        {itype === 'text'        && <TextItem        item={item} onChange={onChange} />}
+        {itype === 'heading'     && <HeadingItem     item={item} onChange={onChange} />}
+        {itype === 'var'         && <VarItem         item={item} onChange={onChange} />}
+        {itype === 'formula'     && <FormulaItem     item={item} onChange={onChange} />}
+        {itype === 'check'       && <CheckItem       item={item} onChange={onChange} />}
+        {itype === 'conditional' && <ConditionalItem item={item} onChange={onChange} />}
       </div>
 
     </div>
@@ -594,6 +598,76 @@ function CheckItem({ item, onChange }) {
   )
 }
 
+function ConditionalItem({ item, onChange }) {
+  const [nameRef,  insertName]  = useSymbolInsert(item.name,       v => onChange({ name: v }))
+  const [condRef,  insertCond]  = useSymbolInsert(item.condition,  v => onChange({ condition: v }))
+  const [thenRef,  insertThen]  = useSymbolInsert(item.true_expr,  v => onChange({ true_expr: v }))
+  const [elseRef,  insertElse]  = useSymbolInsert(item.false_expr, v => onChange({ false_expr: v }))
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      {/* Symbol + unit row */}
+      <div style={s.varRow}>
+        <div style={s.varField}>
+          <label style={s.fieldLabel}>Symbol (result)</label>
+          <input
+            ref={nameRef}
+            style={{ ...s.input, fontFamily: 'monospace' }}
+            value={item.name ?? ''}
+            onChange={e => onChange({ name: e.target.value })}
+            placeholder="e.g.  k_c  or  f_cd"
+            spellCheck={false}
+          />
+          <SymbolBar onInsert={insertName} />
+        </div>
+        <div style={{ ...s.varField, maxWidth: 110 }}>
+          <label style={s.fieldLabel}>Unit</label>
+          <UnitSelect value={item.unit ?? '-'} onChange={v => onChange({ unit: v })} />
+        </div>
+      </div>
+      {/* Condition */}
+      <div style={s.varField}>
+        <label style={s.fieldLabel}>If  (condition)</label>
+        <input
+          ref={condRef}
+          style={{ ...s.input, fontFamily: 'monospace' }}
+          value={item.condition ?? ''}
+          onChange={e => onChange({ condition: e.target.value })}
+          placeholder="e.g.  λ_rel ≤ 0.3   or   N_Ed > 0"
+          spellCheck={false}
+        />
+        <SymbolBar onInsert={insertCond} />
+      </div>
+      {/* Then / Else in two columns */}
+      <div style={s.varRow}>
+        <div style={s.varField}>
+          <label style={s.fieldLabel}>Then  (if true)</label>
+          <input
+            ref={thenRef}
+            style={{ ...s.input, fontFamily: 'monospace' }}
+            value={item.true_expr ?? ''}
+            onChange={e => onChange({ true_expr: e.target.value })}
+            placeholder="e.g.  1.0  or  f_c / γ_M"
+            spellCheck={false}
+          />
+          <SymbolBar onInsert={insertThen} />
+        </div>
+        <div style={s.varField}>
+          <label style={s.fieldLabel}>Else  (if false)</label>
+          <input
+            ref={elseRef}
+            style={{ ...s.input, fontFamily: 'monospace' }}
+            value={item.false_expr ?? ''}
+            onChange={e => onChange({ false_expr: e.target.value })}
+            placeholder="e.g.  0.0  or  f_c / (γ_M * k)"
+            spellCheck={false}
+          />
+          <SymbolBar onInsert={insertElse} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Symbol bar ────────────────────────────────────────────────────────────────
 
 const SYMBOLS = [
@@ -601,8 +675,8 @@ const SYMBOLS = [
   'α','β','γ','δ','ε','η','θ','λ','μ','ν','π','ρ','σ','τ','φ','χ','ψ','ω',
   // Uppercase
   'Δ','Σ','Φ','Ψ','Ω',
-  // Math / superscripts
-  '²','³','√','·','×','±','≤','≥',
+  // Math / superscripts / comparisons
+  '²','³','√','·','×','±','≤','≥','≠',
 ]
 
 /**
