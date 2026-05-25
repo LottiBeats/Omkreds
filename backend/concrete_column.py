@@ -11,9 +11,11 @@ All inputs use plain SI multiples (mm, kN, MPa).
 
 from math import pi, sqrt
 import numpy as np
+import hashlib
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from pathlib import Path
 import tempfile
 
@@ -155,6 +157,79 @@ def _nm_plot(N_curve, M_curve, load_pts, h_mm, tmp_dir):
     return str(out_path)
 
 
+def _section_plot_column(h_mm, b_mm, c_mm, da_c_mm, n_c, da_t_mm, n_t, tmp_dir):
+    """Draw column cross-section with bars and dimension annotations."""
+    aspect = h_mm / b_mm
+    fig_h  = max(4.5, 4.0 * aspect) + 1.2
+    fig, ax = plt.subplots(figsize=(4.2, fig_h))
+
+    # Concrete outline
+    ax.add_patch(mpatches.Rectangle(
+        (0, 0), b_mm, h_mm,
+        linewidth=2, edgecolor='#333333', facecolor='#ede8e1',
+    ))
+    # Cover dashed inner rect
+    ax.add_patch(mpatches.Rectangle(
+        (c_mm, c_mm), b_mm - 2*c_mm, h_mm - 2*c_mm,
+        linewidth=0.8, edgecolor='#aaaaaa', facecolor='none', linestyle='--',
+    ))
+
+    def _bar_x(n, width, cover):
+        if n == 1:
+            return [width / 2.0]
+        return [cover + i * (width - 2*cover) / (n - 1) for i in range(n)]
+
+    # Compression bars — centroid at h - c from bottom
+    r_c = da_c_mm / 2.0
+    for x in _bar_x(n_c, b_mm, c_mm):
+        ax.add_patch(mpatches.Circle((x, h_mm - c_mm), r_c, color='#1a1a1a', zorder=5))
+
+    # Tension bars — centroid at c from bottom
+    r_t = da_t_mm / 2.0
+    for x in _bar_x(n_t, b_mm, c_mm):
+        ax.add_patch(mpatches.Circle((x, c_mm), r_t, color='#1a1a1a', zorder=5))
+
+    mx = b_mm * 0.40
+    my = h_mm * 0.18
+    ax.set_xlim(-mx, b_mm + mx * 2.3)
+    ax.set_ylim(-my, h_mm + my * 0.9)
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+    arr = dict(arrowprops=dict(arrowstyle='<->', color='#555555', lw=1.1,
+                               mutation_scale=10))
+    # b dimension (below)
+    ax.annotate('', xy=(b_mm, -my*0.45), xytext=(0, -my*0.45), **arr)
+    ax.text(b_mm/2, -my*0.82, f'b = {b_mm:.0f} mm',
+            ha='center', va='top', fontsize=8)
+    # h dimension (right)
+    x_h = b_mm + mx * 0.55
+    ax.annotate('', xy=(x_h, h_mm), xytext=(x_h, 0), **arr)
+    ax.text(x_h + mx*0.18, h_mm/2, f'h = {h_mm:.0f} mm',
+            ha='left', va='center', fontsize=8, rotation=90)
+    # cover annotation (left side, short arrow)
+    arr_c = dict(arrowprops=dict(arrowstyle='<->', color='#aaaaaa', lw=0.9,
+                                 mutation_scale=8))
+    ax.annotate('', xy=(c_mm, h_mm * 0.5), xytext=(0, h_mm * 0.5), **arr_c)
+    ax.text(c_mm / 2, h_mm * 0.5 + my * 0.12, f'c={c_mm:.0f}',
+            ha='center', va='bottom', fontsize=7, color='#888888')
+
+    # Bar labels
+    ax.text(b_mm/2, h_mm + my*0.12,
+            f'{n_c}Ø{da_c_mm:.0f}  (compression)',
+            ha='center', va='bottom', fontsize=8, color='#333333')
+    ax.text(b_mm/2, -my*0.08,
+            f'{n_t}Ø{da_t_mm:.0f}  (tension)',
+            ha='center', va='top', fontsize=8, color='#333333')
+
+    ax.set_title('Cross-section', fontsize=10, pad=6)
+    plt.tight_layout()
+    out_path = Path(tmp_dir) / 'section_col.png'
+    fig.savefig(str(out_path), dpi=130, bbox_inches='tight')
+    plt.close(fig)
+    return str(out_path)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PUBLIC FUNCTION
 # ─────────────────────────────────────────────────────────────────────────────
@@ -224,6 +299,17 @@ def concrete_column_rect(
             ["M₀_Eqp / M₀_Ed",               "—",        str(M0Eqp_over_M0Ed)],
         ],
     ))
+
+    # ── Cross-section diagram ─────────────────────────────────────────────────
+    with tempfile.TemporaryDirectory() as _sec_tmp:
+        _sec_img = _section_plot_column(h_mm, b_mm, c_mm, da_c_mm, n_c, da_t_mm, n_t, _sec_tmp)
+        with open(_sec_img, 'rb') as _f:
+            _sec_bytes = _f.read()
+    _sec_hash = hashlib.md5(_sec_bytes).hexdigest()[:12]
+    _sec_out   = Path(tempfile.gettempdir()) / f'section_col_{_sec_hash}.png'
+    if not _sec_out.exists():
+        _sec_out.write_bytes(_sec_bytes)
+    blocks.append(FIG(str(_sec_out), 'Reinforced concrete column cross-section.'))
 
     # ── Material properties ───────────────────────────────────────────────────
     blocks.append(S("Material properties  — EN 1992-1-1 cl. 3.1"))
@@ -456,7 +542,6 @@ def concrete_column_rect(
         with open(nm_img, 'rb') as f:
             nm_bytes = f.read()
 
-    import hashlib
     nm_hash = hashlib.md5(nm_bytes).hexdigest()[:12]
     nm_out  = Path(tempfile.gettempdir()) / f"nm_diagram_{nm_hash}.png"
     if not nm_out.exists():

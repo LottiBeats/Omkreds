@@ -7,10 +7,96 @@ Closed-form and FEM/imported-action workflow:
 - optional: pass beam_results with imported M_Ed / V_Ed / delta values
 """
 
+import hashlib
+import tempfile
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from pathlib import Path
+
 import forallpeople as si
 si.environment('structural', top_level=True)
 
 from calc_core import S, T, N, MH, CheckContext, FIG, CALC_ROW
+
+
+def _section_plot_beam(b_mm, h_mm, d_mm, As_req_mm2, As_prov_mm2, tmp_dir):
+    """Draw beam cross-section with steel at effective depth and dimension annotations."""
+    aspect = h_mm / b_mm
+    fig_h  = max(4.5, 3.6 * aspect) + 1.0
+    fig, ax = plt.subplots(figsize=(3.8, fig_h))
+
+    # Concrete outline
+    ax.add_patch(mpatches.Rectangle(
+        (0, 0), b_mm, h_mm,
+        linewidth=2, edgecolor='#333333', facecolor='#ede8e1',
+    ))
+
+    # Approximate neutral axis depth (0.45·d compression zone)
+    y_na   = h_mm - 0.45 * d_mm   # top of compression zone relative to bottom
+    ax.add_patch(mpatches.Rectangle(
+        (0, y_na), b_mm, h_mm - y_na,
+        linewidth=0, facecolor='#c5d8ea', alpha=0.50,
+    ))
+
+    # Effective depth dashed line
+    y_steel = h_mm - d_mm
+    ax.plot([0, b_mm], [y_steel, y_steel],
+            color='#3a7bbf', lw=1.4, ls='--', zorder=4)
+
+    # Reinforcement bars (visual representation)
+    cover_v  = h_mm - d_mm
+    r_vis    = max(4.0, min(cover_v * 0.45, b_mm * 0.09))
+    spacing  = r_vis * 2.8
+    n_bars   = max(2, int((b_mm - 2 * cover_v) / spacing))
+    for i in range(n_bars):
+        x_bar = cover_v + (b_mm - 2 * cover_v) / max(n_bars - 1, 1) * i
+        ax.add_patch(mpatches.Circle(
+            (x_bar, y_steel), r_vis, color='#1a1a1a', zorder=5
+        ))
+
+    mx = b_mm * 0.45
+    my = h_mm * 0.16
+    ax.set_xlim(-mx, b_mm + mx * 2.2)
+    ax.set_ylim(-my, h_mm + my * 0.8)
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+    arr = dict(arrowprops=dict(arrowstyle='<->', color='#555555', lw=1.1,
+                               mutation_scale=10))
+    # b dimension (below)
+    ax.annotate('', xy=(b_mm, -my*0.45), xytext=(0, -my*0.45), **arr)
+    ax.text(b_mm/2, -my*0.80, f'b = {b_mm:.0f} mm',
+            ha='center', va='top', fontsize=8)
+    # h dimension (right)
+    x_h = b_mm + mx * 0.55
+    ax.annotate('', xy=(x_h, h_mm), xytext=(x_h, 0), **arr)
+    ax.text(x_h + mx*0.18, h_mm/2, f'h = {h_mm:.0f} mm',
+            ha='left', va='center', fontsize=8, rotation=90)
+    # d dimension (further right, blue)
+    x_d = b_mm + mx * 1.20
+    arr_d = dict(arrowprops=dict(arrowstyle='<->', color='#3a7bbf', lw=1.1,
+                                 mutation_scale=10))
+    ax.annotate('', xy=(x_d, y_steel), xytext=(x_d, h_mm), **arr_d)
+    ax.text(x_d + mx*0.18, (h_mm + y_steel) / 2, f'd = {d_mm:.0f} mm',
+            ha='left', va='center', fontsize=8, color='#3a7bbf', rotation=90)
+
+    # As label box at bottom
+    as_lines = [f'As,req = {As_req_mm2:.0f} mm²']
+    if As_prov_mm2 is not None:
+        as_lines.append(f'As,prov = {As_prov_mm2:.0f} mm²')
+    ax.text(b_mm / 2, -my * 0.08, '\n'.join(as_lines),
+            ha='center', va='top', fontsize=8,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                      alpha=0.85, edgecolor='#cccccc'))
+
+    ax.set_title('Cross-section', fontsize=10, pad=5)
+    plt.tight_layout()
+    out_path = Path(tmp_dir) / 'section_beam.png'
+    fig.savefig(str(out_path), dpi=130, bbox_inches='tight')
+    plt.close(fig)
+    return str(out_path)
 
 
 def rc_beam_bending(
@@ -118,6 +204,22 @@ def rc_beam_bending(
         "z = 0.9d is a conservative estimate. "
         "Verify with iterative z per EN 1992 cl. 6.1 for final design."
     ))
+
+    # ── Cross-section diagram ─────────────────────────────────────────────────
+    _b_raw      = float(b / mm)
+    _h_raw      = float(h / mm)
+    _d_raw      = float(d / mm)
+    _As_req_raw = float(As_req / mm**2)
+    _As_prov_raw = float(As_prov / mm**2) if As_prov is not None else None
+    with tempfile.TemporaryDirectory() as _sec_tmp:
+        _sec_img = _section_plot_beam(_b_raw, _h_raw, _d_raw, _As_req_raw, _As_prov_raw, _sec_tmp)
+        with open(_sec_img, 'rb') as _f:
+            _sec_bytes = _f.read()
+    _sec_hash = hashlib.md5(_sec_bytes).hexdigest()[:12]
+    _sec_out   = Path(tempfile.gettempdir()) / f'section_beam_{_sec_hash}.png'
+    if not _sec_out.exists():
+        _sec_out.write_bytes(_sec_bytes)
+    blocks.append(FIG(str(_sec_out), 'Reinforced concrete beam cross-section.'))
 
     blocks.append(S("Minimum reinforcement — EN 1992-1-1 cl. 9.2.1.1"))
     f_ctm    = 0.3 * (f_ck / MPa)**(2/3) * MPa
