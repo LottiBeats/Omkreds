@@ -149,27 +149,11 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Steel  (EC3)',
-    types: ['steel_beam', 'beam_column', 'plate_girder', 'bolt_group', 'fillet_weld'],
-  },
-  {
-    label: 'Concrete  (EC2)',
-    types: ['rc_beam', 'rc_column', 'rc_slab'],
+    types: ['steel_beam', 'beam_column'],
   },
   {
     label: 'Timber  (EC5)',
     types: ['timber_beam', 'timber_column'],
-  },
-  {
-    label: 'Masonry  (EC6)',
-    types: ['masonry_wall'],
-  },
-  {
-    label: 'Actions  (EC1)',
-    types: ['wind_load', 'snow_load'],
-  },
-  {
-    label: 'Geotechnical  (EC7)',
-    types: ['foundation'],
   },
   {
     label: 'Analysis',
@@ -181,10 +165,6 @@ const PANEL_GROUPS = [
     // unrestricted exec() on the server and is an admin/developer tool only.
     // Existing python_calc blocks still render normally (TYPE_MAP is unaffected).
     types: ['custom_calc'],
-  },
-  {
-    label: 'DS 1140 — Dokumentation',
-    types: ['control_plan'],
   },
 ]
 
