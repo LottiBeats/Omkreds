@@ -1,7 +1,10 @@
 /**
  * TimberBeamBlock.jsx — EN 1995-1-1 timber beam check
  *
- * Checks: bending, shear, lateral buckling (kipning), bearing at support.
+ * Load source:
+ *   direct  — user enters g_k / q_k + load_duration manually (default)
+ *   combo   — reads E_d_uls and governing_duration from a Load Combo block
+ *             k_mod is therefore always consistent with the governing combination
  */
 import React, { useState } from 'react'
 import { calcTimberBeam } from '../../api/client.js'
@@ -18,7 +21,15 @@ const GRADES = [
 const LOAD_DURATIONS = ['permanent','long','medium','short','instant']
 const SERVICE_CLASSES = [1, 2, 3]
 
-export default function TimberBeamBlock({ block, onChange }) {
+const DURATION_LABEL = {
+  permanent: 'Permanent  (k_mod 0.60)',
+  long:      'Long  (k_mod 0.70)',
+  medium:    'Medium  (k_mod 0.80)',
+  short:     'Short  (k_mod 0.90)',
+  instant:   'Instantaneous  (k_mod 1.10)',
+}
+
+export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
@@ -27,11 +38,20 @@ export default function TimberBeamBlock({ block, onChange }) {
     onChange({ ...block, data: { ...d, ...changes } })
   }
 
+  // All load_combo blocks in the document
+  const comboBlocks = blocks.filter(b => b.type === 'load_combo')
+  const source      = d.load_source ?? 'direct'
+
+  // Selected combo block and its exports
+  const selCombo   = comboBlocks.find(b => b.data.label === d.combo_label) ?? comboBlocks[0]
+  const exports_   = selCombo?.data?._exports
+  const comboReady = !!exports_?.E_d_uls
+
   async function handleRun() {
     setRunning(true)
     setError(null)
     try {
-      const blocks = await calcTimberBeam({
+      const payload = {
         label:          d.label         ?? 'T1',
         span_m:         d.span_m        ?? 4.0,
         b_mm:           d.b_mm          ?? 90,
@@ -45,8 +65,16 @@ export default function TimberBeamBlock({ block, onChange }) {
         compression_edge_restrained:     d.compression_edge_restrained ?? true,
         torsional_restraint_at_supports: d.torsional_restraint_at_supports ?? true,
         support_length_mm: d.support_length_mm ?? null,
-      })
-      update({ _result: blocks })
+      }
+
+      if (source === 'combo' && exports_) {
+        payload.w_Ed_kNm            = exports_.E_d_uls
+        payload.combo_label          = selCombo?.data?.label ?? ''
+        payload.load_duration_combo  = exports_.governing_duration ?? 'medium'
+      }
+
+      const blocks_result = await calcTimberBeam(payload)
+      update({ _result: blocks_result })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -63,7 +91,73 @@ export default function TimberBeamBlock({ block, onChange }) {
       running={running}
       error={error}
       result={d._result ?? null}
+      runDisabled={source === 'combo' && !comboReady}
     >
+      {/* ── Load source selector ── */}
+      <Field label="Load source" style={{ gridColumn: '1/-1' }}>
+        <div style={{ display: 'flex', gap: 16, padding: '2px 0' }}>
+          {['direct', 'combo'].map(opt => (
+            <label key={opt} style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <input type="radio" name={`src-${block.id}`}
+                value={opt} checked={source === opt}
+                onChange={() => update({ load_source: opt })} />
+              {opt === 'direct' ? 'Direct  (g_k / q_k)' : 'Load combination'}
+            </label>
+          ))}
+        </div>
+      </Field>
+
+      {/* ── Combo picker ── */}
+      {source === 'combo' && (
+        <Field label="Combo block" style={{ gridColumn: '1/-1' }}>
+          {comboBlocks.length === 0 ? (
+            <span style={{ fontSize: 12, color: '#e67e22' }}>
+              No load combo blocks in this document yet — add one first.
+            </span>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <select style={{ ...s, width: 'auto', minWidth: 180 }}
+                value={selCombo?.data?.label ?? ''}
+                onChange={e => update({ combo_label: e.target.value })}>
+                {comboBlocks.map(b => (
+                  <option key={b.id} value={b.data.label ?? ''}>
+                    {b.data.label ?? '?'}  —  {b.data.title ?? 'Load Combinations'}
+                  </option>
+                ))}
+              </select>
+              {comboReady
+                ? <span style={{ fontSize: 12, color: '#27ae60' }}>
+                    ✓ w_Ed = {exports_.E_d_uls.toFixed(2)} {exports_.unit ?? 'kN/m'}
+                    {'  ·  '}k_mod: {DURATION_LABEL[exports_.governing_duration] ?? exports_.governing_duration}
+                  </span>
+                : <span style={{ fontSize: 12, color: '#e67e22' }}>
+                    Run the combo block first
+                  </span>
+              }
+            </div>
+          )}
+        </Field>
+      )}
+
+      {/* ── Direct load inputs ── */}
+      {source === 'direct' && (<>
+        <Field label="g_k (kN/m)" hint="Permanent">
+          <NumericInput style={s} value={d.g_k_kNm ?? 3.0}
+            onChange={v => update({ g_k_kNm: v })} />
+        </Field>
+        <Field label="q_k (kN/m)" hint="Variable">
+          <NumericInput style={s} value={d.q_k_kNm ?? 2.0}
+            onChange={v => update({ q_k_kNm: v })} />
+        </Field>
+        <Field label="Load duration">
+          <select style={s} value={d.load_duration ?? 'medium'}
+            onChange={e => update({ load_duration: e.target.value })}>
+            {LOAD_DURATIONS.map(d => <option key={d}>{d}</option>)}
+          </select>
+        </Field>
+      </>)}
+
+      {/* ── Section / geometry (always shown) ── */}
       <Field label="Label">
         <input style={s} value={d.label ?? 'T1'}
           onChange={e => update({ label: e.target.value })} />
@@ -80,14 +174,6 @@ export default function TimberBeamBlock({ block, onChange }) {
         <NumericInput style={s} value={d.h_mm ?? 220}
           onChange={v => update({ h_mm: v })} />
       </Field>
-      <Field label="g_k (kN/m)" hint="Permanent">
-        <NumericInput style={s} value={d.g_k_kNm ?? 3.0}
-          onChange={v => update({ g_k_kNm: v })} />
-      </Field>
-      <Field label="q_k (kN/m)" hint="Variable">
-        <NumericInput style={s} value={d.q_k_kNm ?? 2.0}
-          onChange={v => update({ q_k_kNm: v })} />
-      </Field>
       <Field label="Timber grade">
         <select style={s} value={d.timber_grade ?? 'C24'}
           onChange={e => update({ timber_grade: e.target.value })}>
@@ -102,12 +188,6 @@ export default function TimberBeamBlock({ block, onChange }) {
               {c} — {['Dry interior','Covered outdoor','Exposed'][c-1]}
             </option>
           ))}
-        </select>
-      </Field>
-      <Field label="Load duration">
-        <select style={s} value={d.load_duration ?? 'medium'}
-          onChange={e => update({ load_duration: e.target.value })}>
-          {LOAD_DURATIONS.map(d => <option key={d}>{d}</option>)}
         </select>
       </Field>
       <Field label="γ_M">

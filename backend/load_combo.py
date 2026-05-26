@@ -31,6 +31,22 @@ GQF    = 1.50   # γ_Q
 XI     = 0.89   # ξ reduction factor (DK NA — Eq. 6.10b)
 
 
+# EN 1995-1-1 Table 2.1 — load duration class per EN 1990 action category
+# Used to determine k_mod when load combination feeds into a timber check.
+_DURATION_MAP = {
+    'A': 'medium',  # Domestic / residential (imposed)
+    'B': 'medium',  # Office areas
+    'C': 'medium',  # Congregation areas
+    'D': 'medium',  # Shopping areas
+    'E': 'long',    # Storage (> 6 months)
+    'F': 'short',   # Traffic ≤ 30 kN
+    'G': 'short',   # Traffic 30–160 kN
+    'H': 'short',   # Roofs (not accessible)
+    'S': 'short',   # Snow (DK, altitude ≤ 1 000 m) — short-term
+    'W': 'instant', # Wind — instantaneous
+}
+
+
 def load_combos(
     label:  str,
     unit:   str,
@@ -89,18 +105,18 @@ def load_combos(
     )
     blocks.append(T(method_note))
 
-    uls_vals: list[tuple] = []   # (description, value)
+    uls_vals: list[tuple] = []   # (description, value, lead_idx)  lead_idx=-1 → permanent only
 
     if n == 0:
         Ed = gamma_G * G_k
-        uls_vals.append((f"γ_G · G_k = {gamma_G:.2f} · {G_k:.3g}", Ed))
+        uls_vals.append((f"γ_G · G_k = {gamma_G:.2f} · {G_k:.3g}", Ed, -1))
     elif method == '6.10':
         for lead in range(n):
             others = [i for i in range(n) if i != lead]
             Ed = (gamma_G * G_k
                   + GQF * Q[lead]
                   + sum(GQF * psi0[i] * Q[i] for i in others))
-            uls_vals.append((f"6.10 lead {loads[lead]['label']}", Ed))
+            uls_vals.append((f"6.10 lead {loads[lead]['label']}", Ed, lead))
     else:  # 6.10a / 6.10b
         for lead in range(n):
             others = [i for i in range(n) if i != lead]
@@ -110,15 +126,32 @@ def load_combos(
             Ed_b = (XI * gamma_G * G_k
                     + GQF * Q[lead]
                     + sum(GQF * psi0[i] * Q[i] for i in others))
-            uls_vals.append((f"6.10a lead {loads[lead]['label']}", Ed_a))
-            uls_vals.append((f"6.10b lead {loads[lead]['label']}", Ed_b))
+            uls_vals.append((f"6.10a lead {loads[lead]['label']}", Ed_a, lead))
+            uls_vals.append((f"6.10b lead {loads[lead]['label']}", Ed_b, lead))
 
-    for desc, val in uls_vals:
+    for desc, val, _lead in uls_vals:
         blocks.append(CALC_ROW(desc, "", f"{val:.3f} {unit}"))
 
-    E_d_uls = max(v[1] for v in uls_vals)
+    gov_entry  = max(uls_vals, key=lambda x: x[1])
+    E_d_uls    = gov_entry[1]
+    gov_lead   = gov_entry[2]   # index into loads[], or -1 (permanent only)
+
+    # EN 1995-1-1 load duration class of the governing leading variable action
+    if gov_lead < 0 or not loads:
+        governing_duration = 'permanent'
+    else:
+        cat = loads[gov_lead]['category'].upper()
+        governing_duration = _DURATION_MAP.get(cat, 'medium')
+
     blocks.append(CALC_ROW("▶ E_d,ULS  (governing)", "= max above",
                             f"{E_d_uls:.3f} {unit}"))
+    if loads:
+        gov_label = loads[gov_lead]['label'] if gov_lead >= 0 else 'G_k'
+        blocks.append(N(
+            f"Governing leading action: {gov_label} "
+            f"(category {loads[gov_lead]['category'].upper() if gov_lead >= 0 else '—'}) "
+            f"→ load duration class: {governing_duration}."
+        ))
 
     # ── SLS ───────────────────────────────────────────────────────────────────
     blocks.append(S("SLS — Serviceability Limit State"))
@@ -169,9 +202,11 @@ def load_combos(
     ))
 
     exports = {
-        'E_d_uls':      round(E_d_uls,      4),
-        'E_d_sls_char': round(E_d_sls_char, 4),
-        'E_d_sls_freq': round(E_d_sls_freq, 4),
-        'E_d_sls_qp':   round(E_d_sls_qp,  4),
+        'E_d_uls':            round(E_d_uls,      4),
+        'E_d_sls_char':       round(E_d_sls_char, 4),
+        'E_d_sls_freq':       round(E_d_sls_freq, 4),
+        'E_d_sls_qp':         round(E_d_sls_qp,  4),
+        'governing_duration': governing_duration,   # for timber k_mod
+        'unit':               unit,
     }
     return blocks, exports

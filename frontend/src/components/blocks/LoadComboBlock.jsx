@@ -52,7 +52,7 @@ export default function LoadComboBlock({ block, onChange }) {
     setRunning(true)
     setError(null)
     try {
-      const blocks = await calcLoadCombo({
+      const res = await calcLoadCombo({
         label:  d.label  ?? 'LC1',
         unit:   d.unit   ?? 'kN/m',
         G_k:    d.G_k    ?? 5.0,
@@ -60,7 +60,9 @@ export default function LoadComboBlock({ block, onChange }) {
         loads:  d.loads  ?? [],
         method: d.method ?? '6.10ab',
       })
-      update({ _result: blocks })
+      // Backend now returns { blocks, exports } so element blocks can read
+      // E_d_uls and governing_duration directly from _exports.
+      update({ _result: res.blocks, _exports: res.exports })
     } catch (err) {
       setError(err.message)
     } finally {

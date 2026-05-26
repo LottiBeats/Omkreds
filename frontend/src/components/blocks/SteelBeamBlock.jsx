@@ -1,9 +1,9 @@
 /**
  * SteelBeamBlock.jsx — EN 1993-1-1 steel beam check
  *
- * The backend runs the full steel_beam_ipe() function and returns
- * a list of calc blocks (section headings, tables, rendered equations,
- * check results). CalcBlockShell + CalcResultView handle display.
+ * Load source:
+ *   direct  — user enters g_k / q_k (default, backwards compatible)
+ *   combo   — reads E_d_uls from a Load Combo block in the same document
  */
 import React, { useState } from 'react'
 import { calcSteelBeam } from '../../api/client.js'
@@ -23,7 +23,7 @@ const SECTIONS = [
 
 const GRADES = ['S235', 'S275', 'S355', 'S420', 'S460']
 
-export default function SteelBeamBlock({ block, onChange }) {
+export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
@@ -32,11 +32,20 @@ export default function SteelBeamBlock({ block, onChange }) {
     onChange({ ...block, data: { ...d, ...changes } })
   }
 
+  // All load_combo blocks in the document that have been run
+  const comboBlocks = blocks.filter(b => b.type === 'load_combo')
+  const source      = d.load_source ?? 'direct'
+
+  // Selected combo block and its exports
+  const selCombo   = comboBlocks.find(b => b.data.label === d.combo_label) ?? comboBlocks[0]
+  const exports_   = selCombo?.data?._exports
+  const comboReady = !!exports_?.E_d_uls
+
   async function handleRun() {
     setRunning(true)
     setError(null)
     try {
-      const blocks = await calcSteelBeam({
+      const payload = {
         label:     d.label    ?? 'S1',
         section:   d.section  ?? 'IPE300',
         grade:     d.grade    ?? 'S355',
@@ -50,8 +59,15 @@ export default function SteelBeamBlock({ block, onChange }) {
         buck_y_restrained: d.buck_y_restrained  ?? false,
         buck_x_restrained: d.buck_x_restrained  ?? false,
         deflection_limit:  d.deflection_limit   ?? 200,
-      })
-      update({ _result: blocks })
+      }
+
+      if (source === 'combo' && exports_) {
+        payload.w_Ed_kNm   = exports_.E_d_uls
+        payload.combo_label = selCombo?.data?.label ?? ''
+      }
+
+      const blocks_result = await calcSteelBeam(payload)
+      update({ _result: blocks_result })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -68,7 +84,65 @@ export default function SteelBeamBlock({ block, onChange }) {
       running={running}
       error={error}
       result={d._result ?? null}
+      runDisabled={source === 'combo' && !comboReady}
     >
+      {/* ── Load source selector ── */}
+      <Field label="Load source" style={{ gridColumn: '1/-1' }}>
+        <div style={{ display: 'flex', gap: 16, padding: '2px 0' }}>
+          {['direct', 'combo'].map(opt => (
+            <label key={opt} style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <input type="radio" name={`src-${block.id}`}
+                value={opt} checked={source === opt}
+                onChange={() => update({ load_source: opt })} />
+              {opt === 'direct' ? 'Direct  (g_k / q_k)' : 'Load combination'}
+            </label>
+          ))}
+        </div>
+      </Field>
+
+      {/* ── Combo picker ── */}
+      {source === 'combo' && (
+        <Field label="Combo block" style={{ gridColumn: '1/-1' }}>
+          {comboBlocks.length === 0 ? (
+            <span style={{ fontSize: 12, color: '#e67e22' }}>
+              No load combo blocks in this document yet — add one first.
+            </span>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <select style={s.input} value={selCombo?.data?.label ?? ''}
+                onChange={e => update({ combo_label: e.target.value })}>
+                {comboBlocks.map(b => (
+                  <option key={b.id} value={b.data.label ?? ''}>
+                    {b.data.label ?? '?'}  —  {b.data.title ?? 'Load Combinations'}
+                  </option>
+                ))}
+              </select>
+              {comboReady
+                ? <span style={{ fontSize: 12, color: '#27ae60', whiteSpace: 'nowrap' }}>
+                    ✓ w_Ed = {exports_.E_d_uls.toFixed(2)} {exports_.unit ?? 'kN/m'}
+                  </span>
+                : <span style={{ fontSize: 12, color: '#e67e22', whiteSpace: 'nowrap' }}>
+                    Run the combo block first
+                  </span>
+              }
+            </div>
+          )}
+        </Field>
+      )}
+
+      {/* ── Direct load inputs (only when source = direct) ── */}
+      {source === 'direct' && (<>
+        <Field label="g_k (kN/m)" hint="Permanent">
+          <NumericInput style={s.input} value={d.g_k_kNm ?? 5.0}
+            onChange={v => update({ g_k_kNm: v })} />
+        </Field>
+        <Field label="q_k (kN/m)" hint="Variable">
+          <NumericInput style={s.input} value={d.q_k_kNm ?? 3.0}
+            onChange={v => update({ q_k_kNm: v })} />
+        </Field>
+      </>)}
+
+      {/* ── Section / geometry (always shown) ── */}
       <Field label="Label">
         <input style={s.input} value={d.label ?? 'S1'}
           onChange={e => update({ label: e.target.value })} />
@@ -89,14 +163,6 @@ export default function SteelBeamBlock({ block, onChange }) {
         <NumericInput style={s.input} value={d.span_m ?? 5.0}
           onChange={v => update({ span_m: v })} />
       </Field>
-      <Field label="g_k (kN/m)" hint="Permanent">
-        <NumericInput style={s.input} value={d.g_k_kNm ?? 5.0}
-          onChange={v => update({ g_k_kNm: v })} />
-      </Field>
-      <Field label="q_k (kN/m)" hint="Variable">
-        <NumericInput style={s.input} value={d.q_k_kNm ?? 3.0}
-          onChange={v => update({ q_k_kNm: v })} />
-      </Field>
       <Field label="γ_M0">
         <NumericInput style={s.input} value={d.gamma_M0 ?? 1.0}
           onChange={v => update({ gamma_M0: v })} />
@@ -105,7 +171,6 @@ export default function SteelBeamBlock({ block, onChange }) {
         <NumericInput style={s.input} value={d.gamma_M1 ?? 1.0}
           onChange={v => update({ gamma_M1: v })} />
       </Field>
-      {/* Restraint checkboxes span 2 columns each */}
       <Field label="LTB restrained" hint="compression flange continuously restrained">
         <input type="checkbox" checked={d.ltb_restrained ?? false}
           onChange={e => update({ ltb_restrained: e.target.checked })} />

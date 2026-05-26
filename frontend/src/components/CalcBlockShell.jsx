@@ -47,6 +47,7 @@ export default function CalcBlockShell({
   result,
   children,
   runLabel = '▶  Run check',
+  runDisabled = false,
 }) {
   // Collapse the result panel by default; auto-open when a new result arrives
   const [resultOpen, setResultOpen] = useState(false)
@@ -77,9 +78,10 @@ export default function CalcBlockShell({
       {/* Action bar */}
       <div style={styles.actionRow}>
         <button
-          style={{ ...styles.btn, ...styles.btnRun }}
+          style={{ ...styles.btn, ...styles.btnRun, ...(runDisabled ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
           onClick={onRun}
-          disabled={running}
+          disabled={running || runDisabled}
+          title={runDisabled ? 'Run the load combo block first' : undefined}
         >
           {running ? '⏳  Running…' : runLabel}
         </button>

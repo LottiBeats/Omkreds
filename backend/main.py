@@ -365,6 +365,9 @@ class SteelBeamInput(BaseModel):
     span_m:             float = 5.0
     g_k_kNm:            float = 5.0
     q_k_kNm:            float = 3.0
+    # Load source: when provided, overrides g_k/q_k
+    w_Ed_kNm:           float | None = None  # governing ULS load from load_combo block
+    combo_label:        str   | None = None  # label of the source combo block (for display)
     gamma_M0:           float = 1.0
     gamma_M1:           float = 1.0
     ltb_restrained:     bool  = False
@@ -403,10 +406,12 @@ def calc_steel_beam(data: SteelBeamInput):
         t_f   = sec["tf_mm"]     * 1e-3 * m
         Iy    = sec["Iy_cm4"]    * 1e-8 * m**4  # cmâ´ â†’ mâ´  (needed for W_el in Class 3)
 
+        span_fp = data.span_m * m
+
         kwargs_sb: dict = dict(
             label         = data.label,
             section       = data.section,
-            span          = data.span_m   * m,
+            span          = span_fp,
             g_k           = data.g_k_kNm  * kN / m,
             q_k           = data.q_k_kNm  * kN / m,
             W_ply         = W_ply,
@@ -425,6 +430,17 @@ def calc_steel_beam(data: SteelBeamInput):
         )
         if data.ltb_length_m is not None and not data.ltb_restrained:
             kwargs_sb["l_cr_ltb"] = data.ltb_length_m * m
+
+        # Load source: combo block overrides g_k / q_k
+        if data.w_Ed_kNm is not None:
+            w_Ed_fp = data.w_Ed_kNm * kN / m
+            kwargs_sb["beam_results"] = {
+                "source":    f"Load combination {data.combo_label or ''}".strip(),
+                "case_name": data.combo_label or "",
+                "M_Ed":      w_Ed_fp * span_fp ** 2 / 8,
+                "V_Ed":      w_Ed_fp * span_fp / 2,
+            }
+
         blocks = steel_beam_ipe(**kwargs_sb)
         return blocks
 
@@ -491,6 +507,10 @@ class TimberBeamInput(BaseModel):
     h_mm:           float = 220.0
     g_k_kNm:        float = 3.0
     q_k_kNm:        float = 2.0
+    # Load source: when provided, overrides g_k/q_k
+    w_Ed_kNm:            float | None = None  # governing ULS load from load_combo block
+    combo_label:         str   | None = None  # label of the source combo block (for display)
+    load_duration_combo: str   | None = None  # governing duration from combo (overrides manual)
     timber_grade:   str   = "C24"
     service_class:  int   = 1
     load_duration:  str   = "medium"
@@ -506,9 +526,11 @@ def calc_timber_beam(data: TimberBeamInput):
     try:
         from timber import timber_beam
 
+        span_fp = data.span_m * m
+
         kwargs_tb: dict = dict(
             label         = data.label,
-            span          = data.span_m  * m,
+            span          = span_fp,
             g_k           = data.g_k_kNm * kN / m,
             q_k           = data.q_k_kNm * kN / m,
             b             = data.b_mm    * mm,
@@ -522,6 +544,18 @@ def calc_timber_beam(data: TimberBeamInput):
         )
         if data.support_length_mm is not None:
             kwargs_tb["support_length"] = data.support_length_mm * mm
+
+        # Load source: combo block overrides g_k / q_k and optionally load_duration
+        if data.w_Ed_kNm is not None:
+            w_Ed_fp = data.w_Ed_kNm * kN / m
+            kwargs_tb["beam_results"] = {
+                "source":    f"Load combination {data.combo_label or ''}".strip(),
+                "case_name": data.combo_label or "",
+                "M_Ed":      w_Ed_fp * span_fp ** 2 / 8,
+                "V_Ed":      w_Ed_fp * span_fp / 2,
+            }
+            if data.load_duration_combo:
+                kwargs_tb["load_duration"] = data.load_duration_combo
         blocks = timber_beam(**kwargs_tb)
         return blocks
 
@@ -1273,7 +1307,10 @@ class LoadComboInput(BaseModel):
 
 @protected.post("/calc/load-combo", tags=["Calculations"])
 def calc_load_combo(data: LoadComboInput):
-    """EN 1990 ULS/SLS load combinations (Danish NA)."""
+    """EN 1990 ULS/SLS load combinations (Danish NA).
+    Returns {'blocks': [...], 'exports': {...}} so element blocks can
+    read E_d_uls and governing_duration directly.
+    """
     try:
         from load_combo import load_combos
         blocks, exports = load_combos(
@@ -1281,7 +1318,7 @@ def calc_load_combo(data: LoadComboInput):
             G_k=data.G_k, loads=data.loads,
             method=data.method, G_fav=data.G_fav,
         )
-        return blocks
+        return {'blocks': blocks, 'exports': exports}
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

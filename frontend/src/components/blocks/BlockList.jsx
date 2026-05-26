@@ -707,6 +707,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
                         block={block}
                         onChange={b => updateBlock(index, b)}
                         onOpenTemplateEditor={onOpenTemplateEditor}
+                        blocks={blocks}
                       />
                     </div>
                   )}
