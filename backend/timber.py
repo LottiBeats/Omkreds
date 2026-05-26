@@ -9,6 +9,7 @@ Closed-form and FEM/imported-action workflow:
 
 import forallpeople as si
 si.environment('structural', top_level=True)
+_cm = 10 * mm   # cm not in structural env — needed for cm³/cm⁴ display
 
 from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext, FIG
 from timber_grades import get_timber_grade
@@ -171,7 +172,7 @@ def timber_beam(
     sigma_md = M_Ed / W_y
 
     blocks.extend([
-        CALC_ROW("W_y",    "= b·h²/6",            str(W_y)),
+        CALC_ROW("W_y",    "= b·h²/6",            f"{float(W_y / _cm**3):.1f} cm³"),
         CALC_ROW("f_m,d",  "= k_mod·f_m,k / γ_M", str(f_md)),
         CALC_ROW("σ_m,d",  "= M_Ed / W_y",         str(sigma_md)),
     ])
@@ -211,8 +212,8 @@ def timber_beam(
 
         blocks.extend([
             CALC_ROW("l_ef",      "effective buckling length",              str(l_ef)),
-            CALC_ROW("I_z",       "= h·b³/12  [weak-axis 2nd moment]",     str(I_z_ltb)),
-            CALC_ROW("I_T",       "= h·b³/3   [torsion constant, rect.]",  str(I_T_ltb)),
+            CALC_ROW("I_z",       "= h·b³/12  [weak-axis 2nd moment]",     f"{float(I_z_ltb / _cm**4):.2f} cm⁴"),
+            CALC_ROW("I_T",       "= h·b³/3   [torsion constant, rect.]",  f"{float(I_T_ltb / _cm**4):.2f} cm⁴"),
             CALC_ROW("M_crit",    "= π·√(E_0,05·I_z·G_0,05·I_T) / l_ef", str(M_crit)),
             CALC_ROW("σ_m,crit",  "= M_crit / W_y",                        str(sigma_m_crit)),
             CALC_ROW("λ_rel,m",   "= √(f_m,k / σ_m,crit)",                f"{lambda_rel_m:.3f}"),
@@ -238,7 +239,7 @@ def timber_beam(
     tau_d = (1.5 * V_Ed) / A
 
     blocks.extend([
-        CALC_ROW("A",     "= b·h",               str(A)),
+        CALC_ROW("A",     "= b·h",               f"{float(A / _cm**2):.2f} cm²"),
         CALC_ROW("f_v,d", "= k_mod·f_v,k / γ_M", str(f_vd)),
         CALC_ROW("τ_d",   "= 1.5·V_Ed / A",       str(tau_d)),
     ])

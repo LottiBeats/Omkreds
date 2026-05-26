@@ -11,8 +11,10 @@ from math import pi
 
 import forallpeople as si
 si.environment('structural', top_level=True)
+_cm = 10 * mm   # cm not in structural env — needed for cm⁴/cm⁶ section property display
 
 from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext, FIG
+from steel_ec3 import BUCKLING_ALPHA, chi_ltb, ltb_curve_hot_rolled
 
 
 def steel_beam_ipe(
@@ -46,7 +48,7 @@ def steel_beam_ipe(
     cc = CheckContext()
     blocks = []
 
-    blocks.append(MH(f"Steel beam - {section}",
+    blocks.append(MH(f"Steel beam — {section}",
                      f"{label}  |  EN 1993-1-1", material="steel"))
 
     blocks.append(S("Design parameters"))
@@ -69,8 +71,8 @@ def steel_beam_ipe(
     blocks.extend([
         CALC_ROW("t_w",      "web thickness",      str(t_w)),
         CALC_ROW("f_y",      "yield strength",     str(f_y)),
-        CALC_ROW("γ_M0",     "",                   str(gamma_M0)),
-        CALC_ROW("γ_M1",     "",                   str(gamma_M1)),
+        CALC_ROW("γ_M0",     "",                   f"{gamma_M0:.2f}"),
+        CALC_ROW("γ_M1",     "",                   f"{gamma_M1:.2f}"),
     ])
     if l_cr_ltb is not None and not ltb_restrained:
         blocks.append(CALC_ROW("L_cr",  "eff. LTB length",   str(l_cr_ltb)))
@@ -141,7 +143,7 @@ def steel_beam_ipe(
                 blocks.append(N(
                     "Section is Class 3 — elastic bending resistance governs: "
                     "M_Rd = W_el,y × f_y / γ_M0. "
-                    f"W_el,y = I_y / (h/2) = {str(W_el)}. "
+                    f"W_el,y = I_y / (h/2) = {float(W_el / _cm**3):.1f} cm³. "
                     "Root fillet radius not in catalog — actual class may be Class 2 with fillets included."
                 ))
             else:
@@ -339,9 +341,9 @@ def steel_beam_ipe(
         I_w = b**3 * t_f * (h - t_f)**2 / 24
         I_t = (2*b*t_f**3 + (h - 2*t_f)*t_w**3) / 3
         blocks.extend([
-            CALC_ROW("I_z", "= t_f·b³/6 + (h−2t_f)·t_w³/12",  str(I_z)),
-            CALC_ROW("I_w", "= b³·t_f·(h−t_f)²/24",            str(I_w)),
-            CALC_ROW("I_t", "= (2b·t_f³ + (h−2t_f)·t_w³)/3",  str(I_t)),
+            CALC_ROW("I_z", "= t_f·b³/6 + (h−2t_f)·t_w³/12",  f"{float(I_z / _cm**4):.2f} cm⁴"),
+            CALC_ROW("I_w", "= b³·t_f·(h−t_f)²/24",            f"{float(I_w / _cm**6):.0f} cm⁶"),
+            CALC_ROW("I_t", "= (2b·t_f³ + (h−2t_f)·t_w³)/3",  f"{float(I_t / _cm**4):.2f} cm⁴"),
         ])
 
         N_Ez = pi**2 * E_s * I_z / l_cr_ltb**2
@@ -352,37 +354,29 @@ def steel_beam_ipe(
             CALC_ROW("W_LT",  "= √(I_w/I_z + L_cr²·G·I_t/(π²·E·I_z))", str(W_LT)),
             CALC_ROW("M_cr",  "= C₁·N_Ez·W_LT",                       str(M_cr)),
         ])
+        lambda_bar_LT = float((W_eff * f_y / M_cr)**0.5)
+        blocks.append(CALC_ROW("lambda_LT", f"= sqrt({_modulus_note} * f_y / M_cr)", f"{lambda_bar_LT:.3f}"))
 
-        lambda_bar_LT = float((W_ply * f_y / M_cr)**0.5)
-        blocks.append(CALC_ROW("λ̄_LT", "= √(W_pl,y·f_y / M_cr)", f"{lambda_bar_LT:.3f}"))
-
-        h_over_b = float(h) / float(b)
-        if h_over_b <= 2.0:
-            alpha_LT  = 0.34
-            curve_ltb = "b"
-        else:
-            alpha_LT  = 0.49
-            curve_ltb = "c"
-
+        curve_ltb = ltb_curve_hot_rolled(float(h / mm), float(b / mm))
+        alpha_LT = BUCKLING_ALPHA[curve_ltb]
         lbar = lambda_bar_LT
 
-        if lbar <= 0.2:
+        if lbar <= 0.4:
             chi_LT = 1.0
             blocks.append(N(
-                f"Non-dimensional slenderness λ̄_LT = {lbar:.3f} ≤ 0.2: "
-                "LTB is not critical. χ_LT = 1.0."
+                f"Non-dimensional slenderness lambda_LT = {lbar:.3f} <= 0.4: "
+                "LTB is not critical. chi_LT = 1.0."
             ))
         else:
-            phi_LT     = 0.5 * (1.0 + alpha_LT * (lbar - 0.2) + lbar**2)
-            chi_LT_raw = 1.0 / (phi_LT + (phi_LT**2 - lbar**2)**0.5)
-            chi_LT     = min(chi_LT_raw, 1.0)
+            phi_LT = 0.5 * (1.0 + alpha_LT * (lbar - 0.4) + 0.75 * lbar**2)
+            chi_LT = chi_ltb(lbar, curve_ltb)
             blocks.extend([
-                CALC_ROW("φ_LT",  "= 0.5·(1 + α_LT·(λ̄−0.2) + λ̄²)",        f"{phi_LT:.3f}"),
-                CALC_ROW("χ_LT",  f"= 1/(φ+√(φ²−λ̄²))  [curve {curve_ltb}]", f"{chi_LT:.3f}"),
+                CALC_ROW("phi_LT", "= 0.5 * (1 + alpha_LT * (lambda_LT - 0.4) + 0.75 * lambda_LT^2)", f"{phi_LT:.3f}"),
+                CALC_ROW("chi_LT", f"modified method, curve {curve_ltb}", f"{chi_LT:.3f}"),
             ])
 
-        M_b_Rd = chi_LT * W_ply * f_y / gamma_M1
-        blocks.append(CALC_ROW("M_b,Rd", "= χ_LT·W_pl,y·f_y / γ_M1", str(M_b_Rd)))
+        M_b_Rd = chi_LT * W_eff * f_y / gamma_M1
+        blocks.append(CALC_ROW("M_b,Rd", f"= chi_LT * {_modulus_note} * f_y / gamma_M1", str(M_b_Rd)))
         blocks.append(cc.check("LTB check: M_Ed / M_b,Rd", M_Ed, M_b_Rd))
 
     else:
@@ -404,7 +398,7 @@ def steel_beam_ipe(
             delta_lim = span / deflection_limit
             blocks.extend([
                 CALC_ROW("w_sls",  "= g_k + q_k  [characteristic combo]",  str(w_sls)),
-                CALC_ROW("I_y",    "second moment of area",                  str(Iy)),
+                CALC_ROW("I_y",    "second moment of area",                  f"{float(Iy / _cm**4):.1f} cm⁴"),
                 CALC_ROW("δ",      "= 5·w_sls·L⁴ / (384·E·I_y)  [UDL]",    str(delta_mid)),
                 CALC_ROW("δ_lim",  f"= L / {deflection_limit}",              str(delta_lim)),
             ])
