@@ -129,9 +129,21 @@ def rc_beam_bending(
 
     blocks.append(S("Design parameters"))
     blocks.append(T(
-        f"Simply supported RC beam {b}x{h}, effective depth d = {d}. "
-        f"Concrete C{float(f_ck / MPa):.0f}/37, reinforcement B500B. Span = {span}."
+        f"Simply supported RC beam {b}×{h}, effective depth d = {d}. "
+        f"Concrete C{float(f_ck / MPa):.0f}, reinforcement B500B. Span = {span}."
     ))
+    blocks.extend([
+        CALC_ROW("L",     "span",                          str(span)),
+        CALC_ROW("b",     "section width",                 str(b)),
+        CALC_ROW("h",     "section height",                str(h)),
+        CALC_ROW("d",     "effective depth",               str(d)),
+        CALC_ROW("g_k",   "characteristic permanent load", str(g_k)),
+        CALC_ROW("q_k",   "characteristic variable load",  str(q_k)),
+        CALC_ROW("f_ck",  "char. concrete strength",       str(f_ck)),
+        CALC_ROW("f_yk",  "char. steel yield strength",    str(f_yk)),
+        CALC_ROW("γ_C",   "partial factor — concrete",     str(gamma_C)),
+        CALC_ROW("γ_S",   "partial factor — steel",        str(gamma_S)),
+    ])
 
     if beam_results is None:
         blocks.append(S("ULS loading and design moment"))

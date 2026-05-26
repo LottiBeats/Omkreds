@@ -92,6 +92,26 @@ def rc_slab_oneway(
     # ── output blocks ──────────────────────────────────────────────────────────
     blocks.append(MH(f"{label} — One-way RC Slab  EC2 §6.1", f"L = {span_m:.2f} m  ·  h = {h_mm:.0f} mm  ·  C{fck_MPa:.0f}/{fyk_MPa:.0f}", "concrete"))
 
+    blocks.append(S("Design parameters"))
+    blocks.append(T(
+        f"One-way simply supported RC slab, {h_mm:.0f} mm thick, effective depth d = {d_mm:.0f} mm.  "
+        f"Concrete C{fck_MPa:.0f}, reinforcement f_yk = {fyk_MPa:.0f} MPa.  "
+        f"Span = {span_m:.2f} m, nominal cover = {cover_mm:.0f} mm.  "
+        f"Design on 1 m wide strip."
+    ))
+    blocks.extend([
+        CALC_ROW("L",    "span",                             f"{span_m:.2f} m"),
+        CALC_ROW("h",    "slab thickness",                   f"{h_mm:.0f} mm"),
+        CALC_ROW("d",    "effective depth",                  f"{d_mm:.0f} mm"),
+        CALC_ROW("c",    "nominal cover",                    f"{cover_mm:.0f} mm"),
+        CALC_ROW("g_k",  "characteristic permanent load",    f"{g_k_kNm2:.2f} kN/m²"),
+        CALC_ROW("q_k",  "characteristic variable load",     f"{q_k_kNm2:.2f} kN/m²"),
+        CALC_ROW("f_ck", "char. concrete strength",          f"{fck_MPa:.0f} MPa"),
+        CALC_ROW("f_yk", "char. steel yield strength",       f"{fyk_MPa:.0f} MPa"),
+        CALC_ROW("γ_C",  "partial factor — concrete",        f"{gamma_C:.2f}"),
+        CALC_ROW("γ_S",  "partial factor — steel",           f"{gamma_S:.2f}"),
+    ])
+
     blocks.append(S("Loading  (1 m design strip)"))
     blocks += [
         CALC_ROW("g_Ed", "= 1.35 · g_k",        f"{g_Ed:.2f} kN/m"),

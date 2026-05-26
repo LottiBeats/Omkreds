@@ -36,9 +36,19 @@ def masonry_wall_vertical(
     blocks.append(S("Design parameters"))
     blocks.append(T(
         f"Unreinforced masonry wall, t = {thickness}, height = {height}, "
-        f"length = {length}. Units f_b = {f_b}, mortar f_m = {f_m}. "
-        f"γ_M = {gamma_M}, K = {K}."
+        f"length = {length}. Unit strength f_b = {f_b}, mortar f_m = {f_m}. "
+        f"K = {K} (EN 1996-1-1 Table 3.3), γ_M = {gamma_M}."
     ))
+    blocks.extend([
+        CALC_ROW("t",     "wall thickness",             str(thickness)),
+        CALC_ROW("h",     "wall height",                str(height)),
+        CALC_ROW("l",     "wall length",                str(length)),
+        CALC_ROW("N_k",   "characteristic axial force", str(N_k)),
+        CALC_ROW("f_b",   "unit compressive strength",  str(f_b)),
+        CALC_ROW("f_m",   "mortar strength",            str(f_m)),
+        CALC_ROW("K",     "constant (Table 3.3)",       str(K)),
+        CALC_ROW("γ_M",   "partial factor",             str(gamma_M)),
+    ])
 
     blocks.append(S("Characteristic compressive strength — EN 1996-1-1 Eq. 3.1"))
     f_k = K * f_b**alpha * f_m**beta
@@ -652,21 +662,24 @@ def masonry_wall_ritter(
     ))
 
     blocks.append(S("Design parameters"))
-    blocks.append(TBL(
-        ["Property", "Symbol", "Value"],
-        [
-            ["Wall width (tributary)", "b",        str(b)],
-            ["Effective thickness",    "t_ef",     str(t_ef)],
-            ["Effective height",       "h_ef",     str(h_ef)],
-            ["Midheight eccentricity", "e_m",      str(e_m)],
-            ["Design axial force",     "N_Ed",     str(N_Ed)],
-            ["Unit comp. strength",    "f_b",      str(f_b)],
-            ["Mortar strength",        "f_m",      str(f_m)],
-            ["Constant K (Table 3.3)", "K",        str(K)],
-            ["Partial factor",         "γ_M",      str(gamma_M)],
-            ["Long-term factor",       "K_1",      str(K1)],
-        ]
+    blocks.append(T(
+        f"Single masonry wall — Ritter vertical resistance check to EN 1996-1-1.  "
+        f"Wall width b = {b}, effective thickness t_ef = {t_ef}, "
+        f"effective height h_ef = {h_ef}.  "
+        f"K = {K} (EN 1996-1-1 Table 3.3), γ_M = {gamma_M}."
     ))
+    blocks.extend([
+        CALC_ROW("b",     "wall width (tributary)",    str(b)),
+        CALC_ROW("t_ef",  "effective thickness",       str(t_ef)),
+        CALC_ROW("h_ef",  "effective height",          str(h_ef)),
+        CALC_ROW("e_m",   "midheight eccentricity",    str(e_m)),
+        CALC_ROW("N_Ed",  "design axial force",        str(N_Ed)),
+        CALC_ROW("f_b",   "unit compressive strength", str(f_b)),
+        CALC_ROW("f_m",   "mortar strength",           str(f_m)),
+        CALC_ROW("K",     "constant (Table 3.3)",      str(K)),
+        CALC_ROW("γ_M",   "partial factor",            str(gamma_M)),
+        CALC_ROW("K_1",   "long-term factor",          str(K1)),
+    ])
 
     # 1. Masonry strength
     blocks.append(S("Characteristic compressive strength — EN 1996-1-1 eq. 3.2"))

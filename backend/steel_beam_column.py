@@ -18,41 +18,26 @@ Ioannidis — Springer 2019, Table 4.10 (not susceptible) and Table 4.11
 
 import math
 from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext
+from steel_ec3 import BUCKLING_ALPHA, buckling_curve_hot_rolled, chi_flexural, chi_ltb, ltb_curve_hot_rolled
 
 # ── Shared buckling helpers ────────────────────────────────────────────────────
 
-_ALPHA = {'a0': 0.13, 'a': 0.21, 'b': 0.34, 'c': 0.49, 'd': 0.76}
+_ALPHA = BUCKLING_ALPHA
 
 
 def _buckling_curve(h_mm, b_mm, tf_mm):
-    """EC3 Table 6.2 — hot-rolled I/H sections, f_y ≤ 420 MPa."""
-    hb = h_mm / max(b_mm, 1.0)
-    if tf_mm <= 40:
-        return ('a', 'b') if hb > 1.2 else ('b', 'c')
-    return ('b', 'c') if tf_mm <= 100 else ('d', 'd')
+    """EC3 Table 6.2 buckling curves for hot-rolled I/H sections."""
+    return buckling_curve_hot_rolled(h_mm, b_mm, tf_mm)
 
 
 def _chi(lam_bar: float, curve: str) -> float:
-    """Flexural buckling reduction factor χ (EC3 §6.3.1.2 Eq. 6.49)."""
-    alpha = _ALPHA.get(curve.lower(), 0.34)
-    phi   = 0.5 * (1.0 + alpha * (lam_bar - 0.2) + lam_bar ** 2)
-    return min(1.0 / (phi + math.sqrt(max(phi**2 - lam_bar**2, 1e-14))), 1.0)
+    """Flexural buckling reduction factor chi (EC3 6.3.1.2 Eq. 6.49)."""
+    return chi_flexural(lam_bar, curve)
 
 
 def _chi_LT(lam_LT: float, h_mm: float, b_mm: float) -> float:
-    """
-    LTB reduction factor χ_LT — EC3 §6.3.2.2 (General method).
-    Buckling curve: b (α=0.34) for h/b > 2; c (α=0.49) otherwise.
-    Plateau length λ_LT,0 = 0.4 and β = 0.75 (EC3 recommended values).
-    """
-    alpha    = 0.34 if (h_mm / max(b_mm, 1.0)) > 2.0 else 0.49
-    lam_LT_0 = 0.4
-    beta      = 0.75
-    if lam_LT <= lam_LT_0:
-        return 1.0
-    phi = 0.5 * (1.0 + alpha * (lam_LT - lam_LT_0) + beta * lam_LT**2)
-    chi = 1.0 / (phi + math.sqrt(max(phi**2 - beta * lam_LT**2, 1e-14)))
-    return min(chi, 1.0 / lam_LT**2, 1.0)
+    """EC3 6.3.2.2 LTB reduction factor using the rolled-section curve."""
+    return chi_ltb(lam_LT, ltb_curve_hot_rolled(h_mm, b_mm))
 
 
 # ── Section property helpers ───────────────────────────────────────────────────
@@ -307,6 +292,32 @@ def steel_beam_column_check(
          f"M_y,Ed = {My_Ed_kNm:.1f} kNm  |  M_z,Ed = {Mz_Ed_kNm:.1f} kNm"),
         "steel",
     ))
+
+    blocks.append(S("Design parameters"))
+    blocks.append(T(
+        f"Steel beam-column interaction check to EN 1993-1-1 §6.3.3 (Annex B Method 2).  "
+        f"Section {section}, grade {grade}.  "
+        f"Buckling lengths: L_cr,y = {k_y:.2f}×{L_y_m:.2f} m, "
+        f"L_cr,z = {k_z:.2f}×{L_z_m:.2f} m, L_LTB = {L_LTB_m:.2f} m.  "
+        f"{'LTB restrained — χ_LT = 1.0.' if ltb_restrained else 'LTB unrestrained — χ_LT < 1.0 possible.'}"
+    ))
+    blocks.extend([
+        CALC_ROW("Section",  "profile",                          section),
+        CALC_ROW("Grade",    "steel grade",                      grade),
+        CALC_ROW("L_y",      "member length — y axis",           f"{L_y_m:.2f} m"),
+        CALC_ROW("L_z",      "member length — z axis",           f"{L_z_m:.2f} m"),
+        CALC_ROW("L_LTB",    "lateral buckling length",          f"{L_LTB_m:.2f} m"),
+        CALC_ROW("k_y",      "eff.-length factor y–y",           f"{k_y:.2f}"),
+        CALC_ROW("k_z",      "eff.-length factor z–z",           f"{k_z:.2f}"),
+        CALC_ROW("N_Ed",     "design axial compression",         f"{N_Ed_kN:.1f} kN"),
+        CALC_ROW("M_y,Ed",   "design moment — strong axis",      f"{My_Ed_kNm:.1f} kNm"),
+        CALC_ROW("M_z,Ed",   "design moment — weak axis",        f"{Mz_Ed_kNm:.1f} kNm"),
+        CALC_ROW("C_my",     "equiv. moment factor y",           f"{C_my:.2f}"),
+        CALC_ROW("C_mz",     "equiv. moment factor z",           f"{C_mz:.2f}"),
+        CALC_ROW("C_mLT",    "equiv. moment factor LTB",         f"{C_mLT:.2f}"),
+        CALC_ROW("γ_M0",     "partial factor — cross-section",   f"{gamma_M0:.2f}"),
+        CALC_ROW("γ_M1",     "partial factor — member buckling", f"{gamma_M1:.2f}"),
+    ])
 
     blocks.append(S("Section properties"))
     blocks += [

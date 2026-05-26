@@ -10,35 +10,22 @@ Checks:
 All inputs are plain Python scalars (mm, kN, MPa, kNm).
 """
 import math
+
 from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext
+from steel_ec3 import BUCKLING_ALPHA, buckling_curve_hot_rolled, chi_flexural
 
 # ── Imperfection factors — EC3 Table 6.1 ─────────────────────────────────────
-_ALPHA = {'a0': 0.13, 'a': 0.21, 'b': 0.34, 'c': 0.49, 'd': 0.76}
+_ALPHA = BUCKLING_ALPHA
 
 
 def _buckling_curve_hot_rolled(h_mm, b_mm, tf_mm):
-    """
-    Buckling curves for hot-rolled I/H sections — EC3 Table 6.2.
-    Returns (curve_y, curve_z).
-    """
-    hb = h_mm / b_mm if b_mm > 0 else 1.0
-    if tf_mm <= 40:
-        if hb > 1.2:
-            return 'a', 'b'   # IPE-like: tall and narrow
-        else:
-            return 'b', 'c'   # HEA/HEB-like: stocky
-    elif tf_mm <= 100:
-        return 'b', 'c'
-    else:
-        return 'd', 'd'
+    """Buckling curves for hot-rolled I/H sections - EC3 Table 6.2."""
+    return buckling_curve_hot_rolled(h_mm, b_mm, tf_mm)
 
 
 def _chi(lam_bar: float, curve: str) -> float:
-    """Buckling reduction factor χ — EC3 §6.3.1.2 Eq. 6.49."""
-    alpha = _ALPHA.get(curve.lower(), 0.34)
-    phi   = 0.5 * (1.0 + alpha * (lam_bar - 0.2) + lam_bar ** 2)
-    denom = phi + math.sqrt(max(phi ** 2 - lam_bar ** 2, 1e-12))
-    return min(1.0 / denom, 1.0)
+    """Buckling reduction factor chi - EC3 6.3.1.2 Eq. 6.49."""
+    return chi_flexural(lam_bar, curve)
 
 
 def steel_column_check(
@@ -139,6 +126,12 @@ def steel_column_check(
         M_pl_z_Rd = None
 
     have_moments = abs(M_y_Ed_kNm) > 1e-9 or abs(M_z_Ed_kNm) > 1e-9
+    if have_moments and not ltb_restrained:
+        raise ValueError(
+            "steel_column_check does not calculate lateral-torsional buckling for "
+            "unrestrained beam-columns. Use steel_beam_column.py for that case, "
+            "or set ltb_restrained=True only when restraint is real."
+        )
 
     # ── Header ────────────────────────────────────────────────────────────────
     blocks.append(MH(
@@ -156,42 +149,38 @@ def steel_column_check(
         f"effective-length factors k_y = {k_y:.2f}, k_z = {k_z:.2f}."
     ))
 
-    param_rows = [
-        ["Section",                        "—",       section],
-        ["Steel grade",                    "—",       grade],
-        ["Column length",                  "L",       f"{length_m:.2f} m"],
-        ["Effective-length factor y–y",    "k_y",     f"{k_y:.2f}"],
-        ["Effective-length factor z–z",    "k_z",     f"{k_z:.2f}"],
-        ["Design axial force",             "N_Ed",    f"{N_Ed_kN:.1f} kN"],
-    ]
+    blocks.extend([
+        CALC_ROW("Section",  "profile",                    section),
+        CALC_ROW("Grade",    "steel grade",                grade),
+        CALC_ROW("L",        "column length",              f"{length_m:.2f} m"),
+        CALC_ROW("k_y",      "eff.-length factor y–y",    f"{k_y:.2f}"),
+        CALC_ROW("k_z",      "eff.-length factor z–z",    f"{k_z:.2f}"),
+        CALC_ROW("N_Ed",     "design axial compression",  f"{N_Ed_kN:.1f} kN"),
+    ])
     if have_moments:
-        param_rows += [
-            ["Design moment — strong axis",    "M_y,Ed",  f"{M_y_Ed_kNm:.1f} kNm"],
-            ["Design moment — weak axis",      "M_z,Ed",  f"{M_z_Ed_kNm:.1f} kNm"],
-            ["Unif. moment factor y",          "C_my",    f"{C_my:.2f}"],
-            ["Unif. moment factor z",          "C_mz",    f"{C_mz:.2f}"],
-        ]
-    param_rows += [
-        ["Partial factor cross-section",   "γ_M0",    str(gamma_M0)],
-        ["Partial factor member buckling", "γ_M1",    str(gamma_M1)],
-    ]
-    blocks.append(TBL(["Parameter", "Symbol", "Value"], param_rows))
+        blocks.extend([
+            CALC_ROW("M_y,Ed", "design moment — strong axis",  f"{M_y_Ed_kNm:.1f} kNm"),
+            CALC_ROW("M_z,Ed", "design moment — weak axis",    f"{M_z_Ed_kNm:.1f} kNm"),
+            CALC_ROW("C_my",   "uniform moment factor y",      f"{C_my:.2f}"),
+            CALC_ROW("C_mz",   "uniform moment factor z",      f"{C_mz:.2f}"),
+        ])
+    blocks.extend([
+        CALC_ROW("γ_M0",  "partial factor — cross-section",   str(gamma_M0)),
+        CALC_ROW("γ_M1",  "partial factor — member buckling", str(gamma_M1)),
+    ])
 
     # ── Section properties ────────────────────────────────────────────────────
     blocks.append(S("Section properties  — EN 1993-1-1 §6.1"))
-    blocks.append(TBL(
-        ["Property", "Symbol", "Value"],
-        [
-            ["Gross area",                 "A",        f"{A_cm2:.2f} cm²"],
-            ["2nd moment — strong axis",   "I_y",      f"{Iy_cm4:.1f} cm⁴"],
-            ["2nd moment — weak axis",     "I_z",      f"{Iz_cm4:.1f} cm⁴"],
-            ["Radius of gyration y",       "i_y",      f"{iy:.1f} mm"],
-            ["Radius of gyration z",       "i_z",      f"{iz:.1f} mm"],
-            ["Plastic modulus y",          "W_pl,y",   f"{W_pl_y:.1f} cm³"],
-            ["Plastic modulus z",          "W_pl,z",   f"{W_pl_z:.1f} cm³" if W_pl_z is not None else "—"],
-            ["Yield strength",             "f_y",      f"{fy:.0f} MPa"],
-        ],
-    ))
+    blocks.extend([
+        CALC_ROW("A",      "gross area",                f"{A_cm2:.2f} cm²"),
+        CALC_ROW("I_y",    "2nd moment — strong axis",  f"{Iy_cm4:.1f} cm⁴"),
+        CALC_ROW("I_z",    "2nd moment — weak axis",    f"{Iz_cm4:.1f} cm⁴"),
+        CALC_ROW("i_y",    "= √(I_y / A)",              f"{iy:.1f} mm"),
+        CALC_ROW("i_z",    "= √(I_z / A)",              f"{iz:.1f} mm"),
+        CALC_ROW("W_pl,y", "plastic modulus — y",       f"{W_pl_y:.1f} cm³"),
+        CALC_ROW("W_pl,z", "plastic modulus — z",       f"{W_pl_z:.1f} cm³" if W_pl_z is not None else "—"),
+        CALC_ROW("f_y",    "yield strength",             f"{fy:.0f} MPa"),
+    ])
     if W_pl_z is None:
         blocks.append(N("W_pl,z not derived — provide tw_mm to enable weak-axis bending check."))
 
@@ -203,9 +192,8 @@ def steel_column_check(
             "UDL parabolic diagram C ≈ 0.95."
         ))
         blocks.append(N(
-            "Annex B Method 2 interaction factors — sections not susceptible to torsional "
-            f"deformations.  "
-            f"{'LTB restrained — χ_LT = 1.0.' if ltb_restrained else 'LTB not restrained — χ_LT = 1.0 assumed (conservative).'}"
+            "Annex B Method 2 interaction factors - sections not susceptible to torsional "
+            "deformations. LTB restrained - chi_LT = 1.0."
         ))
 
     # ── Slenderness ───────────────────────────────────────────────────────────

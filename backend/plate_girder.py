@@ -295,6 +295,26 @@ def plate_girder_check(
         "steel",
     ))
 
+    blocks.append(S("Design parameters"))
+    blocks.append(T(
+        f"Plate girder check to EN 1993-1-1 / EN 1993-1-5.  "
+        f"Web {h_w_mm:.0f}×{t_w_mm:.0f} mm, flanges {b_f_mm:.0f}×{t_f_mm:.0f} mm (both).  "
+        f"Panel length a = {a_mm:.0f} mm, grade {grade}.  "
+        f"{'Rigid' if rigid_end_post else 'Non-rigid'} end post, η = {eta:.2f}."
+    ))
+    blocks.extend([
+        CALC_ROW("h_w",   "web height",                    f"{h_w_mm:.1f} mm"),
+        CALC_ROW("t_w",   "web thickness",                 f"{t_w_mm:.1f} mm"),
+        CALC_ROW("b_f",   "flange width",                  f"{b_f_mm:.1f} mm"),
+        CALC_ROW("t_f",   "flange thickness",              f"{t_f_mm:.1f} mm"),
+        CALC_ROW("a",     "panel length (stiffener sp.)",  f"{a_mm:.1f} mm"),
+        CALC_ROW("f_y",   "yield strength",                f"{f_yw_MPa:.0f} MPa"),
+        CALC_ROW("M_Ed",  "design bending moment",         f"{M_Ed_kNm:.1f} kNm"),
+        CALC_ROW("V_Ed",  "design shear force",            f"{V_Ed_kN:.1f} kN"),
+        CALC_ROW("γ_M0",  "partial factor — cross-section", f"{gamma_M0:.2f}"),
+        CALC_ROW("γ_M1",  "partial factor — buckling",     f"{gamma_M1:.2f}"),
+    ])
+
     blocks.append(S("Cross-section geometry and properties"))
     blocks += [
         CALC_ROW("h",       "= h_w + 2t_f",         f"{h_mm:.1f} mm"),

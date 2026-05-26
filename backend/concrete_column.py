@@ -275,30 +275,27 @@ def concrete_column_rect(
     blocks.append(S("Design parameters"))
     blocks.append(T(
         f"Rectangular reinforced concrete column, {h_mm:.0f}×{b_mm:.0f} mm.  "
-        f"Concrete C{fck_mpa:.0f}, reinforcement fyk = {fyk_mpa:.0f} MPa.  "
-        f"Column length Ls = {Ls_mm:.0f} mm, effective-length factor β = {beta_eff}.  "
+        f"Concrete C{fck_mpa:.0f}, reinforcement f_yk = {fyk_mpa:.0f} MPa.  "
+        f"Column length L_s = {Ls_mm:.0f} mm, effective-length factor β = {beta_eff}.  "
         f"Bending about the axis parallel to b = {b_mm:.0f} mm."
     ))
-    blocks.append(TBL(
-        ["Parameter", "Symbol", "Value"],
-        [
-            ["Section height (bending dir.)", "h",        f"{h_mm:.0f} mm"],
-            ["Section width",                 "b",        f"{b_mm:.0f} mm"],
-            ["Cover to rebar centroid",       "c",        f"{c_mm:.0f} mm"],
-            ["Compression rebars",            "n_c × Ø",  f"{n_c} × Ø{da_c_mm:.0f} mm"],
-            ["Tension rebars",                "n_t × Ø",  f"{n_t} × Ø{da_t_mm:.0f} mm"],
-            ["Char. cylinder strength",       "f_ck",     f"{fck_mpa:.0f} MPa"],
-            ["Char. yield strength",          "f_yk",     f"{fyk_mpa:.0f} MPa"],
-            ["Partial factor concrete",       "γ_c",      str(gamma_c)],
-            ["Partial factor steel",          "γ_s",      str(gamma_s)],
-            ["Long-term factor",              "α_cc",     str(alpha_cc)],
-            ["Column length",                 "L_s",      f"{Ls_mm:.0f} mm"],
-            ["Effective-length factor",       "β",        str(beta_eff)],
-            ["Relative humidity",             "RH",       f"{RH*100:.0f} %"],
-            ["Age at loading",                "t₀",       f"{t0_days:.0f} days"],
-            ["M₀_Eqp / M₀_Ed",               "—",        str(M0Eqp_over_M0Ed)],
-        ],
-    ))
+    blocks.extend([
+        CALC_ROW("h",             "section height (bending direction)",  f"{h_mm:.0f} mm"),
+        CALC_ROW("b",             "section width",                        f"{b_mm:.0f} mm"),
+        CALC_ROW("c",             "cover to rebar centroid",              f"{c_mm:.0f} mm"),
+        CALC_ROW("n_c × Ø_c",    "compression rebars",                   f"{n_c} × Ø{da_c_mm:.0f} mm"),
+        CALC_ROW("n_t × Ø_t",    "tension rebars",                       f"{n_t} × Ø{da_t_mm:.0f} mm"),
+        CALC_ROW("f_ck",          "char. cylinder strength",              f"{fck_mpa:.0f} MPa"),
+        CALC_ROW("f_yk",          "char. yield strength",                 f"{fyk_mpa:.0f} MPa"),
+        CALC_ROW("γ_c",           "partial factor — concrete",            str(gamma_c)),
+        CALC_ROW("γ_s",           "partial factor — steel",               str(gamma_s)),
+        CALC_ROW("α_cc",          "long-term strength factor",            str(alpha_cc)),
+        CALC_ROW("L_s",           "column length",                        f"{Ls_mm:.0f} mm"),
+        CALC_ROW("β",             "effective-length factor",              str(beta_eff)),
+        CALC_ROW("RH",            "relative humidity",                    f"{RH*100:.0f} %"),
+        CALC_ROW("t₀",            "age at loading",                       f"{t0_days:.0f} days"),
+        CALC_ROW("M₀_Eqp/M₀_Ed", "quasi-permanent moment ratio",         str(M0Eqp_over_M0Ed)),
+    ])
 
     # ── Cross-section diagram ─────────────────────────────────────────────────
     with tempfile.TemporaryDirectory() as _sec_tmp:
@@ -343,23 +340,12 @@ def concrete_column_rect(
 
     blocks.extend([
         CALC_ROW("A_c",   "= h·b",              f"{Ac:.0f} mm²"),
-        CALC_ROW("A_s,c", "= n_c·π/4·da_c²",   f"{As_c:.1f} mm²"),
-        CALC_ROW("A_s,t", "= n_t·π/4·da_t²",   f"{As_t:.1f} mm²"),
+        CALC_ROW("A_s,c", "= n_c·π/4·Ø_c²",    f"{As_c:.1f} mm²"),
+        CALC_ROW("A_s,t", "= n_t·π/4·Ø_t²",    f"{As_t:.1f} mm²"),
         CALC_ROW("A_s",   "= A_s,c + A_s,t",    f"{As:.1f} mm²"),
         CALC_ROW("d",     "= h − c",            f"{d:.1f} mm"),
+        CALC_ROW("ρ",     "= A_s / A_c",        f"{As/Ac*100:.2f} %"),
     ])
-
-    blocks.append(TBL(
-        ["Property", "Symbol", "Value"],
-        [
-            ["Gross area",              "A_c",   f"{Ac:.0f} mm²"],
-            ["Compression reinf. area", "A_s,c", f"{As_c:.1f} mm²"],
-            ["Tension reinf. area",     "A_s,t", f"{As_t:.1f} mm²"],
-            ["Total reinf. area",       "A_s",   f"{As:.1f} mm²"],
-            ["Effective depth",         "d",     f"{d:.1f} mm"],
-            ["Reinf. ratio",            "ρ",     f"{As/Ac*100:.2f} %"],
-        ],
-    ))
 
     # ── Creep coefficient ──────────────────────────────────────────────────
     blocks.append(S("Creep coefficient  — EN 1992-1-1 Annex B"))
@@ -368,21 +354,11 @@ def concrete_column_rect(
     phi_ef = phi0 * M0Eqp_over_M0Ed
     h0     = 2.0 * Ac / (2.0 * (h + b))
 
-    blocks.append(TBL(
-        ["Parameter", "Symbol", "Value"],
-        [
-            ["Notional section thickness", "h₀",   f"{h0:.1f} mm"],
-            ["Relative humidity",          "RH",   f"{RH*100:.0f} %"],
-            ["Age at loading",             "t₀",   f"{t0_days:.0f} days"],
-            ["Basic creep coeff.",         "φ₀",   f"{phi0:.3f}"],
-            ["Quasi-perm. ratio",          "M₀Eqp/M₀Ed", str(M0Eqp_over_M0Ed)],
-            ["Effective creep coeff.",     "φ_ef = φ₀ × ratio", f"{phi_ef:.3f}"],
-        ],
-    ))
-    blocks.append(N(
-        f"φ₀ = {phi0:.3f} — computed via EN 1992-1-1 Annex B (simplified).  "
-        f"φ_ef = φ₀ × M₀Eqp/M₀Ed = {phi0:.3f} × {M0Eqp_over_M0Ed} = {phi_ef:.3f}."
-    ))
+    blocks.extend([
+        CALC_ROW("h₀",   "= 2·A_c / u  (notional thickness)",  f"{h0:.1f} mm"),
+        CALC_ROW("φ₀",   "= φ_RH·β(f_cm)·β(t₀)  (Annex B)",   f"{phi0:.3f}"),
+        CALC_ROW("φ_ef", "= φ₀ · M₀_Eqp/M₀_Ed",               f"{phi_ef:.3f}"),
+    ])
 
     # ── Slenderness ────────────────────────────────────────────────────────
     blocks.append(S("Slenderness  — EN 1992-1-1 cl. 5.8.3"))
@@ -414,17 +390,12 @@ def concrete_column_rect(
     EI_eff = (Kc * Ecd * Ic + 1.0 * Es * Is) * 1e-9   # kNm²
     Ncr    = pi ** 2 * EI_eff / (l0 * 1e-3) ** 2       # kN
 
-    blocks.append(TBL(
-        ["Parameter", "Symbol", "Value"],
-        [
-            ["Second moment of area",         "I_c",  f"{Ic:.2e} mm⁴"],
-            ["Steel second moment",            "I_s",  f"{Is:.2e} mm⁴"],
-            ["Stiffness reduction factor",     "K_c",  f"{Kc:.4f}"],
-            ["Effective bending stiffness",    "EI_eff", f"{EI_eff:.1f} kNm²"],
-            ["Effective length",               "l₀",   f"{l0:.0f} mm"],
-            ["Elastic critical force",         "N_cr", f"{Ncr:.1f} kN"],
-        ],
-    ))
+    blocks.extend([
+        CALC_ROW("I_s",    "= (A_s,c + A_s,t)·(h/2 − c)²",  f"{Is:.3e} mm⁴"),
+        CALC_ROW("K_c",    "= 0.3 / (1 + 0.5·φ_ef)",        f"{Kc:.4f}"),
+        CALC_ROW("EI_eff", "= K_c·E_cd·I_c + E_s·I_s",      f"{EI_eff:.1f} kNm²"),
+        CALC_ROW("N_cr",   "= π²·EI_eff / l₀²",             f"{Ncr:.1f} kN"),
+    ])
 
     # ── N–M interaction curve ─────────────────────────────────────────────
     blocks.append(S("N–M interaction curve  — EN 1992-1-1 cl. 3.1.7 / 6.1"))
@@ -458,14 +429,11 @@ def concrete_column_rect(
     e0_min = max(h / 30.0, 20.0)
     ei    = l0 / 400.0
 
-    blocks.append(TBL(
-        ["Parameter", "Symbol", "Value"],
-        [
-            ["Min. eccentricity", "e₀_min = max(h/30, 20 mm)", f"{e0_min:.1f} mm"],
-            ["Imperfection eccentricity", "eᵢ = l₀/400",       f"{ei:.1f} mm"],
-            ["Mechanical reinf. ratio",   "ω = A_s f_yd/(A_c f_cd)", f"{omega:.3f}"],
-        ],
-    ))
+    blocks.extend([
+        CALC_ROW("ω",      "= A_s·f_yd / (A_c·f_cd)",          f"{omega:.3f}"),
+        CALC_ROW("e₀_min", "= max(h/30, 20 mm)",                f"{e0_min:.1f} mm"),
+        CALC_ROW("eᵢ",     "= l₀ / 400  (imperfection)",        f"{ei:.1f} mm"),
+    ])
 
     plot_pts  = []
     chk_rows  = []

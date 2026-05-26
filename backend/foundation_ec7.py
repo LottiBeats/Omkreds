@@ -107,11 +107,29 @@ def foundation_bearing(
         "general",
     ))
 
-    blocks.append(S("Footing geometry"))
+    blocks.append(S("Design parameters"))
+    blocks.append(T(
+        f"Spread footing bearing capacity to EN 1997-1 Annex D.  "
+        f"Rectangular footing {B_m:.2f}×{L_m:.2f} m, embedment D = {D_m:.2f} m.  "
+        f"Soil: φ' = {phi_deg:.1f}°, c' = {c_kPa:.1f} kPa, γ = {gamma_kNm3:.1f} kN/m³.  "
+        f"Design vertical load V_Ed = {V_Ed_kN:.1f} kN.  "
+        f"Resistance factor γ_R,v = {gamma_Rv:.2f}."
+    ))
+    blocks.extend([
+        CALC_ROW("B",     "footing width",               f"{B_m:.2f} m"),
+        CALC_ROW("L",     "footing length",              f"{L_m:.2f} m"),
+        CALC_ROW("D",     "embedment depth",             f"{D_m:.2f} m"),
+        CALC_ROW("V_Ed",  "design vertical load",        f"{V_Ed_kN:.1f} kN"),
+        CALC_ROW("H_Ed",  "design horizontal load",      f"{H_Ed_kN:.1f} kN"),
+        CALC_ROW("M_Ed",  "design moment",               f"{M_Ed_kNm:.1f} kNm"),
+        CALC_ROW("c'",    "effective cohesion",          f"{c_kPa:.1f} kPa"),
+        CALC_ROW("φ'",    "friction angle",              f"{phi_deg:.1f}°"),
+        CALC_ROW("γ",     "soil unit weight",            f"{gamma_kNm3:.1f} kN/m³"),
+        CALC_ROW("γ_R,v", "resistance factor (GEO)",     f"{gamma_Rv:.2f}"),
+    ])
+
+    blocks.append(S("Footing geometry — effective dimensions"))
     blocks += [
-        CALC_ROW("B",     "Width",                      f"{B_m:.2f} m"),
-        CALC_ROW("L",     "Length",                     f"{L_m:.2f} m"),
-        CALC_ROW("D",     "Embedment depth",            f"{D_m:.2f} m"),
         CALC_ROW("e_B",   "= M_Ed / V_Ed  (eccentricity)", f"{e_B:.3f} m"),
         CALC_ROW("B'",    "= B − 2·e_B  (effective width)", f"{B_eff:.3f} m"),
         CALC_ROW("L'",    "= L          (effective length)", f"{L_eff:.3f} m"),
@@ -154,19 +172,17 @@ def foundation_bearing(
 
     blocks.append(S("Bearing resistance  (EC7 Annex D.1)"))
     blocks += [
-        CALC_ROW("c'·Nc·sc·ic",           "Cohesion term",    f"{r_c:.2f} kPa"),
-        CALC_ROW("q·Nq·sq·iq",            "Surcharge term",   f"{r_q:.2f} kPa"),
-        CALC_ROW("0.5·γ'·B'·Nγ·sγ·iγ",  "Width term",       f"{r_g:.2f} kPa"),
-        CALC_ROW("R/A'",  "= sum of terms",         f"{r_per_m2:.2f} kPa"),
-        CALC_ROW("R_ult", "= (R/A') · A'",          f"{R_ult:.1f} kN"),
-        CALC_ROW("γ_R,v", "Resistance factor (GEO)", f"{gamma_Rv:.2f}"),
-        CALC_ROW("R_d",   "= R_ult / γ_R,v",        f"{R_d:.1f} kN"),
+        CALC_ROW("c'·Nc·sc·ic",          "cohesion term",    f"{r_c:.2f} kPa"),
+        CALC_ROW("q·Nq·sq·iq",           "surcharge term",   f"{r_q:.2f} kPa"),
+        CALC_ROW("0.5·γ'·B'·Nγ·sγ·iγ", "width term",       f"{r_g:.2f} kPa"),
+        CALC_ROW("R/A'",  "= sum of terms",                  f"{r_per_m2:.2f} kPa"),
+        CALC_ROW("R_ult", "= (R/A') · A'",                   f"{R_ult:.1f} kN"),
+        CALC_ROW("R_d",   "= R_ult / γ_R,v",                 f"{R_d:.1f} kN"),
     ]
 
-    blocks.append(S("Verification"))
+    blocks.append(S("Verification  — EC7 §6.5.2"))
     blocks += [
-        CALC_ROW("V_Ed",  "Design vertical load",       f"{V_Ed_kN:.1f} kN"),
-        CALC_ROW("q_Ed",  "= V_Ed / A'  (contact pr.)", f"{q_Ed:.2f} kPa"),
+        CALC_ROW("q_Ed",  "= V_Ed / A'  (contact pressure)", f"{q_Ed:.2f} kPa"),
         chk.check("Bearing resistance  V_Ed ≤ R_d  (EC7 §6.5.2)", V_Ed_kN, R_d),
     ]
 
