@@ -52,7 +52,7 @@ export default function LoadComboBlock({ block, onChange }) {
     setRunning(true)
     setError(null)
     try {
-      const res = await calcLoadCombo({
+      const list = await calcLoadCombo({
         label:  d.label  ?? 'LC1',
         unit:   d.unit   ?? 'kN/m',
         G_k:    d.G_k    ?? 5.0,
@@ -60,9 +60,12 @@ export default function LoadComboBlock({ block, onChange }) {
         loads:  d.loads  ?? [],
         method: d.method ?? '6.10ab',
       })
-      // Backend now returns { blocks, exports } so element blocks can read
-      // E_d_uls and governing_duration directly from _exports.
-      update({ _result: res.blocks, _exports: res.exports })
+      // Backend returns a flat list; first element is a synthetic
+      // {type:'_exports', exports:{...}} sentinel — extract it so
+      // downstream steel/timber beam blocks can read E_d_uls + governing_duration.
+      const sentinel = list.find(b => b.type === '_exports')
+      const blocks   = list.filter(b => b.type !== '_exports')
+      update({ _result: blocks, _exports: sentinel?.exports ?? null })
     } catch (err) {
       setError(err.message)
     } finally {

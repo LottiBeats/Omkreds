@@ -1308,8 +1308,11 @@ class LoadComboInput(BaseModel):
 @protected.post("/calc/load-combo", tags=["Calculations"])
 def calc_load_combo(data: LoadComboInput):
     """EN 1990 ULS/SLS load combinations (Danish NA).
-    Returns {'blocks': [...], 'exports': {...}} so element blocks can
-    read E_d_uls and governing_duration directly.
+    Returns a flat list of calc blocks.  The first element is always a
+    synthetic {'type': '_exports', 'exports': {...}} block that the
+    renderer silently skips but LoadComboBlock stores as _exports so
+    downstream element blocks (steel/timber beam) can read E_d_uls and
+    governing_duration without a separate API call.
     """
     try:
         from load_combo import load_combos
@@ -1318,7 +1321,8 @@ def calc_load_combo(data: LoadComboInput):
             G_k=data.G_k, loads=data.loads,
             method=data.method, G_fav=data.G_fav,
         )
-        return {'blocks': blocks, 'exports': exports}
+        # Embed exports as an invisible sentinel block (unknown type → renderer drops it).
+        return [{'type': '_exports', 'exports': exports}] + blocks
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

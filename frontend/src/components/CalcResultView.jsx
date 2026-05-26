@@ -57,6 +57,8 @@ function Block({ block }) {
     case 'check':         return <Check block={block} />
     case 'calc_row':      return <CalcRow block={block} />
     default:
+      // Silently drop internal sentinel blocks (e.g. _exports from load_combo)
+      if (block.type?.startsWith('_')) return null
       return (
         <div style={styles.unknown}>
           Unknown block type: <code>{block.type}</code>
