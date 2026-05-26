@@ -295,9 +295,12 @@ function Check({ block }) {
 function fmtCalcText(text) {
   if (!text) return ''
   // 1. sub / superscripts
+  // Exclusion set: whitespace, operators (+, -, −(U+2212), *, /, ×, ÷, ·),
+  // comparison signs, brackets, and the control chars _^<>= so that
+  // e.g. λ̄_y−0.2 only subscripts "y", stopping at the Unicode minus sign.
   let s = text
-    .replace(/_([^\s_^<>=+\-*/×÷·()[\]{}]+)/g, '<sub>$1</sub>')
-    .replace(/\^([^\s_^<>=+\-*/×÷·()[\]{}]+)/g, '<sup>$1</sup>')
+    .replace(/_([^\s_^<>=+\-−*/×÷·()[\]{}]+)/g, '<sub>$1</sub>')
+    .replace(/\^([^\s_^<>=+\-−*/×÷·()[\]{}]+)/g, '<sup>$1</sup>')
   // 2. Extract leading "= " so it stays outside the fraction
   const eqMatch = s.match(/^(=\s*)/)
   const prefix = eqMatch ? eqMatch[1] : ''

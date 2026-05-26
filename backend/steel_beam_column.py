@@ -20,6 +20,12 @@ import math
 from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext
 from steel_ec3 import BUCKLING_ALPHA, buckling_curve_hot_rolled, chi_flexural, chi_ltb, ltb_curve_hot_rolled
 
+import forallpeople as si
+si.environment("structural", top_level=True)
+
+# forallpeople's structural environment does not expose 'cm', so define it:
+_cm = 10 * mm   # 1 cm = 10 mm  (forallpeople quantity)
+
 # ── Shared buckling helpers ────────────────────────────────────────────────────
 
 _ALPHA = BUCKLING_ALPHA
@@ -190,47 +196,59 @@ def steel_beam_column_check(
     """
     chk    = CheckContext()
     blocks = []
-    E_MPa  = 210_000.0
-    G_MPa  = 81_000.0
 
-    # Derived section properties
-    A_cm2, Iz_cm4, Wplz_cm3, It_cm4, Iw_cm6 = _section_props(
-        h_mm, b_mm, tw_mm, tf_mm, Iy_cm4)
+    # ── Convert all inputs to forallpeople quantities ──────────────────────────
+    N_Ed  = N_Ed_kN   * kN
+    My_Ed = My_Ed_kNm * kN * m
+    Mz_Ed = Mz_Ed_kNm * kN * m
+    L_y   = L_y_m     * m
+    L_z   = L_z_m     * m
+    L_LTB = L_LTB_m   * m
+    f_y   = f_y_MPa   * MPa
+    h     = h_mm      * mm
+    b     = b_mm      * mm
+    tw    = tw_mm     * mm
+    tf    = tf_mm     * mm
+    Iy    = Iy_cm4    * _cm**4    # catalog value — includes fillets
+    Wply  = Wply_cm3  * _cm**3   # catalog value
+    E     = 210_000   * MPa
+    G     =  81_000   * MPa
 
-    # Convert to consistent mm units for buckling
-    A_mm2  = A_cm2  * 100.0
-    Iy_mm4 = Iy_cm4 * 1e4
-    Iz_mm4 = Iz_cm4 * 1e4
-    It_mm4 = It_cm4 * 1e4
-    Iw_mm6 = Iw_cm6 * 1e6
+    # ── Section properties (derived from geometry, forallpeople throughout) ────
+    hw   = h - 2*tf
+    A    = 2*b*tf + hw*tw                          # gross area
+    Iz   = 2*(tf * b**3) / 12 + hw * tw**3 / 12   # 2nd moment — weak axis
+    Wplz = b**2 * tf / 2 + tw**2 * hw / 4         # plastic modulus — weak axis
+    It   = (2*b*tf**3 + hw*tw**3) / 3             # St-Venant torsion (no fillets)
+    Iw   = Iz * (h - tf)**2 / 4                   # warping constant
 
-    # Radii of gyration [mm]
-    iy = math.sqrt(Iy_mm4 / A_mm2)
-    iz = math.sqrt(Iz_mm4 / A_mm2)
+    # Radii of gyration
+    iy = (Iy / A) ** 0.5
+    iz = (Iz / A) ** 0.5
 
-    # Effective lengths [mm]
-    L_cr_y   = k_y * L_y_m   * 1000.0
-    L_cr_z   = k_z * L_z_m   * 1000.0
-    L_cr_LTB =       L_LTB_m * 1000.0
+    # ── Effective lengths ──────────────────────────────────────────────────────
+    L_cr_y   = k_y * L_y
+    L_cr_z   = k_z * L_z
+    L_cr_LTB = L_LTB
 
-    # Reference slenderness  λ₁ = π√(E/f_y)
-    lambda_1 = math.pi * math.sqrt(E_MPa / f_y_MPa)
+    # Reference slenderness λ₁ = π√(E/f_y)  [dimensionless]
+    lambda_1 = math.pi * math.sqrt(float(E / f_y))
 
-    # Non-dimensional slenderness for flexural buckling
-    lam_y = (L_cr_y / iy) / lambda_1
-    lam_z = (L_cr_z / iz) / lambda_1
+    # Non-dimensional slenderness  [dimensionless]
+    lam_y = float(L_cr_y / iy) / lambda_1
+    lam_z = float(L_cr_z / iz) / lambda_1
 
     # Buckling curves (EC3 Table 6.2) and reduction factors
     curve_y, curve_z = _buckling_curve(h_mm, b_mm, tf_mm)
     chi_y = _chi(lam_y, curve_y)
     chi_z = _chi(lam_z, curve_z)
 
-    # Characteristic cross-section resistances [kN, kNm]
-    N_Rk  = A_mm2    * f_y_MPa / 1_000.0
-    My_Rk = Wply_cm3 * f_y_MPa / 1_000.0   # cm³ × N/mm² = N·cm = kN·cm → /100 = kNm but:
-    Mz_Rk = Wplz_cm3 * f_y_MPa / 1_000.0   # cm³ × MPa → N·mm × 10⁻³ = kNm (cm³×MPa/1000=kNm)
+    # ── Characteristic cross-section resistances ───────────────────────────────
+    N_Rk  = A    * f_y   # [N]   → displays as kN
+    My_Rk = Wply * f_y   # [N·m] → displays as kN·m
+    Mz_Rk = Wplz * f_y
 
-    # Buckling resistances [kN]
+    # ── Buckling resistances ───────────────────────────────────────────────────
     N_b_y_Rd = chi_y * N_Rk / gamma_M1
     N_b_z_Rd = chi_z * N_Rk / gamma_M1
 
@@ -240,23 +258,28 @@ def steel_beam_column_check(
     if ltb_restrained or My_Ed_kNm <= 0.0:
         chi_LT  = 1.0
         lam_LTb = 0.0
-        M_cr_kNm = float('inf')
+        M_cr    = None
     else:
-        # M_cr  (critical moment for uniform moment, C₁=1.0 — conservative)
-        # EC3 §6.3.2.2 — two-term formula
-        under_root = (
-            E_MPa * Iz_mm4 * G_MPa * It_mm4
-            + (math.pi / L_cr_LTB)**2 * E_MPa**2 * Iz_mm4 * Iw_mm6
-        )
-        M_cr_Nmm = (math.pi / L_cr_LTB) * math.sqrt(max(under_root, 0.0))
-        M_cr_kNm = M_cr_Nmm / 1_000_000.0
-        lam_LTb  = math.sqrt(Wply_cm3 * f_y_MPa / 1_000.0 / max(M_cr_kNm, 1e-9))
-        chi_LT   = _chi_LT(lam_LTb, h_mm, b_mm)
+        # M_cr — two-term formula, all in forallpeople SI units
+        # Units: E·Iz·G·It  and  (π/L)²·E²·Iz·Iw  both give N²·m⁴
+        E_f  = float(E  / MPa)           # MPa (plain float for sqrt)
+        G_f  = float(G  / MPa)           # MPa
+        Iz_f = float(Iz / mm**4)         # mm⁴
+        It_f = float(It / mm**4)         # mm⁴
+        Iw_f = float(Iw / mm**6)         # mm⁶
+        L_f  = float(L_cr_LTB / mm)      # mm
+
+        under = (E_f * Iz_f * G_f * It_f
+                 + (math.pi / L_f)**2 * E_f**2 * Iz_f * Iw_f)
+        M_cr_Nmm  = (math.pi / L_f) * math.sqrt(max(under, 0.0))
+        M_cr      = (M_cr_Nmm / 1_000_000.0) * kN * m   # N·mm → kN·m (forallpeople)
+
+        lam_LTb = math.sqrt(float(Wply * f_y / M_cr))
+        chi_LT  = _chi_LT(lam_LTb, h_mm, b_mm)
 
     # ── Interaction factors (Annex B) ─────────────────────────────────────────
-    # Utilization ratios used in the interaction factors
-    n_y = N_Ed_kN / max(N_b_y_Rd, 1e-9)   # N_Ed / (χ_y · N_Rk / γ_M1)
-    n_z = N_Ed_kN / max(N_b_z_Rd, 1e-9)   # N_Ed / (χ_z · N_Rk / γ_M1)
+    n_y = float(N_Ed / N_b_y_Rd)    # N_Ed / (χ_y·N_Rk/γ_M1)  [dimensionless]
+    n_z = float(N_Ed / N_b_z_Rd)    # N_Ed / (χ_z·N_Rk/γ_M1)  [dimensionless]
 
     k_yy, k_yz, k_zy, k_zz = _k_factors_class12(
         lam_y, lam_z, n_y, n_z,
@@ -264,21 +287,27 @@ def steel_beam_column_check(
         susceptible_to_twist=susceptible,
     )
 
-    # ── Interaction utilizations  ─────────────────────────────────────────────
-    # Cross-section capacity  §6.2  (no buckling, no LTB)
-    ICS = (N_Ed_kN  / max(N_Rk  / gamma_M0, 1e-9)
-           + My_Ed_kNm / max(My_Rk / gamma_M0, 1e-9)
-           + Mz_Ed_kNm / max(Mz_Rk / gamma_M0, 1e-9))
+    # ── Interaction utilizations ───────────────────────────────────────────────
+    N_pl_Rd  = N_Rk  / gamma_M0
+    My_pl_Rd = My_Rk / gamma_M0
+    Mz_pl_Rd = Mz_Rk / gamma_M0
+    My_LT_Rd = chi_LT * My_Rk / gamma_M1
+    Mz_Rd    = Mz_Rk  / gamma_M1
 
-    # Eq. 6.61  (weak-axis buckling about y-y governs — N + M_y dominant)
-    IE1 = (N_Ed_kN  / max(N_b_y_Rd,                     1e-9)
-           + k_yy * My_Ed_kNm / max(chi_LT * My_Rk / gamma_M1, 1e-9)
-           + k_yz * Mz_Ed_kNm / max(         Mz_Rk / gamma_M1, 1e-9))
+    # Cross-section capacity  §6.2
+    ICS = (float(N_Ed  / N_pl_Rd)
+           + float(My_Ed / My_pl_Rd)
+           + float(Mz_Ed / Mz_pl_Rd))
 
-    # Eq. 6.62  (strong-axis buckling about z-z governs — N + M_z dominant)
-    IE2 = (N_Ed_kN  / max(N_b_z_Rd,                     1e-9)
-           + k_zy * My_Ed_kNm / max(chi_LT * My_Rk / gamma_M1, 1e-9)
-           + k_zz * Mz_Ed_kNm / max(         Mz_Rk / gamma_M1, 1e-9))
+    # Eq. 6.61
+    IE1 = (float(N_Ed  / N_b_y_Rd)
+           + k_yy * float(My_Ed / My_LT_Rd)
+           + k_yz * float(Mz_Ed / Mz_Rd))
+
+    # Eq. 6.62
+    IE2 = (float(N_Ed  / N_b_z_Rd)
+           + k_zy * float(My_Ed / My_LT_Rd)
+           + k_zz * float(Mz_Ed / Mz_Rd))
 
     # ── Output blocks ──────────────────────────────────────────────────────────
     table_ref = "B.1" if not susceptible else "B.2"
@@ -304,14 +333,14 @@ def steel_beam_column_check(
     blocks.extend([
         CALC_ROW("Section",  "profile",                          section),
         CALC_ROW("Grade",    "steel grade",                      grade),
-        CALC_ROW("L_y",      "member length — y axis",           f"{L_y_m:.2f} m"),
-        CALC_ROW("L_z",      "member length — z axis",           f"{L_z_m:.2f} m"),
-        CALC_ROW("L_LTB",    "lateral buckling length",          f"{L_LTB_m:.2f} m"),
+        CALC_ROW("L_y",      "member length — y axis",           str(L_y)),
+        CALC_ROW("L_z",      "member length — z axis",           str(L_z)),
+        CALC_ROW("L_LTB",    "lateral buckling length",          str(L_LTB)),
         CALC_ROW("k_y",      "eff.-length factor y–y",           f"{k_y:.2f}"),
         CALC_ROW("k_z",      "eff.-length factor z–z",           f"{k_z:.2f}"),
-        CALC_ROW("N_Ed",     "design axial compression",         f"{N_Ed_kN:.1f} kN"),
-        CALC_ROW("M_y,Ed",   "design moment — strong axis",      f"{My_Ed_kNm:.1f} kNm"),
-        CALC_ROW("M_z,Ed",   "design moment — weak axis",        f"{Mz_Ed_kNm:.1f} kNm"),
+        CALC_ROW("N_Ed",     "design axial compression",         str(N_Ed)),
+        CALC_ROW("M_y,Ed",   "design moment — strong axis",      str(My_Ed)),
+        CALC_ROW("M_z,Ed",   "design moment — weak axis",        str(Mz_Ed)),
         CALC_ROW("C_my",     "equiv. moment factor y",           f"{C_my:.2f}"),
         CALC_ROW("C_mz",     "equiv. moment factor z",           f"{C_mz:.2f}"),
         CALC_ROW("C_mLT",    "equiv. moment factor LTB",         f"{C_mLT:.2f}"),
@@ -319,38 +348,45 @@ def steel_beam_column_check(
         CALC_ROW("γ_M1",     "partial factor — member buckling", f"{gamma_M1:.2f}"),
     ])
 
+    # Section properties — geometry in forallpeople, areas/inertia in cm units (engineering convention)
     blocks.append(S("Section properties"))
     blocks += [
-        CALC_ROW("A",         "",           f"{A_cm2:.2f} cm²"),
-        CALC_ROW("I_y",       "",           f"{Iy_cm4:.1f} cm⁴"),
-        CALC_ROW("I_z",       "(derived)",  f"{Iz_cm4:.2f} cm⁴"),
-        CALC_ROW("W_pl,y",    "",           f"{Wply_cm3:.1f} cm³"),
-        CALC_ROW("W_pl,z",    "(derived)",  f"{Wplz_cm3:.1f} cm³"),
-        CALC_ROW("I_t",       "(approx)",   f"{It_cm4:.3f} cm⁴"),
-        CALC_ROW("I_w",       "(approx)",   f"{Iw_cm6:.0f} cm⁶"),
-        CALC_ROW("f_y",       "",           f"{f_y_MPa:.0f} MPa"),
+        CALC_ROW("h",         "total depth",         str(h)),
+        CALC_ROW("b",         "flange width",        str(b)),
+        CALC_ROW("t_w",       "web thickness",       str(tw)),
+        CALC_ROW("t_f",       "flange thickness",    str(tf)),
+        CALC_ROW("A",         "= 2·b·t_f + h_w·t_w", f"{float(A / _cm**2):.2f} cm²"),
+        CALC_ROW("I_y",       "(catalog)",            f"{Iy_cm4:.1f} cm⁴"),
+        CALC_ROW("I_z",       "(derived)",            f"{float(Iz / _cm**4):.2f} cm⁴"),
+        CALC_ROW("i_y",       "= √(I_y / A)",         str(iy)),
+        CALC_ROW("i_z",       "= √(I_z / A)",         str(iz)),
+        CALC_ROW("W_pl,y",    "(catalog)",             f"{Wply_cm3:.1f} cm³"),
+        CALC_ROW("W_pl,z",    "(derived)",             f"{float(Wplz / _cm**3):.1f} cm³"),
+        CALC_ROW("I_t",       "(approx)",              f"{float(It / _cm**4):.2f} cm⁴"),
+        CALC_ROW("I_w",       "(approx)",              f"{float(Iw / _cm**6):.0f} cm⁶"),
+        CALC_ROW("f_y",       "yield strength",        str(f_y)),
     ]
 
     blocks.append(S("Characteristic resistances"))
     blocks += [
-        CALC_ROW("N_Rk",    "= A · f_y",        f"{N_Rk:.1f} kN"),
-        CALC_ROW("M_y,Rk",  "= W_pl,y · f_y",   f"{My_Rk:.1f} kNm"),
-        CALC_ROW("M_z,Rk",  "= W_pl,z · f_y",   f"{Mz_Rk:.1f} kNm"),
+        CALC_ROW("N_Rk",    "= A · f_y",        str(N_Rk)),
+        CALC_ROW("M_y,Rk",  "= W_pl,y · f_y",   str(My_Rk)),
+        CALC_ROW("M_z,Rk",  "= W_pl,z · f_y",   str(Mz_Rk)),
     ]
 
     blocks.append(S("Flexural buckling  (EC3 §6.3.1)"))
     blocks += [
         T(f"Buckling curves: y–y → {curve_y.upper()} (α = {_ALPHA[curve_y]}),  "
           f"z–z → {curve_z.upper()} (α = {_ALPHA[curve_z]})"),
-        T(f"L_cr,y = {k_y}·{L_y_m:.2f} m = {L_cr_y/1000:.3f} m   |   "
-          f"L_cr,z = {k_z}·{L_z_m:.2f} m = {L_cr_z/1000:.3f} m"),
-        CALC_ROW("λ₁",      "= π√(E/f_y)",          f"{lambda_1:.2f}"),
-        CALC_ROW("λ̄_y",     "= (L_cr,y / i_y) / λ₁", f"{lam_y:.3f}"),
-        CALC_ROW("λ̄_z",     "= (L_cr,z / i_z) / λ₁", f"{lam_z:.3f}"),
-        CALC_ROW("χ_y",     f"Curve {curve_y.upper()}",  f"{chi_y:.3f}"),
-        CALC_ROW("χ_z",     f"Curve {curve_z.upper()}",  f"{chi_z:.3f}"),
-        CALC_ROW("N_b,y,Rd","= χ_y · N_Rk / γ_M1",   f"{N_b_y_Rd:.1f} kN"),
-        CALC_ROW("N_b,z,Rd","= χ_z · N_Rk / γ_M1",   f"{N_b_z_Rd:.1f} kN"),
+        T(f"L_cr,y = {k_y}·{str(L_y)} = {str(L_cr_y)}   |   "
+          f"L_cr,z = {k_z}·{str(L_z)} = {str(L_cr_z)}"),
+        CALC_ROW("λ₁",      "= π√(E/f_y)",            f"{lambda_1:.2f}"),
+        CALC_ROW("λ̄_y",     "= (L_cr,y / i_y) / λ₁",  f"{lam_y:.3f}"),
+        CALC_ROW("λ̄_z",     "= (L_cr,z / i_z) / λ₁",  f"{lam_z:.3f}"),
+        CALC_ROW("χ_y",     f"Curve {curve_y.upper()}", f"{chi_y:.3f}"),
+        CALC_ROW("χ_z",     f"Curve {curve_z.upper()}", f"{chi_z:.3f}"),
+        CALC_ROW("N_b,y,Rd","= χ_y · N_Rk / γ_M1",    str(N_b_y_Rd)),
+        CALC_ROW("N_b,z,Rd","= χ_z · N_Rk / γ_M1",    str(N_b_z_Rd)),
     ]
 
     blocks.append(S("LTB reduction factor  (EC3 §6.3.2.2 — General method)"))
@@ -359,14 +395,13 @@ def steel_beam_column_check(
         blocks.append(CALC_ROW("χ_LT", "= 1.0 (restrained)", "1.000"))
     else:
         blocks += [
-            T(f"L_LTB = {L_LTB_m:.2f} m   |   M_cr = {M_cr_kNm:.1f} kNm  (C₁ = 1.0, conservative)"),
+            T(f"L_LTB = {str(L_LTB)}   |   M_cr = {str(M_cr)}  (C₁ = 1.0, conservative)"),
             CALC_ROW("λ̄_LT",  "= √(W_pl,y · f_y / M_cr)",     f"{lam_LTb:.3f}"),
             CALC_ROW("χ_LT",   "General case, EC3 §6.3.2.2",   f"{chi_LT:.3f}"),
         ]
 
     blocks.append(S(f"Interaction factors  (Annex B {table_ref}, Class 1/2 — {susceptible_txt})"))
 
-    # Flag conservative C_m defaults
     _cm_at_unity = all(abs(c - 1.0) < 0.001 for c in (C_my, C_mz, C_mLT))
     if _cm_at_unity:
         blocks.append(N(
@@ -400,26 +435,26 @@ def steel_beam_column_check(
 
     blocks.append(S("Verification  (EC3 §6.3.3)"))
     blocks += [
-        CALC_ROW("N_Ed",   "", f"{N_Ed_kN:.1f} kN"),
-        CALC_ROW("M_y,Ed", "", f"{My_Ed_kNm:.1f} kNm"),
-        CALC_ROW("M_z,Ed", "", f"{Mz_Ed_kNm:.1f} kNm"),
+        CALC_ROW("N_Ed",   "design axial force",           str(N_Ed)),
+        CALC_ROW("M_y,Ed", "design moment — strong axis",  str(My_Ed)),
+        CALC_ROW("M_z,Ed", "design moment — weak axis",    str(Mz_Ed)),
     ]
 
     # Cross-section capacity
     blocks.append(CALC_ROW("η_cs",
-        "= N_Ed/(N_Rk/γ_M0) + M_y,Ed/(M_y,Rk/γ_M0) + M_z,Ed/(M_z,Rk/γ_M0)",
+        "= N_Ed / N_pl,Rd + M_y,Ed / M_pl,y,Rd + M_z,Ed / M_pl,z,Rd",
         f"{ICS:.3f}"))
     blocks.append(chk.check("Cross-section  §6.2", ICS, 1.0))
 
     # Eq. 6.61
     blocks.append(CALC_ROW("η_6.61",
-        "= N_Ed/(χ_y·N_b,y,Rd) + k_yy·M_y,Ed/(χ_LT·M_y,Rk/γ_M1) + k_yz·M_z,Ed/(M_z,Rk/γ_M1)",
+        "= N_Ed / N_b,y,Rd + k_yy · M_y,Ed / M_y,Rd + k_yz · M_z,Ed / M_z,Rd",
         f"{IE1:.3f}"))
     blocks.append(chk.check("Interaction Eq. 6.61", IE1, 1.0))
 
     # Eq. 6.62
     blocks.append(CALC_ROW("η_6.62",
-        "= N_Ed/(χ_z·N_b,z,Rd) + k_zy·M_y,Ed/(χ_LT·M_y,Rk/γ_M1) + k_zz·M_z,Ed/(M_z,Rk/γ_M1)",
+        "= N_Ed / N_b,z,Rd + k_zy · M_y,Ed / M_y,Rd + k_zz · M_z,Ed / M_z,Rd",
         f"{IE2:.3f}"))
     blocks.append(chk.check("Interaction Eq. 6.62", IE2, 1.0))
 
