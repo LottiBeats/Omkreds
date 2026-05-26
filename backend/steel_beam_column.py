@@ -406,23 +406,22 @@ def steel_beam_column_check(
     ]
 
     # Cross-section capacity
-    blocks.append(chk.check(
-        "Cross-section  N_Ed/(N_Rk/γ_M0) + M_y,Ed/(M_y,Rk/γ_M0) + M_z,Ed/(M_z,Rk/γ_M0)  ≤ 1  "
-        "(EC3 §6.2)",
-        ICS, 1.0,
-    ))
+    blocks.append(CALC_ROW("η_cs",
+        "= N_Ed/(N_Rk/γ_M0) + M_y,Ed/(M_y,Rk/γ_M0) + M_z,Ed/(M_z,Rk/γ_M0)",
+        f"{ICS:.3f}"))
+    blocks.append(chk.check("Cross-section  §6.2", ICS, 1.0))
+
     # Eq. 6.61
-    blocks.append(chk.check(
-        "Eq. 6.61  N_Ed/(χ_y·N_Rk/γ_M1) + k_yy·M_y,Ed/(χ_LT·M_y,Rk/γ_M1) + "
-        "k_yz·M_z,Ed/(M_z,Rk/γ_M1)  ≤ 1",
-        IE1, 1.0,
-    ))
+    blocks.append(CALC_ROW("η_6.61",
+        "= N_Ed/(χ_y·N_b,y,Rd) + k_yy·M_y,Ed/(χ_LT·M_y,Rk/γ_M1) + k_yz·M_z,Ed/(M_z,Rk/γ_M1)",
+        f"{IE1:.3f}"))
+    blocks.append(chk.check("Interaction Eq. 6.61", IE1, 1.0))
+
     # Eq. 6.62
-    blocks.append(chk.check(
-        "Eq. 6.62  N_Ed/(χ_z·N_Rk/γ_M1) + k_zy·M_y,Ed/(χ_LT·M_y,Rk/γ_M1) + "
-        "k_zz·M_z,Ed/(M_z,Rk/γ_M1)  ≤ 1",
-        IE2, 1.0,
-    ))
+    blocks.append(CALC_ROW("η_6.62",
+        "= N_Ed/(χ_z·N_b,z,Rd) + k_zy·M_y,Ed/(χ_LT·M_y,Rk/γ_M1) + k_zz·M_z,Ed/(M_z,Rk/γ_M1)",
+        f"{IE2:.3f}"))
+    blocks.append(chk.check("Interaction Eq. 6.62", IE2, 1.0))
 
     return blocks
 

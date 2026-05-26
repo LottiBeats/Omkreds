@@ -76,7 +76,9 @@ def masonry_wall_vertical(
         CALC_ROW("φ",    "= 1 − (λ_w/140)²",     f"{phi:.3f}"),
         CALC_ROW("N_Rd", "= φ·f_d·A",           str(N_Rd)),
     ])
-    blocks.append(cc.check("Vertical load: N_Ed / N_Rd", N_Ed, N_Rd))
+    eta_N = float(N_Ed / N_Rd)
+    blocks.append(CALC_ROW("η_N", "= N_Ed / N_Rd", f"{eta_N:.3f}"))
+    blocks.append(cc.check("Vertical load", eta_N, 1.0))
 
     return blocks
 
@@ -364,7 +366,9 @@ def masonry_wall_multi_storey_ritter(
                 "The eccentricity is too large for the assumed wall geometry."
             ))
         else:
-            blocks.append(cc.check(f"{floor_names[i]}: N_total / N_Rd", demand, capacity))
+            eta_storey = demand / capacity
+            blocks.append(CALC_ROW("η_N", f"= N_total / N_Rd  [{floor_names[i]}]", f"{eta_storey:.3f}"))
+            blocks.append(cc.check(f"{floor_names[i]}", eta_storey, 1.0))
 
     # Sample equation for first valid storey
     blocks.append(S("Sample equation"))
@@ -553,8 +557,12 @@ def masonry_wall_plan_lateral_distribution(
         ]
     ))
 
-    blocks.append(cc.check("Centroid eccentricity in x ≤ x_max/2", e_x, x_max / 2.0))
-    blocks.append(cc.check("Centroid eccentricity in y ≤ y_max/2", e_y, y_max / 2.0))
+    eta_ex = e_x / (x_max / 2.0)
+    eta_ey = e_y / (y_max / 2.0)
+    blocks.append(CALC_ROW("η_e,x", "= e_x / (x_max/2)", f"{eta_ex:.3f}"))
+    blocks.append(cc.check("Eccentricity in x", eta_ex, 1.0))
+    blocks.append(CALC_ROW("η_e,y", "= e_y / (y_max/2)", f"{eta_ey:.3f}"))
+    blocks.append(cc.check("Eccentricity in y", eta_ey, 1.0))
 
     plot_path = _plot_masonry_plan_centroid(
         elements=elements,
@@ -628,7 +636,9 @@ def masonry_bearing_under_beam(
         CALC_ROW("A_b",  "= a_plate·b_ef", str(A_b)),
         CALC_ROW("N_Rd", "= A_b·f_d",      str(N_Rd)),
     ])
-    blocks.append(cc.check("Masonry bearing — EN 1996-1-1 sec. 6.1.3", N_Ed, N_Rd))
+    eta_bear = float(N_Ed / N_Rd)
+    blocks.append(CALC_ROW("η_bear", "= N_Ed / N_Rd", f"{eta_bear:.3f}"))
+    blocks.append(cc.check("Bearing §6.1.3", eta_bear, 1.0))
 
     return blocks
 
@@ -742,6 +752,8 @@ def masonry_wall_ritter(
     blocks.append(S("Design resistance — N_Rd = K_1 × K_2 × A × f_d"))
     N_Rd = K1 * K2 * A_eff * f_d
     blocks.append(CALC_ROW("N_Rd", "= K_1·K_2·A_eff·f_d", str(N_Rd)))
-    blocks.append(cc.check("Vertical load — Ritter: N_Ed / N_Rd", N_Ed, N_Rd))
+    eta_ritter = float(N_Ed / N_Rd)
+    blocks.append(CALC_ROW("η_N", "= N_Ed / N_Rd", f"{eta_ritter:.3f}"))
+    blocks.append(cc.check("Vertical load — Ritter", eta_ritter, 1.0))
 
     return blocks

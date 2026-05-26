@@ -493,7 +493,10 @@ def concrete_column_rect(
             "ok":      passes,
         })
 
-        blocks.append(cc.check(f"Load case {lc_label}: M_Ed / M_Rd", MEd, MRd if MRd else 1e9))
+        blocks.append(CALC_ROW("η_M",
+            f"= M_Ed / M_Rd  [{lc_label}]",
+            f"{ratio:.3f}"))
+        blocks.append(cc.check(f"Load case {lc_label}", ratio, 1.0))
 
     if chk_rows:
         blocks.append(TBL(

@@ -181,9 +181,11 @@ def foundation_bearing(
     ]
 
     blocks.append(S("Verification  — EC7 §6.5.2"))
+    eta_bear = V_Ed_kN / R_d
     blocks += [
-        CALC_ROW("q_Ed",  "= V_Ed / A'  (contact pressure)", f"{q_Ed:.2f} kPa"),
-        chk.check("Bearing resistance  V_Ed ≤ R_d  (EC7 §6.5.2)", V_Ed_kN, R_d),
+        CALC_ROW("q_Ed",    "= V_Ed / A'  (contact pressure)", f"{q_Ed:.2f} kPa"),
+        CALC_ROW("η_bear",  "= V_Ed / R_d",                    f"{eta_bear:.3f}"),
+        chk.check("Bearing resistance  EC7 §6.5.2", eta_bear, 1.0),
     ]
 
     return blocks

@@ -198,7 +198,9 @@ def rc_beam_bending(
         CALC_ROW("x_lim",    "= 0.45·d",                             str(x_lim)),
         CALC_ROW("M_Rd,max", "= 0.8·x_lim·b·f_cd·(d − 0.4·x_lim)", str(M_Rd_max)),
     ])
-    blocks.append(cc.check("Bending: M_Ed / M_Rd,max (singly-reinforced limit)", M_Ed, M_Rd_max))
+    eta_bend = float(M_Ed / M_Rd_max)
+    blocks.append(CALC_ROW("η_bend", "= M_Ed / M_Rd,max", f"{eta_bend:.3f}"))
+    blocks.append(cc.check("Bending §6.1 — singly reinforced limit", eta_bend, 1.0))
     blocks.append(N(
         "M_Rd,max is the maximum moment a singly-reinforced rectangular section can carry "
         "(EN 1992-1-1 §6.1, x/d = 0.45 for ductility class B). If M_Ed > M_Rd,max, "
@@ -253,8 +255,15 @@ def rc_beam_bending(
 
     if As_prov is not None:
         blocks.append(S("Reinforcement provided"))
-        blocks.append(cc.check("As,prov ≥ As,req", As_req, As_prov))
-        blocks.append(cc.check("As,prov ≥ As,min", As_min, As_prov))
+        eta_req = float(As_req / As_prov)
+        eta_min = float(As_min / As_prov)
+        blocks.extend([
+            CALC_ROW("As,prov",   "provided area",          str(As_prov)),
+            CALC_ROW("η_As,req",  "= As,req / As,prov",     f"{eta_req:.3f}"),
+            cc.check("As,prov ≥ As,req",                    eta_req, 1.0),
+            CALC_ROW("η_As,min",  "= As,min / As,prov",     f"{eta_min:.3f}"),
+            cc.check("As,prov ≥ As,min  §9.2.1.1",         eta_min, 1.0),
+        ])
 
     if V_Ed is not None:
         blocks.append(S("Shear — EN 1992-1-1 §6.2.3"))
@@ -266,7 +275,9 @@ def rc_beam_bending(
             CALC_ROW("z_v",      "= 0.9·d",                      str(z_v)),
             CALC_ROW("V_Rd,max", "= ν₁·f_cd·b·z_v/(2.5+1/2.5)", str(V_Rd_max)),
         ])
-        blocks.append(cc.check("Shear: V_Ed / V_Rd,max (§6.2.3 strut limit)", V_Ed, V_Rd_max))
+        eta_shear = float(V_Ed / V_Rd_max)
+        blocks.append(CALC_ROW("η_shear", "= V_Ed / V_Rd,max", f"{eta_shear:.3f}"))
+        blocks.append(cc.check("Shear §6.2.3 — strut limit", eta_shear, 1.0))
         blocks.append(N(
             "V_Rd,max is the upper limit on shear capacity set by concrete crushing of the "
             "compression strut (EN 1992-1-1 §6.2.3, inclined-strut model with θ = 21.8°). "

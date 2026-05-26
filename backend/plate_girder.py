@@ -374,26 +374,21 @@ def plate_girder_check(
 
     blocks.append(S("Verification"))
     blocks += [
-        CALC_ROW("M_Ed", "", f"{M_Ed_kNm:.1f} kNm"),
-        CALC_ROW("V_Ed", "", f"{V_Ed_kN:.1f} kN"),
+        CALC_ROW("M_Ed",    "",                   f"{M_Ed_kNm:.1f} kNm"),
+        CALC_ROW("V_Ed",    "",                   f"{V_Ed_kN:.1f} kN"),
+        CALC_ROW("η_M",     "= M_Ed / M_Rd",      f"{eta_M:.3f}"),
     ]
+    blocks.append(chk.check(f"Bending Class {cs_class}  §6.2 / EC3-1-5 §4", eta_M, 1.0))
 
-    blocks.append(chk.check(
-        f"Bending  M_Ed / M_Rd  (Class {cs_class})  ≤ 1",
-        eta_M, 1.0,
-    ))
-    blocks.append(chk.check(
-        "Shear buckling  V_Ed / V_b,Rd  ≤ 1  (EN 1993-1-5 §5)",
-        eta_V, 1.0,
-    ))
+    blocks.append(CALC_ROW("η_V", "= V_Ed / V_b,Rd", f"{eta_V:.3f}"))
+    blocks.append(chk.check("Shear buckling  EC3-1-5 §5", eta_V, 1.0))
 
     # M + V interaction
-    T_mv = T(interaction_note)
-    blocks.append(T_mv)
+    blocks.append(T(interaction_note))
     if V_Ed_kN > V_limit_kN:
-        blocks.append(chk.check(
-            "M+V interaction  η₁ + (1−M_f,Rd/M_Rd)·(2η₃−1)²  ≤ 1  (EC3-1-5 §7)",
-            I_MV, 1.0,
-        ))
+        blocks.append(CALC_ROW("η_MV",
+            "= η₁ + (1 − M_f,Rd/M_Rd)·(2·η₃ − 1)²",
+            f"{I_MV:.3f}"))
+        blocks.append(chk.check("M+V interaction  EC3-1-5 §7", I_MV, 1.0))
 
     return blocks

@@ -231,10 +231,16 @@ def steel_column_check(
     # ── Axial verification ────────────────────────────────────────────────────
     blocks.append(S("Axial verification  — EN 1993-1-1 §6.2.4 / §6.3.1"))
     blocks.append(CALC_ROW("N_Ed", "design axial force", f"{N_Ed_kN:.1f} kN"))
+    eta_cs  = N_Ed_kN / N_pl_Rd
+    eta_b_y = N_Ed_kN / N_b_y_Rd
+    eta_b_z = N_Ed_kN / N_b_z_Rd
     blocks += [
-        chk.check("Cross-section resistance  N_Ed / N_pl,Rd  (§6.2.4)",  N_Ed_kN, N_pl_Rd),
-        chk.check("Flexural buckling y–y      N_Ed / N_b,y,Rd  (§6.3.1)", N_Ed_kN, N_b_y_Rd),
-        chk.check("Flexural buckling z–z      N_Ed / N_b,z,Rd  (§6.3.1)", N_Ed_kN, N_b_z_Rd),
+        CALC_ROW("η_cs",  "= N_Ed / N_pl,Rd",   f"{eta_cs:.3f}"),
+        chk.check("Cross-section  §6.2.4",        eta_cs,  1.0),
+        CALC_ROW("η_b,y", "= N_Ed / N_b,y,Rd",  f"{eta_b_y:.3f}"),
+        chk.check("Flexural buckling y–y  §6.3.1", eta_b_y, 1.0),
+        CALC_ROW("η_b,z", "= N_Ed / N_b,z,Rd",  f"{eta_b_z:.3f}"),
+        chk.check("Flexural buckling z–z  §6.3.1", eta_b_z, 1.0),
     ]
 
     # ── Combined bending + compression — cl. 6.3.3 / Annex B ─────────────────
@@ -328,8 +334,8 @@ def steel_column_check(
         ]
 
         blocks += [
-            chk.check("Beam-column Eq. 6.61  (y-axis governs)", util_eq1, 1.0),
-            chk.check("Beam-column Eq. 6.62  (z-axis governs)", util_eq2, 1.0),
+            chk.check("Interaction Eq. 6.61", util_eq1, 1.0),
+            chk.check("Interaction Eq. 6.62", util_eq2, 1.0),
         ]
 
     return blocks

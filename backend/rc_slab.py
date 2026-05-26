@@ -138,8 +138,12 @@ def rc_slab_oneway(
         CALC_ROW("As,max", "= 0.04·Ac",              f"{As_max:.0f} mm²/m"),
         CALC_ROW("As,prov","",                        f"{As_prov:.0f} mm²/m"),
     ]
-    blocks.append(chk.check("Bending: As,prov ≥ As,req  (EC2 §6.1)", As_req, As_prov))
-    blocks.append(chk.check("Min. reinforcement: As,prov ≥ As,min  (EC2 §9.3.1.1)", As_min, As_prov))
+    eta_req = As_req / As_prov
+    eta_min = As_min / As_prov
+    blocks.append(CALC_ROW("η_As,req", "= As,req / As,prov", f"{eta_req:.3f}"))
+    blocks.append(chk.check("Bending §6.1",                  eta_req, 1.0))
+    blocks.append(CALC_ROW("η_As,min", "= As,min / As,prov", f"{eta_min:.3f}"))
+    blocks.append(chk.check("Min. reinforcement §9.3.1.1",   eta_min, 1.0))
 
     blocks.append(S("Deflection check  (EC2 §7.4.2)"))
     blocks += [
@@ -148,6 +152,8 @@ def rc_slab_oneway(
         CALC_ROW("(L/d)_lim", "Basic + steel mod.", f"{ld_lim:.1f}"),
         CALC_ROW("(L/d)_act", "= L / d",            f"{ld_actual:.1f}"),
     ]
-    blocks.append(chk.check("Deflection: (L/d)_act ≤ (L/d)_lim  (EC2 §7.4.2)", ld_actual, ld_lim))
+    eta_defl = ld_actual / ld_lim
+    blocks.append(CALC_ROW("η_defl", "= (L/d)_act / (L/d)_lim", f"{eta_defl:.3f}"))
+    blocks.append(chk.check("Deflection §7.4.2", eta_defl, 1.0))
 
     return blocks
