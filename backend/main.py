@@ -1,11 +1,11 @@
-﻿"""
-Structural Calc v2 â€" FastAPI backend
+"""
+Structural Calc v2 — FastAPI backend
 =====================================
 
 This file is the Python server. It exposes the calculation modules and the
 database as a REST API so the React frontend can talk to them.
 
-Every route returns plain JSON â€" no HTML, no Streamlit, just data.
+Every route returns plain JSON — no HTML, no Streamlit, just data.
 
 Run with:
     python main.py
@@ -24,7 +24,7 @@ try:
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 except ImportError:
-    pass  # python-dotenv not installed â€" env vars must be set manually
+    pass  # python-dotenv not installed — env vars must be set manually
 import tempfile
 import math
 import builtins as _builtins
@@ -38,37 +38,37 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from auth import get_current_user
 
-# â"€â"€ Import the existing calculation modules â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── Import the existing calculation modules ───────────────────────────────────
 # These are copied unchanged from the Streamlit deploy app.
 # If a module isn't copied yet, the route that needs it will raise an ImportError.
-# â"€â"€ forallpeople â€" inject SI units into this module's globals â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── forallpeople — inject SI units into this module's globals ─────────────────
 # All calc modules (steel.py, concrete.py, etc.) do the same at their top level.
 # After this call, kN, m, mm, MPa, N etc. are available as globals here too.
 import forallpeople as si
 si.environment("structural", top_level=True)
 
-# â"€â"€ Unit namespace for custom calc eval â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-# si.environment() injects unit names (kN, m, mm, MPa â€¦) into builtins.
+# ── Unit namespace for custom calc eval ───────────────────────────────────────
+# si.environment() injects unit names (kN, m, mm, MPa …) into builtins.
 # We snapshot only the unit/quantity objects (those are the forallpeople objects,
 # not standard builtins like exec/open/eval).
 # __builtins__ is explicitly set to {} so eval() cannot access exec, open,
-# __import__, or any other dangerous builtin â€" only what we put here explicitly.
+# __import__, or any other dangerous builtin — only what we put here explicitly.
 # Whitelist of safe builtins for structural calc expressions.
 # We deliberately do NOT include list/range/dict/str/bytes/etc. because
 # those can be used for memory-exhaustion DoS (e.g. list(range(10**9))).
-# forallpeople unit names (kN, m, mm, MPa â€¦) are captured below.
+# forallpeople unit names (kN, m, mm, MPa …) are captured below.
 _SAFE_BUILTINS = {"abs", "min", "max", "round", "pow", "sum",
                   "bool", "int", "float", "len"}
 
 _UNIT_NS: dict = {
-    # forallpeople unit objects injected by si.environment() â€"
+    # forallpeople unit objects injected by si.environment() —
     # these are NOT standard builtins so they won't appear in a fresh
     # Python session; si.environment() creates them at import time.
     k: v for k, v in vars(_builtins).items()
     if not k.startswith("_")
-    and k in _SAFE_BUILTINS  # only whitelisted safe builtins â€¦
+    and k in _SAFE_BUILTINS  # only whitelisted safe builtins …
     or (
-        not k.startswith("_")  # â€¦ plus all forallpeople units
+        not k.startswith("_")  # … plus all forallpeople units
         and k not in dir(__import__("builtins"))  # (not a standard builtin)
     )
 }
@@ -80,7 +80,7 @@ _UNIT_NS.update({
     "log": math.log, "log10": math.log10, "exp": math.exp,
     "floor": math.floor, "ceil": math.ceil,
     "abs": abs, "min": min, "max": max, "round": round,
-    # Lock down builtins â€" prevents exec/open/__import__/compile etc.
+    # Lock down builtins — prevents exec/open/__import__/compile etc.
     "__builtins__": {},
 })
 
@@ -109,20 +109,20 @@ def _preprocess_expr(expr: str) -> str:
     """Convert natural engineering notation to Python syntax before eval.
 
     Handles:
-      ^   â†' **   (power: x^2  becomes  x**2)
-      Ã—   â†' *    (multiplication symbol)
-      Â·   â†' *    (middle dot multiplication)
-      â‰¤   â†' <=   (less-than-or-equal, used in conditions)
-      â‰¥   â†' >=   (greater-than-or-equal, used in conditions)
-      â‰    â†' !=   (not-equal, used in conditions)
+      ^   → **   (power: x^2  becomes  x**2)
+      ×   → *    (multiplication symbol)
+      ·   → *    (middle dot multiplication)
+      ≤   → <=   (less-than-or-equal, used in conditions)
+      ≥   → >=   (greater-than-or-equal, used in conditions)
+      ≠   → !=   (not-equal, used in conditions)
     """
     return (expr
         .replace('^',  '**')
-        .replace('Ã—',  '*')
-        .replace('Â·',  '*')
-        .replace('â‰¤',  '<=')
-        .replace('â‰¥',  '>=')
-        .replace('â‰ ',  '!=')
+        .replace('×',  '*')
+        .replace('·',  '*')
+        .replace('≤',  '<=')
+        .replace('≥',  '>=')
+        .replace('≠',  '!=')
     )
 
 try:
@@ -132,7 +132,7 @@ except ImportError:
         "db.py not found in backend/. Copy it from structural_calc_deploy/."
     )
 
-# â"€â"€ App setup â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── App setup ────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="Structural Calc API",
@@ -140,7 +140,7 @@ app = FastAPI(
     description="REST API for the Structural Calc document / report tool.",
 )
 
-# CORS â€" allowed origins.
+# CORS — allowed origins.
 # In dev: localhost Vite dev server.
 # In production: add your Vercel URL via the ALLOWED_ORIGINS env variable
 #   e.g.  ALLOWED_ORIGINS=https://structuralcalc.vercel.app,https://yourdomain.com
@@ -192,7 +192,7 @@ def _visible_template(template_id: str, user: dict) -> dict:
     return template
 
 
-# â"€â"€ Health check (unprotected) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── Health check (unprotected) ────────────────────────────────────────────────
 
 @app.get("/", tags=["Health"])
 @app.get("/health", tags=["Health"])
@@ -201,14 +201,14 @@ def health():
     return {"status": "ok", "version": "2.0"}
 
 
-# â"€â"€ Protected router (all routes below require a valid Clerk Bearer token) â"€â"€â"€â"€
-# Auth is handled by Clerk (clerk.com) â€" no login/logout endpoints here.
+# ── Protected router (all routes below require a valid Clerk Bearer token) ────
+# Auth is handled by Clerk (clerk.com) — no login/logout endpoints here.
 # Users are managed in the Clerk dashboard at dashboard.clerk.com.
 
 protected = APIRouter(dependencies=[Depends(get_current_user)])
 
 
-# â"€â"€ Auth â€" current user (convenient endpoint) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── Auth — current user (convenient endpoint) ─────────────────────────────────
 
 @protected.get("/auth/me", tags=["Auth"])
 def me(user: dict = Depends(get_current_user)):
@@ -216,7 +216,7 @@ def me(user: dict = Depends(get_current_user)):
     return user
 
 
-# â"€â"€ Projects â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── Projects ──────────────────────────────────────────────────────────────────
 
 @protected.get("/projects", tags=["Projects"])
 def list_projects(user: dict = Depends(get_current_user)):
@@ -296,7 +296,7 @@ def delete_project(project_id: str, user: dict = Depends(get_current_user)):
     return {"status": "deleted"}
 
 
-# â"€â"€ PDF generation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── PDF generation ────────────────────────────────────────────────────────────
 
 @protected.post("/projects/{project_id}/pdf/{doc_id}", tags=["PDF"])
 def generate_pdf(project_id: str, doc_id: str, user: dict = Depends(get_current_user)):
@@ -430,7 +430,7 @@ def _timber_governing_combo(uls_combinations: list, service_class: int) -> dict:
 # Results are displayed inline without a page reload.
 
 
-# â"€â"€ EN 1993-1-1 â€" Steel beam â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1993-1-1 — Steel beam ──────────────────────────────────────────────────
 
 class SteelBeamInput(BaseModel):
     label:              str   = "S1"
@@ -459,14 +459,14 @@ class SteelBeamInput(BaseModel):
 def calc_steel_beam(data: SteelBeamInput):
     """
     EN 1993-1-1 steel beam check.
-    Returns a list of calc blocks (section, text, handcalc, check, â€¦)
+    Returns a list of calc blocks (section, text, handcalc, check, …)
     that the React frontend's CalcResultView renders directly.
     """
     try:
         from section_catalog import load_steel_profiles
         from steel import steel_beam_ipe
 
-        # Grade â†' f_y
+        # Grade → f_y
         fy_map = {"S235": 235, "S275": 275, "S355": 355, "S420": 420, "S460": 460}
         f_y = fy_map.get(data.grade.upper(), 355) * MPa
 
@@ -477,12 +477,12 @@ def calc_steel_beam(data: SteelBeamInput):
             raise HTTPException(status_code=422, detail=f"Section '{data.section}' not in catalog")
         sec = db[key]
 
-        W_ply = sec["Wply_cm3"]  * 1e-6 * m**3   # cmÂ³ â†' mÂ³
+        W_ply = sec["Wply_cm3"]  * 1e-6 * m**3   # cm³ → m³
         h     = sec["h_mm"]      * 1e-3 * m
         t_w   = sec["tw_mm"]     * 1e-3 * m
         b     = sec["b_mm"]      * 1e-3 * m
         t_f   = sec["tf_mm"]     * 1e-3 * m
-        Iy    = sec["Iy_cm4"]    * 1e-8 * m**4  # cmâ´ â†' mâ´  (needed for W_el in Class 3)
+        Iy    = sec["Iy_cm4"]    * 1e-8 * m**4  # cmâ´ → mâ´  (needed for W_el in Class 3)
 
         span_fp = data.span_m * m
 
@@ -537,7 +537,7 @@ def calc_steel_beam(data: SteelBeamInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EN 1992-1-1 â€" RC beam â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1992-1-1 — RC beam ─────────────────────────────────────────────────────
 
 class RcBeamInput(BaseModel):
     label:       str   = "B1"
@@ -585,7 +585,7 @@ def calc_rc_beam(data: RcBeamInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EN 1995-1-1 â€" Timber beam â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1995-1-1 — Timber beam ─────────────────────────────────────────────────
 
 class TimberBeamInput(BaseModel):
     label:          str   = "T1"
@@ -679,7 +679,7 @@ def calc_timber_beam(data: TimberBeamInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EN 1995-1-1 â€" Timber column â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1995-1-1 — Timber column ───────────────────────────────────────────────
 
 class TimberColumnInput(BaseModel):
     label:                   str   = "C1"
@@ -741,7 +741,7 @@ def calc_timber_column(data: TimberColumnInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EN 1996-1-1 â€" Masonry wall â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1996-1-1 — Masonry wall ────────────────────────────────────────────────
 
 class MasonryWallInput(BaseModel):
     label:        str   = "W1"
@@ -784,7 +784,7 @@ def calc_masonry_wall(data: MasonryWallInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ Custom calc (variables + formulas + checks) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── Custom calc (variables + formulas + checks) ───────────────────────────────
 
 class CustomCalcInput(BaseModel):
     title: str  = "Custom Calculation"
@@ -831,7 +831,7 @@ def calc_custom(data: CustomCalcInput):
                     blocks.append(T(content))
 
             elif itype == "heading":
-                # Section heading â€" breaks a long calculation into named sections
+                # Section heading — breaks a long calculation into named sections
                 content = item.get("content", "").strip()
                 if content:
                     blocks.append(S(content))
@@ -845,7 +845,7 @@ def calc_custom(data: CustomCalcInput):
                     qty      = _parse_qty(float(item.get("value", 0.0)), unit_str)
                     ns[name] = qty
                     val_str  = (f"{item['value']:g}" if unit_str == "-"
-                                else f"{item['value']:g} {unit_str.replace('**', '').replace('*', 'Â·')}")
+                                else f"{item['value']:g} {unit_str.replace('**', '').replace('*', '·')}")
                     desc = item.get("description", "").strip()
                     blocks.append(CALC_ROW(name, desc, val_str))
                 except Exception as exc:
@@ -859,15 +859,15 @@ def calc_custom(data: CustomCalcInput):
                 lhs = lhs.strip()
                 rhs = rhs.strip()
                 try:
-                    # Pre-process: ^ â†' **, Ã— â†' *, Â· â†' * for eval
+                    # Pre-process: ^ → **, × → *, · → * for eval
                     result     = _safe_eval(_preprocess_expr(rhs), _UNIT_NS, ns)
                     ns[lhs]    = result
                     result_str = _fmt_qty(result)
-                    # Display: normalise to ^ and Ã— notation (fmtCalcText handles the rest)
+                    # Display: normalise to ^ and × notation (fmtCalcText handles the rest)
                     formula_disp = (rhs
                         .replace("**", "^")
-                        .replace("Ã—", "Ã—").replace("Â·", "Â·")   # keep explicit symbols
-                        .replace("*", " Ã— ")
+                        .replace("×", "×").replace("·", "·")   # keep explicit symbols
+                        .replace("*", " × ")
                         .replace("/", " / "))
                     blocks.append(CALC_ROW(lhs, formula_disp, result_str))
                 except Exception as exc:
@@ -886,7 +886,7 @@ def calc_custom(data: CustomCalcInput):
                     try:
                         capacity = _parse_qty(float(cap_raw), cap_unt)
                     except (ValueError, TypeError):
-                        # Not a plain number â€" evaluate as an expression
+                        # Not a plain number — evaluate as an expression
                         capacity = _safe_eval(_preprocess_expr(str(cap_raw).strip()), _UNIT_NS, ns)
                     blocks.append(chk.check(label, demand, capacity))
                 except Exception as exc:
@@ -907,9 +907,9 @@ def calc_custom(data: CustomCalcInput):
                     if name:
                         ns[name] = _parse_qty(float(result), unit_str) if unit_str != "-" else result
                     result_str   = _fmt_qty(ns[name]) if name else _fmt_qty(result)
-                    branch_sym   = "âœ"" if cond_result else "âœ—"
+                    branch_sym   = "✓" if cond_result else "✗"
                     chosen_disp  = (chosen_raw
-                        .replace("**", "^").replace("*", "Ã—").replace("/", " / "))
+                        .replace("**", "^").replace("*", "×").replace("/", " / "))
                     formula_disp = f"= {chosen_disp}  [{cond_raw} {branch_sym}]"
                     if name:
                         blocks.append(CALC_ROW(name, formula_disp, result_str))
@@ -932,14 +932,14 @@ def run_python_script(data: PythonScriptInput, user: dict = Depends(get_current_
     """
     Execute arbitrary Python code and return stdout + base64-encoded figures.
 
-    âš  SECURITY: exec() cannot be safely sandboxed at the Python level.
+    ⚠ SECURITY: exec() cannot be safely sandboxed at the Python level.
     Access is restricted to an explicit allow-list of trusted email addresses.
     Set the PYTHON_SCRIPT_ALLOWED_EMAILS env var (comma-separated) to control access.
     If the env var is not set, only the ADMIN_EMAIL is allowed.
     """
     import os as _os
 
-    # â"€â"€ Access control â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+    # ── Access control ────────────────────────────────────────────────────────
     # PYTHON_SCRIPT_ALLOWED_EMAILS = "alice@firm.com,bob@firm.com"
     # If not set, falls back to ADMIN_EMAIL (the account owner).
     raw_allowed = _os.environ.get("PYTHON_SCRIPT_ALLOWED_EMAILS", "").strip()
@@ -1009,7 +1009,7 @@ def run_python_script(data: PythonScriptInput, user: dict = Depends(get_current_
     }
 
 
-# â"€â"€ Euler-Bernoulli beam FEM â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── Euler-Bernoulli beam FEM ──────────────────────────────────────────────────
 
 class SupportItem(BaseModel):
     x:    float = 0.0
@@ -1042,7 +1042,7 @@ def calc_beam_fem(data: BeamFemInput):
     """
     Euler-Bernoulli beam FEM solver.
     Returns:
-      _fig_b64 : base64 PNG of the 4-panel plot (layout Â· displacement Â· M Â· V)
+      _fig_b64 : base64 PNG of the 4-panel plot (layout · displacement · M · V)
       _summary : key results (M_Ed, V_Ed, delta_max, reactions)
       _result  : list of calc_core blocks ready for PDF export
     """
@@ -1094,7 +1094,7 @@ def calc_beam_fem(data: BeamFemInput):
 
         beam.solve()
 
-        # â"€â"€ Figure â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+        # ── Figure ──────────────────────────────────────────────────────────
         # Build the 4-panel figure using the BeamFEM plotting internals but
         # without calling plt.show() (Agg backend makes it a no-op anyway).
         fig = beam.plot(title=data.title, save_as=None)
@@ -1104,7 +1104,7 @@ def calc_beam_fem(data: BeamFemInput):
         buf.seek(0)
         fig_b64 = base64.b64encode(buf.read()).decode()
 
-        # â"€â"€ Summary â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+        # ── Summary ──────────────────────────────────────────────────────────
         sm = summarise_beam_actions(beam, data.title)
         reactions_out = {}
         for x_pos, r in beam.reactions.items():
@@ -1122,7 +1122,7 @@ def calc_beam_fem(data: BeamFemInput):
             "reactions":    reactions_out,
         }
 
-        # â"€â"€ calc_core blocks for PDF export â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+        # ── calc_core blocks for PDF export ──────────────────────────────────
         result_blocks = [
             S(data.title),
             T(f"Span L = {L:.2f} m  |  E = {data.E_GPa:.0f} GPa  |  I = {data.I_cm4:.1f} cmâ´"),
@@ -1136,7 +1136,7 @@ def calc_beam_fem(data: BeamFemInput):
             if ld.type == "udl":
                 load_lines.append(f"UDL {ld.w_kNm:.1f} kN/m  [x={ld.x1:.2f}..{ld.x2:.2f} m]")
             elif ld.type == "trapezoidal":
-                load_lines.append(f"Trapezoidal {ld.w1_kNm:.1f}â†'{ld.w2_kNm:.1f} kN/m  [x={ld.x1:.2f}..{ld.x2:.2f} m]")
+                load_lines.append(f"Trapezoidal {ld.w1_kNm:.1f}→{ld.w2_kNm:.1f} kN/m  [x={ld.x1:.2f}..{ld.x2:.2f} m]")
             elif ld.type == "point":
                 load_lines.append(f"Point {ld.P_kN:.1f} kN  @  x={ld.x:.2f} m")
             elif ld.type == "moment":
@@ -1150,7 +1150,7 @@ def calc_beam_fem(data: BeamFemInput):
             [
                 ["Max moment M_Ed",     f"{summary['M_Ed_kNm']:.3f} kNm", f"x = {summary['x_M_Ed_m']:.2f} m"],
                 ["Max shear V_Ed",      f"{summary['V_Ed_kN']:.3f} kN",   f"x = {summary['x_V_Ed_m']:.2f} m"],
-                ["Max deflection Î´",    f"{summary['delta_max_mm']:.3f} mm", f"x = {summary['x_delta_m']:.2f} m"],
+                ["Max deflection δ",    f"{summary['delta_max_mm']:.3f} mm", f"x = {summary['x_delta_m']:.2f} m"],
             ],
         ))
         # Reactions
@@ -1295,7 +1295,7 @@ def calc_rc_column(data: RcColumnInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EN 1992-1-1 â€" RC one-way slab â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1992-1-1 — RC one-way slab ─────────────────────────────────────────────
 
 class RcSlabInput(BaseModel):
     label:         str   = "D1"
@@ -1340,7 +1340,7 @@ def calc_rc_slab(data: RcSlabInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EN 1991-1-4 â€" Wind load â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1991-1-4 — Wind load ───────────────────────────────────────────────────
 
 class WindLoadInput(BaseModel):
     label:             str   = "W1"
@@ -1387,7 +1387,7 @@ def calc_wind_load(data: WindLoadInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EN 1991-1-3 â€" Snow load â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1991-1-3 — Snow load ───────────────────────────────────────────────────
 
 class SnowLoadInput(BaseModel):
     label:         str   = "SN1"
@@ -1428,7 +1428,7 @@ def calc_snow_load(data: SnowLoadInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EN 1997-1 â€" Foundation bearing â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1997-1 — Foundation bearing ───────────────────────────────────────────
 
 class FoundationInput(BaseModel):
     label:         str   = "F1"
@@ -1458,11 +1458,11 @@ def calc_foundation(data: FoundationInput):
         if data.B_m <= 0 or data.L_m <= 0:
             raise ValueError("Footing dimensions B and L must be positive.")
         if data.L_m < data.B_m:
-            raise ValueError(f"L ({data.L_m} m) should be â‰¥ B ({data.B_m} m).")
+            raise ValueError(f"L ({data.L_m} m) should be ≥ B ({data.B_m} m).")
         if data.D_m < 0:
             raise ValueError("Embedment depth D cannot be negative.")
         if not (0 < data.phi_deg < 55):
-            raise ValueError(f"Friction angle Ï†' = {data.phi_deg}Â° is outside the range 0â€"55Â°.")
+            raise ValueError(f"Friction angle φ' = {data.phi_deg}° is outside the range 0–55°.")
         if data.V_Ed_kN <= 0:
             raise ValueError("Design vertical load V_Ed must be greater than zero.")
 
@@ -1493,7 +1493,7 @@ def calc_foundation(data: FoundationInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EN 1990 Load combinations â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1990 Load combinations ─────────────────────────────────────────────────
 
 class LoadComboInput(BaseModel):
     label:             str   = "LC1"
@@ -1531,7 +1531,7 @@ def calc_load_combo(data: LoadComboInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EC3 Â§6.3.3 Beam-column interaction â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EC3 §6.3.3 Beam-column interaction ────────────────────────────────────────
 
 _GRADE_FY = {'S235': 235.0, 'S275': 275.0, 'S355': 355.0, 'S420': 420.0, 'S460': 460.0}
 
@@ -1558,7 +1558,7 @@ class BeamColumnInput(BaseModel):
 
 @protected.post("/calc/beam-column", tags=["Calculations"])
 def calc_beam_column(data: BeamColumnInput):
-    """EC3 Â§6.3.3 Method 2 beam-column interaction check."""
+    """EC3 §6.3.3 Method 2 beam-column interaction check."""
     try:
         from steel_beam_column import steel_beam_column_check
         from section_catalog import load_steel_profiles
@@ -1594,7 +1594,7 @@ def calc_beam_column(data: BeamColumnInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EC3 Â§6.5â€"6.6 Bolt group + fillet weld â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EC3 §6.5–6.6 Bolt group + fillet weld ────────────────────────────────────
 
 class BoltGroupInput(BaseModel):
     label:          str   = "BG1"
@@ -1622,7 +1622,7 @@ class WeldInput(BaseModel):
 
 @protected.post("/calc/bolt-group", tags=["Calculations"])
 def calc_bolt_group(data: BoltGroupInput):
-    """EC3-1-8 Â§3 bolt shear + bearing group check."""
+    """EC3-1-8 §3 bolt shear + bearing group check."""
     try:
         from bolt_connection import bolt_group_shear
         return bolt_group_shear(
@@ -1638,7 +1638,7 @@ def calc_bolt_group(data: BoltGroupInput):
 
 @protected.post("/calc/fillet-weld", tags=["Calculations"])
 def calc_fillet_weld(data: WeldInput):
-    """EC3-1-8 Â§4 fillet weld check (simplified directional method)."""
+    """EC3-1-8 §4 fillet weld check (simplified directional method)."""
     try:
         from bolt_connection import fillet_weld_check
         return fillet_weld_check(
@@ -1650,7 +1650,7 @@ def calc_fillet_weld(data: WeldInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ EN 1993-1-1 / EN 1993-1-5 â€" Plate girder â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── EN 1993-1-1 / EN 1993-1-5 — Plate girder ────────────────────────────────
 
 class PlateGirderInput(BaseModel):
     label:          str   = "PG1"
@@ -1700,11 +1700,11 @@ def calc_plate_girder(data: PlateGirderInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-# â"€â"€ User-defined calculation templates â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── User-defined calculation templates ───────────────────────────────────────
 #
 # Each template has:
-#   parameters  â€" [{name, label, unit, type, default, min, max, step, options}]
-#   code        â€" Python that sets `blocks = [...]`
+#   parameters  — [{name, label, unit, type, default, min, max, step, options}]
+#   code        — Python that sets `blocks = [...]`
 
 class CalcTemplateInput(BaseModel):
     name:        str  = "My Calculation"
@@ -1763,16 +1763,16 @@ def run_calc_template(
     Execute a user-defined calc template.
 
     Two modes:
-      items â€" template was saved from a Custom Calc block (no Python needed).
+      items — template was saved from a Custom Calc block (no Python needed).
               Param values are substituted into the variable items and the
               custom-calc eval loop runs.
-      code  â€" legacy: Python code that sets blocks = [...]
+      code  — legacy: Python code that sets blocks = [...]
     """
     import traceback as _tb
 
     tmpl = _visible_template(template_id, user)
 
-    # â"€â"€ Items mode (saved from Custom Calc "Save as module") â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+    # ── Items mode (saved from Custom Calc "Save as module") ─────────────────
     items = tmpl.get("items") or []
     if items:
         try:
@@ -1816,7 +1816,7 @@ def run_calc_template(
                         qty      = _parse_qty(float(item.get("value", 0.0)), unit_str)
                         ns[name] = qty
                         val_str  = (f"{item['value']:g}" if unit_str == "-"
-                                    else f"{item['value']:g} {unit_str.replace('**','').replace('*','Â·')}")
+                                    else f"{item['value']:g} {unit_str.replace('**','').replace('*','·')}")
                         desc = item.get("description", "").strip()
                         blocks_out.append(CALC_ROW(name, desc, val_str))
                     except Exception as exc:
@@ -1834,7 +1834,7 @@ def run_calc_template(
                         ns[lhs]    = result
                         result_str = _fmt_qty(result)
                         formula_disp = (rhs
-                            .replace("**", "^").replace("*", " Ã— ").replace("/", " / "))
+                            .replace("**", "^").replace("*", " × ").replace("/", " / "))
                         blocks_out.append(CALC_ROW(lhs, formula_disp, result_str))
                     except Exception as exc:
                         blocks_out.append(N(f"Formula '{raw}': {exc}"))
@@ -1871,9 +1871,9 @@ def run_calc_template(
                         if name:
                             ns[name] = _parse_qty(float(result), unit_str) if unit_str != "-" else result
                         result_str   = _fmt_qty(ns[name]) if name else _fmt_qty(result)
-                        branch_sym   = "âœ"" if cond_result else "âœ—"
+                        branch_sym   = "✓" if cond_result else "✗"
                         chosen_disp  = (chosen_raw
-                            .replace("**", "^").replace("*", "Ã—").replace("/", " / "))
+                            .replace("**", "^").replace("*", "×").replace("/", " / "))
                         formula_disp = f"= {chosen_disp}  [{cond_raw} {branch_sym}]"
                         if name:
                             blocks_out.append(CALC_ROW(name, formula_disp, result_str))
@@ -1885,10 +1885,10 @@ def run_calc_template(
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc))
 
-    # â"€â"€ Code mode (Python template) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+    # ── Code mode (Python template) ───────────────────────────────────────────
     code = (tmpl.get("code") or "").strip()
     if not code:
-        raise HTTPException(status_code=422, detail="Template has no code yet â€" open the template editor and add some Python.")
+        raise HTTPException(status_code=422, detail="Template has no code yet — open the template editor and add some Python.")
 
     try:
         from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext
@@ -1941,14 +1941,14 @@ def run_calc_template(
         raise HTTPException(status_code=422, detail=_tb.format_exc())
 
 
-# â"€â"€ Register protected router â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── Register protected router ─────────────────────────────────────────────────
 # All routes defined on `protected` require a valid Bearer token.
 # The health check and /auth/login /auth/setup routes above are unprotected.
 
 app.include_router(protected)
 
 
-# â"€â"€ Entry point â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
