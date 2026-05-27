@@ -429,7 +429,17 @@ export default function FrameFemBlock({ block, onChange }) {
         supports,
         loads,
       })
-      update({ _result: res })
+      // Strip the per-element point arrays (xs, N_arr, V_arr, M_arr) before
+      // storing in the project — they're only used for the figure, which is
+      // already captured in fig_b64.  Keeping them would make the project
+      // document too large for the nginx body limit.
+      const lean = {
+        ...res,
+        element_results: res.element_results?.map(
+          ({ xs, N_arr, V_arr, M_arr, ...scalar }) => scalar
+        ),
+      }
+      update({ _result: lean })
     } catch (err) {
       setError(err.message)
     } finally {

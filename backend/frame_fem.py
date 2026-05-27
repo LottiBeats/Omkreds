@@ -327,7 +327,7 @@ def _make_figure(nodes, elements, supports, loads,
                  elem_results, node_disp_dict, title):
     """Build a 5-panel matplotlib figure and return as base64 PNG."""
 
-    fig = plt.figure(figsize=(16, 11), facecolor="white")
+    fig = plt.figure(figsize=(14, 9), facecolor="white")
     fig.suptitle(title, fontsize=14, fontweight="bold", y=0.98)
 
     gs = GridSpec(2, 3, figure=fig, hspace=0.42, wspace=0.35,
@@ -351,7 +351,7 @@ def _make_figure(nodes, elements, supports, loads,
                   "Bending moment  M  (kNm)", "#27ae60", "#d5f0e0")
 
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=90, bbox_inches="tight")
     plt.close(fig)
     buf.seek(0)
     return base64.b64encode(buf.read()).decode()
