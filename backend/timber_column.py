@@ -64,6 +64,8 @@ def timber_column_bending_and_axial(
     check_buckling_axis_2=True,
     check_ltb=True,
     buckling_axis=None,
+    section_properties=None,
+    I_t=None,
 ):
     # ------------------------------------------------------------------
     # Grade data
@@ -84,10 +86,11 @@ def timber_column_bending_and_axial(
     beta_c = _BETA_C.get(material_type, _BETA_C["solid_timber"])
     cc     = CheckContext()
     blocks = []
-    section_properties = None
-    I_t = None
-    show_section_plot = False
-    section_label = f"{b}×{h}"
+    section_label = (
+        section_properties.get("section_label")
+        if section_properties is not None and section_properties.get("section_label")
+        else f"{b}x{h}"
+    )
 
     # ------------------------------------------------------------------
     # Module header
@@ -376,6 +379,57 @@ def timber_column_bending_and_axial(
         ))
 
     return blocks
+
+
+def side_by_side_rectangles_section(b, h, n, gap=0.0, name_prefix="Member"):
+    """Return rectangle parts for a built-up side-by-side section."""
+    if n < 1:
+        raise ValueError("n must be at least 1")
+
+    pitch = b + gap
+    x0 = -pitch * (n - 1) / 2
+    return [
+        {
+            "name": f"{name_prefix} {i + 1}",
+            "b": b,
+            "h": h,
+            "x": x0 + i * pitch,
+        }
+        for i in range(n)
+    ]
+
+
+def composite_section_properties(parts):
+    """Calculate gross properties for aligned rectangular section parts."""
+    if not parts:
+        raise ValueError("parts must contain at least one rectangle")
+
+    areas = [part["b"] * part["h"] for part in parts]
+    A = sum(areas)
+    x_bar = sum(area * part["x"] for area, part in zip(areas, parts)) / A
+    height_total = max(part["h"] for part in parts)
+    width_total = (
+        max(part["x"] + part["b"] / 2 for part in parts)
+        - min(part["x"] - part["b"] / 2 for part in parts)
+    )
+
+    I_1 = sum(part["b"] * part["h"]**3 / 12 for part in parts)
+    I_2 = sum(
+        part["h"] * part["b"]**3 / 12 + area * (part["x"] - x_bar) ** 2
+        for area, part in zip(areas, parts)
+    )
+    W_y = I_1 / (height_total / 2)
+
+    return {
+        "A": A,
+        "W_y": W_y,
+        "I_1": I_1,
+        "I_2": I_2,
+        "i_1": (I_1 / A) ** 0.5,
+        "i_2": (I_2 / A) ** 0.5,
+        "width_total": width_total,
+        "height_total": height_total,
+    }
 
 
 def timber_column_side_by_side(

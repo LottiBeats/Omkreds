@@ -18,8 +18,8 @@ Case A  IPE 300, S355, L=4 m, g_k=5 kN/m, q_k=3 kN/m, LTB restrained
         V_Rd  = 2567×355/(√3×1.0)/1e3   = 526.1 kN
         η_V   = 22.50/526.1              = 0.0428   (proper §6.2.6 formula)
 
-        The module uses A_v = h×t_w (conservative simplification — section A and r
-        not stored in catalog). A_v = 300×7.1 = 2130 mm², V_Rd = 437 kN, η_V = 0.0515.
+        The module uses A_v = (h-t_f)*t_w with r = 0 because the catalog does not
+        store fillet radius. A_v = (300-10.7)*7.1 = 2054 mm2, V_Rd = 421 kN, eta_V = 0.0535.
     Source: Section data from ARCELOR/Corus (EN 1993-1-1 equivalent).
 
 Case B  IPE 300, S355, L=4 m, g_k=20 kN/m, q_k=15 kN/m, LTB restrained
@@ -79,9 +79,9 @@ def test_steel_beam_A_shear_passes(client):
     chk = find_check(blocks, "shear")
     assert chk is not None, "No shear check block found"
     assert passes(chk), f"Shear check unexpectedly failed: {chk['value']}"
-    # Module uses A_v = h×t_w (conservative); proper §6.2.6 value is 0.0428.
-    # A_v = 300×7.1 = 2130 mm² → V_Rd = 437 kN → η = 0.0515
-    assert_eta(chk, 0.0515, tol=0.02)
+    # Module uses A_v = (h-t_f)*t_w with r = 0 because the catalog does not
+    # store fillet radius. A_v = (300-10.7)*7.1 = 2054 mm2, V_Rd = 421 kN, eta = 0.0535.
+    assert_eta(chk, 0.0535, tol=0.02)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

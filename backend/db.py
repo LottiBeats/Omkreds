@@ -98,6 +98,7 @@ def load_all_projects(user_id: str = "", path: Path | None = None) -> list[dict]
 def load_project(project_id: str, path: Path | None = None) -> dict | None:
     """Load a single project by id, or None if not found."""
     p = str(path or DB_PATH)
+    init_db(path)
     with sqlite3.connect(p) as conn:
         row = conn.execute(
             "SELECT data FROM projects WHERE id = ?", (project_id,)
@@ -115,6 +116,7 @@ def load_project(project_id: str, path: Path | None = None) -> dict | None:
 def save_project(project: dict, user: str = "", path: Path | None = None) -> None:
     """Upsert a project. Stamps _updated_at / _updated_by into the dict."""
     p = str(path or DB_PATH)
+    init_db(path)
     now = datetime.now(timezone.utc).isoformat()
     project["_updated_at"] = now
     project["_updated_by"] = user
@@ -139,6 +141,7 @@ def save_project(project: dict, user: str = "", path: Path | None = None) -> Non
 def delete_project(project_id: str, path: Path | None = None) -> None:
     """Permanently delete a project."""
     p = str(path or DB_PATH)
+    init_db(path)
     with _lock:
         with sqlite3.connect(p) as conn:
             conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
@@ -269,6 +272,7 @@ def update_template(
 ) -> None:
     """Update an existing calc template."""
     p = str(path or DB_PATH)
+    init_db(path)
     with _lock:
         with sqlite3.connect(p) as conn:
             conn.execute("""
@@ -289,6 +293,7 @@ def update_template(
 def delete_template(template_id: str, path: Path | None = None) -> None:
     """Delete a calc template."""
     p = str(path or DB_PATH)
+    init_db(path)
     with _lock:
         with sqlite3.connect(p) as conn:
             conn.execute("DELETE FROM calc_library WHERE id = ?", (template_id,))

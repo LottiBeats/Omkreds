@@ -67,6 +67,8 @@ export default function LoadComboBlock({ block, onChange }) {
         loads:             d.loads             ?? [],
         method:            d.method            ?? '6.10ab',
         consequence_class: d.consequence_class ?? 'CC2',
+        A_d:               d.A_d               ?? 0.0,
+        accidental_type:   d.accidental_type   ?? 'none',
       })
       // Backend returns a flat list; first element is a synthetic
       // {type:'_exports', exports:{...}} sentinel — extract it so
@@ -130,6 +132,22 @@ export default function LoadComboBlock({ block, onChange }) {
           {' '}Use γ_G = 1.0
         </label>
       </Field>
+
+      {/* Accidental load */}
+      <Field label="A_d  (accidental)" hint={d.unit ?? 'kN/m'}>
+        <NumericInput style={s.input} value={d.A_d ?? 0.0}
+          onChange={v => update({ A_d: v })} />
+      </Field>
+      {(d.A_d ?? 0) > 0 && (
+        <Field label="Accident type">
+          <select style={s.input} value={d.accidental_type ?? 'none'}
+            onChange={e => update({ accidental_type: e.target.value })}>
+            <option value="none">None</option>
+            <option value="fire">Fire  (ψ₁ for lead)</option>
+            <option value="other">Other accident  (ψ₂ for all)</option>
+          </select>
+        </Field>
+      )}
 
       {/* Variable loads table */}
       <div style={{ gridColumn: '1/-1' }}>

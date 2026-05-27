@@ -1350,13 +1350,15 @@ class LoadComboInput(BaseModel):
     unit:              str   = "kN/m"
     G_k:               float = 5.0
     G_fav:             bool  = False
-    loads:             list  = []    # [{'label', 'Q_k', 'category'}, ...]
+    loads:             list  = []       # [{'label', 'Q_k', 'category'}, ...]
     method:            str   = "6.10ab"
-    consequence_class: str   = "CC2"  # CC1 / CC2 / CC3 -> K_FI factor
+    consequence_class: str   = "CC2"   # CC1 / CC2 / CC3  → K_FI factor
+    A_d:               float = 0.0     # Accidental design action (γ=1.0); 0 = skip ALS
+    accidental_type:   str   = "none"  # 'none' | 'fire' | 'other'
 
 @protected.post("/calc/load-combo", tags=["Calculations"])
 def calc_load_combo(data: LoadComboInput):
-    """EN 1990 ULS/SLS load combinations (DS/EN 1990 DK NA:2019).
+    """EN 1990 ULS/SLS/ALS load combinations (DS/EN 1990 DK NA:2019).
     Returns a flat list of calc blocks.  The first element is always a
     synthetic {'type': '_exports', 'exports': {...}} block that the
     renderer silently skips but LoadComboBlock stores as _exports so
@@ -1370,6 +1372,8 @@ def calc_load_combo(data: LoadComboInput):
             G_k=data.G_k, loads=data.loads,
             method=data.method, G_fav=data.G_fav,
             consequence_class=data.consequence_class,
+            A_d=data.A_d,
+            accidental_type=data.accidental_type,
         )
         # Embed exports as an invisible sentinel block (unknown type → renderer drops it).
         return [{'type': '_exports', 'exports': exports}] + blocks
