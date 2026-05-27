@@ -112,6 +112,13 @@ export const deleteProject = (projectId) =>
 export const generatePdf = (projectId, docId) =>
   request('POST', `/projects/${projectId}/pdf/${docId}`)
 
+/**
+ * Generate a Word (.docx) document for one document.
+ * Returns a Blob — the caller triggers a browser download.
+ */
+export const generateWord = (projectId, docId) =>
+  request('POST', `/projects/${projectId}/word/${docId}`)
+
 
 // ── Calculations ──────────────────────────────────────────────────────────────
 

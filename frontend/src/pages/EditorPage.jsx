@@ -7,7 +7,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProject, saveProject, generatePdf, getCalcTemplates } from '../api/client.js'
+import { getProject, saveProject, generatePdf, generateWord, getCalcTemplates } from '../api/client.js'
 import BlockList            from '../components/blocks/BlockList.jsx'
 import MetadataPanel        from '../components/MetadataPanel.jsx'
 import TemplateEditorModal  from '../components/TemplateEditorModal.jsx'
@@ -557,6 +557,7 @@ export default function EditorPage() {
   const [canRedo,         setCanRedo]         = useState(false)
   const [pdfPreviewUrl,   setPdfPreviewUrl]   = useState(null)   // blob URL for preview modal
   const [pdfGenerating,   setPdfGenerating]   = useState(false)  // shared spinner for both buttons
+  const [wordGenerating,  setWordGenerating]  = useState(false)  // spinner for Word export
   // Adding sub-document: which parent doc is being expanded
   const [addingSubdocFor, setAddingSubdocFor] = useState(null)
   const [newSubdocName,   setNewSubdocName]   = useState('')
@@ -830,6 +831,24 @@ export default function EditorPage() {
       setError(`PDF generation failed: ${err.message}`)
     } finally {
       setPdfGenerating(false)
+    }
+  }
+
+  async function handleGenerateWord() {
+    if (!activeDoc) return
+    setWordGenerating(true)
+    try {
+      const blob   = await generateWord(projectId, activeDoc)
+      const url    = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href  = url
+      anchor.download = `${project.metadata.project_ref || projectId}_${activeDoc}.docx`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(`Word export failed: ${err.message}`)
+    } finally {
+      setWordGenerating(false)
     }
   }
 
@@ -1125,6 +1144,16 @@ export default function EditorPage() {
                 onMouseLeave={e => { if (!pdfGenerating) e.currentTarget.style.background = BRAND }}
               >
                 ↓ Export PDF
+              </button>
+              <button
+                style={{ ...styles.pdfBtn, background: '#2d6a4f', opacity: wordGenerating ? 0.6 : 1 }}
+                onClick={handleGenerateWord}
+                disabled={wordGenerating}
+                onMouseEnter={e => { if (!wordGenerating) e.currentTarget.style.background = '#1b4332' }}
+                onMouseLeave={e => { if (!wordGenerating) e.currentTarget.style.background = '#2d6a4f' }}
+                title="Export as Word document (.docx)"
+              >
+                {wordGenerating ? '⏳' : '↓ Export Word'}
               </button>
             </div>
           )}

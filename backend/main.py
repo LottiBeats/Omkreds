@@ -346,6 +346,54 @@ def generate_pdf(project_id: str, doc_id: str, user: dict = Depends(get_current_
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+# -- Word generation -------------------------------------------------------
+
+@protected.post("/projects/{project_id}/word/{doc_id}", tags=["Word"])
+def generate_word(project_id: str, doc_id: str, user: dict = Depends(get_current_user)):
+    """
+    Generate a Word (.docx) document for one document within a project.
+
+    Returns the .docx file as a binary download
+    (application/vnd.openxmlformats-officedocument.wordprocessingml.document).
+    """
+    project = _visible_project(project_id, user)
+
+    doc = project["documents"].get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found")
+
+    try:
+        from word_builder import build_word
+
+        # Combine sub-documents (same logic as PDF)
+        subdocs = doc.get("subdocs", [])
+        if subdocs:
+            combined: list = []
+            for i, sd in enumerate(subdocs):
+                sd_name = sd.get("name") or f"Sub-document {i + 1}"
+                combined.append({
+                    "type": "heading",
+                    "data": {"level": 1, "text": f"{doc_id}.{i + 1}  {sd_name}"},
+                })
+                combined.extend(sd.get("blocks", []))
+            blocks = combined
+        else:
+            blocks = doc.get("blocks", [])
+
+        docx_bytes = build_word(project, blocks, doc_id=doc_id)
+
+        ref      = project["metadata"].get("project_ref", project_id)
+        filename = f"{ref}_{doc_id}.docx".replace(" ", "_").replace("/", "-")
+
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 
 # â”€â”€ Calculation routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #
