@@ -395,12 +395,38 @@ def generate_word(project_id: str, doc_id: str, user: dict = Depends(get_current
 
 
 
-# â”€â”€ Calculation routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Timber k_mod helper ────────────────────────────────────────────────────────
+
+# EN 1995-1-1 Table 3.1 — k_mod per service class and load-duration class
+_KMOD = {
+    1: {'permanent': 0.60, 'long': 0.70, 'medium': 0.80, 'short': 0.90, 'instant': 1.10},
+    2: {'permanent': 0.60, 'long': 0.70, 'medium': 0.80, 'short': 0.90, 'instant': 1.10},
+    3: {'permanent': 0.50, 'long': 0.55, 'medium': 0.65, 'short': 0.70, 'instant': 0.90},
+}
+
+def _timber_governing_combo(uls_combinations: list, service_class: int) -> dict:
+    “””
+    From a list of ULS combos [{name, E_d, duration}, ...] find the one
+    that governs timber design: max(E_d / k_mod).
+
+    A smaller load with a lower k_mod (e.g. long-duration storage) can produce
+    a higher utilisation than a larger load with high k_mod (e.g. instantaneous wind).
+    This follows EN 1995-1-1 §2.2.3 — k_mod must correspond to the action with
+    the shortest duration in the combination.
+    “””
+    kmod_table = _KMOD.get(service_class, _KMOD[1])
+    def ratio(c):
+        k = kmod_table.get(c['duration'], 0.80)
+        return c['E_d'] / k if k > 0 else 0.0
+    return max(uls_combinations, key=ratio)
+
+
+# ── Calculation routes ─────────────────────────────────────────────────────────
 #
-# Each route accepts a block's "data" dict as the request body,
+# Each route accepts a block's “data” dict as the request body,
 # runs the calculation, and returns the result as JSON.
 #
-# The frontend sends these requests when the user clicks "Run" on a calc block.
+# The frontend sends these requests when the user clicks “Run” on a calc block.
 # Results are displayed inline without a page reload.
 
 
@@ -556,9 +582,10 @@ class TimberBeamInput(BaseModel):
     g_k_kNm:        float = 3.0
     q_k_kNm:        float = 2.0
     # Load source: when provided, overrides g_k/q_k
-    w_Ed_kNm:            float | None = None  # governing ULS load from load_combo block
-    combo_label:         str   | None = None  # label of the source combo block (for display)
-    load_duration_combo: str   | None = None  # governing duration from combo (overrides manual)
+    w_Ed_kNm:         float | None = None  # governing ULS load from load_combo block
+    combo_label:      str   | None = None  # label of the source combo block (for display)
+    uls_combinations: list  | None = None  # all ULS combos [{name,E_d,duration}] — used to find
+                                           # timber-governing combo via max(E_d/k_mod)
     timber_grade:   str   = "C24"
     service_class:  int   = 1
     load_duration:  str   = "medium"
@@ -593,17 +620,31 @@ def calc_timber_beam(data: TimberBeamInput):
         if data.support_length_mm is not None:
             kwargs_tb["support_length"] = data.support_length_mm * mm
 
-        # Load source: combo block overrides g_k / q_k and optionally load_duration
+        # Load source: combo block overrides g_k / q_k.
+        # If all ULS combinations are available, find the one that truly governs
+        # timber design: max(E_d / k_mod) — not simply max(E_d).
         if data.w_Ed_kNm is not None:
-            w_Ed_fp = data.w_Ed_kNm * kN / m
+            # Determine governing combination
+            if data.uls_combinations:
+                gov = _timber_governing_combo(data.uls_combinations, data.service_class)
+                w_Ed_val      = gov['E_d']
+                gov_duration  = gov['duration']
+                gov_name      = gov['name']
+            else:
+                # fallback: use the pre-selected E_d (max by load magnitude)
+                w_Ed_val     = data.w_Ed_kNm
+                gov_duration = data.load_duration
+                gov_name     = data.combo_label or ''
+
+            w_Ed_fp = w_Ed_val * kN / m
             kwargs_tb["beam_results"] = {
-                "source":    f"Load combination {data.combo_label or ''}".strip(),
-                "case_name": data.combo_label or "",
+                "source":    f"Load combination {data.combo_label or ''}  —  governing: {gov_name}".strip(),
+                "case_name": gov_name,
                 "M_Ed":      w_Ed_fp * span_fp ** 2 / 8,
                 "V_Ed":      w_Ed_fp * span_fp / 2,
             }
-            if data.load_duration_combo:
-                kwargs_tb["load_duration"] = data.load_duration_combo
+            kwargs_tb["load_duration"] = gov_duration
+
         blocks = timber_beam(**kwargs_tb)
         return blocks
 
@@ -623,8 +664,9 @@ class TimberColumnInput(BaseModel):
     b_mm:                    float = 120.0
     h_mm:                    float = 120.0
     # Load source: when combo is used, frontend overrides N_Ed_kN directly
-    combo_label:         str   | None = None  # label of the source combo block (for display)
-    load_duration_combo: str   | None = None  # governing duration from combo (overrides manual)
+    combo_label:      str  | None = None  # label of the source combo block (for display)
+    uls_combinations: list | None = None  # all ULS combos [{name,E_d,duration}] — used to find
+                                          # timber-governing combo via max(E_d/k_mod)
     timber_grade:            str   = "C24"
     service_class:           int   = 1
     load_duration:           str   = "medium"
@@ -639,13 +681,20 @@ def calc_timber_column(data: TimberColumnInput):
     try:
         from timber_column import timber_column_bending_and_axial
 
-        # Combo block overrides load_duration when governing duration is known
-        load_duration = data.load_duration_combo or data.load_duration
+        # If all ULS combinations are available, find the one that truly governs
+        # timber design: max(E_d / k_mod) — not simply max(E_d).
+        if data.uls_combinations:
+            gov           = _timber_governing_combo(data.uls_combinations, data.service_class)
+            N_Ed_val      = gov['E_d']
+            load_duration = gov['duration']
+        else:
+            N_Ed_val      = data.N_Ed_kN
+            load_duration = data.load_duration
 
         kwargs: dict = dict(
             label                   = data.label,
             length                  = data.length_m  * m,
-            N_Ed                    = data.N_Ed_kN   * kN,
+            N_Ed                    = N_Ed_val * kN,
             M_Ed                    = data.M_Ed_kNm  * kN * m,
             b                       = data.b_mm      * mm,
             h                       = data.h_mm      * mm,

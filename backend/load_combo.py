@@ -277,12 +277,28 @@ def load_combos(
     ]
     blocks.append(TBL(['Combination', f'E_d', 'Unit'], summary_rows))
 
+    # Export every individual ULS combination with its load-duration class.
+    # Timber checks must find the governing combination by comparing E_d / k_mod,
+    # NOT simply by maximum E_d — a smaller load with lower k_mod often governs.
+    uls_combinations = []
+    for name, formula, val, lead_idx in uls_vals:
+        dur = (
+            'permanent' if (lead_idx < 0 or not loads)
+            else _DURATION_MAP.get(loads[lead_idx]['category'].upper(), 'medium')
+        )
+        uls_combinations.append({
+            'name':     name,
+            'E_d':      round(val, 4),
+            'duration': dur,
+        })
+
     exports = {
         'E_d_uls':            round(E_d_uls,       4),
         'E_d_sls_char':       round(E_d_sls_char,  4),
         'E_d_sls_freq':       round(E_d_sls_freq,  4),
         'E_d_sls_qp':         round(E_d_sls_qp,   4),
         'governing_duration': governing_duration,
+        'uls_combinations':   uls_combinations,   # all combos + durations for timber
         'unit':               unit,
         'K_FI':               KFI,
         'consequence_class':  consequence_class.upper(),
