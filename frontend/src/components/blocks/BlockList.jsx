@@ -179,7 +179,9 @@ const PANEL_GROUPS = [
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function countChecks(result) {
-  if (!result) return null
+  // Only array-style results (Eurocode calc blocks) contain check entries.
+  // frame_fem and beam_fem store plain objects — skip those gracefully.
+  if (!result || !Array.isArray(result)) return null
   let pass = 0, fail = 0
   result.forEach(b => b.type === 'check' && (b.passes !== false ? pass++ : fail++))
   return (pass + fail) > 0 ? { pass, fail } : null
