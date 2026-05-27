@@ -21,6 +21,13 @@ const CATEGORIES = [
   { value: 'H', label: 'H — Roof (not accessible)' },
   { value: 'S', label: 'S — Snow (DK)' },
   { value: 'W', label: 'W — Wind' },
+  { value: 'T', label: 'T — Temperature' },
+]
+
+const CONSEQUENCE_CLASSES = [
+  { value: 'CC1', label: 'CC1  (K_FI = 0.9) — Low consequence' },
+  { value: 'CC2', label: 'CC2  (K_FI = 1.0) — Normal buildings' },
+  { value: 'CC3', label: 'CC3  (K_FI = 1.1) — High consequence' },
 ]
 
 export default function LoadComboBlock({ block, onChange }) {
@@ -53,12 +60,13 @@ export default function LoadComboBlock({ block, onChange }) {
     setError(null)
     try {
       const list = await calcLoadCombo({
-        label:  d.label  ?? 'LC1',
-        unit:   d.unit   ?? 'kN/m',
-        G_k:    d.G_k    ?? 5.0,
-        G_fav:  d.G_fav  ?? false,
-        loads:  d.loads  ?? [],
-        method: d.method ?? '6.10ab',
+        label:             d.label             ?? 'LC1',
+        unit:              d.unit              ?? 'kN/m',
+        G_k:               d.G_k               ?? 5.0,
+        G_fav:             d.G_fav             ?? false,
+        loads:             d.loads             ?? [],
+        method:            d.method            ?? '6.10ab',
+        consequence_class: d.consequence_class ?? 'CC2',
       })
       // Backend returns a flat list; first element is a synthetic
       // {type:'_exports', exports:{...}} sentinel — extract it so
@@ -99,6 +107,14 @@ export default function LoadComboBlock({ block, onChange }) {
           onChange={e => update({ method: e.target.value })}>
           <option value="6.10ab">6.10a / 6.10b  (DK NA)</option>
           <option value="6.10">6.10  (conservative)</option>
+        </select>
+      </Field>
+      <Field label="Consequence class" hint="K_FI">
+        <select style={s.input} value={d.consequence_class ?? 'CC2'}
+          onChange={e => update({ consequence_class: e.target.value })}>
+          {CONSEQUENCE_CLASSES.map(c => (
+            <option key={c.value} value={c.value}>{c.label}</option>
+          ))}
         </select>
       </Field>
 
