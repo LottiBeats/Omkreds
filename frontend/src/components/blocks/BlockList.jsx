@@ -24,6 +24,7 @@ import TimberBeamBlock   from './TimberBeamBlock.jsx'
 import TimberColumnBlock from './TimberColumnBlock.jsx'
 import MasonryWallBlock  from './MasonryWallBlock.jsx'
 import BeamFemBlock      from './BeamFemBlock.jsx'
+import FrameFemBlock     from './FrameFemBlock.jsx'
 import WindLoadBlock     from './WindLoadBlock.jsx'
 import SnowLoadBlock     from './SnowLoadBlock.jsx'
 import FoundationBlock     from './FoundationBlock.jsx'
@@ -87,6 +88,13 @@ const BLOCK_TYPES = [
                supports: [{ x: 0, type: 'pin' }, { x: 6.0, type: 'roller' }],
                loads: [{ type: 'udl', w_kNm: 10.0, x1: 0, x2: 6.0 }],
                _fig_b64: null, _summary: null, _result: null } },
+  { type: 'frame_fem',     label: '2D Frame FEM',       icon: '2DF', color: '#0f766e', component: FrameFemBlock,
+    default: { title: '2D Frame Analysis',
+               nodes:    [{ id: 1, x: 0.0, y: 0.0 }, { id: 2, x: 5.0, y: 0.0 }],
+               elements: [{ id: 1, ni: 1, nj: 2, type: 'beam', E_GPa: 210, A_cm2: 53.8, I_cm4: 8356, preset: 'IPE 300 (S235)' }],
+               supports: [{ node_id: 1, ux: true, uy: true, rz: false }, { node_id: 2, ux: false, uy: true, rz: false }],
+               loads:    [{ type: 'udl', elem_id: 1, wy_kNm: 10.0, wx_kNm: 0.0 }],
+               _result: null } },
   { type: 'wind_load',     label: 'Wind load',         icon: 'WND', color: '#0369a1', component: WindLoadBlock,
     default: { title: 'Wind Load', label: 'W1', terrain_category: 'II',
                v_b0_ms: 24.0, z_ref_m: 8.0, h_m: 8.0, b_m: 10.0, d_m: 12.0,
@@ -157,7 +165,7 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Analysis',
-    types: ['beam_fem'],
+    types: ['beam_fem', 'frame_fem'],
   },
   {
     label: 'Custom',
@@ -243,6 +251,7 @@ function BlockPreview({ block }) {
       const checks = countChecks(d._result)
       const done   = (block.type === 'python_calc' && !!(d._output_text || (d._figs_b64||[]).length))
                   || (block.type === 'beam_fem'    && !!d._summary)
+                  || (block.type === 'frame_fem'   && !!d._result)
       const err    = (block.type === 'python_calc' && !!d._error)
 
       let sub = ''
@@ -253,7 +262,8 @@ function BlockPreview({ block }) {
       else if (block.type === 'masonry_wall')   sub = [d.label, `t=${d.thickness_mm} mm`, `H=${d.height_m} m`].filter(Boolean).join('  ·  ')
       else if (block.type === 'python_calc')    sub = (d.code || '').split('\n').length + ' lines'
       else if (block.type === 'custom_calc')    sub = (d.items || []).length + ' items'
-      else if (block.type === 'beam_fem')       sub = `L=${d.L ?? 6} m  ·  E=${d.E_GPa ?? 210} GPa  ·  I=${d.I_cm4 ?? '?'} cm⁴`
+      else if (block.type === 'beam_fem')        sub = `L=${d.L ?? 6} m  ·  E=${d.E_GPa ?? 210} GPa  ·  I=${d.I_cm4 ?? '?'} cm⁴`
+      else if (block.type === 'frame_fem')       sub = `${(d.nodes ?? []).length} nodes  ·  ${(d.elements ?? []).length} elements  ·  ${(d.supports ?? []).length} supports`
 
       return (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', padding: '2px 0' }}>

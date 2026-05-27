@@ -242,6 +242,13 @@ export const calcFilletWeld = (data) =>
 export const calcPlateGirder = (data) =>
   request('POST', '/calc/plate-girder', data)
 
+/**
+ * Run a 2D Frame / Truss FEM analysis (OpenSeesPy backend).
+ * Returns { fig_b64, node_disps, reactions, element_results, summary }
+ */
+export const calcFrameFem = (data) =>
+  request('POST', '/calc/frame-fem', data)
+
 
 // ── User-defined calculation templates ───────────────────────────────────────
 

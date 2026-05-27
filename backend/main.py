@@ -1170,6 +1170,76 @@ def calc_beam_fem(data: BeamFemInput):
 
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+
+
+# ── 2D Frame FEM (OpenSeesPy) ─────────────────────────────────────────────────
+
+class FrameNodeIn(BaseModel):
+    id:  int
+    x:   float
+    y:   float
+
+class FrameElemIn(BaseModel):
+    id:      int
+    ni:      int
+    nj:      int
+    type:    str   = "beam"   # "beam" | "truss"
+    E_GPa:   float = 210.0
+    A_cm2:   float = 28.5
+    I_cm4:   float = 1943.0
+
+class FrameSupportIn(BaseModel):
+    node_id: int
+    ux:      bool = False
+    uy:      bool = False
+    rz:      bool = False
+
+class FrameLoadIn(BaseModel):
+    type:     str        # "nodal" | "udl"
+    node_id:  int | None = None
+    elem_id:  int | None = None
+    Fx_kN:    float = 0.0
+    Fy_kN:    float = 0.0
+    Mz_kNm:   float = 0.0
+    wy_kNm:   float = 0.0   # UDL vertical (positive = downward)
+    wx_kNm:   float = 0.0   # UDL horizontal (positive = rightward)
+
+class FrameFemInput(BaseModel):
+    title:    str                    = "2D Frame Analysis"
+    nodes:    list[FrameNodeIn]      = []
+    elements: list[FrameElemIn]      = []
+    supports: list[FrameSupportIn]   = []
+    loads:    list[FrameLoadIn]      = []
+
+
+@protected.post("/calc/frame-fem", tags=["Calculations"])
+def calc_frame_fem(data: FrameFemInput):
+    """
+    2D Frame / Truss FEM using OpenSeesPy.
+    Returns a figure (base64 PNG), node displacements, reactions,
+    and element section forces (N, V, M along each element).
+    """
+    try:
+        from frame_fem import solve_and_plot
+
+        nodes    = [n.model_dump()  for n in data.nodes]
+        elements = [e.model_dump()  for e in data.elements]
+        supports = [s.model_dump()  for s in data.supports]
+        loads    = [ld.model_dump() for ld in data.loads]
+
+        res = solve_and_plot(nodes, elements, supports, loads, title=data.title)
+        return res
+
+    except ImportError:
+        raise HTTPException(
+            status_code=501,
+            detail="openseespy is not installed on this server. "
+                   "Run: pip install openseespy",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 class RcColumnInput(BaseModel):
     label:      str   = "C1"
     h_mm:       float = 300.0
