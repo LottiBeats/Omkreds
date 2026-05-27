@@ -622,6 +622,9 @@ class TimberColumnInput(BaseModel):
     M_Ed_kNm:                float = 0.0
     b_mm:                    float = 120.0
     h_mm:                    float = 120.0
+    # Load source: when combo is used, frontend overrides N_Ed_kN directly
+    combo_label:         str   | None = None  # label of the source combo block (for display)
+    load_duration_combo: str   | None = None  # governing duration from combo (overrides manual)
     timber_grade:            str   = "C24"
     service_class:           int   = 1
     load_duration:           str   = "medium"
@@ -636,6 +639,9 @@ def calc_timber_column(data: TimberColumnInput):
     try:
         from timber_column import timber_column_bending_and_axial
 
+        # Combo block overrides load_duration when governing duration is known
+        load_duration = data.load_duration_combo or data.load_duration
+
         kwargs: dict = dict(
             label                   = data.label,
             length                  = data.length_m  * m,
@@ -645,7 +651,7 @@ def calc_timber_column(data: TimberColumnInput):
             h                       = data.h_mm      * mm,
             timber_grade            = data.timber_grade,
             service_class           = data.service_class,
-            load_duration           = data.load_duration,
+            load_duration           = load_duration,
             gamma_M                 = data.gamma_M,
             effective_length_factor = data.effective_length_factor,
         )
@@ -1392,6 +1398,8 @@ class BeamColumnInput(BaseModel):
     N_Ed_kN:    float = 200.0
     My_Ed_kNm:  float = 50.0
     Mz_Ed_kNm:  float = 0.0
+    # Load source: when combo is used, frontend overrides N_Ed_kN directly
+    combo_label: str | None = None  # label of the source combo block (for display)
     L_y_m:   float = 4.0
     L_z_m:   float = 4.0
     L_LTB_m: float = 4.0
