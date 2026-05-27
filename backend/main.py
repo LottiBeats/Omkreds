@@ -442,6 +442,10 @@ class SteelBeamInput(BaseModel):
     # Load source: when provided, overrides g_k/q_k
     w_Ed_kNm:           float | None = None  # governing ULS load from load_combo block
     combo_label:        str   | None = None  # label of the source combo block (for display)
+    # FEM source: when provided, M_Ed and V_Ed come directly from FEM analysis
+    M_Ed_kNm_direct:    float | None = None  # max moment from Beam FEM block
+    V_Ed_kN_direct:     float | None = None  # max shear from Beam FEM block
+    fem_label:          str   | None = None  # title of the source FEM block (for display)
     gamma_M0:           float = 1.0
     gamma_M1:           float = 1.0
     ltb_restrained:     bool  = False
@@ -505,8 +509,17 @@ def calc_steel_beam(data: SteelBeamInput):
         if data.ltb_length_m is not None and not data.ltb_restrained:
             kwargs_sb["l_cr_ltb"] = data.ltb_length_m * m
 
-        # Load source: combo block overrides g_k / q_k
-        if data.w_Ed_kNm is not None:
+        # Load source override priority: FEM > combo > direct g_k/q_k
+        if data.M_Ed_kNm_direct is not None and data.V_Ed_kN_direct is not None:
+            # FEM results: use actual M_Ed and V_Ed from FEM analysis
+            kwargs_sb["beam_results"] = {
+                "source":    f"FEM: {data.fem_label or 'Beam FEM Analysis'}",
+                "case_name": data.fem_label or "FEM",
+                "M_Ed":      data.M_Ed_kNm_direct * kN * m,
+                "V_Ed":      data.V_Ed_kN_direct  * kN,
+            }
+        elif data.w_Ed_kNm is not None:
+            # Combo: compute M_Ed = w·L²/8
             w_Ed_fp = data.w_Ed_kNm * kN / m
             kwargs_sb["beam_results"] = {
                 "source":    f"Load combination {data.combo_label or ''}".strip(),
@@ -586,6 +599,10 @@ class TimberBeamInput(BaseModel):
     combo_label:      str   | None = None  # label of the source combo block (for display)
     uls_combinations: list  | None = None  # all ULS combos [{name,E_d,duration}] — used to find
                                            # timber-governing combo via max(E_d/k_mod)
+    # FEM source: when provided, M_Ed and V_Ed come directly from FEM analysis
+    M_Ed_kNm_direct:  float | None = None  # max moment from Beam FEM block
+    V_Ed_kN_direct:   float | None = None  # max shear from Beam FEM block
+    fem_label:        str   | None = None  # title of the source FEM block (for display)
     timber_grade:   str   = "C24"
     service_class:  int   = 1
     load_duration:  str   = "medium"
@@ -620,18 +637,26 @@ def calc_timber_beam(data: TimberBeamInput):
         if data.support_length_mm is not None:
             kwargs_tb["support_length"] = data.support_length_mm * mm
 
-        # Load source: combo block overrides g_k / q_k.
-        # If all ULS combinations are available, find the one that truly governs
-        # timber design: max(E_d / k_mod) — not simply max(E_d).
-        if data.w_Ed_kNm is not None:
-            # Determine governing combination
+        # Load source override priority: FEM > combo > direct g_k/q_k
+        if data.M_Ed_kNm_direct is not None and data.V_Ed_kN_direct is not None:
+            # FEM results: use actual M_Ed and V_Ed from FEM analysis.
+            # load_duration is set manually by the user (FEM has no duration info).
+            kwargs_tb["beam_results"] = {
+                "source":    f"FEM: {data.fem_label or 'Beam FEM Analysis'}",
+                "case_name": data.fem_label or "FEM",
+                "M_Ed":      data.M_Ed_kNm_direct * kN * m,
+                "V_Ed":      data.V_Ed_kN_direct  * kN,
+            }
+            # load_duration already set from data.load_duration above
+
+        elif data.w_Ed_kNm is not None:
+            # Combo: find the truly governing combination via max(E_d/k_mod).
             if data.uls_combinations:
                 gov = _timber_governing_combo(data.uls_combinations, data.service_class)
                 w_Ed_val      = gov['E_d']
                 gov_duration  = gov['duration']
                 gov_name      = gov['name']
             else:
-                # fallback: use the pre-selected E_d (max by load magnitude)
                 w_Ed_val     = data.w_Ed_kNm
                 gov_duration = data.load_duration
                 gov_name     = data.combo_label or ''

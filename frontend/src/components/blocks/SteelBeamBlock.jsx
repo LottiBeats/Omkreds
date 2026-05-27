@@ -3,7 +3,9 @@
  *
  * Load source:
  *   direct  — user enters g_k / q_k (default, backwards compatible)
- *   combo   — reads E_d_uls from a Load Combo block in the same document
+ *   combo   — reads E_d_uls from a Load Combo block; M_Ed = w·L²/8
+ *   fem     — reads M_Ed and V_Ed directly from a Beam FEM block's results
+ *             (more accurate for non-simple spans, continuous beams, point loads)
  */
 import React, { useState } from 'react'
 import { calcSteelBeam } from '../../api/client.js'
@@ -32,14 +34,23 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
     onChange({ ...block, data: { ...d, ...changes } })
   }
 
-  // All load_combo blocks in the document that have been run
-  const comboBlocks = blocks.filter(b => b.type === 'load_combo')
-  const source      = d.load_source ?? 'direct'
+  const source = d.load_source ?? 'direct'
 
-  // Selected combo block and its exports
-  const selCombo   = comboBlocks.find(b => b.data.label === d.combo_label) ?? comboBlocks[0]
-  const exports_   = selCombo?.data?._exports
-  const comboReady = !!exports_?.E_d_uls
+  // ── Combo source ──────────────────────────────────────────────────────────
+  const comboBlocks = blocks.filter(b => b.type === 'load_combo')
+  const selCombo    = comboBlocks.find(b => b.data.label === d.combo_label) ?? comboBlocks[0]
+  const comboExp    = selCombo?.data?._exports
+  const comboReady  = !!comboExp?.E_d_uls
+
+  // ── FEM source ────────────────────────────────────────────────────────────
+  const femBlocks  = blocks.filter(b => b.type === 'beam_fem')
+  const selFem     = femBlocks.find(b => b.id === d.fem_block_id) ?? femBlocks[0]
+  const femSummary = selFem?.data?._summary
+  const femReady   = !!femSummary?.M_Ed_kNm
+
+  const runDisabled =
+    (source === 'combo' && !comboReady) ||
+    (source === 'fem'   && !femReady)
 
   async function handleRun() {
     setRunning(true)
@@ -61,9 +72,13 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
         deflection_limit:  d.deflection_limit   ?? 200,
       }
 
-      if (source === 'combo' && exports_) {
-        payload.w_Ed_kNm   = exports_.E_d_uls
+      if (source === 'combo' && comboExp) {
+        payload.w_Ed_kNm    = comboExp.E_d_uls
         payload.combo_label = selCombo?.data?.label ?? ''
+      } else if (source === 'fem' && femSummary) {
+        payload.M_Ed_kNm_direct = femSummary.M_Ed_kNm
+        payload.V_Ed_kN_direct  = femSummary.V_Ed_kN
+        payload.fem_label       = selFem?.data?.title ?? 'FEM'
       }
 
       const blocks_result = await calcSteelBeam(payload)
@@ -84,17 +99,19 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
       running={running}
       error={error}
       result={d._result ?? null}
-      runDisabled={source === 'combo' && !comboReady}
+      runDisabled={runDisabled}
     >
       {/* ── Load source selector ── */}
       <Field label="Load source" style={{ gridColumn: '1/-1' }}>
         <div style={{ display: 'flex', gap: 16, padding: '2px 0' }}>
-          {['direct', 'combo'].map(opt => (
+          {['direct', 'combo', 'fem'].map(opt => (
             <label key={opt} style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
               <input type="radio" name={`src-${block.id}`}
                 value={opt} checked={source === opt}
                 onChange={() => update({ load_source: opt })} />
-              {opt === 'direct' ? 'Direct  (g_k / q_k)' : 'Load combination'}
+              {opt === 'direct' ? 'Direct  (g_k / q_k)'
+               : opt === 'combo' ? 'Load combination'
+               : 'FEM results'}
             </label>
           ))}
         </div>
@@ -105,7 +122,7 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
         <Field label="Combo block" style={{ gridColumn: '1/-1' }}>
           {comboBlocks.length === 0 ? (
             <span style={{ fontSize: 12, color: '#e67e22' }}>
-              No load combo blocks in this document yet — add one first.
+              No load combo blocks in this document — add one first.
             </span>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -119,10 +136,43 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
               </select>
               {comboReady
                 ? <span style={{ fontSize: 12, color: '#27ae60', whiteSpace: 'nowrap' }}>
-                    ✓ w_Ed = {exports_.E_d_uls.toFixed(2)} {exports_.unit ?? 'kN/m'}
+                    ✓ w_Ed = {comboExp.E_d_uls.toFixed(2)} {comboExp.unit ?? 'kN/m'}
                   </span>
                 : <span style={{ fontSize: 12, color: '#e67e22', whiteSpace: 'nowrap' }}>
                     Run the combo block first
+                  </span>
+              }
+            </div>
+          )}
+        </Field>
+      )}
+
+      {/* ── FEM picker ── */}
+      {source === 'fem' && (
+        <Field label="FEM block" style={{ gridColumn: '1/-1' }}>
+          {femBlocks.length === 0 ? (
+            <span style={{ fontSize: 12, color: '#e67e22' }}>
+              No Beam FEM blocks in this document — add one first.
+            </span>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <select style={s.input}
+                value={selFem?.id ?? ''}
+                onChange={e => update({ fem_block_id: Number(e.target.value) })}>
+                {femBlocks.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.data.title ?? 'Beam FEM Analysis'}
+                  </option>
+                ))}
+              </select>
+              {femReady
+                ? <span style={{ fontSize: 12, color: '#27ae60', whiteSpace: 'nowrap' }}>
+                    ✓ M_Ed = {femSummary.M_Ed_kNm.toFixed(2)} kNm
+                    &nbsp;·&nbsp;
+                    V_Ed = {femSummary.V_Ed_kN.toFixed(2)} kN
+                  </span>
+                : <span style={{ fontSize: 12, color: '#e67e22', whiteSpace: 'nowrap' }}>
+                    Run the FEM block first
                   </span>
               }
             </div>
@@ -159,7 +209,7 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
           {GRADES.map(g => <option key={g}>{g}</option>)}
         </select>
       </Field>
-      <Field label="Span (m)">
+      <Field label="Span (m)" hint={source === 'fem' ? 'used for SLS deflection limit only' : undefined}>
         <NumericInput style={s.input} value={d.span_m ?? 5.0}
           onChange={v => update({ span_m: v })} />
       </Field>

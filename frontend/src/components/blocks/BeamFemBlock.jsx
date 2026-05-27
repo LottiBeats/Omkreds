@@ -4,13 +4,19 @@
  * Inputs:
  *   - Span, E (GPa), I (cm⁴)
  *   - Dynamic support list: x position + type (pin / roller / fixed)
- *   - Dynamic load list: UDL, point load, point moment, trapezoidal
+ *   - Dynamic load list: UDL, point load, point moment, trapezoidal,
+ *                        Combo UDL (intensity from a linked Load Combo block)
  *
  * Results:
  *   - 4-panel matplotlib figure (beam diagram, displacement, M, V)
  *   - Summary table: max M_Ed, V_Ed, delta_max and reaction forces
+ *
+ * Load combo integration:
+ *   Add a "Combo UDL" load — its w_kNm is read live from E_d_uls of a
+ *   Load Combination block in the same document.  The FEM is always run
+ *   with the current combo value; no manual sync needed.
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { calcBeamFem } from '../../api/client.js'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
@@ -27,7 +33,7 @@ const E_PRESETS = [
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function SupportRow({ sup, L, onChange, onRemove }) {
+function SupportRow({ sup, onChange, onRemove }) {
   return (
     <div style={s.listRow}>
       <div style={s.listRowInner}>
@@ -51,17 +57,27 @@ function SupportRow({ sup, L, onChange, onRemove }) {
   )
 }
 
-function LoadRow({ load, L, onChange, onRemove }) {
+function LoadRow({ load, L, comboBlocks, onChange, onRemove }) {
   const lt = load.type ?? 'udl'
+
+  // For combo_udl: find the linked combo block and its current E_d_uls
+  const selCombo = lt === 'combo_udl'
+    ? (comboBlocks.find(b => b.data.label === load.combo_label) ?? comboBlocks[0])
+    : null
+  const comboW    = selCombo?.data?._exports?.E_d_uls
+  const comboUnit = selCombo?.data?._exports?.unit ?? 'kN/m'
+
   return (
     <div style={s.listRow}>
       <div style={{ ...s.listRowInner, flexWrap: 'wrap' }}>
+
         {/* Type selector */}
         <div style={s.fieldWrap}>
           <label style={s.miniLabel}>Type</label>
           <select style={s.smallInput} value={lt}
             onChange={e => onChange({ ...load, type: e.target.value })}>
             <option value="udl">UDL</option>
+            <option value="combo_udl">Combo UDL</option>
             <option value="point">Point load</option>
             <option value="moment">Moment</option>
             <option value="trapezoidal">Trapezoidal</option>
@@ -70,41 +86,77 @@ function LoadRow({ load, L, onChange, onRemove }) {
 
         {/* UDL ── w, x1, x2 */}
         {lt === 'udl' && <>
-          <NumField label="w (kN/m)" val={load.w_kNm ?? 10}   step="0.1"
+          <NumField label="w (kN/m)" val={load.w_kNm ?? 10}
             set={v => onChange({ ...load, w_kNm: v })} />
-          <NumField label="x₁ (m)"  val={load.x1 ?? 0}        step="0.1"
+          <NumField label="x₁ (m)" val={load.x1 ?? 0}
             set={v => onChange({ ...load, x1: v })} />
-          <NumField label="x₂ (m)"  val={load.x2 ?? L}        step="0.1"
+          <NumField label="x₂ (m)" val={load.x2 ?? L}
             set={v => onChange({ ...load, x2: v })} />
+        </>}
+
+        {/* Combo UDL ── combo picker, x1, x2 + live value display */}
+        {lt === 'combo_udl' && <>
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>Combo</label>
+            {comboBlocks.length === 0 ? (
+              <span style={{ fontSize: 11, color: '#e67e22' }}>No combo blocks</span>
+            ) : (
+              <select style={s.smallInput}
+                value={selCombo?.data?.label ?? ''}
+                onChange={e => onChange({ ...load, combo_label: e.target.value })}>
+                {comboBlocks.map(b => (
+                  <option key={b.id} value={b.data.label ?? ''}>
+                    {b.data.label ?? '?'}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <NumField label="x₁ (m)" val={load.x1 ?? 0}
+            set={v => onChange({ ...load, x1: v })} />
+          <NumField label="x₂ (m)" val={load.x2 ?? L}
+            set={v => onChange({ ...load, x2: v })} />
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>w (kN/m)</label>
+            {comboW != null
+              ? <span style={{ fontSize: 12, color: '#27ae60', fontWeight: 700, padding: '4px 6px' }}>
+                  {comboW.toFixed(2)} {comboUnit}
+                </span>
+              : <span style={{ fontSize: 11, color: '#e67e22', padding: '4px 6px' }}>
+                  run combo first
+                </span>
+            }
+          </div>
         </>}
 
         {/* Point load ── P, x */}
         {lt === 'point' && <>
-          <NumField label="P (kN)"  val={load.P_kN ?? 10}     step="0.1"
+          <NumField label="P (kN)"  val={load.P_kN ?? 10}
             set={v => onChange({ ...load, P_kN: v })} />
-          <NumField label="x (m)"   val={load.x ?? (L / 2)}  step="0.1"
+          <NumField label="x (m)"   val={load.x ?? (L / 2)}
             set={v => onChange({ ...load, x: v })} />
         </>}
 
         {/* Moment ── M, x */}
         {lt === 'moment' && <>
-          <NumField label="M (kNm)" val={load.M_kNm ?? 10}    step="0.1"
+          <NumField label="M (kNm)" val={load.M_kNm ?? 10}
             set={v => onChange({ ...load, M_kNm: v })} />
-          <NumField label="x (m)"   val={load.x ?? (L / 2)}  step="0.1"
+          <NumField label="x (m)"   val={load.x ?? (L / 2)}
             set={v => onChange({ ...load, x: v })} />
         </>}
 
         {/* Trapezoidal ── w1, w2, x1, x2 */}
         {lt === 'trapezoidal' && <>
-          <NumField label="w₁ (kN/m)" val={load.w1_kNm ?? 10} step="0.1"
+          <NumField label="w₁ (kN/m)" val={load.w1_kNm ?? 10}
             set={v => onChange({ ...load, w1_kNm: v })} />
-          <NumField label="w₂ (kN/m)" val={load.w2_kNm ?? 0}  step="0.1"
+          <NumField label="w₂ (kN/m)" val={load.w2_kNm ?? 0}
             set={v => onChange({ ...load, w2_kNm: v })} />
-          <NumField label="x₁ (m)"    val={load.x1 ?? 0}       step="0.1"
+          <NumField label="x₁ (m)" val={load.x1 ?? 0}
             set={v => onChange({ ...load, x1: v })} />
-          <NumField label="x₂ (m)"    val={load.x2 ?? L}       step="0.1"
+          <NumField label="x₂ (m)" val={load.x2 ?? L}
             set={v => onChange({ ...load, x2: v })} />
         </>}
+
       </div>
       <button onClick={onRemove} style={s.removeBtn} title="Remove">✕</button>
     </div>
@@ -142,7 +194,6 @@ function FemResultPanel({ figB64, summary }) {
 
       {open && (
         <div style={s.resultBody}>
-          {/* Figure */}
           {figB64 && (
             <img
               src={`data:image/png;base64,${figB64}`}
@@ -151,7 +202,6 @@ function FemResultPanel({ figB64, summary }) {
             />
           )}
 
-          {/* Results table */}
           <table style={s.table}>
             <thead>
               <tr>
@@ -179,7 +229,6 @@ function FemResultPanel({ figB64, summary }) {
             </tbody>
           </table>
 
-          {/* Reactions */}
           {summary.reactions && Object.keys(summary.reactions).length > 0 && (
             <div style={{ marginTop: 10 }}>
               <div style={s.sectionLabel}>Reactions</div>
@@ -215,19 +264,22 @@ function FemResultPanel({ figB64, summary }) {
 
 // ── Main block component ──────────────────────────────────────────────────────
 
-export default function BeamFemBlock({ block, onChange }) {
+export default function BeamFemBlock({ block, onChange, blocks = [] }) {
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
   const [ePreset, setEPreset] = useState('Steel')
 
-  // helpers
+  // All load combo blocks available in this document
+  const comboBlocks = blocks.filter(b => b.type === 'load_combo')
+
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
   }
+
   // Supports
   const supports = d.supports ?? [
-    { x: 0,       type: 'pin' },
+    { x: 0,        type: 'pin'    },
     { x: d.L ?? 6, type: 'roller' },
   ]
   function updateSupport(i, sup) {
@@ -251,6 +303,7 @@ export default function BeamFemBlock({ block, onChange }) {
     const L = d.L ?? 6
     const defaults = {
       udl:          { type: 'udl',         w_kNm: 10,   x1: 0, x2: L },
+      combo_udl:    { type: 'combo_udl',   combo_label: comboBlocks[0]?.data?.label ?? '', x1: 0, x2: L },
       point:        { type: 'point',        P_kN: 10,    x: L / 2 },
       moment:       { type: 'moment',       M_kNm: 10,   x: L / 2 },
       trapezoidal:  { type: 'trapezoidal',  w1_kNm: 10, w2_kNm: 0, x1: 0, x2: L },
@@ -266,13 +319,22 @@ export default function BeamFemBlock({ block, onChange }) {
     setError(null)
     try {
       const L = d.L ?? 6
+
+      // Resolve any Combo UDL loads to their current E_d_uls value
+      const resolvedLoads = loads.map(ld => {
+        if (ld.type !== 'combo_udl') return ld
+        const cb = comboBlocks.find(b => b.data.label === ld.combo_label) ?? comboBlocks[0]
+        const w  = cb?.data?._exports?.E_d_uls ?? 0
+        return { type: 'udl', w_kNm: w, x1: ld.x1 ?? 0, x2: ld.x2 ?? L }
+      })
+
       const res = await calcBeamFem({
         title:    d.title ?? 'Beam FEM Analysis',
         L,
         E_GPa:    d.E_GPa ?? 210,
         I_cm4:    d.I_cm4 ?? 3000,
-        supports: supports.map(s => ({ x: s.x, type: s.type })),
-        loads:    loads,
+        supports: supports.map(sup => ({ x: sup.x, type: sup.type })),
+        loads:    resolvedLoads,
       })
       update({
         _fig_b64: res._fig_b64,
@@ -287,6 +349,13 @@ export default function BeamFemBlock({ block, onChange }) {
   }
 
   const L = d.L ?? 6
+  const hasComboUdl = loads.some(ld => ld.type === 'combo_udl')
+  const comboUdlReady = !hasComboUdl || loads
+    .filter(ld => ld.type === 'combo_udl')
+    .every(ld => {
+      const cb = comboBlocks.find(b => b.data.label === ld.combo_label) ?? comboBlocks[0]
+      return cb?.data?._exports?.E_d_uls != null
+    })
 
   return (
     <div style={s.wrapper}>
@@ -341,21 +410,30 @@ export default function BeamFemBlock({ block, onChange }) {
       {/* ── Loads ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <div style={s.sectionLabel}>Loads</div>
-        {['udl', 'point', 'moment', 'trapezoidal'].map(lt => (
+        {['udl', 'combo_udl', 'point', 'moment', 'trapezoidal'].map(lt => (
           <button key={lt} style={s.addBtn} onClick={() => addLoad(lt)}>
-            + {lt === 'udl' ? 'UDL' : lt === 'point' ? 'Point' : lt === 'moment' ? 'Moment' : 'Trapezoidal'}
+            + {lt === 'udl' ? 'UDL'
+              : lt === 'combo_udl' ? 'Combo UDL'
+              : lt === 'point' ? 'Point'
+              : lt === 'moment' ? 'Moment'
+              : 'Trapezoidal'}
           </button>
         ))}
       </div>
       {loads.map((ld, i) => (
-        <LoadRow key={i} load={ld} L={L}
+        <LoadRow key={i} load={ld} L={L} comboBlocks={comboBlocks}
           onChange={ld => updateLoad(i, ld)}
           onRemove={() => removeLoad(i)} />
       ))}
 
       {/* ── Run button ── */}
       <div style={s.actionRow}>
-        <button style={{ ...s.btn, ...s.btnRun }} onClick={handleRun} disabled={running}>
+        <button
+          style={{ ...s.btn, ...s.btnRun, opacity: !comboUdlReady ? 0.5 : 1 }}
+          onClick={handleRun}
+          disabled={running || !comboUdlReady}
+          title={!comboUdlReady ? 'Run the linked combo block(s) first' : undefined}
+        >
           {running ? '⏳  Running…' : '▶  Run FEM'}
         </button>
         {d._result && (
@@ -418,7 +496,6 @@ const s = {
     width:      '100%',
     boxSizing:  'border-box',
   },
-  // list rows
   listRow: {
     display:     'flex',
     alignItems:  'flex-end',
@@ -429,10 +506,10 @@ const s = {
     borderRadius: 2,
   },
   listRowInner: {
-    display:  'flex',
-    flex:     1,
-    gap:      8,
-    flexWrap: 'wrap',
+    display:    'flex',
+    flex:       1,
+    gap:        8,
+    flexWrap:   'wrap',
     alignItems: 'flex-end',
   },
   fieldWrap: {
@@ -441,9 +518,9 @@ const s = {
     gap:           3,
   },
   miniLabel: {
-    fontSize:   10,
-    fontWeight: 600,
-    color:      '#888',
+    fontSize:      10,
+    fontWeight:    600,
+    color:         '#888',
     letterSpacing: '0.04em',
   },
   smallInput: {
@@ -477,8 +554,8 @@ const s = {
     color:         '#555',
   },
   actionRow: {
-    display: 'flex',
-    gap:     8,
+    display:   'flex',
+    gap:       8,
     marginTop: 4,
   },
   btn: {
@@ -503,7 +580,6 @@ const s = {
     fontSize:   12,
     color:      '#c0392b',
   },
-  // result panel
   resultPanel: {
     border:    '1px solid #e8e8e8',
     marginTop: 2,
@@ -534,10 +610,10 @@ const s = {
     padding: '12px 14px',
   },
   table: {
-    width:           '100%',
-    borderCollapse:  'collapse',
-    fontSize:        12,
-    fontFamily:      'monospace',
+    width:          '100%',
+    borderCollapse: 'collapse',
+    fontSize:       12,
+    fontFamily:     'monospace',
   },
   th: {
     textAlign:     'left',

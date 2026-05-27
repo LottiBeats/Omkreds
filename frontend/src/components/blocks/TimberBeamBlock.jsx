@@ -3,8 +3,10 @@
  *
  * Load source:
  *   direct  — user enters g_k / q_k + load_duration manually (default)
- *   combo   — reads E_d_uls and governing_duration from a Load Combo block
- *             k_mod is therefore always consistent with the governing combination
+ *   combo   — reads E_d_uls from a Load Combo block; governing combination
+ *             determined by max(E_d/k_mod) so k_mod is always correct
+ *   fem     — reads M_Ed and V_Ed directly from a Beam FEM block
+ *             load_duration must be set manually (FEM has no duration info)
  */
 import React, { useState } from 'react'
 import { calcTimberBeam } from '../../api/client.js'
@@ -38,14 +40,23 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
     onChange({ ...block, data: { ...d, ...changes } })
   }
 
-  // All load_combo blocks in the document
-  const comboBlocks = blocks.filter(b => b.type === 'load_combo')
-  const source      = d.load_source ?? 'direct'
+  const source = d.load_source ?? 'direct'
 
-  // Selected combo block and its exports
-  const selCombo   = comboBlocks.find(b => b.data.label === d.combo_label) ?? comboBlocks[0]
-  const exports_   = selCombo?.data?._exports
-  const comboReady = !!exports_?.E_d_uls
+  // ── Combo source ──────────────────────────────────────────────────────────
+  const comboBlocks = blocks.filter(b => b.type === 'load_combo')
+  const selCombo    = comboBlocks.find(b => b.data.label === d.combo_label) ?? comboBlocks[0]
+  const comboExp    = selCombo?.data?._exports
+  const comboReady  = !!comboExp?.E_d_uls
+
+  // ── FEM source ────────────────────────────────────────────────────────────
+  const femBlocks  = blocks.filter(b => b.type === 'beam_fem')
+  const selFem     = femBlocks.find(b => b.id === d.fem_block_id) ?? femBlocks[0]
+  const femSummary = selFem?.data?._summary
+  const femReady   = !!femSummary?.M_Ed_kNm
+
+  const runDisabled =
+    (source === 'combo' && !comboReady) ||
+    (source === 'fem'   && !femReady)
 
   async function handleRun() {
     setRunning(true)
@@ -67,12 +78,17 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         support_length_mm: d.support_length_mm ?? null,
       }
 
-      if (source === 'combo' && exports_) {
-        payload.w_Ed_kNm         = exports_.E_d_uls
+      if (source === 'combo' && comboExp) {
+        payload.w_Ed_kNm         = comboExp.E_d_uls
         payload.combo_label      = selCombo?.data?.label ?? ''
-        // Pass all ULS combinations so the backend can find the truly governing one
+        // Pass all ULS combinations so the backend finds the truly governing one
         // via max(E_d / k_mod) — not just max(E_d). EN 1995-1-1 §2.2.3.
-        payload.uls_combinations = exports_.uls_combinations ?? null
+        payload.uls_combinations = comboExp.uls_combinations ?? null
+      } else if (source === 'fem' && femSummary) {
+        // FEM gives actual M_Ed and V_Ed — load_duration stays as manually set
+        payload.M_Ed_kNm_direct = femSummary.M_Ed_kNm
+        payload.V_Ed_kN_direct  = femSummary.V_Ed_kN
+        payload.fem_label       = selFem?.data?.title ?? 'FEM'
       }
 
       const blocks_result = await calcTimberBeam(payload)
@@ -93,17 +109,19 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
       running={running}
       error={error}
       result={d._result ?? null}
-      runDisabled={source === 'combo' && !comboReady}
+      runDisabled={runDisabled}
     >
       {/* ── Load source selector ── */}
       <Field label="Load source" style={{ gridColumn: '1/-1' }}>
         <div style={{ display: 'flex', gap: 16, padding: '2px 0' }}>
-          {['direct', 'combo'].map(opt => (
+          {['direct', 'combo', 'fem'].map(opt => (
             <label key={opt} style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
               <input type="radio" name={`src-${block.id}`}
                 value={opt} checked={source === opt}
                 onChange={() => update({ load_source: opt })} />
-              {opt === 'direct' ? 'Direct  (g_k / q_k)' : 'Load combination'}
+              {opt === 'direct' ? 'Direct  (g_k / q_k)'
+               : opt === 'combo' ? 'Load combination'
+               : 'FEM results'}
             </label>
           ))}
         </div>
@@ -114,7 +132,7 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         <Field label="Combo block" style={{ gridColumn: '1/-1' }}>
           {comboBlocks.length === 0 ? (
             <span style={{ fontSize: 12, color: '#e67e22' }}>
-              No load combo blocks in this document yet — add one first.
+              No load combo blocks in this document — add one first.
             </span>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -129,11 +147,44 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
               </select>
               {comboReady
                 ? <span style={{ fontSize: 12, color: '#27ae60' }}>
-                    ✓ w_Ed = {exports_.E_d_uls.toFixed(2)} {exports_.unit ?? 'kN/m'}
-                    {'  ·  '}k_mod: {DURATION_LABEL[exports_.governing_duration] ?? exports_.governing_duration}
+                    ✓ w_Ed = {comboExp.E_d_uls.toFixed(2)} {comboExp.unit ?? 'kN/m'}
+                    {'  ·  '}{DURATION_LABEL[comboExp.governing_duration] ?? comboExp.governing_duration}
                   </span>
                 : <span style={{ fontSize: 12, color: '#e67e22' }}>
                     Run the combo block first
+                  </span>
+              }
+            </div>
+          )}
+        </Field>
+      )}
+
+      {/* ── FEM picker ── */}
+      {source === 'fem' && (
+        <Field label="FEM block" style={{ gridColumn: '1/-1' }}>
+          {femBlocks.length === 0 ? (
+            <span style={{ fontSize: 12, color: '#e67e22' }}>
+              No Beam FEM blocks in this document — add one first.
+            </span>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <select style={{ ...s, width: 'auto', minWidth: 180 }}
+                value={selFem?.id ?? ''}
+                onChange={e => update({ fem_block_id: Number(e.target.value) })}>
+                {femBlocks.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.data.title ?? 'Beam FEM Analysis'}
+                  </option>
+                ))}
+              </select>
+              {femReady
+                ? <span style={{ fontSize: 12, color: '#27ae60' }}>
+                    ✓ M_Ed = {femSummary.M_Ed_kNm.toFixed(2)} kNm
+                    {'  ·  '}
+                    V_Ed = {femSummary.V_Ed_kN.toFixed(2)} kN
+                  </span>
+                : <span style={{ fontSize: 12, color: '#e67e22' }}>
+                    Run the FEM block first
                   </span>
               }
             </div>
@@ -151,20 +202,24 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
           <NumericInput style={s} value={d.q_k_kNm ?? 2.0}
             onChange={v => update({ q_k_kNm: v })} />
         </Field>
-        <Field label="Load duration">
+      </>)}
+
+      {/* ── Load duration — direct or FEM (for FEM: must set manually) ── */}
+      {(source === 'direct' || source === 'fem') && (
+        <Field label="Load duration" hint={source === 'fem' ? 'Set manually — FEM has no duration info' : undefined}>
           <select style={s} value={d.load_duration ?? 'medium'}
             onChange={e => update({ load_duration: e.target.value })}>
-            {LOAD_DURATIONS.map(d => <option key={d}>{d}</option>)}
+            {LOAD_DURATIONS.map(dur => <option key={dur} value={dur}>{DURATION_LABEL[dur] ?? dur}</option>)}
           </select>
         </Field>
-      </>)}
+      )}
 
       {/* ── Section / geometry (always shown) ── */}
       <Field label="Label">
         <input style={s} value={d.label ?? 'T1'}
           onChange={e => update({ label: e.target.value })} />
       </Field>
-      <Field label="Span (m)">
+      <Field label="Span (m)" hint={source === 'fem' ? 'used for deflection limit only' : undefined}>
         <NumericInput style={s} value={d.span_m ?? 4.0}
           onChange={v => update({ span_m: v })} />
       </Field>
