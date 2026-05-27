@@ -8,7 +8,7 @@
  * ──────────────
  * Auth is handled by Clerk (clerk.com).  The token is obtained from the
  * current Clerk session via clerkToken.js and sent as a Bearer header.
- * On 401 the user is redirected to /sign-in.
+ * On 401 an error is thrown so the calling component can display it inline.
  *
  * Each function:
  *   - sends a request to the FastAPI backend
@@ -43,12 +43,11 @@ async function request(method, path, body = null) {
 
   const response = await fetch(`${BASE}${path}`, options)
 
-  // Token expired / revoked → send back to sign-in
+  // Token expired / revoked — throw so the calling component shows the error
+  // inline.  Do NOT navigate: /sign-in is not a defined route and would just
+  // bounce the user to / (ProjectsPage) via the catch-all * route.
   if (response.status === 401) {
-    if (!window.location.pathname.startsWith('/sign-in')) {
-      window.location.href = '/sign-in'
-    }
-    throw new Error('Session expired — please sign in again')
+    throw new Error('Session expired — please reload the page and sign in again.')
   }
 
   if (!response.ok) {
