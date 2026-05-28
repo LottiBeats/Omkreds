@@ -188,6 +188,27 @@ def _beam_fem_block(block: dict, tmp_files: list) -> list:
     return flat
 
 
+# ── Unicode → PDF-safe text ──────────────────────────────────────────────────
+# Helvetica (the default PDF font) only covers Latin-1 + some extras.
+# Unicode subscript/superscript digits and a handful of other maths symbols
+# are outside that range and render as ■.  Map them to plain ASCII equivalents.
+
+_PDF_CHAR_MAP = str.maketrans(
+    '₀₁₂₃₄₅₆₇₈₉'   # subscript digits U+2080-U+2089
+    '⁰¹²³⁴⁵⁶⁷⁸⁹'   # superscript digits
+    '–—'             # en-dash, em-dash
+    '≤≥≠≈·×',
+    '0123456789'
+    '0123456789'
+    '--'
+    '<>!=.*',
+)
+
+def _pdf(s) -> str:
+    """Make a string safe for Helvetica-encoded PDF cells."""
+    return str(s).translate(_PDF_CHAR_MAP)
+
+
 # ── Editable table block ─────────────────────────────────────────────────────
 
 def _table_block(block: dict) -> list:
@@ -219,14 +240,14 @@ def _table_block(block: dict) -> list:
 
     result = []
     if caption:
-        result.append(Paragraph(caption, cap_style))
+        result.append(Paragraph(_pdf(caption), cap_style))
 
-    # Build ReportLab rows
+    # Build ReportLab rows — _pdf() strips chars Helvetica can't render
     rl_rows = []
     for ri, row in enumerate(rows_data):
         is_hdr = has_header and ri == 0
         sty    = hdr_style if is_hdr else cell_style
-        rl_rows.append([Paragraph(str(cell), sty) for cell in row])
+        rl_rows.append([Paragraph(_pdf(cell), sty) for cell in row])
 
     # Distribute columns evenly across 170 mm
     n_cols    = max(len(r) for r in rows_data) if rows_data else 1

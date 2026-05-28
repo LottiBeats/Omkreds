@@ -218,18 +218,18 @@ function makeA1Template() {
       has_header: true,
       rows: [
         ['Formel', 'Udtryk', 'γG,sup', 'γG,inf', 'γQ,1', 'ξ (DK NA)'],
-        ['6.10a', 'γG,sup·KFI·Gk + Σ(γQ,i·KFI·ψ₀,i·Qk,i)', '1,35', '1,00', '1,50·ψ₀,i', '—'],
-        ['6.10b', 'ξ·γG,sup·KFI·Gk + γQ,1·KFI·Qk,1 + Σ(γQ,i·KFI·ψ₀,i·Qk,i)', '1,35', '1,00', '1,50', '0,89'],
-        ['EQU (ligevægt)', 'γG,sup·Gk + γQ,1·ψ₀,1·Qk,1', '1,05', '0,95', '1,50·ψ₀,1', '—'],
+        ['6.10a', 'γG,sup·KFI·Gk + Σ(γQ,i·KFI·ψ0,i·Qk,i)', '1,35', '1,00', '1,50·ψ0,i', '—'],
+        ['6.10b', 'ξ·γG,sup·KFI·Gk + γQ,1·KFI·Qk,1 + Σ(γQ,i·KFI·ψ0,i·Qk,i)', '1,35', '1,00', '1,50', '0,89'],
+        ['EQU (ligevægt)', 'γG,sup·Gk + γQ,1·ψ0,1·Qk,1', '1,05', '0,95', '1,50·ψ0,1', '—'],
         ['GEO (jord)', 'Som STR 6.10a/b med geotekniske γ-faktorer', '1,35', '1,00', '1,50', '0,89'],
       ]
     }},
-    { id: id++, type: 'text', data: { text: 'SLS lastkombinationer (DS/EN 1990 Tabel A1.4):\n• Karakteristisk:   Gk + Qk,1 + Σ(ψ₀,i · Qk,i)   — bruges til irreversible SLS-tilstande\n• Hyppig:           Gk + ψ₁,1·Qk,1 + Σ(ψ₂,i · Qk,i) — bruges til reversible SLS-tilstande\n• Kvasi-permanent:  Gk + Σ(ψ₂,i · Qk,i)             — bruges til krybning og nedbøjning' } },
+    { id: id++, type: 'text', data: { text: 'SLS lastkombinationer (DS/EN 1990 Tabel A1.4):\n• Karakteristisk:   Gk + Qk,1 + Σ(ψ0,i · Qk,i)   — bruges til irreversible SLS-tilstande\n• Hyppig:           Gk + ψ1,1·Qk,1 + Σ(ψ2,i · Qk,i) — bruges til reversible SLS-tilstande\n• Kvasi-permanent:  Gk + Σ(ψ2,i · Qk,i)             — bruges til krybning og nedbøjning' } },
     { id: id++, type: 'table', data: {
       caption: 'Tabel 9 — ψ-faktorer for variable laster (DS/EN 1990 DK NA:2024, Tabel A1.1)',
       has_header: true,
       rows: [
-        ['Lasttype', 'Lastkategori', 'ψ₀', 'ψ₁', 'ψ₂'],
+        ['Lasttype', 'Lastkategori', 'ψ0', 'ψ1', 'ψ2'],
         ['Nyttelast — Kat. A', 'Boliger og boligformål', '0,5', '0,3', '0,2'],
         ['Nyttelast — Kat. B', 'Kontor og administrationsarealer', '0,6', '0,4', '0,2'],
         ['Nyttelast — Kat. C', 'Forsamlingslokaler (C1–C5)', '0,6', '0,6', '0,5'],
