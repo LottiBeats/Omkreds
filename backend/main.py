@@ -974,9 +974,41 @@ def _parse_qty(value: float, unit_str: str):
         return float(value)
 
 
-def _fmt_qty(qty) -> str:
+def _fmt_qty(qty, result_unit: str = "-") -> str:
+    """Format a scalar (forallpeople quantity or plain float) for display.
+
+    If result_unit is given (e.g. 'kN*m'), the value is expressed in that unit
+    by dividing out the unit quantity; the plain number is shown with the unit label.
+    Falls back gracefully if the conversion fails (wrong dimensions or plain float).
+
+    Numbers are always limited to 5 significant figures.
+    """
+    import re as _re
+
+    # ── Try unit conversion if a result unit is requested ──────────────────
+    if result_unit and result_unit not in ("-", ""):
+        try:
+            unit_qty  = eval(result_unit, _UNIT_NS, {})    # e.g. kN*m quantity
+            converted = float(qty / unit_qty)               # dimensionless scalar
+            unit_disp = (result_unit
+                         .replace("**2", "²").replace("**3", "³").replace("**4", "⁴")
+                         .replace("*", "·"))
+            return f"{converted:.5g} {unit_disp}"
+        except Exception:
+            pass  # fall through to plain formatting below
+
+    # ── Plain formatting (auto units from forallpeople or bare float) ───────
     try:
-        return str(qty)
+        s = str(qty)
+        # forallpeople str looks like "5.432 kN·m"; plain float like "5.432"
+        m = _re.match(r'^([+\-]?\d[\d.eE+\-]*)(.*)', s.strip())
+        if m:
+            num_str = m.group(1)
+            rest    = m.group(2).strip()
+            val     = float(num_str)
+            num_fmt = f"{val:.5g}"
+            return f"{num_fmt} {rest}".strip() if rest else num_fmt
+        return s
     except Exception:
         return repr(qty)
 
@@ -1016,8 +1048,11 @@ def calc_custom(data: CustomCalcInput):
                     unit_str = item.get("unit", "-")
                     qty      = _parse_qty(float(item.get("value", 0.0)), unit_str)
                     ns[name] = qty
-                    val_str  = (f"{item['value']:g}" if unit_str == "-"
-                                else f"{item['value']:g} {unit_str.replace('**', '').replace('*', '·')}")
+                    unit_disp = (unit_str
+                                 .replace("**2", "²").replace("**3", "³").replace("**4", "⁴")
+                                 .replace("*", "·"))
+                    val_str  = (f"{item['value']:.5g}" if unit_str == "-"
+                                else f"{item['value']:.5g} {unit_disp}")
                     desc = item.get("description", "").strip()
                     blocks.append(CALC_ROW(name, desc, val_str))
                 except Exception as exc:
@@ -1032,9 +1067,10 @@ def calc_custom(data: CustomCalcInput):
                 rhs = rhs.strip()
                 try:
                     # Pre-process: ^ → **, × → *, · → * for eval
-                    result     = _safe_eval(_preprocess_expr(rhs), {**_UNIT_NS, **ns})
-                    ns[lhs]    = result
-                    result_str = _fmt_qty(result)
+                    result_unit  = item.get("unit", "-") or "-"
+                    result       = _safe_eval(_preprocess_expr(rhs), {**_UNIT_NS, **ns})
+                    ns[lhs]      = result
+                    result_str   = _fmt_qty(result, result_unit)
                     # Display: normalise to ^ and × notation (fmtCalcText handles the rest)
                     formula_disp = (rhs
                         .replace("**", "^")

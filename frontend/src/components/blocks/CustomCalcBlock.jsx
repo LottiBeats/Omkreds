@@ -85,7 +85,7 @@ const DEFAULT_ITEM = {
   text:        { type: 'text',    content: '' },
   heading:     { type: 'heading', content: '' },
   var:         { type: 'var',     name: '',  value: 0,   unit: '-', description: '' },
-  formula:     { type: 'formula', expr: '' },
+  formula:     { type: 'formula', expr: '', unit: '-' },
   check:       { type: 'check',   label: 'Check', demand: '', capacity: '1.0', unit: 'kN' },
   conditional: { type: 'conditional', name: '', condition: '', true_expr: '', false_expr: '', unit: '-' },
 }
@@ -528,22 +528,31 @@ function FormulaItem({ item, onChange }) {
   const [exprRef, insertExpr] = useSymbolInsert(item.expr, v => onChange({ expr: v }))
   return (
     <div>
-      <label style={s.fieldLabel}>Expression  (symbol = expression)</label>
-      <input
-        ref={exprRef}
-        style={{ ...s.input, fontFamily: 'monospace', fontSize: 13 }}
-        value={item.expr ?? ''}
-        onChange={e => onChange({ expr: e.target.value })}
-        placeholder="e.g.  M_Ed = q * L^2 / 8   or   σ = N_Ed / A"
-        spellCheck={false}
-      />
+      {/* Expression + result-unit row */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 180, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <label style={s.fieldLabel}>Expression  (symbol = expression)</label>
+          <input
+            ref={exprRef}
+            style={{ ...s.input, fontFamily: 'monospace', fontSize: 13 }}
+            value={item.expr ?? ''}
+            onChange={e => onChange({ expr: e.target.value })}
+            placeholder="e.g.  M_Ed = q * L^2 / 8   or   σ = N_Ed / A"
+            spellCheck={false}
+          />
+        </div>
+        <div style={{ width: 120, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <label style={s.fieldLabel}>Result unit</label>
+          <UnitSelect value={item.unit ?? '-'} onChange={v => onChange({ unit: v })} />
+        </div>
+      </div>
       <SymbolBar onInsert={insertExpr} />
       <div style={s.hint}>
         Reference any variable defined above. Power: <code>^</code>.&ensp;
         Multiply: <code>*</code> or <code>×</code>.&ensp;
         Functions: <code>sqrt &nbsp;sin &nbsp;cos &nbsp;tan &nbsp;log &nbsp;exp &nbsp;abs &nbsp;min &nbsp;max</code>.&ensp;
         Constants: <code>pi &nbsp;e</code>.&ensp;
-        Units carried automatically.
+        Units carry from variables; or pick a result unit to display the answer in.
       </div>
     </div>
   )
