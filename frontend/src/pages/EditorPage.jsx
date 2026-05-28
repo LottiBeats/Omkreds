@@ -821,10 +821,67 @@ export default function EditorPage() {
    * complete.  Call this before any PDF/Word export so the backend always reads
    * the latest _result values from the database.
    */
+  // Re-compress every image block in a project to JPEG 85% / 1920px max.
+  // Returns a new project object — does not mutate the original.
+  async function _recompressProjectImages(proj) {
+    function recompressB64(dataUrl) {
+      return new Promise((resolve) => {
+        if (!dataUrl || dataUrl.includes('data:image/svg+xml')) {
+          resolve(dataUrl)
+          return
+        }
+        const img = new window.Image()
+        img.onload = () => {
+          let { width, height } = img
+          const maxDim = 1920
+          if (width > maxDim || height > maxDim) {
+            if (width >= height) { height = Math.round(height * maxDim / width); width = maxDim }
+            else { width = Math.round(width * maxDim / height); height = maxDim }
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width; canvas.height = height
+          const ctx = canvas.getContext('2d')
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(0, 0, width, height)
+          ctx.drawImage(img, 0, 0, width, height)
+          resolve(canvas.toDataURL('image/jpeg', 0.85))
+        }
+        img.onerror = () => resolve(dataUrl)
+        img.src = dataUrl
+      })
+    }
+
+    // Deep clone so we never mutate React state in place
+    const clone = JSON.parse(JSON.stringify(proj))
+
+    // Compress cover image
+    if (clone.metadata?.cover_image_b64) {
+      clone.metadata.cover_image_b64 = await recompressB64(clone.metadata.cover_image_b64)
+    }
+
+    // Compress image blocks in every document and sub-document
+    for (const doc of Object.values(clone.documents || {})) {
+      for (const block of doc.blocks || []) {
+        if (block.type === 'image' && block.data?.image_b64) {
+          block.data.image_b64 = await recompressB64(block.data.image_b64)
+        }
+      }
+      for (const subdoc of doc.subdocs || []) {
+        for (const block of subdoc.blocks || []) {
+          if (block.type === 'image' && block.data?.image_b64) {
+            block.data.image_b64 = await recompressB64(block.data.image_b64)
+          }
+        }
+      }
+    }
+
+    return clone
+  }
+
   // Flush pending auto-save before export.
-  // Returns true if the save succeeded, false if it failed (e.g. project too
-  // large). Callers should proceed with export anyway — the server will use
-  // whatever was last successfully saved to the database.
+  // Returns true if the save succeeded, false if it ultimately failed.
+  // On 413 (project too large) it automatically recompresses all images
+  // and retries — so the image actually makes it into the database.
   async function _flushSave() {
     clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = null
@@ -834,10 +891,23 @@ export default function EditorPage() {
       await saveProject(project)
       return true
     } catch (err) {
-      // Non-fatal: log but don't block export. The PDF/Word endpoint will use
-      // the last successfully saved version from the database.
-      console.warn('Pre-export save failed (proceeding with DB state):', err.message)
-      return false
+      const is413 = err.message.includes('413') || err.message.toLowerCase().includes('too large')
+      if (!is413) {
+        console.warn('Pre-export save failed:', err.message)
+        return false
+      }
+      // 413: recompress every image in the project and retry
+      console.warn('Project too large — recompressing images and retrying save…')
+      try {
+        const compressed = await _recompressProjectImages(project)
+        await saveProject(compressed)
+        // Update React state so future saves also use compressed images
+        setProject(compressed)
+        return true
+      } catch (err2) {
+        console.warn('Recompressed save also failed — proceeding with DB state:', err2.message)
+        return false
+      }
     } finally {
       setSaving(false)
     }
