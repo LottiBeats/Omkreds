@@ -80,9 +80,24 @@ const BLOCK_TYPES = [
                load_duration: 'medium', gamma_M: 1.3, effective_length_factor: 1.0,
                l_ef_ltb_m: null, _result: null } },
   { type: 'masonry_wall',  label: 'Masonry wall',      icon: 'MSN', color: '#78350f', component: MasonryWallBlock,
-    default: { title: 'Masonry Wall Check', label: 'W1', height_m: 3.0, thickness_mm: 228,
-               length_m: 5.0, N_k_kN: 100.0, f_b_MPa: 10.0, f_m_MPa: 6.0, gamma_M: 2.5,
-               K: 0.55, alpha: 0.7, beta: 0.3, _result: null } },
+    default: { title: 'Masonry Wall Check', label: 'W1',
+               calc_type: 'vertical',
+               // shared material
+               f_b_MPa: 10.0, f_m_MPa: 6.0, K: 0.55, gamma_M: 2.5,
+               // vertical check
+               height_m: 3.0, thickness_mm: 228, length_m: 5.0, N_k_kN: 100.0, alpha: 0.7, beta: 0.3,
+               // ritter single
+               b_m: 1.0, t_ef_mm: 228, h_ef_m: 3.0, e_m_mm: 0.0, N_Ed_kN: 135.0, K1: 0.9,
+               // bearing
+               N_Ed_bear_kN: 50.0, a_plate_mm: 150, b_plate_mm: 200, t_leaf_mm: 108,
+               // multi-storey ritter
+               wall_width_m: 5.0, unit_weight_kNm2: 5.0, top_moment_kNm: 0.0, Kt: 0.9,
+               floors: [{ name: 'Story 1', height_m: 3.0, axial_kN: 100.0, shear_kN: 5.0 }],
+               // plan distribution
+               x_max_m: 10.0, y_max_m: 10.0, floor_height_m: 3.0,
+               D_x: 0.5, E_x: 0.2, D_y: 0.0, E_y: 0.0,
+               wall_elements: [{ d_n: 0.228, b_n: 5.0, x: 2.5, y: 0.114 }],
+               _result: null } },
   { type: 'beam_fem',      label: 'Beam FEM',          icon: 'FEM', color: '#0f766e', component: BeamFemBlock,
     default: { title: 'Beam FEM Analysis', L: 6.0, E_GPa: 210.0, I_cm4: 3000.0,
                supports: [{ x: 0, type: 'pin' }, { x: 6.0, type: 'roller' }],
@@ -162,6 +177,10 @@ const PANEL_GROUPS = [
   {
     label: 'Timber  (EC5)',
     types: ['timber_beam', 'timber_column'],
+  },
+  {
+    label: 'Masonry  (EC6)',
+    types: ['masonry_wall'],
   },
   {
     label: 'Analysis',

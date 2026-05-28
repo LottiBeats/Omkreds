@@ -782,38 +782,151 @@ def calc_timber_column(data: TimberColumnInput):
 # ── EN 1996-1-1 — Masonry wall ────────────────────────────────────────────────
 
 class MasonryWallInput(BaseModel):
+    calc_type:    str   = "vertical"   # vertical | ritter | bearing | multi_ritter | plan_dist
     label:        str   = "W1"
+
+    # ── Shared material (all types except plan_dist) ──────────────
+    f_b_MPa:      float = 10.0
+    f_m_MPa:      float = 6.0
+    K:            float = 0.55
+    gamma_M:      float = 2.5
+
+    # ── Simple vertical check ─────────────────────────────────────
     height_m:     float = 3.0
     thickness_mm: float = 228.0
     length_m:     float = 5.0
     N_k_kN:       float = 100.0
-    f_b_MPa:      float = 10.0
-    f_m_MPa:      float = 6.0
-    gamma_M:      float = 2.5
-    K:            float = 0.55
     alpha:        float = 0.7
     beta:         float = 0.3
+
+    # ── Ritter — single wall ──────────────────────────────────────
+    b_m:          float | None = None   # tributary width [m]
+    t_ef_mm:      float | None = None   # effective thickness [mm]
+    h_ef_m:       float | None = None   # effective height [m]
+    e_m_mm:       float        = 0.0    # midheight eccentricity [mm]
+    N_Ed_kN:      float | None = None   # design axial force [kN]
+    K1:           float        = 0.9    # long-term factor
+
+    # ── Bearing under beam ────────────────────────────────────────
+    N_Ed_bear_kN: float | None = None   # bearing reaction [kN]
+    a_plate_mm:   float | None = None   # plate length along span [mm]
+    b_plate_mm:   float | None = None   # plate width across wall [mm]
+    t_leaf_mm:    float | None = None   # leaf thickness [mm]
+
+    # ── Multi-storey Ritter ───────────────────────────────────────
+    floor_names:      list[str]   = []
+    heights_m:        list[float] = []
+    wall_width_m:     float | None = None
+    unit_weight_kNm2: float | None = None   # kN/m² wall self-weight
+    axial_loads_kN:   list[float]  = []
+    shear_forces_kN:  list[float]  = []
+    top_moment_kNm:   float        = 0.0
+    Kt:               float        = 0.9
+
+    # ── Plan lateral distribution ─────────────────────────────────
+    # elements = [[d_N, b_N, x, y], ...] all in metres
+    elements:       list[list[float]] = []
+    x_max_m:        float | None = None
+    y_max_m:        float | None = None
+    floor_height_m: float | None = None
+    D_x:            float = 0.0
+    E_x:            float = 0.0
+    D_y:            float = 0.0
+    E_y:            float = 0.0
 
 
 @protected.post("/calc/masonry-wall", tags=["Calculations"])
 def calc_masonry_wall(data: MasonryWallInput):
-    """EN 1996-1-1 unreinforced masonry wall check."""
+    """EN 1996-1-1 unreinforced masonry wall checks (5 types)."""
     try:
-        from masonry import masonry_wall_vertical
+        if data.calc_type == "vertical":
+            from masonry import masonry_wall_vertical
+            blocks = masonry_wall_vertical(
+                label     = data.label,
+                height    = data.height_m     * m,
+                thickness = data.thickness_mm * mm,
+                length    = data.length_m     * m,
+                N_k       = data.N_k_kN       * kN,
+                f_b       = data.f_b_MPa      * MPa,
+                f_m       = data.f_m_MPa      * MPa,
+                gamma_M   = data.gamma_M,
+                K         = data.K,
+                alpha     = data.alpha,
+                beta      = data.beta,
+            )
 
-        blocks = masonry_wall_vertical(
-            label     = data.label,
-            height    = data.height_m     * m,
-            thickness = data.thickness_mm * mm,
-            length    = data.length_m     * m,
-            N_k       = data.N_k_kN       * kN,
-            f_b       = data.f_b_MPa      * MPa,
-            f_m       = data.f_m_MPa      * MPa,
-            gamma_M   = data.gamma_M,
-            K         = data.K,
-            alpha     = data.alpha,
-            beta      = data.beta,
-        )
+        elif data.calc_type == "ritter":
+            from masonry import masonry_wall_ritter
+            blocks = masonry_wall_ritter(
+                label   = data.label,
+                b       = (data.b_m   or 1.0)            * m,
+                t_ef    = (data.t_ef_mm or data.thickness_mm) * mm,
+                h_ef    = (data.h_ef_m  or data.height_m)    * m,
+                e_m     = data.e_m_mm * mm,
+                N_Ed    = (data.N_Ed_kN or data.N_k_kN * 1.35) * kN,
+                f_b     = data.f_b_MPa * MPa,
+                f_m     = data.f_m_MPa * MPa,
+                K       = data.K,
+                gamma_M = data.gamma_M,
+                K1      = data.K1,
+            )
+
+        elif data.calc_type == "bearing":
+            from masonry import masonry_bearing_under_beam
+            blocks = masonry_bearing_under_beam(
+                label   = data.label,
+                N_Ed    = (data.N_Ed_bear_kN or 50.0)     * kN,
+                a_plate = (data.a_plate_mm   or 150.0)    * mm,
+                b_plate = (data.b_plate_mm   or 200.0)    * mm,
+                t_leaf  = (data.t_leaf_mm or data.thickness_mm) * mm,
+                f_b     = data.f_b_MPa * MPa,
+                f_m     = data.f_m_MPa * MPa,
+                K       = data.K,
+                gamma_M = data.gamma_M,
+            )
+
+        elif data.calc_type == "multi_ritter":
+            from masonry import masonry_wall_multi_storey_ritter
+            f_k = data.K * data.f_b_MPa**0.70 * data.f_m_MPa**0.30
+            f_d = f_k / data.gamma_M
+            floors  = data.floor_names or ["Story 1"]
+            heights = data.heights_m   or [data.height_m]
+            axials  = data.axial_loads_kN  or [data.N_k_kN * 1.35]
+            shears  = data.shear_forces_kN or [0.0]
+            blocks = masonry_wall_multi_storey_ritter(
+                label                = data.label,
+                floor_names          = floors,
+                heights              = heights,
+                wall_width           = data.wall_width_m or data.length_m,
+                thickness            = data.thickness_mm,
+                compressive_strength = round(f_k, 4),
+                design_strength      = round(f_d, 4),
+                unit_weight          = data.unit_weight_kNm2 or 5.0,
+                axial_loads          = axials,
+                shear_forces         = shears,
+                top_moment           = data.top_moment_kNm,
+                Kt                   = data.Kt,
+            )
+
+        elif data.calc_type == "plan_dist":
+            from masonry import masonry_wall_plan_lateral_distribution
+            elems = data.elements or [[0.228, 5.0, 2.5, 0.114]]
+            blocks = masonry_wall_plan_lateral_distribution(
+                label        = data.label,
+                elements     = elems,
+                x_max        = data.x_max_m       or 10.0,
+                y_max        = data.y_max_m        or 10.0,
+                floor_height = data.floor_height_m or data.height_m,
+                D_x          = data.D_x,
+                E_x          = data.E_x,
+                D_y          = data.D_y,
+                E_y          = data.E_y,
+            )
+
+        else:
+            raise HTTPException(status_code=422,
+                                detail=f"Unknown calc_type: {data.calc_type!r}")
+
         return blocks
 
     except HTTPException:
