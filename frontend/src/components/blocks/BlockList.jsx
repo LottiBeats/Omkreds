@@ -262,9 +262,11 @@ function BlockPreview({ block }) {
                   {row.map((cell, ci) => (
                     <td key={ci} style={{
                       padding: '3px 6px',
-                      border: '1px solid #e2e8f0',
-                      background: d.has_header && ri === 0 ? '#1e3a5f' : undefined,
-                      color:      d.has_header && ri === 0 ? '#fff' : '#1c1c1e',
+                      border: '1px solid #d8d8d8',
+                      borderBottom: d.has_header && ri === 0 ? '2px solid #999' : '1px solid #d8d8d8',
+                      background: d.has_header && ri === 0 ? '#f0f0f0'
+                                : ri % 2 === 0 ? '#f9f9f9' : '#fff',
+                      color:      '#1c1c1e',
                       fontWeight: d.has_header && ri === 0 ? 700 : undefined,
                     }}>{cell || '—'}</td>
                   ))}

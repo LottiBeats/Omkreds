@@ -16,8 +16,8 @@
  */
 import React, { useRef, useCallback } from 'react'
 
-const BRAND = '#d94a2b'
-const NAVY  = '#1e3a5f'
+const HDR_BG   = '#f0f0f0'   // light grey header — no brand colour
+const HDR_TEXT = '#111'
 
 export default function TableBlock({ block, onChange }) {
   const data       = block.data ?? {}
@@ -134,14 +134,16 @@ export default function TableBlock({ block, onChange }) {
       borderCollapse: 'collapse',
     },
     headerCell: {
-      background: NAVY,
-      color: '#fff',
-      padding: '4px 6px',
+      background: HDR_BG,
+      color: HDR_TEXT,
+      borderBottom: '2px solid #999',
+      borderRight: '1px solid #d0d0d0',
+      padding: '0',
       position: 'relative',
     },
     dataCell: {
-      borderBottom: '1px solid #e2e8f0',
-      borderRight: '1px solid #f0f4f8',
+      borderBottom: '1px solid #d8d8d8',
+      borderRight: '1px solid #e8e8e8',
       padding: '0',
       position: 'relative',
     },
@@ -165,7 +167,7 @@ export default function TableBlock({ block, onChange }) {
       fontFamily: 'inherit',
       fontWeight: 700,
       background: 'transparent',
-      color: '#fff',
+      color: HDR_TEXT,
       boxSizing: 'border-box',
     },
     delRowBtn: {
@@ -242,7 +244,7 @@ export default function TableBlock({ block, onChange }) {
             {rows.map((row, ri) => {
               const isHeader = has_header && ri === 0
               return (
-                <tr key={ri} style={ri % 2 === 1 && !isHeader ? { background: '#f8fafc' } : {}}>
+                <tr key={ri} style={ri % 2 === 0 && !isHeader ? { background: '#f9f9f9' } : {}}>
                   {row.map((cell, ci) => (
                     <td key={ci} style={isHeader ? s.headerCell : s.dataCell}>
                       <input
@@ -257,14 +259,14 @@ export default function TableBlock({ block, onChange }) {
                     </td>
                   ))}
                   {/* Delete row button */}
-                  <td style={{ border: 'none', padding: 0, verticalAlign: 'middle', background: isHeader ? NAVY : 'transparent' }}>
+                  <td style={{ border: 'none', padding: 0, verticalAlign: 'middle', background: isHeader ? HDR_BG : 'transparent' }}>
                     {(!isHeader || rows.length > 1) && (
                       <button
                         style={s.delRowBtn}
                         onClick={() => deleteRow(ri)}
                         title="Delete row"
                         onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                        onMouseLeave={e => e.currentTarget.style.color = isHeader ? '#93c5fd' : '#cbd5e1'}
+                        onMouseLeave={e => e.currentTarget.style.color = '#bbb'}
                       >✕</button>
                     )}
                   </td>

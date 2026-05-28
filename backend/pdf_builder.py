@@ -203,17 +203,18 @@ def _table_block(block: dict) -> list:
     if not rows_data:
         return []
 
-    NAVY  = rl_colors.HexColor("#1e3a5f")
-    WHITE = rl_colors.white
-    LIGHT = rl_colors.HexColor("#f8fafc")
-    RULE  = rl_colors.HexColor("#e2e8f0")
+    HDR_BG = rl_colors.HexColor("#f0f0f0")   # light grey — no brand colour
+    BLACK  = rl_colors.HexColor("#111111")
+    LIGHT  = rl_colors.HexColor("#f9f9f9")
+    RULE   = rl_colors.HexColor("#d8d8d8")
+    RULE_H = rl_colors.HexColor("#999999")   # heavier rule under header
 
-    hdr_style  = ParagraphStyle("tblHdr",  fontSize=8, textColor=WHITE,
+    hdr_style  = ParagraphStyle("tblHdr",  fontSize=8, textColor=BLACK,
                                  fontName="Helvetica-Bold", leading=10)
     cell_style = ParagraphStyle("tblCell", fontSize=8,
-                                 textColor=rl_colors.HexColor("#1e293b"), leading=10)
+                                 textColor=BLACK, leading=10)
     cap_style  = ParagraphStyle("tblCap",  fontSize=8, fontName="Helvetica-Oblique",
-                                 textColor=rl_colors.HexColor("#64748b"), leading=10,
+                                 textColor=rl_colors.HexColor("#555555"), leading=10,
                                  spaceAfter=2)
 
     result = []
@@ -244,9 +245,8 @@ def _table_block(block: dict) -> list:
     ]
     if has_header and rl_rows:
         style_cmds += [
-            ("BACKGROUND", (0, 0), (-1, 0),  NAVY),
-            ("TEXTCOLOR",  (0, 0), (-1, 0),  WHITE),
-            ("LINEABOVE",  (0, 0), (-1, 0),  1, NAVY),
+            ("BACKGROUND", (0, 0), (-1, 0),  HDR_BG),
+            ("LINEBELOW",  (0, 0), (-1, 0),  1.2, RULE_H),
         ]
         # Alternating rows start at row 1
         for r in range(1, len(rl_rows)):
@@ -254,7 +254,7 @@ def _table_block(block: dict) -> list:
                 style_cmds.append(("BACKGROUND", (0, r), (-1, r), LIGHT))
     else:
         for r in range(len(rl_rows)):
-            if r % 2 == 1:
+            if r % 2 == 0:
                 style_cmds.append(("BACKGROUND", (0, r), (-1, r), LIGHT))
 
     tbl.setStyle(TableStyle(style_cmds))
