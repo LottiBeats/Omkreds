@@ -23,5 +23,9 @@ echo "==> Restarting backend..."
 systemctl restart structuralcalc
 systemctl status structuralcalc --no-pager
 
+echo "==> Reloading Nginx config..."
+cp "$APP_DIR/app/deploy/nginx.conf" /etc/nginx/sites-available/structuralcalc
+nginx -t && systemctl reload nginx
+
 echo ""
 echo "==> Deployed successfully!"
