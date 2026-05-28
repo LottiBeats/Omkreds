@@ -860,7 +860,7 @@ def calc_custom(data: CustomCalcInput):
                 rhs = rhs.strip()
                 try:
                     # Pre-process: ^ → **, × → *, · → * for eval
-                    result     = _safe_eval(_preprocess_expr(rhs), _UNIT_NS, ns)
+                    result     = _safe_eval(_preprocess_expr(rhs), {**_UNIT_NS, **ns})
                     ns[lhs]    = result
                     result_str = _fmt_qty(result)
                     # Display: normalise to ^ and × notation (fmtCalcText handles the rest)
@@ -881,13 +881,13 @@ def calc_custom(data: CustomCalcInput):
                 if not d_expr:
                     continue
                 try:
-                    demand = _safe_eval(_preprocess_expr(d_expr), _UNIT_NS, ns)
+                    demand = _safe_eval(_preprocess_expr(d_expr), {**_UNIT_NS, **ns})
                     # Capacity can be a number (with unit) or an expression string
                     try:
                         capacity = _parse_qty(float(cap_raw), cap_unt)
                     except (ValueError, TypeError):
                         # Not a plain number — evaluate as an expression
-                        capacity = _safe_eval(_preprocess_expr(str(cap_raw).strip()), _UNIT_NS, ns)
+                        capacity = _safe_eval(_preprocess_expr(str(cap_raw).strip()), {**_UNIT_NS, **ns})
                     blocks.append(chk.check(label, demand, capacity))
                 except Exception as exc:
                     blocks.append(N(f"Check error in '{label}': {exc}"))
@@ -901,9 +901,9 @@ def calc_custom(data: CustomCalcInput):
                 if not cond_raw:
                     continue
                 try:
-                    cond_result  = bool(_safe_eval(_preprocess_expr(cond_raw), _UNIT_NS, ns))
+                    cond_result  = bool(_safe_eval(_preprocess_expr(cond_raw), {**_UNIT_NS, **ns}))
                     chosen_raw   = true_raw  if cond_result else false_raw
-                    result       = _safe_eval(_preprocess_expr(chosen_raw), _UNIT_NS, ns)
+                    result       = _safe_eval(_preprocess_expr(chosen_raw), {**_UNIT_NS, **ns})
                     if name:
                         ns[name] = _parse_qty(float(result), unit_str) if unit_str != "-" else result
                     result_str   = _fmt_qty(ns[name]) if name else _fmt_qty(result)
@@ -1830,7 +1830,7 @@ def run_calc_template(
                     lhs = lhs.strip()
                     rhs = rhs.strip()
                     try:
-                        result     = _safe_eval(_preprocess_expr(rhs), _UNIT_NS, ns)
+                        result     = _safe_eval(_preprocess_expr(rhs), {**_UNIT_NS, **ns})
                         ns[lhs]    = result
                         result_str = _fmt_qty(result)
                         formula_disp = (rhs
@@ -1847,11 +1847,11 @@ def run_calc_template(
                     if not d_expr:
                         continue
                     try:
-                        demand = _safe_eval(_preprocess_expr(d_expr), _UNIT_NS, ns)
+                        demand = _safe_eval(_preprocess_expr(d_expr), {**_UNIT_NS, **ns})
                         try:
                             capacity = _parse_qty(float(cap_raw), cap_unt)
                         except (ValueError, TypeError):
-                            capacity = _safe_eval(_preprocess_expr(str(cap_raw).strip()), _UNIT_NS, ns)
+                            capacity = _safe_eval(_preprocess_expr(str(cap_raw).strip()), {**_UNIT_NS, **ns})
                         blocks_out.append(chk.check(label, demand, capacity))
                     except Exception as exc:
                         blocks_out.append(N(f"Check error in '{label}': {exc}"))
@@ -1865,9 +1865,9 @@ def run_calc_template(
                     if not cond_raw:
                         continue
                     try:
-                        cond_result  = bool(_safe_eval(_preprocess_expr(cond_raw), _UNIT_NS, ns))
+                        cond_result  = bool(_safe_eval(_preprocess_expr(cond_raw), {**_UNIT_NS, **ns}))
                         chosen_raw   = true_raw  if cond_result else false_raw
-                        result       = _safe_eval(_preprocess_expr(chosen_raw), _UNIT_NS, ns)
+                        result       = _safe_eval(_preprocess_expr(chosen_raw), {**_UNIT_NS, **ns})
                         if name:
                             ns[name] = _parse_qty(float(result), unit_str) if unit_str != "-" else result
                         result_str   = _fmt_qty(ns[name]) if name else _fmt_qty(result)
