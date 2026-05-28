@@ -816,10 +816,29 @@ export default function EditorPage() {
     save(updated)
   }
 
+  /**
+   * Flush the pending debounced auto-save and wait for the explicit save to
+   * complete.  Call this before any PDF/Word export so the backend always reads
+   * the latest _result values from the database.
+   */
+  async function _flushSave() {
+    clearTimeout(autoSaveTimer.current)
+    autoSaveTimer.current = null
+    if (!project) return
+    setSaving(true)
+    try {
+      await saveProject(project)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function handleGeneratePdf() {
     if (!activeDoc) return
     setPdfGenerating(true)
     try {
+      // Ensure all calc results are persisted before asking the server to render
+      await _flushSave()
       const blob     = await generatePdf(projectId, activeDoc)
       const url      = URL.createObjectURL(blob)
       const anchor   = document.createElement('a')
@@ -838,6 +857,8 @@ export default function EditorPage() {
     if (!activeDoc) return
     setWordGenerating(true)
     try {
+      // Ensure all calc results are persisted before asking the server to render
+      await _flushSave()
       const blob   = await generateWord(projectId, activeDoc)
       const url    = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
@@ -856,6 +877,8 @@ export default function EditorPage() {
     if (!activeDoc) return
     setPdfGenerating(true)
     try {
+      // Ensure all calc results are persisted before asking the server to render
+      await _flushSave()
       const blob = await generatePdf(projectId, activeDoc)
       // Revoke any previous preview URL to free memory
       if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl)
