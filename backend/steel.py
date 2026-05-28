@@ -288,37 +288,6 @@ def steel_beam_ipe(
             "Enter h (mm) and t_w (mm) in the block to enable the shear check."
         ))
 
-    # ── Shear buckling susceptibility — EN 1993-1-1 cl. 6.2.6(6) ─────────────
-    blocks.append(S("Shear buckling susceptibility — EN 1993-1-1 cl. 6.2.6(6)"))
-
-    if b is not None and t_f is not None:
-        f_y_mpa_sb = float(f_y / MPa)
-        eps_sb     = (235.0 / f_y_mpa_sb) ** 0.5
-        eta_sb     = 1.0                        # η per EN 1993-1-5 §5, conservatively 1.0
-        h_w_sb     = h - 2 * t_f
-        slend_sb   = float(h_w_sb / t_w)        # h_w / t_w (dimensionless)
-        limit_sb   = 72 * eps_sb / eta_sb
-        blocks.extend([
-            CALC_ROW("h_w",       "= h − 2·t_f",                        str(h_w_sb)),
-            CALC_ROW("h_w / t_w", "web slenderness",                    f"{slend_sb:.1f}"),
-            CALC_ROW("72ε / η",   f"= 72 × {eps_sb:.3f} / {eta_sb:.1f}", f"{limit_sb:.1f}"),
-        ])
-        if slend_sb < limit_sb:
-            blocks.append(N(
-                f"h_w/t_w = {slend_sb:.1f} < 72ε/η = {limit_sb:.1f}: "
-                "Shear buckling need not be considered (cl. 6.2.6(6)). "
-                "Full plastic shear resistance V_pl,Rd governs."
-            ))
-        else:
-            blocks.append(N(
-                f"⚠  h_w/t_w = {slend_sb:.1f} ≥ 72ε/η = {limit_sb:.1f}: "
-                "Shear buckling may reduce V_Rd (EN 1993-1-5 §5). "
-                "This module reports V_pl,Rd only — a plate-girder check is required. "
-                "Intermediate stiffeners can raise the limit."
-            ))
-    else:
-        blocks.append(N("Shear buckling check skipped — flange dimensions not available."))
-
     # ── Combined bending and shear — EN 1993-1-1 cl. 6.2.8 ───────────────────
     blocks.append(S("Combined bending and shear — EN 1993-1-1 cl. 6.2.8"))
 
