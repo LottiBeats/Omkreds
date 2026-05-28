@@ -3,6 +3,7 @@
  *
  * Load source:
  *   direct  — user enters g_k / q_k + load_duration manually (default)
+ *   actions — user enters M_Ed / V_Ed directly (hand calc or other tool)
  *   combo   — reads E_d_uls from a Load Combo block; governing combination
  *             determined by max(E_d/k_mod) so k_mod is always correct
  *   fem     — reads M_Ed and V_Ed directly from a Beam FEM block
@@ -55,8 +56,8 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
   const femReady   = !!femSummary?.M_Ed_kNm
 
   const runDisabled =
-    (source === 'combo' && !comboReady) ||
-    (source === 'fem'   && !femReady)
+    (source === 'combo'   && !comboReady) ||
+    (source === 'fem'     && !femReady)
 
   async function handleRun() {
     setRunning(true)
@@ -78,7 +79,13 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         support_length_mm: d.support_length_mm ?? null,
       }
 
-      if (source === 'combo' && comboExp) {
+      if (source === 'actions') {
+        // User enters M_Ed and V_Ed directly (hand calc / other tool).
+        // Re-uses the same FEM path in the backend.
+        payload.M_Ed_kNm_direct = d.M_Ed_kNm ?? 0.0
+        payload.V_Ed_kN_direct  = d.V_Ed_kN  ?? 0.0
+        payload.fem_label       = 'Direct input'
+      } else if (source === 'combo' && comboExp) {
         payload.w_Ed_kNm         = comboExp.E_d_uls
         payload.combo_label      = selCombo?.data?.label ?? ''
         // Pass all ULS combinations so the backend finds the truly governing one
@@ -113,15 +120,18 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
     >
       {/* ── Load source selector ── */}
       <Field label="Load source" style={{ gridColumn: '1/-1' }}>
-        <div style={{ display: 'flex', gap: 16, padding: '2px 0' }}>
-          {['direct', 'combo', 'fem'].map(opt => (
-            <label key={opt} style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+        <div style={{ display: 'flex', gap: 16, padding: '2px 0', flexWrap: 'wrap' }}>
+          {[
+            { key: 'direct',  label: 'Char. loads  (g_k / q_k)' },
+            { key: 'actions', label: 'Design actions  (M_Ed / V_Ed)' },
+            { key: 'combo',   label: 'Load combination' },
+            { key: 'fem',     label: 'FEM results' },
+          ].map(({ key, label }) => (
+            <label key={key} style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
               <input type="radio" name={`src-${block.id}`}
-                value={opt} checked={source === opt}
-                onChange={() => update({ load_source: opt })} />
-              {opt === 'direct' ? 'Direct  (g_k / q_k)'
-               : opt === 'combo' ? 'Load combination'
-               : 'FEM results'}
+                value={key} checked={source === key}
+                onChange={() => update({ load_source: key })} />
+              {label}
             </label>
           ))}
         </div>
@@ -192,7 +202,7 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         </Field>
       )}
 
-      {/* ── Direct load inputs ── */}
+      {/* ── Direct characteristic load inputs ── */}
       {source === 'direct' && (<>
         <Field label="g_k (kN/m)" hint="Permanent">
           <NumericInput style={s} value={d.g_k_kNm ?? 3.0}
@@ -204,9 +214,24 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         </Field>
       </>)}
 
-      {/* ── Load duration — direct or FEM (for FEM: must set manually) ── */}
-      {(source === 'direct' || source === 'fem') && (
-        <Field label="Load duration" hint={source === 'fem' ? 'Set manually — FEM has no duration info' : undefined}>
+      {/* ── Direct design actions (M_Ed / V_Ed) ── */}
+      {source === 'actions' && (<>
+        <Field label="M_Ed (kNm)" hint="Design moment">
+          <NumericInput style={s} value={d.M_Ed_kNm ?? 0.0}
+            onChange={v => update({ M_Ed_kNm: v })} />
+        </Field>
+        <Field label="V_Ed (kN)" hint="Design shear">
+          <NumericInput style={s} value={d.V_Ed_kN ?? 0.0}
+            onChange={v => update({ V_Ed_kN: v })} />
+        </Field>
+      </>)}
+
+      {/* ── Load duration — direct, actions, or FEM ── */}
+      {(source === 'direct' || source === 'actions' || source === 'fem') && (
+        <Field label="Load duration"
+          hint={source === 'fem' || source === 'actions'
+            ? 'Set manually — not derivable from actions alone'
+            : undefined}>
           <select style={s} value={d.load_duration ?? 'medium'}
             onChange={e => update({ load_duration: e.target.value })}>
             {LOAD_DURATIONS.map(dur => <option key={dur} value={dur}>{DURATION_LABEL[dur] ?? dur}</option>)}
