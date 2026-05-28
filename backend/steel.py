@@ -431,6 +431,7 @@ def steel_beam_ipe(
         else:
             delta_max_imp = beam_results.get("delta_max")
             if delta_max_imp is not None:
+                # FEM / pre-computed delta imported directly
                 delta_lim = span / deflection_limit
                 blocks.extend([
                     CALC_ROW("δ",      "imported maximum deflection", str(delta_max_imp)),
@@ -441,9 +442,26 @@ def steel_beam_ipe(
                     delta_max_imp, delta_lim
                 ))
             else:
+                # No pre-computed delta (e.g. load combination feeding M_Ed/V_Ed only).
+                # Fall back to UDL formula using the characteristic loads g_k + q_k.
+                w_sls     = g_k + q_k
+                delta_mid = 5 * w_sls * span**4 / (384 * E_sls * Iy)
+                delta_lim = span / deflection_limit
+                blocks.extend([
+                    CALC_ROW("w_sls",  "= g_k + q_k  [characteristic combo]",  str(w_sls)),
+                    CALC_ROW("I_y",    "second moment of area",                  f"{float(Iy / _cm**4):.1f} cm⁴"),
+                    CALC_ROW("δ",      "= 5·w_sls·L⁴ / (384·E·I_y)  [UDL]",    str(delta_mid)),
+                    CALC_ROW("δ_lim",  f"= L / {deflection_limit}",              str(delta_lim)),
+                ])
+                blocks.append(cc.check(
+                    f"Deflection: δ / δ_lim  (limit L/{deflection_limit})",
+                    delta_mid, delta_lim
+                ))
                 blocks.append(N(
-                    "Imported beam results do not include delta_max — "
-                    "deflection check skipped."
+                    "ULS actions from load combination; deflection computed from the "
+                    "direct characteristic loads g_k + q_k (SLS characteristic combination, "
+                    "simply supported UDL). "
+                    f"Limit L/{deflection_limit} — adjust to L/250 or L/500 as required."
                 ))
     else:
         blocks.append(N(
