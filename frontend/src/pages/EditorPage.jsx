@@ -69,30 +69,126 @@ function makeA1Template() {
     // 3. KLASSIFIKATION OG PÅLIDELIGHED
     // ─────────────────────────────────────────────────────────────────────────
     { id: id++, type: 'heading', data: { level: 2, text: 'Klassifikation og pålidelighed' } },
+    { id: id++, type: 'text', data: { text: 'Nedenstående tabeller viser kriterierne for de relevante klassifikationssystemer. Projektets valgte klasser fremgår af Tabel 2 (projektsammenfatning) sidst i dette afsnit.' } },
+
+    // ── CC-klasse beslutning ─────────────────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: 'Konsekvensklasse (CC) — DS/EN 1990 Bilag B' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 2 — Projektklassifikation',
+      caption: 'Tabel 2 — Kriterier for konsekvensklasse (DS/EN 1990 DK NA:2024 + DS 1140)',
       has_header: true,
       rows: [
-        ['Parameter', 'Klasse', 'Begrundelse'],
-        ['Konsekvensklasse (DS/EN 1990)', 'CC2', 'Normal konsekvens ved svigt — boliger, kontorer, erhverv'],
-        ['Pålidelighedsklasse (DS/EN 1990)', 'RC2', 'Svarer til CC2'],
-        ['Kontrolklasse (DS 1140)', 'KK2', 'Svarende til CC2 — projekteringskontrol kræves'],
-        ['Geoteknisk kategori (DS/EN 1997)', 'GK2', 'Normale forhold — geoteknisk rapport kræves'],
-        ['Brandklasse (BR18)', 'BK2', '[Tilpas: BK1 / BK2 / BK3 / BK4]'],
-        ['KFI-faktor (STR/GEO)', '1,0', 'CC2 — se Tabel 3'],
+        ['Kriterium', 'CC1 — Lille', 'CC2 — Normal', 'CC3 — Stor'],
+        ['Personrisiko ved svigt', 'Lille eller ingen', 'Middel', 'Stor eller meget stor'],
+        ['Okonomisk / social konsekvens', 'Lille', 'Betydelig', 'Meget stor'],
+        ['Typisk anvendelse', 'Garager, drivhuse, lagerskure, landbrugsbygninger (ikke til personer)', 'Boliger, kontorer, erhvervs- og industribygninger, hoteller', 'Tribuner, koncertsale, offentlige forsamlingsbygninger, hospitaler, broer'],
+        ['Boligbygninger (etager)', 'Ikke relevant (garager mv.)', 'Op til ca. 5 etager', 'Forsamlingsbygninger uanset etageantal'],
+        ['Antal samtidige brugere', '< 10 (vejledende)', '10 – 500 (vejledende)', '> 500 (vejledende)'],
+        ['KFI-faktor STR/GEO', '0,9', '1,0', '1,1'],
+        ['KFI-faktor EQU', '1,0', '1,0', '1,0'],
+        ['Kontrolklasse DS 1140', 'KK1', 'KK2', 'KK3'],
+        ['Pålidelighedsklasse', 'RC1', 'RC2', 'RC3'],
       ]
     }},
-    { id: id++, type: 'text', data: { text: 'Begrundelse for CC2: Svigt af konstruktionen vil medføre middel risiko for personskade og betydelig økonomisk skade, men ikke katastrofale følger. Konsekvensklassen CC2 er valgt i henhold til DS/EN 1990 Bilag B og DS 1140.\n\nKravene til kontrolklasse KK2 indebærer uvildig projekteringskontrol af bærende konstruktioner (se B2 — Statisk kontrolplan).' } },
+
+    // ── Kontrolklasse (DS 1140) ──────────────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: 'Kontrolklasse (KK) — DS 1140:2014' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 3 — Konsekvensklasser og KFI-faktorer (DS/EN 1990 DK NA:2024, Tabel B1)',
+      caption: 'Tabel 3 — Kontrolklasser og krav til projekteringskontrol (DS 1140:2014)',
       has_header: true,
       rows: [
-        ['Klasse', 'Betegnelse', 'Typisk anvendelse', 'KFI (STR/GEO)', 'KFI (EQU)', 'DS 1140'],
-        ['CC1', 'Lille konsekvens', 'Garager, drivhuse, landbrugsbygninger', '0,9', '1,0', 'KK1'],
-        ['CC2', 'Normal konsekvens', 'Boliger, kontorer, erhvervsbygninger', '1,0', '1,0', 'KK2'],
-        ['CC3', 'Stor konsekvens', 'Tribuner, koncertsale, hospitaler, broer', '1,1', '1,0', 'KK3'],
+        ['Klasse', 'Svarer til CC', 'Projekteringskontrol', 'Udforelseskontrol', 'Krav'],
+        ['KK1', 'CC1', 'Egenkontrol af projekterende', 'Egenkontrol af udforende', 'Kontrolplan B2 kræves ikke'],
+        ['KK2', 'CC2', 'Uvildig projekteringskontrol (anden person i virksomheden er OK)', 'Egenkontrol + stikprovekontrol', 'Kontrolplan B2 + kontrolrapport B3 kræves'],
+        ['KK3', 'CC3', 'Udvidet uvildig kontrol (eksternt firma)', 'Udvidet uvildig udforelseskontrol', 'Kontrolplan B2 + B3 + tredjepartsgodkendelse'],
+        ['KK4', 'Særlige', 'Særlig kontrol aftales', 'Særlig kontrol aftales', 'Individuel aftale med bygningsmyndighed'],
       ]
     }},
+
+    // ── Udforelsesklasse stål (DS/EN 1090-2) ────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: 'Udforelsesklasse — Stal (DS/EN 1090-2 Annex B)' } },
+    { id: id++, type: 'text', data: { text: 'Udforelsesklassen (EXC) for stalkonstrktioner bestemmes af tre parametre:\n• Konsekvensklasse (CC1 / CC2 / CC3)\n• Servicekategori (SC1 / SC2): SC1 = kvasistatisk last, SC2 = træthed, dynamisk, jordskælv\n• Produktionskategori (PC1 / PC2): PC1 = ikke-svejste samlinger / boltede konstruktioner, PC2 = svejste konstruktioner\n\nFor de fleste bygningskonstrktioner gælder SC1 og PC2 (svejste profiler).' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 4 — Udforelsesklasse stalkonstruktioner (DS/EN 1090-2 Tabel B.3)',
+      has_header: true,
+      rows: [
+        ['CC-klasse', 'SC1 + PC1', 'SC1 + PC2', 'SC2 + PC1', 'SC2 + PC2'],
+        ['CC1', 'EXC1', 'EXC2', 'EXC2', 'EXC2'],
+        ['CC2', 'EXC2', 'EXC2', 'EXC3', 'EXC3'],
+        ['CC3', 'EXC3', 'EXC3', 'EXC3', 'EXC4'],
+      ]
+    }},
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 5 — EXC klasser: krav til stalentreprenor',
+      has_header: true,
+      rows: [
+        ['Klasse', 'Typisk anvendelse', 'Svejsekontrol', 'Certificering stalentreprenoer'],
+        ['EXC1', 'Simpelt, CC1 (garager, stalskure)', 'Ingen krav til NDT', 'Ingen særlig certificering'],
+        ['EXC2', 'Standard byggeStalkonstruktioner, CC2', 'Visuel + NDT ved krav', 'Stalentreprenoer skal have EXC2-godkendelse (DS/EN 1090-1)'],
+        ['EXC3', 'Krævende, CC3 / SC2 strukturer', 'Udvidet NDT kræves', 'EXC3-certificeret stalentreprenoer'],
+        ['EXC4', 'Særligt krævende (seismisk, mm.)', 'Fuld NDT kontrol', 'EXC4-certificeret stalentreprenoer'],
+      ]
+    }},
+
+    // ── Udforelsesklasse beton (DS/EN 13670) ────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: 'Udforelsesklasse — Beton (DS/EN 13670 + DK NA)' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 6 — Udforelsesklasse betonstruktioner (DS/EN 13670 DK NA)',
+      has_header: true,
+      rows: [
+        ['Klasse', 'CC-klasse', 'Krav til udforelse', 'Eksempler'],
+        ['Klasse 1', 'CC1', 'Basal egenkontrol', 'Simpelt betonarbejde uden bærende funktion'],
+        ['Klasse 2', 'CC2', 'Egenkontrol + dokumentation', 'Normale bærende betonelementer (dæk, bjælker, søjler)'],
+        ['Klasse 3', 'CC3', 'Udvidet kontrol + tredjepartsgodkendelse', 'Krævende konstruktioner, broer, særlige bygværker'],
+      ]
+    }},
+
+    // ── Brandklasse (BR18) ───────────────────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: 'Brandklasse (BK) — BR18 §29' } },
+    { id: id++, type: 'text', data: { text: 'Brandklassen bestemmes af BR18 §29 på baggrund af bygningens anvendelse, hojde og antal samtidige brugere. Brandklassen er uafhengig af konsekvensklassen — en BK2-bygning kan sagtens være CC2.' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 7 — Brandklasser (BR18 §29)',
+      has_header: true,
+      rows: [
+        ['Klasse', 'Typisk bygning', 'Hojde / etager', 'Brandrådgiver', 'Dokumentation'],
+        ['BK1', 'Enfamiliehuse, sommerhuse, dobbelthuse (max 2 etager), simple erhvervsbygninger < 150 m²', 'Max 2 etager', 'Ikke krævet', 'Forenklet brandstrategi (eller ingen ved enfamiliehus)'],
+        ['BK2', 'Etageboliger (max 4 etager), kontorbygninger, butikker, standard erhverv', 'Max 4 etager (boliger) / max 22 m (erhverv)', 'Kræves — kan vaere del af rådgiverfirmaet', 'Brandstrategi + PRE-dokumentation til kommunen'],
+        ['BK3', 'Boliger > 4 etager (hojhuse), hoteller, plejehjem, hospitaler, forsamlingslokaler > 150 pers., storcentre', 'Over 22 m eller særlig risiko', 'Kræves — uvildig brandrådgiver', 'Fuld brandstrategi + tredjepartsgodkendelse (TGA) af brandprojekt'],
+        ['BK4', 'Særligt komplekse bygninger med unikke brandscenarier', 'Aftales', 'Specialiseret brandrådgiver', 'Individuel dokumentation aftalt med brandmyndighed'],
+      ]
+    }},
+    { id: id++, type: 'text', data: { text: 'Bemærkning: Fra BK2 skal der udarbejdes en brandstrategi (PRE) inden byggetilladelsen ansøges. Fra BK3 kræves uvildig kontrol af branddokumentationen (TGA — tredjepartsgodkendelse af anlæg).\n\nBR18 skelner desuden mellem bygningers anvendelseskategori (beboelse, erhverv, institution, forsamling m.fl.) som påvirker de specifikke brandkrav.' } },
+
+    // ── Geoteknisk kategori ───────────────────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: 'Geoteknisk kategori (GK) — DS/EN 1997-1' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 8 — Geotekniske kategorier (DS/EN 1997-1 §2.1)',
+      has_header: true,
+      rows: [
+        ['Kategori', 'Jordbundsforhold', 'Konstruktionstype', 'Dokumentation krævet'],
+        ['GK1', 'Simple, velkendte forhold. Ingen risiko for ustabilitet.', 'Simple funderinger og udgravninger. Lav last, god bund.', 'Rutineberegninger. Ingen geoteknisk rapport krævet.'],
+        ['GK2', 'Normale forhold uden usædvanlig risiko. Flertallet af byggerier.', 'Konventionelle funderinger, kældre, jordankre, skråninger.', 'Geoteknisk rapport kræves. Beregninger og afstikningsplan.'],
+        ['GK3', 'Vanskelige jordbundsforhold eller usædvanlig stor risiko.', 'Store eller usædvanlige konstruktioner, ustabile skråninger, seismisk aktive områder.', 'Udvidet geoteknisk undersøgelse + uvildig geoteknisk ekspertvurdering.'],
+      ]
+    }},
+
+    // ── Projektets samlede klassifikation ────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: 'Projektets klassifikation — sammenfatning' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 9 — Valgt klassifikation for dette projekt',
+      has_header: true,
+      rows: [
+        ['Klassifikation', 'Valgt klasse', 'Begrundelse'],
+        ['Konsekvensklasse (DS/EN 1990)', 'CC2', 'Normal konsekvens — boliger/kontorer/erhverv'],
+        ['Pålidelighedsklasse', 'RC2', 'Svarer til CC2'],
+        ['KFI-faktor (STR/GEO)', '1,0', 'CC2'],
+        ['Kontrolklasse (DS 1140)', 'KK2', 'CC2 — uvildig projekteringskontrol kræves'],
+        ['Udforelsesklasse stål', 'EXC2', 'CC2, SC1, PC2 — standard svejst stålkonstruktion'],
+        ['Udforelsesklasse beton', 'Klasse 2', 'CC2 — normale bærende betonelementer'],
+        ['Brandklasse (BR18)', 'BK2', '[Tilpas efter bygningens hojde og anvendelse — se Tabel 7]'],
+        ['Geoteknisk kategori (EC7)', 'GK2', 'Normale jordbundsforhold'],
+      ]
+    }},
+    { id: id++, type: 'text', data: { text: 'Begrundelse for valg: [Beskriv kort baggrunden for klassifikationsvalget, fx: "Bygningen er et 3-etagers kontorejendom med max 120 samtidige brugere. Konstruktionen er en standard stalramme med betondæk. Jordbundsforholdene er normale ler-/sandjordsbund uden særlige risici. Disse faktorer placerer bygningen entydigt i CC2/KK2/BK2/GK2."]' } },
 
     // ─────────────────────────────────────────────────────────────────────────
     // 4. KONSTRUKTIVT SYSTEM
