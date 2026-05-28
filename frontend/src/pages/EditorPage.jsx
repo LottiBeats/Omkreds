@@ -27,395 +27,409 @@ const DOC_DEFS = {
 function makeA1Template() {
   let id = Date.now()
   return [
-    { id: id++, type: 'heading', data: { level: 1, text: 'Projektgrundlag (A1)' } },
+    { id: id++, type: 'heading', data: { level: 1, text: 'A1 Projektgrundlag' } },
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 1. PROJEKTBESKRIVELSE
+    // 1. KONSTRUKTIONSAFSNIT
     // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Projektbeskrivelse' } },
-    { id: id++, type: 'text', data: { text: 'Projektet omhandler [nybyggeri / tilbygning / ombygning] af [bygningstype, fx etageboliger / kontorhus / industribygning] beliggende [adresse].\n\nBygherren er: …\nMatrikelnummer: …\n\nBygningen er [antal etager] etager [med / uden] kælder. Det samlede bebyggede areal er ca. … m² og det samlede etageareal er ca. … m².\n\nKonstruktionen er opbygget som [beskriv overordnet konstruktivt system, fx: et skelet­system af stålsøjler og betonbjælker med in-situ støbte dækelementer / et bærende murværkssystem med træbjælkelag og lette ydervægge].' } },
+    { id: id++, type: 'heading', data: { level: 2, text: '1. Konstruktionsafsnit' } },
 
-    { id: id++, type: 'heading', data: { level: 2, text: 'Projektomfang' } },
-    { id: id++, type: 'text', data: { text: 'Disse statiske beregninger (A2) og dette projektgrundlag (A1) omfatter:\n• Primære bærende konstruktioner: dæk, bjælker, søjler og vægge\n• Stabiliserende konstruktioner (vandret lastaflastning)\n• Fundament og funderingsforhold\n\nBeregningerne omfatter ikke:\n• Sekundære konstruktioner (trapper, facadeelementer, rækværk)\n• Brand­teknisk dimensionering (behandles særskilt)\n• VVS-, el- og ventilationsinstallationer' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '1.1 Bygvaerkets art og anvendelse' } },
+    { id: id++, type: 'text', data: { text: 'Naervaerende statiske dokumentation vedroerer [nybyggeri / tilbygning / ombygning] af [bygningstype, fx etageboliger / kontorhus / hotel] beliggende [adresse], matr. [matrikelnummer].\n\nBygherren er: ...\nSags. nr.: ...\n\nBygningen er [antal] etager [med / uden] kaelder. Det samlede bebyggede areal er ca. ... m2 og det samlede etageareal er ca. ... m2.\n\n[Beskriv bygningens opdeling i konstruktionsafsnit og hvilke dele der er omfattet af naervaerende dokumentation. Indsaet oversigtstegning som billede.]' } },
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 2. LOVGRUNDLAG OG NORMER
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Lovgrundlag og gældende normer' } },
-    { id: id++, type: 'text', data: { text: 'Projektet er udarbejdet i henhold til Bygningsreglementet 2018 (BR18) med tilhørende Eurocode-suite og danske nationale annekser (DK NA).' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '1.2 Konstruktioners art og opbygning' } },
+    { id: id++, type: 'text', data: { text: 'Bygningens primaere baerende system er opbygget som [beskriv konstruktionsprincip, fx: CLT-daek baaret af limtraebjaelker og lette traeskeletvagge / in-situ betondaek med stalsojler og betonkerner / etc.].\n\nLodrette laster: daek -> bjaelker -> soejler/vaegge -> fundament -> undergrund\nVandret stabilisering: [skiver / rammer / kryds / kerne]\n\n[Beskriv spaendretning for daek, udkragninger, saerlige konstruktive forhold. Indsaet opstalt/snit som billede.]' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '1.3 Konstruktionsafsnit' } },
+    { id: id++, type: 'text', data: { text: 'Opbygningen foelger SBI-anvisning 271, 3. udgave. Naervaerende dokumentation omhandler konstruktionsafsnit markeret med fed nedenfor.' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 1 — Gældende normer og standarder',
+      caption: 'Tabel 1.1 — Oversigt over konstruktionsafsnit',
       has_header: true,
       rows: [
-        ['Standard', 'Titel', 'Udgave / DK NA'],
-        ['BR18', 'Bygningsreglementet', '2018 inkl. ændringer'],
+        ['Afsnit nr.', 'Afsnit', 'CC / KK', 'Ansvarlig'],
+        ['A2.1', '[fx CLT konstruktioner]', 'CC2/KK2', '[Firma]'],
+        ['A2.2', '[fx Traeskeletvagge]', 'CC2/KK2', 'Leverandoer'],
+        ['A2.3', '[fx In-situ konstruktioner / Beton]', 'CC2/KK2', '[Firma]'],
+        ['A2.4', '[fx Stalkonstruktioner]', 'CC2/KK2', '[Firma]'],
+        ['A2.5', '[fx Trapper og raekvark]', 'CC2/KK2', 'Leverandoer'],
+        ['A2.6', '[fx Terrændaek og fundering]', 'CC2/KK2', '[Firma]'],
+      ]
+    }},
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2. GRUNDLAG
+    // ─────────────────────────────────────────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 2, text: '2. Grundlag' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '2.1 Normer og standarder' } },
+    { id: id++, type: 'text', data: { text: 'Projektet er udarbejdet iht. Bygningsreglementet 2018 (BR18) og er i overensstemmelse med SBi-anvisning 271, 3. udgave. Slet de raekker der ikke er relevante for dette projekt.' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 2.1 — Gaeldende normer og standarder',
+      has_header: true,
+      rows: [
+        ['Standard', 'Titel', 'DK NA udgave'],
+        ['BR18', 'Bygningsreglementet', '2018 inkl. aendringer'],
+        ['DS/INF 1990', 'Vejledning til konsekvensklasser (Tabel 2)', '2021+Till.1:2022'],
+        ['DS 1140', 'Dokumentation og kontrol af baerende konstruktioner', '2014'],
         ['DS/EN 1990', 'Projekteringsgrundlag (EC0)', 'DK NA:2024'],
-        ['DS/EN 1991-1-1', 'Nyttelaster på bygninger (EC1)', 'DK NA:2007/A1:2014'],
-        ['DS/EN 1991-1-3', 'Snelaster (EC1)', 'DK NA:2024'],
-        ['DS/EN 1991-1-4', 'Vindlaster (EC1)', 'DK NA:2024'],
-        ['DS/EN 1992-1-1', 'Betonkonstruktioner (EC2)', 'DK NA:2015'],
-        ['DS/EN 1993-1-1', 'Stålkonstruktioner (EC3)', 'DK NA:2019'],
-        ['DS/EN 1993-1-8', 'Stålsamlinger (EC3)', 'DK NA:2019'],
-        ['DS/EN 1995-1-1', 'Trækonstruktioner (EC5)', 'DK NA:2015'],
-        ['DS/EN 1996-1-1', 'Murkonstruktioner (EC6)', 'DK NA:2013'],
-        ['DS/EN 1997-1', 'Geoteknisk projektering (EC7)', 'DK NA:2015'],
-        ['DS 1140', 'Statisk dokumentation', '2014'],
-        ['DS 409', 'Last på konstruktioner (ophævet, ref.)', '1998'],
+        ['DS/EN 1991-1-1', 'Nyttelaster pa bygninger (EC1)', 'DK NA:2024'],
+        ['DS/EN 1991-1-2', 'Brandlast (EC1)', 'DK NA:2014'],
+        ['DS/EN 1991-1-3', 'Snelaster (EC1)', 'DK NA:2015 ver.2'],
+        ['DS/EN 1991-1-4', 'Vindlaster (EC1)', 'DK NA:2015'],
+        ['DS/EN 1991-1-5', 'Termiske laster (EC1)', 'DK NA:2012'],
+        ['DS/EN 1991-1-7', 'Ulykkeslast (EC1)', 'DK NA:2013'],
+        ['DS/EN 1992-1-1', 'Betonkonstruktioner (EC2)', 'DK NA:2021'],
+        ['DS/EN 1992-1-2', 'Beton — brandteknisk dimensionering (EC2)', 'DK NA:2011'],
+        ['DS/EN 1993-1-1', 'Stalkonstruktioner (EC3)', 'DK NA:2019'],
+        ['DS/EN 1993-1-8', 'Stalsamlinger (EC3)', 'DK NA:2019'],
+        ['DS/EN 1995-1-1', 'Traekonstruktioner (EC5)', 'DK NA:2019'],
+        ['DS/EN 1995-1-2', 'Trae — brandteknisk dimensionering (EC5)', 'DK NA:2007'],
+        ['DS/EN 1996-1-1', 'Murvaerkskonstruktioner (EC6)', 'DK NA:2019'],
+        ['DS/EN 1997-1', 'Geoteknisk projektering (EC7)', 'DK NA:2021'],
+        ['DS/EN 1997-2', 'Geoteknik — jordbundsundersoegelser (EC7)', 'DK NA:2013'],
       ]
     }},
-    { id: id++, type: 'text', data: { text: 'Slet de rækker der ikke er relevante for dette projekt.' } },
+
+    // ── 2.2 Konsekvensklasser ────────────────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: '2.2 Konsekvensklasser og konstruktionsklasser' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '2.2.1 Konsekvensklasse — DS/INF 1990:2021 Tabel 2' } },
+    { id: id++, type: 'text', data: { text: 'Konstruktioner henfoeres til konsekvensklasse iht. DS/INF 1990:2021+Till.1:2022 Tabel 2. Tabellen angiver maksimalt tilladt spaendvidde [m], hojde over/under terraen [m] og etageantal for CC1 og CC2. Vaerdier der overskrider CC2-graenserne kraever CC3.\n\nSymboler: * = ingen begraensning   -- = ikke relevant/ikke tilladt   Tal = max. tilladte vaerdi\nHojde: "o.t." = over terraen / "u.t." = under terraen' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 2.2 — Konsekvensklasse (DS/INF 1990:2021+Till.1:2022, Tabel 2)',
+      has_header: true,
+      rows: [
+        ['Nr.', 'Bygningsanvendelse', 'Max spandv. CC1 [m]', 'Max spandv. CC2 [m]', 'Max hojde CC1 o.t./u.t. [m]', 'Max hojde CC2 o.t./u.t. [m]', 'Max etager CC1', 'Max etager CC2'],
+        ['1',  'Laengere ophold: beboelse, kontor, hotel, dag-/doegninstitution, undervisning, klinik', '*',  '16',  '0 / 0',  '12 / 6',  '*',  '5'],
+        ['2',  'Hospital',                                                                               '*',  '16',  '0 / 0',  '-- / 6',  '*',  '2'],
+        ['3',  'Forsamling <=150 pers.: koncert, sport, kirke, auditorium, udstilling, teater, detailhandel, overdaekninger', '*', '16', '0 / 0', '12 / 6', '*', '2'],
+        ['4',  'Forsamling >150 pers. (samme typer som nr. 3)',                                          '*',  '12',  '0 / 0',  '6 / 0',   '*',  '1'],
+        ['5',  'Forsamling, tribuner >150 pers.',                                                        '--', '8',   '0 / 0',  '8 / 6',   '*',  '*'],
+        ['6',  'Forsamling, overdaekninger og scener >150 pers.',                                        '--', '12',  '0 / --', '16 / --', '*',  '*'],
+        ['7',  'Industri: sundhedsskadelige kemikalier — saerligt store konsekvenser',                   '*',  '--',  '0 / 0',  '0 / 0',   '*',  '*'],
+        ['8',  'Industri: meget store konsekvenser (forurenende, samfundsmaessig bet. arkiver)',          '*',  '--',  '0 / 0',  '0 / 0',   '*',  '*'],
+        ['9',  'Industri: kraftvarme, visse bygninger til vareproduktion — andre konsekvenser',           '*',  '40',  '0 / 0',  '12 / 6',  '*',  '*'],
+        ['10', 'Industri/lager med ophold for fa personer: landbrug, vaeksthuse, siloanlæg',             '40', '*',   '20 / 3', '30 / 6',  '*',  '*'],
+        ['11', 'Dyrehold med arbejdspladser',                                                            '20', '40',  '12 / 3', '16 / 6',  '*',  '*'],
+        ['12', 'Parkeringsanlaeg',                                                                       '6',  '18',  '-- / 0', '20 / 6',  '1',  '6'],
+        ['13', 'Master og skorstene (abent ubeboet landskab)',                                           '*',  '*',   '50 / --','200 / --', '*',  '*'],
+      ]
+    }},
+    { id: id++, type: 'text', data: { text: 'Projektets bygningsanvendelse: Raekke [nr.] — [beskrivelse]\nStorste spaendvidde: ... m   Hojde: ... m o.t. / ... m u.t.   Etager: ...\n\nValgt konsekvensklasse: CC[1/2/3]\nKFI-faktor (STR/GEO): [0,9 / 1,0 / 1,1]   Paalidelighedsklasse: RC[1/2/3]\n\nBegrundelse: [Beskriv kort hvordan bygningens anvendelse, spaendvidde, hojde og etageantal placerer den i den valgte CC-klasse med reference til ovenstaaende tabel]' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '2.2.2 Konstruktionsklasse — DS 1140:2014 og BR18' } },
+    { id: id++, type: 'text', data: { text: 'Konstruktioner henfoeres til konstruktionsklasse KK[2] iht. BR18.\n\nHovedreglen: KK-klassen foelger CC-klassen direkte (CC1->KK1, CC2->KK2, CC3->KK3).\n\nUndtagelse — BR18 §489 (CC3-bygning kan placeres i KK2 naar alle tre krav er opfyldt):\n  1. Simpel og traditionel ombygning/forandring af eksisterende enkel konstruktion\n  2. Etagebyggeri til laengere ophold (beboelse, kontor, hotel, dag-/doegninstitution)\n  3. Hojst 6 etager over terraen OG spaendvidde pa hojst 8 m\n\nValgt konstruktionsklasse: KK[2]\nBegrundelse: ...' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 2.3 — Krav pr. konstruktionsklasse (DS 1140:2014)',
+      has_header: true,
+      rows: [
+        ['Klasse', 'CC', 'Projekteringskontrol', 'Udforelseskontrol', 'Dokumentation'],
+        ['KK1', 'CC1', 'Egenkontrol af projekterende', 'Egenkontrol af udforende', 'Ingen saerlige krav'],
+        ['KK2', 'CC2', 'Uvildig kontrol — anden person i firmaet er OK', 'Egenkontrol + stikprovekontrol', 'Kontrolplan B2 + kontrolrapport B3'],
+        ['KK3', 'CC3', 'Ekstern uvildig kontrol (eksternt firma kraeves)', 'Udvidet uvildig udforelseskontrol', 'B2 + B3 + tredjepartsgodkendelse'],
+        ['KK4', 'Saerlig', 'Saerlig kontrol — aftales individuelt', 'Saerlig kontrol — aftales', 'Individuel aftale med bygningsmyndighed'],
+      ]
+    }},
+
+    // ── 2.3 Sikkerhed ────────────────────────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: '2.3 Sikkerhed' } },
+    { id: id++, type: 'text', data: { text: 'Bygningen henfoeres til foelgende sikkerhedsklasser:\n  Konsekvensklasse:    CC[2]\n  Konstruktionsklasse: KK[2]\n  Paalidelighedsklasse: RC[2]\n  KFI-faktor (STR/GEO): [1,0]\n  Geoteknisk kategori: GK[2]\n  Brandklasse (BR18):  BK[2]' } },
+
+    // ── 2.4 IKT-vaerktoejer ──────────────────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: '2.4 IKT-vaerktojer' } },
+    { id: id++, type: 'text', data: { text: 'Foelgende software er anvendt i projekteringen:\n  [Beregningsprogram, fx Tekla Tedds / Robot Structural Analysis / RFEM / FEM-Design]\n  Microsoft Office 365 — Word / Excel\n  [BIM-program, fx Revit / Archicad]\n  [Evt. specialsoftware]' } },
+
+    // ── 2.5 Referencer ───────────────────────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 3, text: '2.5 Referencer' } },
+    { id: id++, type: 'text', data: { text: '[1] Bygningsreglement BR18, seneste udgave\n[2] SBi-anvisning 271, 3. udgave — Dokumentation og kontrol af baerende konstruktioner\n[3] DS/INF 1990:2021+Till.1:2022 — Vejledning til konsekvensklasser\n[4] [Geoteknisk rapport, firma, rapport nr., dato]\n[5] [Arkitekttegninger, tegningsliste, revisioner]\n[6] [Evt. andre referencer]' } },
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 3. KLASSIFIKATION OG PÅLIDELIGHED
+    // 3. FORUNDERSOEGELSER
     // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Klassifikation og pålidelighed' } },
-    { id: id++, type: 'text', data: { text: 'Nedenstående tabeller viser kriterierne for de relevante klassifikationssystemer. Projektets valgte klasser fremgår af Tabel 2 (projektsammenfatning) sidst i dette afsnit.' } },
+    { id: id++, type: 'heading', data: { level: 2, text: '3. Forundersoegelser' } },
 
-    // ── CC-klasse beslutning ─────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: 'Konsekvensklasse (CC) — DS/EN 1990 Bilag B' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 2 — Kriterier for konsekvensklasse (DS/EN 1990 DK NA:2024 + DS 1140)',
-      has_header: true,
-      rows: [
-        ['Kriterium', 'CC1 — Lille', 'CC2 — Normal', 'CC3 — Stor'],
-        ['Personrisiko ved svigt', 'Lille eller ingen', 'Middel', 'Stor eller meget stor'],
-        ['Okonomisk / social konsekvens', 'Lille', 'Betydelig', 'Meget stor'],
-        ['Typisk anvendelse', 'Garager, drivhuse, lagerskure, landbrugsbygninger (ikke til personer)', 'Boliger, kontorer, erhvervs- og industribygninger, hoteller', 'Tribuner, koncertsale, offentlige forsamlingsbygninger, hospitaler, broer'],
-        ['Boligbygninger (etager)', 'Ikke relevant (garager mv.)', 'Op til ca. 5 etager', 'Forsamlingsbygninger uanset etageantal'],
-        ['Antal samtidige brugere', '< 10 (vejledende)', '10 – 500 (vejledende)', '> 500 (vejledende)'],
-        ['KFI-faktor STR/GEO', '0,9', '1,0', '1,1'],
-        ['KFI-faktor EQU', '1,0', '1,0', '1,0'],
-        ['Kontrolklasse DS 1140', 'KK1', 'KK2', 'KK3'],
-        ['Pålidelighedsklasse', 'RC1', 'RC2', 'RC3'],
-      ]
-    }},
+    { id: id++, type: 'heading', data: { level: 3, text: '3.1 Grunden og lokale forhold' } },
+    { id: id++, type: 'text', data: { text: '[Beskriv grundens beskaffenhed, terrain, afvandingsforhold og lokale paavirkninger. Alternativt: Ikke relevant for denne dokumentation.]' } },
 
-    // ── Kontrolklasse (DS 1140) ──────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: 'Kontrolklasse (KK) — DS 1140:2014' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 3 — Kontrolklasser og krav til projekteringskontrol (DS 1140:2014)',
-      has_header: true,
-      rows: [
-        ['Klasse', 'Svarer til CC', 'Projekteringskontrol', 'Udforelseskontrol', 'Krav'],
-        ['KK1', 'CC1', 'Egenkontrol af projekterende', 'Egenkontrol af udforende', 'Kontrolplan B2 kræves ikke'],
-        ['KK2', 'CC2', 'Uvildig projekteringskontrol (anden person i virksomheden er OK)', 'Egenkontrol + stikprovekontrol', 'Kontrolplan B2 + kontrolrapport B3 kræves'],
-        ['KK3', 'CC3', 'Udvidet uvildig kontrol (eksternt firma)', 'Udvidet uvildig udforelseskontrol', 'Kontrolplan B2 + B3 + tredjepartsgodkendelse'],
-        ['KK4', 'Særlige', 'Særlig kontrol aftales', 'Særlig kontrol aftales', 'Individuel aftale med bygningsmyndighed'],
-      ]
-    }},
+    { id: id++, type: 'heading', data: { level: 3, text: '3.2 Geotekniske forhold' } },
+    { id: id++, type: 'text', data: { text: 'Geoteknisk kategori: GK[2] (DS/EN 1997-1)\n\nFunderingsforhold (fra geoteknisk rapport [ref.]):\n  Baeredygtig jordbundsydelse: sigma = ... kN/m2\n  Fundamentskote (underkant): +... m DVR90 (ca. ... m under terraen)\n  Frostfridybde: 0,9 m (DK NA til DS/EN 1997-1)\n  Grundvandskote: +... m DVR90\n\nJordparametre (karakteristiske vaerdier):\n  Friktionsvinkel: phi_k = ... grader\n  Kohaesion: c_k = ... kPa\n  Effektiv rumvaegt: gamma_k = ... kN/m3' } },
 
-    // ── Udforelsesklasse stål (DS/EN 1090-2) ────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: 'Udforelsesklasse — Stal (DS/EN 1090-2 Annex B)' } },
-    { id: id++, type: 'text', data: { text: 'Udforelsesklassen (EXC) for stalkonstrktioner bestemmes af tre parametre:\n• Konsekvensklasse (CC1 / CC2 / CC3)\n• Servicekategori (SC1 / SC2): SC1 = kvasistatisk last, SC2 = træthed, dynamisk, jordskælv\n• Produktionskategori (PC1 / PC2): PC1 = ikke-svejste samlinger / boltede konstruktioner, PC2 = svejste konstruktioner\n\nFor de fleste bygningskonstrktioner gælder SC1 og PC2 (svejste profiler).' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 4 — Udforelsesklasse stalkonstruktioner (DS/EN 1090-2 Tabel B.3)',
-      has_header: true,
-      rows: [
-        ['CC-klasse', 'SC1 + PC1', 'SC1 + PC2', 'SC2 + PC1', 'SC2 + PC2'],
-        ['CC1', 'EXC1', 'EXC2', 'EXC2', 'EXC2'],
-        ['CC2', 'EXC2', 'EXC2', 'EXC3', 'EXC3'],
-        ['CC3', 'EXC3', 'EXC3', 'EXC3', 'EXC4'],
-      ]
-    }},
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 5 — EXC klasser: krav til stalentreprenor',
-      has_header: true,
-      rows: [
-        ['Klasse', 'Typisk anvendelse', 'Svejsekontrol', 'Certificering stalentreprenoer'],
-        ['EXC1', 'Simpelt, CC1 (garager, stalskure)', 'Ingen krav til NDT', 'Ingen særlig certificering'],
-        ['EXC2', 'Standard byggeStalkonstruktioner, CC2', 'Visuel + NDT ved krav', 'Stalentreprenoer skal have EXC2-godkendelse (DS/EN 1090-1)'],
-        ['EXC3', 'Krævende, CC3 / SC2 strukturer', 'Udvidet NDT kræves', 'EXC3-certificeret stalentreprenoer'],
-        ['EXC4', 'Særligt krævende (seismisk, mm.)', 'Fuld NDT kontrol', 'EXC4-certificeret stalentreprenoer'],
-      ]
-    }},
+    { id: id++, type: 'heading', data: { level: 3, text: '3.3 Klima- og miljoetekniske forhold' } },
+    { id: id++, type: 'text', data: { text: '[Beskriv relevante klima- og miljoetekniske paavirkninger, fx aggressivt miljo, kysteksponering, hoj luftfugtighed, forurenet jord. Alternativt: Ikke relevant for denne dokumentation.]' } },
 
-    // ── Udforelsesklasse beton (DS/EN 13670) ────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: 'Udforelsesklasse — Beton (DS/EN 13670 + DK NA)' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 6 — Udforelsesklasse betonstruktioner (DS/EN 13670 DK NA)',
-      has_header: true,
-      rows: [
-        ['Klasse', 'CC-klasse', 'Krav til udforelse', 'Eksempler'],
-        ['Klasse 1', 'CC1', 'Basal egenkontrol', 'Simpelt betonarbejde uden bærende funktion'],
-        ['Klasse 2', 'CC2', 'Egenkontrol + dokumentation', 'Normale bærende betonelementer (dæk, bjælker, søjler)'],
-        ['Klasse 3', 'CC3', 'Udvidet kontrol + tredjepartsgodkendelse', 'Krævende konstruktioner, broer, særlige bygværker'],
-      ]
-    }},
+    { id: id++, type: 'heading', data: { level: 3, text: '3.4 Eksisterende konstruktioner' } },
+    { id: id++, type: 'text', data: { text: '[Beskriv eksisterende konstruktioner der er relevante for projektet. Alternativt: Ikke relevant for denne dokumentation.]' } },
 
-    // ── Brandklasse (BR18) ───────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: 'Brandklasse (BK) — BR18 §29' } },
-    { id: id++, type: 'text', data: { text: 'Brandklassen bestemmes af BR18 §29 på baggrund af bygningens anvendelse, hojde og antal samtidige brugere. Brandklassen er uafhengig af konsekvensklassen — en BK2-bygning kan sagtens være CC2.' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 7 — Brandklasser (BR18 §29)',
-      has_header: true,
-      rows: [
-        ['Klasse', 'Typisk bygning', 'Hojde / etager', 'Brandrådgiver', 'Dokumentation'],
-        ['BK1', 'Enfamiliehuse, sommerhuse, dobbelthuse (max 2 etager), simple erhvervsbygninger < 150 m²', 'Max 2 etager', 'Ikke krævet', 'Forenklet brandstrategi (eller ingen ved enfamiliehus)'],
-        ['BK2', 'Etageboliger (max 4 etager), kontorbygninger, butikker, standard erhverv', 'Max 4 etager (boliger) / max 22 m (erhverv)', 'Kræves — kan vaere del af rådgiverfirmaet', 'Brandstrategi + PRE-dokumentation til kommunen'],
-        ['BK3', 'Boliger > 4 etager (hojhuse), hoteller, plejehjem, hospitaler, forsamlingslokaler > 150 pers., storcentre', 'Over 22 m eller særlig risiko', 'Kræves — uvildig brandrådgiver', 'Fuld brandstrategi + tredjepartsgodkendelse (TGA) af brandprojekt'],
-        ['BK4', 'Særligt komplekse bygninger med unikke brandscenarier', 'Aftales', 'Specialiseret brandrådgiver', 'Individuel dokumentation aftalt med brandmyndighed'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Bemærkning: Fra BK2 skal der udarbejdes en brandstrategi (PRE) inden byggetilladelsen ansøges. Fra BK3 kræves uvildig kontrol af branddokumentationen (TGA — tredjepartsgodkendelse af anlæg).\n\nBR18 skelner desuden mellem bygningers anvendelseskategori (beboelse, erhverv, institution, forsamling m.fl.) som påvirker de specifikke brandkrav.' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '3.5 Tilstodende eksisterende bygvaerker' } },
+    { id: id++, type: 'text', data: { text: '[Beskriv evt. nabobyggeriers indflydelse (saetninger, vibrationer, graevning). Alternativt: Ikke relevant for denne dokumentation.]' } },
 
-    // ── Geoteknisk kategori ───────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: 'Geoteknisk kategori (GK) — DS/EN 1997-1' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 8 — Geotekniske kategorier (DS/EN 1997-1 §2.1)',
-      has_header: true,
-      rows: [
-        ['Kategori', 'Jordbundsforhold', 'Konstruktionstype', 'Dokumentation krævet'],
-        ['GK1', 'Simple, velkendte forhold. Ingen risiko for ustabilitet.', 'Simple funderinger og udgravninger. Lav last, god bund.', 'Rutineberegninger. Ingen geoteknisk rapport krævet.'],
-        ['GK2', 'Normale forhold uden usædvanlig risiko. Flertallet af byggerier.', 'Konventionelle funderinger, kældre, jordankre, skråninger.', 'Geoteknisk rapport kræves. Beregninger og afstikningsplan.'],
-        ['GK3', 'Vanskelige jordbundsforhold eller usædvanlig stor risiko.', 'Store eller usædvanlige konstruktioner, ustabile skråninger, seismisk aktive områder.', 'Udvidet geoteknisk undersøgelse + uvildig geoteknisk ekspertvurdering.'],
-      ]
-    }},
-
-    // ── Projektets samlede klassifikation ────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: 'Projektets klassifikation — sammenfatning' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 9 — Valgt klassifikation for dette projekt',
-      has_header: true,
-      rows: [
-        ['Klassifikation', 'Valgt klasse', 'Begrundelse'],
-        ['Konsekvensklasse (DS/EN 1990)', 'CC2', 'Normal konsekvens — boliger/kontorer/erhverv'],
-        ['Pålidelighedsklasse', 'RC2', 'Svarer til CC2'],
-        ['KFI-faktor (STR/GEO)', '1,0', 'CC2'],
-        ['Kontrolklasse (DS 1140)', 'KK2', 'CC2 — uvildig projekteringskontrol kræves'],
-        ['Udforelsesklasse stål', 'EXC2', 'CC2, SC1, PC2 — standard svejst stålkonstruktion'],
-        ['Udforelsesklasse beton', 'Klasse 2', 'CC2 — normale bærende betonelementer'],
-        ['Brandklasse (BR18)', 'BK2', '[Tilpas efter bygningens hojde og anvendelse — se Tabel 7]'],
-        ['Geoteknisk kategori (EC7)', 'GK2', 'Normale jordbundsforhold'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Begrundelse for valg: [Beskriv kort baggrunden for klassifikationsvalget, fx: "Bygningen er et 3-etagers kontorejendom med max 120 samtidige brugere. Konstruktionen er en standard stalramme med betondæk. Jordbundsforholdene er normale ler-/sandjordsbund uden særlige risici. Disse faktorer placerer bygningen entydigt i CC2/KK2/BK2/GK2."]' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '3.6 Tilstodende pataenkte bygvaerker' } },
+    { id: id++, type: 'text', data: { text: '[Beskriv fremtidige planlagte byggerier i naerheden. Alternativt: Ikke relevant for denne dokumentation.]' } },
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 4. KONSTRUKTIVT SYSTEM
+    // 4. KONSTRUKTIONER
     // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Konstruktivt system' } },
+    { id: id++, type: 'heading', data: { level: 2, text: '4. Konstruktioner' } },
 
-    { id: id++, type: 'heading', data: { level: 3, text: 'Bærende system' } },
-    { id: id++, type: 'text', data: { text: 'Bygningens primære bærende system består af:\n• Dæk: [betonelementdæk / in-situ beton / træbjælkelag / ståltrapdæk] — spændvidder op til … m\n• Bjælker: [stålbjælker HEA/IPE … / betonbjælker / limtræ]\n• Søjler / bærende vægge: [stålsøjler / in-situ betonvægge / præfab betonelementer / murværk]\n• Fundering: [punktfundamenter / stribefundamenter / pladefundament / pæle]\n\nLastaflastningsprincip: Lodrette laster overføres fra dæk → bjælker → søjler/vægge → fundament → undergrund.' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '4.1 Statisk virkemaade' } },
 
-    { id: id++, type: 'heading', data: { level: 3, text: 'Stabilisering' } },
-    { id: id++, type: 'text', data: { text: 'Vandret stabilisering mod vind- og ulykkeslaster sikres ved:\n• [Betonskiver / stålkryds / rammevirkning / murede skiver]\n• Placering: [beskriv hvilke vægge / kerner der stabiliserer i hvilken retning]\n\nDækkene fungerer som stive skiver der fordeler vandrette kræfter til stabiliserings­systemet.\n\nLodrette laster: Overvejende centrisk belastede søjler/vægge — ekscentricitet vurderes i A2.' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '4.1.1 Lodret lastnedfoering' } },
+    { id: id++, type: 'text', data: { text: '[Beskriv lastvej for lodrette laster. Eksempel:\n"De lodrette laster fra egenlast, nyttelast og naturlaster paavirker daekkene som en fladelast, der fordeles til baerende elementer. CLT-daekkene fungerer som stive plader der fordeler fladelasterne til understotningerne, hvor lasterne omdannes til linjelaster/punktlaster og oeverfoeres til soejler/vaegge, fundament og undergrund."\n\nIndsaet evt. snit- eller skemasketegning som billede.]' } },
 
-    { id: id++, type: 'heading', data: { level: 3, text: 'Fundering' } },
-    { id: id++, type: 'text', data: { text: 'Funderingsprincip: [Direkte fundering / Pælfundering]\nFundamenttype: [Punktfundamenter / Stribefundamenter / Pladefundament]\nFundamenteringskote: ca. +… m DVR90 (dybde … m under terræn)\nBæredygtig jordbundsydelse: σ = … kN/m² (fra geoteknisk rapport)' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '4.1.2 Vandret lastfoering' } },
+    { id: id++, type: 'text', data: { text: '[Beskriv stabiliseringssystemet. Eksempel:\n"Bygningens stabiliserende hovedsystem udfoeres som lette traevagge og CLT-vaegge der virker som skiver. Daekkene fungerer som stive plader der fordeler vandrette kraefter til stabiliseringselementerne."\n\nBeskriv hvilke vaegge/kerner der stabiliserer i x- og y-retning.]' } },
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 5. LASTFORUDSÆTNINGER
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Lastforudsætninger' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '4.2 Anvendelseskrav' } },
+    { id: id++, type: 'text', data: { text: 'Der stilles krav til udbojning (SLS):\n  Daek og bjaelker generelt: L/300 for karakteristiske lastkombinationer\n  Daek med skroebelig belaegning (fliser, terrazzo): L/400\n  Tagelementer: L/200\n\n[Tilpas efter projektets krav og aftale med bygherre. Angiv evt. absolutte vaerdier for nedbojning i mm.]' } },
 
-    // 5.1 Egenlaste
-    { id: id++, type: 'heading', data: { level: 3, text: 'Egenlaste (G)' } },
-    { id: id++, type: 'text', data: { text: 'Egenlast af konstruktionselementer bestemmes på basis af tværsnitsdimensioner og nedenstående materialevægte i henhold til DS/EN 1991-1-1 Annex A.' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '4.3 Komfortkrav' } },
+    { id: id++, type: 'text', data: { text: 'Der stilles krav til vibrationskomfort for etagedaek. Niveau IV er normalt tilfredsstillende for etagebygninger (boliger, kontorer, hoteller).' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 4 — Materialevægte (DS/EN 1991-1-1 Annex A)',
+      caption: 'Tabel 4.1 — Komfortniveauer for etagedaek (acceleration og hastighed)',
       has_header: true,
       rows: [
-        ['Material / konstruktionselement', 'Rumvægt / fladel.', 'Enhed', 'Kilde'],
-        ['Armeret beton (in-situ)', '25,0', 'kN/m³', 'EC1 Tabel A.1'],
-        ['Uarmeret beton', '24,0', 'kN/m³', 'EC1 Tabel A.1'],
-        ['Letbeton (Leca-blokke, type afhænger)', '10,0 – 18,0', 'kN/m³', 'EC1 Tabel A.1'],
-        ['Murværk, massivt tegl (brændt)', '18,0 – 22,0', 'kN/m³', 'EC1 Tabel A.1'],
-        ['Murværk, porebeton / gasbeton', '5,0 – 9,0', 'kN/m³', 'EC1 Tabel A.1'],
-        ['Konstruktionsstål', '78,5', 'kN/m³', 'EC1 Tabel A.1'],
-        ['Konstruktionstræ C24 (gran/fyr)', '4,2', 'kN/m³', 'EC1 Tabel A.1'],
-        ['Limtræ GL28h (homogen)', '4,5', 'kN/m³', 'EC1 Tabel A.1'],
-        ['Gipsplader (standard)', '12,5', 'kN/m³', 'EC1 Tabel A.1'],
-        ['Tagsten, beton', '0,50', 'kN/m²', 'EC1 Tabel A.12'],
-        ['Tagsten, tegl', '0,60', 'kN/m²', 'EC1 Tabel A.12'],
-        ['Tagpap + 200 mm isolering (EPS)', '0,15 – 0,25', 'kN/m²', 'Producent'],
-        ['Terrazzo- / flisegulv (20 mm + mørtel)', '0,60 – 1,00', 'kN/m²', 'EC1 Tabel A.12'],
+        ['Niveau', 'w_1kN [mm]', 'f1 >= 8 Hz: v_rms [m/s]', '4,5 Hz <= f1 < 8 Hz: a_rms [m/s2]', 'Typisk anvendelse'],
+        ['I',  '0,25', '0,40 x 10-3', '0,020', 'Operationsrum, sensorlaboratorier'],
+        ['II', '0,25', '0,80 x 10-3', '0,040', 'Soverum i hoteller (nat)'],
+        ['III','0,50', '1,20 x 10-3', '0,060', 'Boliger'],
+        ['IV', '0,80', '2,00 x 10-3', '0,100', 'Kontorer, hoteller (dag) — standard'],
+        ['V',  '1,20', '3,00 x 10-3', '0,150', 'Industri, restauranter'],
+        ['VI', '1,60', '4,00 x 10-3', '0,200', 'Robuste industribygninger'],
       ]
     }},
-    { id: id++, type: 'text', data: { text: 'Konstruktionsegenlasten specificeres i de individuelle beregningsafsnit (A2) for hvert element.\n\nPermanente installationer (VVS, ventilation): tillæg på … kN/m² medregnes som egenlast på dækkene.' } },
+    { id: id++, type: 'text', data: { text: 'Valgt komfortniveau: [IV]\nBegrundelse: [fx standard etagebygning med boliger/kontorer]' } },
 
-    // 5.2 Nyttelaster
-    { id: id++, type: 'heading', data: { level: 3, text: 'Nyttelaster (Q)' } },
-    { id: id++, type: 'text', data: { text: 'Nyttelaster fastsættes i henhold til DS/EN 1991-1-1 + DK NA. Nedenstående tabel viser karakteristiske værdier for de relevante lastkategorier.' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '4.4 Funktionskrav' } },
+    { id: id++, type: 'text', data: { text: 'Byggeriet gennemfoeres iht. bestemmelserne i BR18 og gaeldende normer.\n[Beskriv saerlige funktionskrav — akustik, vandtaethed, brandadskillelsesvagge, adskillelse fra installationer, etc.]' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '4.5 Robusthed' } },
+    { id: id++, type: 'text', data: { text: 'Konstruktionernes robusthed vurderes iht. DS/EN 1990 + DS/EN 1991-1-7. Minimumskrav for mekaniske forbindelser til sikring mod progrederende kollaps:' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 5 — Karakteristiske nyttelaster (DS/EN 1991-1-1 Tabel 6.2 + DK NA)',
+      caption: 'Tabel 4.2 — Minimumskrav til robusthed (punkt- og linjelast)',
       has_header: true,
       rows: [
-        ['Kat.', 'Beskrivelse', 'qk [kN/m²]', 'Qk [kN]', 'Bemærkning'],
-        ['A', 'Boliger og boligformål', '2,0', '2,0', ''],
-        ['B', 'Kontorer og administrationsarealer', '2,5', '4,5', ''],
-        ['C1', 'Arealer med borde og stole (skoler, restauranter)', '3,0', '4,0', ''],
-        ['C2', 'Arealer med fast bestolning (kirker, biografer)', '4,0', '4,0', ''],
-        ['C3', 'Arealer uden hindringer (museer, udstilling)', '5,0', '4,0', ''],
-        ['C4', 'Arealer med fysisk aktivitet (sport, dans)', '5,0', '7,0', ''],
-        ['C5', 'Arealer med store folkemasser (festivaler)', '5,0', '4,5', ''],
-        ['D1', 'Forretningsarealer, supermarkeder', '4,0', '4,0', ''],
-        ['D2', 'Varehuse, stormagasiner', '5,0', '7,0', ''],
-        ['E1', 'Lagerbygninger, industri (generelt lager)', '7,5', '7,0', 'Verificér med bruger'],
-        ['F', 'Parkering, let trafik ≤ 30 kN', '2,5', '10,0', 'Personbiler'],
-        ['G', 'Parkering, tung trafik 30–160 kN', '5,0', '45,0', 'Lastbiler'],
-        ['H', 'Tage — ikke tilgængeligt', '0,5', '1,0', 'DK NA'],
-        ['I / Z', 'Tage — tilgængeligt (tagterrasse)', 'Som kat. A–D', '—', 'Aftales med bygherre'],
+        ['Etageantal', 'Punktlast [kN]', 'Linjelast [kN/m]'],
+        ['1-2 etager', '10 (20)', '2 (4)'],
+        ['3-5 etager', '20', '4'],
+        ['6-10 etager', '40', '8'],
+        ['11-15 etager', '60', '12'],
       ]
     }},
-    { id: id++, type: 'text', data: { text: 'Dette projekt anvender:\n• [Etagedæk]: Lastkategori [A/B/C/D] — qk = … kN/m²\n• [Tagdæk]: Lastkategori H — qk = 0,5 kN/m²\n• Skillevægsoverlast (fast opdeling): tillæg qk = 0,5 kN/m² (DS/EN 1991-1-1 §6.3.1.2)\n\nNyttelasten er den principale variable last (Qk,1) i lastkombinationerne, med undtagelse af vindlastdominerede situationer.' } },
+    { id: id++, type: 'text', data: { text: 'Vaerdier i parentes gaelder ved CC2 med mere end 2 etager.' } },
 
-    // 5.3 Snelast
-    { id: id++, type: 'heading', data: { level: 3, text: 'Snelast (S)' } },
-    { id: id++, type: 'text', data: { text: 'Snelast beregnes i henhold til DS/EN 1991-1-3 + DK NA:2024.' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 6 — Snelastzoner i Danmark (DS/EN 1991-1-3 DK NA:2024, Figur DK.1)',
-      has_header: true,
-      rows: [
-        ['Zone', 'sk ved havniveau [kN/m²]', 'Geografisk dækning'],
-        ['Zone 1', '0,9', 'Sjælland, Fyn, Lolland-Falster og de fleste øer'],
-        ['Zone 2', '1,0', 'Det meste af Jylland (øst og centrale dele)'],
-        ['Zone 3', '1,1', 'Vest- og nordvestjylland'],
-        ['Zone 4', '1,5', 'Bornholm og højtliggende lokaliteter'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Bemærkning: sk stiger med 0,1 kN/m² pr. 100 m over havets overflade for lokaliteter > 400 m o.h. (ikke relevant for DK under normale forhold).\n\nDette projekt (Zone [1/2/3/4]):\n  sk = … kN/m²  (karakteristisk terrænværdi)\n  Tagtype: [ensidig / tosidig / fladt] tag\n  Hældningsvinkel: α = … °\n  Formfaktor: μ1 = … (fra DK NA Figur DK.3)\n  Terrænafskærmning: Ce = 1,0 (normal eksponering)\n  Termisk koefficient: Ct = 1,0\n  Karakteristisk tagsnelast: s = μ1 · Ce · Ct · sk = … kN/m²' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '4.6 Levetid' } },
+    { id: id++, type: 'text', data: { text: 'Bygvaerket henfoeres til kategori 4 iht. DS/EN 1990 Tabel 2.1 — Almindelige konstruktioner med en vejledende forventet levetid pa 50 aar.\n[Kategori 5 (100 aar) ved monumentale bygninger, broer og anlaegskonstruktioner]' } },
 
-    // 5.4 Vindlast
-    { id: id++, type: 'heading', data: { level: 3, text: 'Vindlast (W)' } },
-    { id: id++, type: 'text', data: { text: 'Vindlast beregnes i henhold til DS/EN 1991-1-4 + DK NA:2024.' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 7 — Vindparametre (DS/EN 1991-1-4 DK NA:2024)',
-      has_header: true,
-      rows: [
-        ['Parameter', 'Symbol', 'Værdi', 'Bemærkning'],
-        ['Referencebasisvindhastighed', 'vb,0', '24 m/s', 'Gælder for langt de fleste steder i DK (DK NA:2024)'],
-        ['Retningsfaktor', 'cdir', '1,0', 'Konservativ (kan reduceres jf. DK NA)'],
-        ['Sæsonfaktor', 'cseason', '1,0', 'Konservativ'],
-        ['Terrænkategori', '—', '[0 / I / II / III / IV]', 'Vælg: 0=hav, II=normal, IV=tæt bybebyggelse'],
-        ['Referencehøjde', 'zref', '… m', 'Bygningens højde over terræn'],
-        ['Terrænroughedsfaktor', 'cr(z)', '—', 'Beregnes fra terrænkategori og zref'],
-        ['Orografifaktor', 'co(z)', '1,0', 'Korriger ved bakket terræn'],
-        ['Turbulensintensitet', 'Iv(z)', '—', 'Afhænger af terrænkategori'],
-        ['Karakteristisk vindhastighedstryk', 'qp(z)', '… kN/m²', 'Beregnes i A2'],
-        ['Ydre trykkoefficient (lovert)', 'cpe,10', '0,8', 'Typisk for lodret facade, vindretning 0°'],
-        ['Ydre trykkoefficient (læside)', 'cpe,10', '-0,5 til -0,6', 'Typisk for lodret facade'],
-        ['Indvendig trykkoefficient', 'cpi', '+0,2 / -0,3', 'Konservativ, afhænger af åbninger'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Den dimensionsgivende vindlast beregnes detaljeret i beregningsafsnit A2 ved anvendelse af ovenstående parametre.\n\nKonkrete projektdata:\n  Terrænkategori: … · zref = … m · vb,0 = 24 m/s · qp = … kN/m²' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '4.7 Brand' } },
+    { id: id++, type: 'text', data: { text: 'Brandklasse (BR18 §29): BK[2]\n\nBrandtekniske krav til baerende konstruktioner:\n  Dak, saerste etage: R[60]\n  Dak, stueetage: R[60] A2-s1,d0\n  [Tilpas efter brandklasse og konstruktionstype]\n\n[Brandteknisk dokumentation udarbejdes saerskilt / er ikke en del af denne A1]' } },
 
-    // 5.5 Ulykkeslast
-    { id: id++, type: 'heading', data: { level: 3, text: 'Ulykkeslaster' } },
-    { id: id++, type: 'text', data: { text: 'Ulykkeslaster (DS/EN 1990 Afsnit 4 + DS/EN 1991-1-7):\n\n[Slet det der ikke er relevant]\n• Påkørselslast fra køretøjer: Ad = … kN (ved parkerings- og gennemkørselsniveauer)\n• Eksplosionslast: Behandles ikke — bygningen er ikke i eksplosionsrisikozone\n• Progrederende kollaps: Vurderes for CC2 — konstruktionen har fornøden robusthed via kontinuitet og alternativ lastvej\n• Jordskælv: Ikke relevant for Danmark (seismisk hazard negligibel)\n\nUlykkeskombination: Gk + Ad + ψ1,1·Qk,1 (DS/EN 1990 Formel 6.11b)' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '4.8 Udforelse' } },
+    { id: id++, type: 'text', data: { text: 'Alle maal og koter er vejledende og skal kontrolleres paa stedet inden udforelse.\n\nEventuel midlertidig afstivning hoerer til den arbejdsudforende i fuld udstraekning, inkl. evt. udarbejdelse af midlertidigt afstivningsprojekt.\n\nDer regnes med god byggeskik og faglart arbejder paa byggepladsen. Det anbefales at der udfoeres tilsyn og kvalitetssikring med alle byggeriets faser.\n\n[Saerlige udforelseskrav — tolerancer, udstobningsraekkoelge, harde- og hviletider for beton, krav til montage af praefab elementer, etc.]' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '4.9 Drift og vedligehold' } },
+    { id: id++, type: 'text', data: { text: '[Beskriv saerlige krav til drift og vedligehold, fx inspektion af expasionsbolte, vedligehold af overfladebehandling paa stalkonstruktioner, kontrol af taedaekningens taethed. Alternativt: Ikke relevant for denne dokumentation.]' } },
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 6. LASTKOMBINATIONER
+    // 5. KONSTRUKTIONSMATERIALER
     // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Lastkombinationer' } },
-    { id: id++, type: 'text', data: { text: 'Dimensionering udføres i brudgrænsetilstand (ULS) og anvendelsesgrænsetilstand (SLS) i henhold til DS/EN 1990 DK NA:2024.\n\nULS (STR): Den dimensionsgivende lastkombination bestemmes som det dimensionsgivende af 6.10a og 6.10b, multipliceret med KFI-faktoren for den gældende konsekvensklasse.' } },
+    { id: id++, type: 'heading', data: { level: 2, text: '5. Konstruktionsmaterialer' } },
+    { id: id++, type: 'text', data: { text: 'Nedenstaaende karakteristiske materialeegenskaber laegges til grund for dimensioneringen. Slet de afsnit der ikke er relevante for dette projekt.' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '5.1 Grund og jord' } },
+    { id: id++, type: 'text', data: { text: '[Se afsnit 3.2 Geotekniske forhold. Alternativt: Ikke relevant.]' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '5.2 Beton' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 8 — ULS lastsikkerhedsfaktorer (DS/EN 1990 DK NA:2024, Tabel A1.2(B), STR/GEO)',
+      caption: 'Tabel 5.1 — Karakteristiske betonstyrker (DS/EN 1992-1-1)',
       has_header: true,
       rows: [
-        ['Formel', 'Udtryk', 'γG,sup', 'γG,inf', 'γQ,1', 'ξ (DK NA)'],
-        ['6.10a', 'γG,sup·KFI·Gk + Σ(γQ,i·KFI·ψ0,i·Qk,i)', '1,35', '1,00', '1,50·ψ0,i', '—'],
-        ['6.10b', 'ξ·γG,sup·KFI·Gk + γQ,1·KFI·Qk,1 + Σ(γQ,i·KFI·ψ0,i·Qk,i)', '1,35', '1,00', '1,50', '0,89'],
-        ['EQU (ligevægt)', 'γG,sup·Gk + γQ,1·ψ0,1·Qk,1', '1,05', '0,95', '1,50·ψ0,1', '—'],
-        ['GEO (jord)', 'Som STR 6.10a/b med geotekniske γ-faktorer', '1,35', '1,00', '1,50', '0,89'],
+        ['Klasse', 'fck [MPa]', 'fctm [MPa]', 'Ecm [GPa]', 'Rumvaegt [kN/m3]', 'Anvendelse i projektet'],
+        ['C20/25', '20', '2,2', '30', '25', ''],
+        ['C25/30', '25', '2,6', '31', '25', ''],
+        ['C30/37', '30', '2,9', '33', '25', ''],
+        ['C35/45', '35', '3,2', '34', '25', ''],
       ]
     }},
-    { id: id++, type: 'text', data: { text: 'SLS lastkombinationer (DS/EN 1990 Tabel A1.4):\n• Karakteristisk:   Gk + Qk,1 + Σ(ψ0,i · Qk,i)   — bruges til irreversible SLS-tilstande\n• Hyppig:           Gk + ψ1,1·Qk,1 + Σ(ψ2,i · Qk,i) — bruges til reversible SLS-tilstande\n• Kvasi-permanent:  Gk + Σ(ψ2,i · Qk,i)             — bruges til krybning og nedbøjning' } },
+    { id: id++, type: 'text', data: { text: 'Armering: B500 NOR (duktilitetsklasse N), fyk = 500 MPa, Es = 200 GPa\nBetondaekningstykkelse: c_nom = [25 / 30 / 35] mm (afhaengig af eksponeringsklasse)\nEksponeringsklasse: XC[1/2/3/4]\nPartialkoefficienter: gamma_C = 1,50 (beton), gamma_S = 1,15 (armering)' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '5.3 Staal' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 9 — ψ-faktorer for variable laster (DS/EN 1990 DK NA:2024, Tabel A1.1)',
+      caption: 'Tabel 5.2 — Karakteristiske staalstyrker (DS/EN 1993-1-1)',
       has_header: true,
       rows: [
-        ['Lasttype', 'Lastkategori', 'ψ0', 'ψ1', 'ψ2'],
-        ['Nyttelast — Kat. A', 'Boliger og boligformål', '0,5', '0,3', '0,2'],
+        ['Kvalitet', 'Tykkelse t [mm]', 'fy [MPa]', 'fu [MPa]', 'E [GPa]', 'Rumvaegt [kN/m3]'],
+        ['S235', 't <= 40',      '235', '360', '210', '78,5'],
+        ['S235', '40 < t <= 80', '215', '360', '210', '78,5'],
+        ['S355', 't <= 40',      '355', '510', '210', '78,5'],
+        ['S355', '40 < t <= 80', '335', '470', '210', '78,5'],
+        ['S420', 't <= 40',      '420', '520', '210', '78,5'],
+      ]
+    }},
+    { id: id++, type: 'text', data: { text: 'Partialkoefficienter: gamma_M0 = 1,00 (flydning), gamma_M1 = 1,00 (instabilitet), gamma_M2 = 1,25 (brud/forbindelser)\nUdforelsesklasse (EXC): EXC[2] iht. DS/EN 1090-1 (CC2, SC1, PC2)' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '5.4 Murvaerk' } },
+    { id: id++, type: 'text', data: { text: '[Ikke relevant — slet dette afsnit]\n\nAlternativt:\nMurstenskvalitet: MU[20/30/50] iht. DS/EN 771-1\nMortel: M[5/10/15] iht. DS/EN 998-2\nPartialkoefficient: gamma_M = [2,3 / 2,5 / 3,0] afhaengig af mortelkategori' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '5.5 Trae' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 5.3 — Anvendelsesklasser for traekonstruktioner (DS/EN 1995-1-1)',
+      has_header: true,
+      rows: [
+        ['Klasse', 'Beskrivelse', 'Eksempler'],
+        ['1', 'Fugtindhold svarende til 20 grader C / 65% relativ luftfugtighed (aret rundt)', 'Opvarmede bygninger: boliger, kontorer, butikker'],
+        ['2', 'Fugtindhold svarende til 20 grader C / 80% relativ luftfugtighed (aret rundt)', 'Ventilerede, ikke-permanent opvarmede bygninger. Fritidshuse, garager, lagre. Ventilerede tagkonstruktioner beskyttet mod nedbor'],
+        ['3', 'Klimaforhold der kan fore til hojere fugtindhold end klasse 2', 'Konstruktioner udsat for nedbor eller vand. Underlag for tagpaptage'],
+      ]
+    }},
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 5.4 — Lastvarighed (DS/EN 1995-1-1)',
+      has_header: true,
+      rows: [
+        ['Lastgruppe', 'Kode', 'Varighed', 'Eksempler'],
+        ['Permanent',   'P', 'Mere end 10 aar',        'Egenlast'],
+        ['Langtidslast','L', '6 maaneder til 10 aar',  'Oplagret gods'],
+        ['Mellemlang',  'M', '1 uge til 6 maaneder',   'Variable laster, snelast'],
+        ['Korttidslast','K', 'Mindre end 1 uge',        'Snelast, vindlast'],
+        ['Ojebliksslig','O', 'Ojeblikkeig',             'Ulykkeslast, vindlast'],
+      ]
+    }},
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 5.5 — Modifikationsfaktor kmod og kdef (DS/EN 1995-1-1 Tabel 3.1 + 3.2)',
+      has_header: true,
+      rows: [
+        ['Materiale', 'Anv.kl.', 'kmod Permanent', 'kmod Langtid', 'kmod Mellemlang', 'kmod Korttid', 'kmod Ojeblikslig', 'kdef'],
+        ['Konstruktionstrae / Limtrae / LVL', '1', '0,60', '0,70', '0,80', '0,90', '1,10', '0,60'],
+        ['Konstruktionstrae / Limtrae / LVL', '2', '0,60', '0,70', '0,80', '0,90', '1,10', '0,80'],
+        ['Konstruktionstrae / Limtrae / LVL', '3', '0,40', '0,55', '0,65', '0,70', '0,90', '2,00'],
+      ]
+    }},
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 5.6 — Materialekvaliteter og karakteristiske vaerdier',
+      has_header: true,
+      rows: [
+        ['Konstruktionsdel', 'Anv. klasse', 'Styrkeklasse', 'fm,k [MPa]', 'fc,0,k [MPa]', 'E0,mean [MPa]', 'Rumvaegt [kN/m3]'],
+        ['Traeskeletvagge — indvendige', '1', 'Min. C18 (iht. leverandoer)', '18', '18', '9.000', '380'],
+        ['Traeskeletvagge — udvendige',  '3', 'GL24c', '24', '21,5', '11.000', '420'],
+        ['Bjaelker (limtrae) — indvendig','1', 'GL24c', '24', '21,5', '11.000', '365'],
+        ['Bjaelker (limtrae) — udvendig', '3', 'GL24c', '24', '21,5', '11.000', '365'],
+        ['CLT — tagdaek',     '1', 'CL24', '24', '21', '11.000', '420'],
+        ['CLT — etagedaek',   '1', 'CL24', '24', '21', '11.000', '420'],
+        ['CLT — vagge',       '1', 'CL24', '24', '21', '11.000', '420'],
+      ]
+    }},
+    { id: id++, type: 'text', data: { text: 'Partialkoefficienter (ULS, vedvarende og midlertidige tilstande):\n  Limtrae, LVL og pladematerialer: gamma_M = 1,30 x gamma_3\n  Konstruktionstrae:               gamma_M = 1,35 x gamma_3\n  Forbindelser (dornforbindelser): gamma_M = 1,35 x gamma_3\n  Forbindelser (limede bolte):     gamma_M = 1,50 x gamma_3\n\n  Saerpet kontrolklasse (KK3): gamma_3 = 0,95\n  Normal kontrolklasse (KK2):  gamma_3 = 1,00\n  Lempet kontrolklasse (KK1):  gamma_3 = 1,10\n\nFugtindhold ved levering:\n  Konstruktionstrae: max. 15% +/- 2%\n  CLT og limtrae: max. 12% +/- 2%' } },
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 6. LASTER
+    // ─────────────────────────────────────────────────────────────────────────
+    { id: id++, type: 'heading', data: { level: 2, text: '6. Laster' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '6.1 Lastkombinationer og lasttilfaelde' } },
+    { id: id++, type: 'text', data: { text: 'Dimensionering udfoeres i brudgraensetilstand (ULS) og anvendelsesgraensetilstand (SLS) iht. DS/EN 1990 DK NA:2024.\n\nLAK 1: Anvendelsesgraensetilstand\nHaandteres under den enkelte bygningsdel med udgangspunkt i de opsummerede karakteristiske laster.\n\nLAK 2: Brudgraensetilstand (STR)\n  LAK 2.1 — Nyttelast dominerende:\n    KFI x (Gsup + 1,5 x (Qprim + psiQ,0 x Qsek + psiS,0 x S + psiV,0 x V))\n\n  LAK 2.2 — Snelast dominerende:\n    KFI x (Gsup + 1,5 x (psiQ,0 x Q + S + psiV,0 x V))\n\n  LAK 2.3 — Vindlast dominerende:\n    KFI x (Gsup + 1,5 x (psiQ,0 x Q + V))\n\n  LAK 2.4 — Vindlast dominerende (opvaeltning):\n    0,9 x Ginf + 1,5 x KFI x V\n\n  LAK 2.5 — Egenlast dominerende:\n    1,2 x KFI x Gsup\n\nLAK 3: Ulykkesgraensetilstand (brand)\n  LAK 3.1 — Nyttelast primaar:   Gsup + psiQ,1 x Q\n  LAK 3.2 — Snelast primaar:     Gsup + psiQ,2 x Q + psiS,1 x S\n  LAK 3.3 — Vindlast primaar:    Gsup + psiQ,2 x Q + psiV,1 x V\n\nOBS: I tilfaelde af afvigelse fra ovenstaande noteres dette ved den enkelte lastnedfoering.\nKonsekvensklasse CC2: KFI = 1,0' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 6.1 — ULS lastsikkerhedsfaktorer (DS/EN 1990 DK NA:2024, Tabel A1.2(B), STR/GEO)',
+      has_header: true,
+      rows: [
+        ['Formel', 'Udtryk', 'gamma_G,sup', 'gamma_G,inf', 'gamma_Q,1', 'xi (DK NA)'],
+        ['6.10a', 'gamma_G,sup x KFI x Gk + sum(gamma_Q,i x KFI x psi0,i x Qk,i)', '1,35', '1,00', '1,50 x psi0,i', '--'],
+        ['6.10b', 'xi x gamma_G,sup x KFI x Gk + gamma_Q,1 x KFI x Qk,1 + sum(gamma_Q,i x KFI x psi0,i x Qk,i)', '1,35', '1,00', '1,50', '0,89'],
+        ['EQU',   'gamma_G,sup x Gk + gamma_Q,1 x psi0,1 x Qk,1', '1,05', '0,95', '1,50 x psi0,1', '--'],
+        ['GEO',   'Som STR 6.10a/b med geotekniske partialkoefficienter', '1,35', '1,00', '1,50', '0,89'],
+      ]
+    }},
+
+    { id: id++, type: 'heading', data: { level: 3, text: '6.2 Permanente laster' } },
+    { id: id++, type: 'text', data: { text: 'Egenlaster fremgaar generelt af tvaersnittets geometri og nedenstaaende materialevaegte (DS/EN 1991-1-1 Annex A).' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 6.2 — Materialevaegte (DS/EN 1991-1-1 Annex A)',
+      has_header: true,
+      rows: [
+        ['Materiale / konstruktionselement', 'Rumvaegt / fladel.', 'Enhed'],
+        ['Armeret beton (in-situ)', '25,0', 'kN/m3'],
+        ['Uarmeret beton', '24,0', 'kN/m3'],
+        ['Konstruktionsstaal', '78,5', 'kN/m3'],
+        ['Konstruktionstrae C24 (gran/fyr)', '4,2', 'kN/m3'],
+        ['Limtrae GL24c/GL28h', '4,5', 'kN/m3'],
+        ['CLT CL24', '4,2', 'kN/m3'],
+        ['Murvaerk, massivt tegl', '18,0-22,0', 'kN/m3'],
+        ['Gipsplader 13 mm', '0,10', 'kN/m2'],
+        ['Tagsten, beton', '0,50', 'kN/m2'],
+        ['Tagsten, tegl', '0,60', 'kN/m2'],
+        ['Tagpap + 200 mm isolering', '0,15-0,25', 'kN/m2'],
+        ['Terrazzo/flisegulv 20 mm + mortel', '0,60-1,00', 'kN/m2'],
+      ]
+    }},
+
+    { id: id++, type: 'heading', data: { level: 3, text: '6.3 Nyttelast' } },
+    { id: id++, type: 'text', data: { text: 'Nyttelaster fastsaettes iht. DS/EN 1991-1-1 DK NA:2024. Nedenstaaende tabel angiver projektets valgte nyttelaster med psi-faktorer.' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 6.3 — Projektets nyttelaster (lodrette flade- og punktlaster)',
+      has_header: true,
+      rows: [
+        ['Betegnelse', 'Beskrivelse / rum', 'Kat.', 'qk [kN/m2]', 'Qk [kN]', 'psi0', 'psi1 (brand)', 'psi2 (ulykke)'],
+        ['Q01', '[fx Hotelvaerelser / boliger]', 'A', '1,5', '2', '0,5', '0,3', '0,2'],
+        ['Q02', '[fx Altaner]', 'A', '2,5', '2', '0,5', '0,3', '0,2'],
+        ['Q03', '[fx Loftsrum]', 'A', '1,0', '0,5', '0,5', '0,3', '0,2'],
+        ['Q04', '[fx Administration / kontorer]', 'B', '2,5', '2,5', '0,6', '0,4', '0,2'],
+        ['Q05', '[fx Lounge, trapper, gaenge, faelles]', 'C', '5,0', '4', '0,6', '0,6', '0,5'],
+        ['Q06', '[fx Tag — ikke tilgaengeligt]', 'H', '0,5', '1,0', '0', '0', '0'],
+      ]
+    }},
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 6.4 — psi-faktorer for variable laster (DS/EN 1990 DK NA:2024, Tabel A1.1)',
+      has_header: true,
+      rows: [
+        ['Lasttype', 'Lastkategori', 'psi0', 'psi1', 'psi2'],
+        ['Nyttelast — Kat. A', 'Boliger og boligformaal', '0,5', '0,3', '0,2'],
         ['Nyttelast — Kat. B', 'Kontor og administrationsarealer', '0,6', '0,4', '0,2'],
-        ['Nyttelast — Kat. C', 'Forsamlingslokaler (C1–C5)', '0,6', '0,6', '0,5'],
+        ['Nyttelast — Kat. C', 'Forsamlingslokaler (C1-C5)', '0,6', '0,6', '0,5'],
         ['Nyttelast — Kat. D', 'Butikker og forretningsarealer', '0,6', '0,6', '0,5'],
         ['Nyttelast — Kat. E', 'Lagerbygninger', '0,8', '0,8', '0,7'],
-        ['Nyttelast — Kat. F', 'Let trafik ≤ 30 kN (parkering)', '0,6', '0,6', '0,5'],
-        ['Nyttelast — Kat. G', 'Tung trafik > 30 kN', '0,6', '0,4', '0,2'],
-        ['Nyttelast — Kat. H', 'Tage (ikke tilgængeligt)', '0', '0', '0'],
-        ['Snelast (DK)', 'Kombineret m. temperatur / jordskælv', '0,6', '0,2', '0'],
-        ['Snelast (DK)', 'Kombineret med vindlast', '0', '0', '0'],
+        ['Nyttelast — Kat. F', 'Let trafik <= 30 kN (parkering)', '0,6', '0,6', '0,5'],
+        ['Nyttelast — Kat. H', 'Tage (ikke tilgaengeligt)', '0', '0', '0'],
         ['Snelast (DK)', 'Andre kombinationer', '0,3', '0,2', '0'],
-        ['Vindlast (DK)', 'Kombineret med jordskælv', '0,6', '0,2', '0'],
+        ['Snelast (DK)', 'Kombineret med vindlast', '0', '0', '0'],
         ['Vindlast (DK)', 'Andre kombinationer', '0,3', '0,2', '0'],
-        ['Temperaturlast', 'Ikke-brandlast', '0,6', '0,5', '0'],
       ]
     }},
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 7. MATERIALEFORUDSÆTNINGER
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Materialeforudsætninger' } },
-    { id: id++, type: 'text', data: { text: 'Nedenstående karakteristiske materialeegenskaber lægges til grund for dimensioneringen. Slet de materialer der ikke anvendes i dette projekt.' } },
+    { id: id++, type: 'heading', data: { level: 3, text: '6.4 Naturlaster' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '6.4.1 Snelast' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 10 — Karakteristiske materialeegenskaber',
+      caption: 'Tabel 6.5 — Snelastzoner i Danmark (DS/EN 1991-1-3 DK NA, Figur DK.1)',
       has_header: true,
       rows: [
-        ['Material', 'Type / Klasse', 'Styrke', 'E-modul', 'Rumvægt'],
-        ['Beton (EC2)', 'C25/30', 'fck = 25 MPa', 'Ecm = 31 GPa', '25 kN/m³'],
-        ['Beton (EC2)', 'C30/37', 'fck = 30 MPa', 'Ecm = 33 GPa', '25 kN/m³'],
-        ['Beton (EC2)', 'C35/45', 'fck = 35 MPa', 'Ecm = 34 GPa', '25 kN/m³'],
-        ['Armering (EC2)', 'B500 NOR (duktilitetsklasse N)', 'fyk = 500 MPa', 'Es = 200 GPa', '78,5 kN/m³'],
-        ['Konstruktionsstål (EC3)', 'S235 (t ≤ 40 mm)', 'fy = 235 MPa, fu = 360 MPa', 'E = 210 GPa', '78,5 kN/m³'],
-        ['Konstruktionsstål (EC3)', 'S355 (t ≤ 40 mm)', 'fy = 355 MPa, fu = 510 MPa', 'E = 210 GPa', '78,5 kN/m³'],
-        ['Konstruktionsstål (EC3)', 'S355 (40 < t ≤ 80 mm)', 'fy = 335 MPa, fu = 470 MPa', 'E = 210 GPa', '78,5 kN/m³'],
-        ['Konstruktionstræ (EC5)', 'C24 (gran/fyr)', 'fm,k = 24 MPa, fc,0,k = 21 MPa', 'E0,mean = 11 GPa', '4,2 kN/m³'],
-        ['Limtræ (EC5)', 'GL28h (homogen)', 'fm,k = 28 MPa, fc,0,k = 26,5 MPa', 'E0,mean = 12,6 GPa', '4,5 kN/m³'],
-        ['Murværk (EC6)', 'Tegl MU30 + M10', 'fk = K · fb^α · fm^β (beregnes)', '—', '18–22 kN/m³'],
+        ['Zone', 'sk [kN/m2]', 'Geografisk daekkning'],
+        ['1', '0,9', 'Sjaelland, Fyn, Lolland-Falster og de fleste oeer'],
+        ['2', '1,0', 'Det meste af Jylland (ost og centrale dele)'],
+        ['3', '1,1', 'Vest- og nordvestjylland'],
+        ['4', '1,5', 'Bornholm og hojt beliggende lokaliteter'],
       ]
     }},
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 11 — Materialepartialkoefficienter (ULS, DK NA)',
-      has_header: true,
-      rows: [
-        ['Material', 'Koefficient', 'Anvendelse / tilstand', 'Værdi'],
-        ['Beton', 'γC', 'Trykstyrke, bøjning, forskydning (ULS)', '1,50'],
-        ['Armering (stålstænger)', 'γS', 'Flydestyrke (ULS)', '1,15'],
-        ['Stål — tværsnitskapacitet', 'γM0', 'Plasticitet, flydning', '1,00'],
-        ['Stål — instabilitet', 'γM1', 'Knækning, kipning, vipping', '1,00'],
-        ['Stål — brud i nettotværsnit', 'γM2', 'Træk­brud, nettotværsnit ved huller', '1,25'],
-        ['Stål — bolte og svejsning', 'γM2', 'Forbindelsesmidler', '1,25'],
-        ['Stål — glidning (kat. B/C)', 'γM3', 'Friktionsforbindelser', '1,25'],
-        ['Konstruktionstræ', 'γM', 'ULS, generelt', '1,30'],
-        ['Limtræ', 'γM', 'ULS, generelt', '1,25'],
-        ['Murværk (kat. I mørtel, anv.b.)', 'γM', 'Trykstyrke (ULS)', '2,50'],
-        ['Murværk (kat. II mørtel)', 'γM', 'Trykstyrke (ULS)', '3,00'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Kryb og svind (beton): Krybtal φ = … og svindtøjning εcs = … fastsættes i henhold til DS/EN 1992-1-1 §3.1.4 baseret på beton­klasse, fugtforhold og belastningsalder.\n\nServiceklasse (træ, EC5): SC [1 / 2 / 3] — [indendørs tørt / indendørs fugtigt / udendørs].\nkmod-faktor: [0,6 / 0,7 / 0,8 / 0,9 / 1,1] afhænger af serviceklasse og lastens varighed.' } },
+    { id: id++, type: 'text', data: { text: 'Grundet tagets udformning:\n  Snezone: Zone [1/2/3/4]   sk = ... kN/m2\n  Tagtype: [ensidig / tosidig / fladt]   Haeldning: alpha = ... grader\n  Formfaktor: my1 = ... (fra DK NA Figur DK.3)\n  Karakteristisk tagsnelast: s = my1 x Ce x Ct x sk = ... kN/m2\n\n[Beskriv evt. saerlige snelastforhold — snestriber, trug, etc.]' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '6.4.2 Vindlast' } },
+    { id: id++, type: 'text', data: { text: 'Vindlast beregnes iht. DS/EN 1991-1-4 DK NA:2024.\n\n  Referencebasisvindhastighed: vb,0 = 24 m/s\n  Terrankategori: [0 / I / II / III / IV]   (0=hav, II=normal, IV=taet bybebyggelse)\n  Referencehojde: zref = ... m\n  Karakteristisk vindhastighedstryk: qp = ... kN/m2\n\nFormfaktorer og vindtryk fremgaar af A2. [Henvis evt. til bilag.]' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '6.5 Geometriske imperfektioner' } },
+    { id: id++, type: 'text', data: { text: '[Ikke relevant — slet / Alternativt: beskriv indledende kraengning phi_0 og reduktionsfaktor alpha_h iht. DS/EN 1993-1-1 §5.3 (staal) eller DS/EN 1992-1-1 §5.2 (beton)]' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '6.6 Ulykkeslaster' } },
+    { id: id++, type: 'text', data: { text: 'Uidentificerede ulykkeslaster (robusthed) er gennemgaaet i afsnit 4.5.\nKonstruktioner med krav om brandbaerevne undersoeges i ulykkesgraensetilstand (LAK 3).\n\nPaakorsels-/eksplosionslast: [Ikke relevant / Ad = ... kN ved parkering og gennemkorsel]' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '6.7 Seismisk last' } },
+    { id: id++, type: 'text', data: { text: 'Ikke relevant — seismisk hazard er negligibel i Danmark.' } },
+
+    { id: id++, type: 'heading', data: { level: 3, text: '6.8 Midlertidige laster' } },
+    { id: id++, type: 'text', data: { text: '[Ikke relevant — slet / Alternativt: beskriv udforelseslaster iht. DS/EN 1991-1-6, fx last fra stilladser, kraner, stoebning af overliggende etage]' } },
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 8. GEOTEKNISKE FORUDSÆTNINGER
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Geotekniske forudsætninger' } },
-    { id: id++, type: 'text', data: { text: 'Geoteknisk kategori: GK[1/2/3] (DS/EN 1997-1)\nJordklasse: [JK0 / JK1 / JK2 / JK3 / JK4] (DS/EN 1997-1 DK NA, efter komprimering)\n\nFunderingsforhold:\n  Bæredygtig jordbundsydelse: σ = … kN/m² (fra geoteknisk rapport)\n  Fundamentskote (underkant): +… m DVR90 (ca. … m under eksisterende terræn)\n  Frostfridybde: 0,9 m (DK NA til DS/EN 1997-1)\n  Grundvandskote: +… m DVR90 (frihøjde: … m under fundamentunderkant)\n\nJordparametre (karakteristiske værdier fra geoteknisk rapport):\n  Friktionsvinkel: φk = … °\n  Kohæsion: ck = … kPa\n  Effektiv rumvægt: γk = … kN/m³  (over GVS) / … kN/m³  (nedsænket)\n\nReference: [Geoteknisk rapport, firma, rapport nr., dato]' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 12 — Geotekniske partialkoefficienter (DS/EN 1997-1 + DK NA, Tilgang 2)',
-      has_header: true,
-      rows: [
-        ['Parameter', 'Symbol', 'A1 (ULS)', 'A2 (GEO)', 'Bemærkning'],
-        ['Egenlast (ugunstig)', 'γG', '1,35', '1,00', 'Multiplier med KFI'],
-        ['Variabel last (ugunstig)', 'γQ', '1,50', '1,30', 'Multiplier med KFI'],
-        ['Friktionsvinkel (tan φ)', 'γφ', '1,00', '1,25', 'R2 modstandsfaktorer'],
-        ['Kohæsion', 'γc', '1,00', '1,25', ''],
-        ['Bæreevnemodstand', 'γRv', '—', '1,40', 'Tilgang 2 (DA2)'],
-        ['Glidningsmodstand', 'γRh', '—', '1,10', 'Tilgang 2 (DA2)'],
-      ]
-    }},
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 9. SÆRLIGE FORUDSÆTNINGER OG BEGRÆNSNINGER
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Særlige forudsætninger og begrænsninger' } },
-    { id: id++, type: 'text', data: { text: 'Følgende særlige forudsætninger og begrænsninger gælder for projektet:\n\n1. Disse beregninger forudsætter, at samtlige konstruktionstegninger (A3) overholdes præcist under udførelsen. Afvigelser skal godkendes skriftligt af den projekterende.\n\n2. Fundaments­dimensioner og -kote forudsættes bekræftet af geoteknisk rådgiver inden udførelse.\n\n3. Ændringer i anvendelse (laststørrelse eller lastkategori) kræver ny statisk vurdering.\n\n4. Modifikationer af bærende konstruktioner under udførelse må ikke foretages uden godkendelse fra den projekterende ingeniør.\n\n5. [Eventuelle yderligere særlige forudsætninger beskrives her]' } },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 10. REFERENCEDOKUMENTER
+    // REFERENCEDOKUMENTER
     // ─────────────────────────────────────────────────────────────────────────
     { id: id++, type: 'heading', data: { level: 2, text: 'Referencedokumenter' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 13 — Projektdokumenter og referencer',
+      caption: 'Tabel 7.1 — Projektdokumenter og referencer',
       has_header: true,
       rows: [
         ['Dok. nr.', 'Titel', 'Udstedt af', 'Dato / Rev.'],
@@ -426,15 +440,15 @@ function makeA1Template() {
         ['B2', 'Statisk kontrolplan', '', ''],
         ['B3', 'Statisk kontrolrapport', '', ''],
         ['GEO-01', 'Geoteknisk rapport', '', ''],
-        ['ARK-01', 'Arkitekttegninger (grundlag)', '', ''],
+        ['ARK-01', 'Arkitekttegninger', '', ''],
       ]
     }},
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 11. GODKENDELSE
+    // GODKENDELSE
     // ─────────────────────────────────────────────────────────────────────────
     { id: id++, type: 'heading', data: { level: 2, text: 'Godkendelse' } },
-    { id: id++, type: 'text', data: { text: 'Konstruktionsgrundlaget (A1) er udarbejdet og kontrolleret i henhold til DS 1140 og giver grundlag for de statiske beregninger (A2).\n\nUdarbejdet af:  ___________________________  Dato: ____________\n               Navn, titel\n\nKontrolleret af: ___________________________  Dato: ____________\n               Navn, titel (uvildig kontrollant, KK2)\n\nGodkendt af:   ___________________________  Dato: ____________\n               Navn, stilling' } },
+    { id: id++, type: 'text', data: { text: 'Konstruktionsgrundlaget (A1) er udarbejdet og kontrolleret iht. DS 1140 og giver grundlag for de statiske beregninger (A2).\n\nUdarbejdet af:   ___________________________   Dato: ____________\n                Navn, titel\n\nKontrolleret af: ___________________________   Dato: ____________\n                Navn, titel (uvildig kontrollant, KK2)\n\nGodkendt af:    ___________________________   Dato: ____________\n                Navn, stilling' } },
   ]
 }
 
