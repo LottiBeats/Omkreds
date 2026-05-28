@@ -748,12 +748,12 @@ def build_story(all_blocks, styles):
                           Paragraph(_fmt(formula),  styles["hc_sym"]),
                           Paragraph("=",            styles["hc_eq"]),
                           Paragraph(_fmt(result),   styles["hc_res"])]
-                widths = [26*mm, 4*mm, 80*mm, 4*mm, 36*mm]
+                widths = [36*mm, 4*mm, 70*mm, 4*mm, 36*mm]
             else:
                 cells  = [Paragraph(_fmt(name),    styles["hc_var"]),
                           Paragraph("=",            styles["hc_eq"]),
                           Paragraph(_fmt(result),   styles["hc_res"])]
-                widths = [26*mm, 4*mm, 120*mm]
+                widths = [36*mm, 4*mm, 110*mm]
 
             # No fixed rowHeights — let ReportLab auto-size so long values
             # (e.g. "Class 1 — plastic (full rotation capacity)") wrap cleanly

@@ -218,7 +218,7 @@ def load_combos(
                           + psi1[lead] * Q[lead]
                           + sum(psi2[i] * Q[i] for i in others))
                 als_vals.append((f"ALS fire — {loads[lead]['label']}",
-                                 f"G + A_d + ψ₁·Q₁ + Σψ₂·…", Ed_als, lead))
+                                 f"G + A_d + ψ_1·Q_1 + Σ ψ_2·…", Ed_als, lead))
         else:  # other accident
             Ed_als = G_k + A_d + sum(psi2[i] * Q[i] for i in range(n))
             als_vals.append(("ALS other",
@@ -232,7 +232,7 @@ def load_combos(
         blocks.append(CALC_ROW("E_d,ALS", "= max above", f"{E_d_acc:.3f}  {unit}"))
         blocks.append(N(
             f"ALS partial factors: γ_G = γ_Q = 1.0.  "
-            f"{'Fire: ψ₁ for leading Q, ψ₂ for others.' if accidental_type == 'fire' else 'Other accident: ψ₂ for all variable actions.'}"
+            f"{'Fire: ψ_1 for leading Q, ψ_2 for others.' if accidental_type == 'fire' else 'Other accident: ψ_2 for all variable actions.'}"
             f"  (DS/EN 1990 DK NA Table A1.3)"
         ))
 
@@ -256,9 +256,9 @@ def load_combos(
 
     E_d_sls_qp = G_k + sum(psi2[i] * Q[i] for i in range(n))
 
-    blocks.append(CALC_ROW("Characteristic",    "G_k + Q₁ + Σ ψ₀·Qᵢ",        f"{E_d_sls_char:.3f}  {unit}"))
-    blocks.append(CALC_ROW("Frequent",          "G_k + ψ₁·Q₁ + Σ ψ₂·Qᵢ",     f"{E_d_sls_freq:.3f}  {unit}"))
-    blocks.append(CALC_ROW("Quasi-permanent",   "G_k + Σ ψ₂·Qᵢ",             f"{E_d_sls_qp:.3f}   {unit}"))
+    blocks.append(CALC_ROW("Characteristic",    "G_k + Q_1 + Σ ψ_0·Q_i",      f"{E_d_sls_char:.3f}  {unit}"))
+    blocks.append(CALC_ROW("Frequent",          "G_k + ψ_1·Q_1 + Σ ψ_2·Q_i",  f"{E_d_sls_freq:.3f}  {unit}"))
+    blocks.append(CALC_ROW("Quasi-permanent",   "G_k + Σ ψ_2·Q_i",            f"{E_d_sls_qp:.3f}   {unit}"))
 
     # ── Summary ───────────────────────────────────────────────────────────────
     blocks.append(S("Summary"))
