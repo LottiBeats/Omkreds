@@ -5,23 +5,18 @@
  *   direct  — user enters g_k / q_k (default, backwards compatible)
  *   combo   — reads E_d_uls from a Load Combo block; M_Ed = w·L²/8
  *   fem     — reads M_Ed and V_Ed directly from a Beam FEM block's results
- *             (more accurate for non-simple spans, continuous beams, point loads)
+ *
+ * Section source:
+ *   catalog — type any section name from the built-in catalog
+ *             (IPE300, HEA200, L100x100x10, UPE200, RHS100x60x5, etc.)
+ *   manual  — enter W_pl,y / W_el,y / I_y / h directly from a table
+ *             (for non-catalog sections, L-profiles, custom fabrications)
  */
 import React, { useState } from 'react'
 import { calcSteelBeam } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
-
-const SECTIONS = [
-  'IPE100','IPE120','IPE140','IPE160','IPE180','IPE200',
-  'IPE220','IPE240','IPE270','IPE300','IPE330','IPE360',
-  'IPE400','IPE450','IPE500','IPE550','IPE600',
-  'HEA100','HEA120','HEA140','HEA160','HEA180','HEA200',
-  'HEA220','HEA240','HEA260','HEA280','HEA300','HEA320','HEA340','HEA360','HEA400',
-  'HEB100','HEB120','HEB140','HEB160','HEB180','HEB200',
-  'HEB220','HEB240','HEB260','HEB280','HEB300','HEB320','HEB340','HEB360','HEB400',
-]
 
 const GRADES = ['S235', 'S275', 'S355', 'S420', 'S460']
 
@@ -34,7 +29,8 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
     onChange({ ...block, data: { ...d, ...changes } })
   }
 
-  const source = d.load_source ?? 'direct'
+  const source  = d.load_source    ?? 'direct'
+  const secSrc  = d.section_source ?? 'catalog'  // 'catalog' | 'manual'
 
   // ── Combo source ──────────────────────────────────────────────────────────
   const comboBlocks = blocks.filter(b => b.type === 'load_combo')
@@ -72,6 +68,17 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
         deflection_limit:  d.deflection_limit   ?? 200,
       }
 
+      // ── Manual section properties ─────────────────────────────────────────
+      if (secSrc === 'manual') {
+        payload.manual_Wply_cm3       = d.manual_Wply_cm3 ?? null
+        payload.manual_Wely_cm3       = d.manual_Wely_cm3 ?? null
+        payload.manual_Iy_cm4         = d.manual_Iy_cm4   ?? null
+        payload.manual_h_mm           = d.manual_h_mm     ?? null
+        payload.manual_tw_mm          = d.manual_tw_mm    ?? null
+        payload.use_elastic_modulus   = d.use_elastic_modulus ?? false
+      }
+
+      // ── Load source ───────────────────────────────────────────────────────
       if (source === 'combo' && comboExp) {
         payload.w_Ed_kNm    = comboExp.E_d_uls
         payload.combo_label = selCombo?.data?.label ?? ''
@@ -192,16 +199,96 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
         </Field>
       </>)}
 
-      {/* ── Section / geometry (always shown) ── */}
+      {/* ══ Section source toggle ══════════════════════════════════════════════ */}
+      <Field label="Section properties" style={{ gridColumn: '1/-1' }}>
+        <div style={{ display: 'flex', gap: 16, padding: '2px 0' }}>
+          <label style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <input type="radio" name={`secsrc-${block.id}`}
+              value="catalog" checked={secSrc === 'catalog'}
+              onChange={() => update({ section_source: 'catalog' })} />
+            Catalog  (type section name)
+          </label>
+          <label style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <input type="radio" name={`secsrc-${block.id}`}
+              value="manual" checked={secSrc === 'manual'}
+              onChange={() => update({ section_source: 'manual' })} />
+            Manual  (enter W_pl / W_el from table)
+          </label>
+        </div>
+      </Field>
+
+      {/* ── Catalog: free-text section name ── */}
+      {secSrc === 'catalog' && (
+        <Field label="Section" hint="e.g. IPE300, HEA200, L100x100x10, UPE200">
+          <input style={s.input}
+            value={d.section ?? 'IPE300'}
+            placeholder="IPE300"
+            onChange={e => update({ section: e.target.value.toUpperCase().replace(/\s/g, '') })} />
+        </Field>
+      )}
+
+      {/* ── Manual: section label + property inputs ── */}
+      {secSrc === 'manual' && (<>
+        <Field label="Section name" hint="Label for the report (e.g. L100×100×10)">
+          <input style={s.input}
+            value={d.section ?? ''}
+            placeholder="e.g. L100×100×10"
+            onChange={e => update({ section: e.target.value })} />
+        </Field>
+
+        {/* Modulus selector */}
+        <Field label="Modulus to use" hint="EC3 §6.2.5" style={{ gridColumn: '1/-1' }}>
+          <div style={{ display: 'flex', gap: 16, padding: '2px 0' }}>
+            <label style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <input type="radio" name={`mod-${block.id}`}
+                value="plastic" checked={!(d.use_elastic_modulus ?? false)}
+                onChange={() => update({ use_elastic_modulus: false })} />
+              W_pl,y — plastic  (Class 1 or 2)
+            </label>
+            <label style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <input type="radio" name={`mod-${block.id}`}
+                value="elastic" checked={d.use_elastic_modulus ?? false}
+                onChange={() => update({ use_elastic_modulus: true })} />
+              W_el,y — elastic  (Class 3 or angle sections)
+            </label>
+          </div>
+        </Field>
+
+        {/* Plastic modulus */}
+        <Field label="W_pl,y (cm³)" hint="Plastic section modulus">
+          <NumericInput style={s.input} value={d.manual_Wply_cm3 ?? ''}
+            onChange={v => update({ manual_Wply_cm3: v })} />
+        </Field>
+
+        {/* Elastic modulus */}
+        <Field label="W_el,y (cm³)" hint="Elastic section modulus">
+          <NumericInput style={s.input} value={d.manual_Wely_cm3 ?? ''}
+            onChange={v => update({ manual_Wely_cm3: v })} />
+        </Field>
+
+        {/* I_y */}
+        <Field label="I_y (cm⁴)" hint="For deflection check">
+          <NumericInput style={s.input} value={d.manual_Iy_cm4 ?? ''}
+            onChange={v => update({ manual_Iy_cm4: v })} />
+        </Field>
+
+        {/* h */}
+        <Field label="h (mm)" hint="Section height — for shear check">
+          <NumericInput style={s.input} value={d.manual_h_mm ?? ''}
+            onChange={v => update({ manual_h_mm: v })} />
+        </Field>
+
+        {/* t_w — optional */}
+        <Field label="t_w (mm)" hint="Web / leg thickness  (optional)">
+          <NumericInput style={s.input} value={d.manual_tw_mm ?? ''}
+            onChange={v => update({ manual_tw_mm: v })} />
+        </Field>
+      </>)}
+
+      {/* ── Grade + geometry (always shown) ── */}
       <Field label="Label">
         <input style={s.input} value={d.label ?? 'S1'}
           onChange={e => update({ label: e.target.value })} />
-      </Field>
-      <Field label="Section">
-        <select style={s.input} value={d.section ?? 'IPE300'}
-          onChange={e => update({ section: e.target.value })}>
-          {SECTIONS.map(sec => <option key={sec}>{sec}</option>)}
-        </select>
       </Field>
       <Field label="Grade">
         <select style={s.input} value={d.grade ?? 'S355'}

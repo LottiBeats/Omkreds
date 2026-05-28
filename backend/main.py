@@ -453,6 +453,15 @@ class SteelBeamInput(BaseModel):
     buck_y_restrained:  bool  = False
     buck_x_restrained:  bool  = False
     deflection_limit:   int   = 200          # L/n SLS limit (200 = final, 350 = net, 500 = finish)
+    # Manual section properties — bypasses the catalog lookup.
+    # Useful for L-profiles, channels, hollow sections, or custom fabrications
+    # where the user reads W_pl / W_el / I_y from a published table.
+    manual_Wply_cm3:      float | None = None  # plastic section modulus W_pl,y [cm³]
+    manual_Wely_cm3:      float | None = None  # elastic section modulus W_el,y [cm³]
+    manual_Iy_cm4:        float | None = None  # second moment of area I_y [cm⁴]
+    manual_h_mm:          float | None = None  # section height h [mm]
+    manual_tw_mm:         float | None = None  # web / leg thickness t_w [mm] (optional)
+    use_elastic_modulus:  bool          = False # True → use W_el,y; False → use W_pl,y
 
 
 @protected.post("/calc/steel-beam", tags=["Calculations"])
@@ -470,21 +479,48 @@ def calc_steel_beam(data: SteelBeamInput):
         fy_map = {"S235": 235, "S275": 275, "S355": 355, "S420": 420, "S460": 460}
         f_y = fy_map.get(data.grade.upper(), 355) * MPa
 
-        # Look up section properties from the catalog
-        db = load_steel_profiles()
-        key = data.section.strip().upper().replace(" ", "")
-        if key not in db:
-            raise HTTPException(status_code=422, detail=f"Section '{data.section}' not in catalog")
-        sec = db[key]
-
-        W_ply = sec["Wply_cm3"]  * 1e-6 * m**3   # cm³ → m³
-        h     = sec["h_mm"]      * 1e-3 * m
-        t_w   = sec["tw_mm"]     * 1e-3 * m
-        b     = sec["b_mm"]      * 1e-3 * m
-        t_f   = sec["tf_mm"]     * 1e-3 * m
-        Iy    = sec["Iy_cm4"]    * 1e-8 * m**4  # cmâ´ → mâ´  (needed for W_el in Class 3)
-
         span_fp = data.span_m * m
+
+        # ── Section properties ────────────────────────────────────────────────
+        # Manual mode: user supplies W_pl,y / W_el,y / I_y from a published
+        # table (EN 10056, SBI tables, etc.).  Cross-section classification is
+        # skipped; the user selects which modulus applies explicitly.
+        manual_mode = (
+            data.manual_Wply_cm3 is not None or
+            data.manual_Wely_cm3 is not None
+        )
+
+        if manual_mode:
+            Wpl_cm3   = data.manual_Wply_cm3 or data.manual_Wely_cm3
+            Wel_cm3   = data.manual_Wely_cm3 or data.manual_Wply_cm3
+            # Choose which modulus to use for bending resistance
+            W_eff_cm3 = Wel_cm3 if data.use_elastic_modulus else Wpl_cm3
+            W_ply = W_eff_cm3 * 1e-6 * m**3
+            h     = (data.manual_h_mm  * 1e-3 * m) if data.manual_h_mm  else None
+            t_w   = (data.manual_tw_mm * 1e-3 * m) if data.manual_tw_mm else None
+            Iy    = (data.manual_Iy_cm4 * 1e-8 * m**4) if data.manual_Iy_cm4 else None
+            b     = None   # no flange width → cross-section classification skipped
+            t_f   = None
+        else:
+            # Catalog lookup — accepts any key from steel_profiles.csv
+            db = load_steel_profiles()
+            key = data.section.strip().upper().replace(" ", "")
+            if key not in db:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Section '{data.section}' not found in catalog. "
+                        "L-profiles: use e.g. L100X100X10. "
+                        "Or switch to 'Manual' mode and enter W_pl / W_el / I_y directly."
+                    )
+                )
+            sec = db[key]
+            W_ply = sec["Wply_cm3"] * 1e-6 * m**3
+            h     = sec["h_mm"]     * 1e-3 * m
+            t_w   = sec["tw_mm"]    * 1e-3 * m
+            b     = sec["b_mm"]     * 1e-3 * m
+            t_f   = sec["tf_mm"]    * 1e-3 * m
+            Iy    = sec["Iy_cm4"]   * 1e-8 * m**4
 
         kwargs_sb: dict = dict(
             label         = data.label,
@@ -505,6 +541,8 @@ def calc_steel_beam(data: SteelBeamInput):
             buck_y_restrained  = data.buck_y_restrained,
             buck_x_restrained  = data.buck_x_restrained,
             deflection_limit   = data.deflection_limit,
+            manual_mode        = manual_mode,
+            use_elastic        = data.use_elastic_modulus if manual_mode else False,
         )
         if data.ltb_length_m is not None and not data.ltb_restrained:
             kwargs_sb["l_cr_ltb"] = data.ltb_length_m * m

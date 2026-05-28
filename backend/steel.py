@@ -41,6 +41,8 @@ def steel_beam_ipe(
     buck_y_restrained=False,
     buck_x_restrained=False,
     deflection_limit=200,
+    manual_mode=False,    # True → user supplied properties directly; skip classification
+    use_elastic=False,    # True → W_ply argument is actually W_el,y (elastic modulus)
 ):
     if f_y is None:
         f_y = 355 * MPa
@@ -56,24 +58,42 @@ def steel_beam_ipe(
         f"Simply supported {section}, span {span}. "
         f"Steel grade S{float(f_y / MPa):.0f}. Loads per EN 1990/EN 1991-1-1."
     ))
+
+    # W label depends on whether elastic or plastic modulus was supplied
+    _W_label   = "W_el,y" if use_elastic else "W_pl,y"
+    _W_hint    = "elastic modulus" if use_elastic else "plastic modulus"
+
     blocks.extend([
-        CALC_ROW("Section",  "",                   section),
-        CALC_ROW("L",        "span",               str(span)),
-        CALC_ROW("g_k",      "permanent load",     str(g_k)),
-        CALC_ROW("q_k",      "variable load",      str(q_k)),
-        CALC_ROW("W_pl,y",   "plastic modulus",    str(W_ply)),
-        CALC_ROW("h",        "section height",     str(h)),
+        CALC_ROW("Section",    "",              section),
+        CALC_ROW("L",          "span",          str(span)),
+        CALC_ROW("g_k",        "permanent load",str(g_k)),
+        CALC_ROW("q_k",        "variable load", str(q_k)),
+        CALC_ROW(_W_label,     _W_hint,         str(W_ply)),
     ])
+    if h is not None:
+        blocks.append(CALC_ROW("h", "section height", str(h)))
     if b is not None:
         blocks.append(CALC_ROW("b",    "flange width",     str(b)))
     if t_f is not None:
         blocks.append(CALC_ROW("t_f",  "flange thickness", str(t_f)))
+    if t_w is not None:
+        blocks.append(CALC_ROW("t_w",  "web thickness",    str(t_w)))
     blocks.extend([
-        CALC_ROW("t_w",      "web thickness",      str(t_w)),
         CALC_ROW("f_y",      "yield strength",     str(f_y)),
         CALC_ROW("γ_M0",     "",                   f"{gamma_M0:.2f}"),
         CALC_ROW("γ_M1",     "",                   f"{gamma_M1:.2f}"),
     ])
+
+    if manual_mode:
+        modulus_note = (
+            "W_el,y used — elastic bending resistance (Class 3 or user-selected)."
+            if use_elastic
+            else "W_pl,y used — plastic bending resistance (user-specified, Class 1/2 assumed)."
+        )
+        blocks.append(N(
+            f"Section properties entered manually from table. {modulus_note} "
+            "Cross-section classification not performed — verify class independently."
+        ))
     if l_cr_ltb is not None and not ltb_restrained:
         blocks.append(CALC_ROW("L_cr",  "eff. LTB length",   str(l_cr_ltb)))
         blocks.append(CALC_ROW("C₁",    "moment factor",     str(C1)))
@@ -205,10 +225,13 @@ def steel_beam_ipe(
                           figure_caption or "Moment, shear and deflection overlays from beam analysis."))
 
     # ── Bending resistance ────────────────────────────────────────────────────
-    _W_label = "Elastic" if section_class == 3 else "Plastic"
+    # For manual mode the user explicitly chose the modulus; for catalog mode
+    # the classification result drives it.
+    _using_elastic = use_elastic if manual_mode else (section_class == 3)
+    _W_label       = "Elastic" if _using_elastic else "Plastic"
     blocks.append(S(f"Bending resistance ({_W_label}) — EN 1993-1-1 cl. 6.2.5"))
 
-    _modulus_note = "W_el,y" if section_class == 3 else "W_pl,y"
+    _modulus_note = "W_el,y" if _using_elastic else "W_pl,y"
     M_Rk = W_eff * f_y
     M_Rd = M_Rk / gamma_M0
     blocks.extend([
@@ -222,31 +245,48 @@ def steel_beam_ipe(
 
     # EN 1993-1-1 §6.2.6(3): A_v = A − 2b·t_f + (t_w + 2r)·t_f ≥ η·h_w·t_w
     # Fillet radius r not stored in catalog → conservative: A_v ≈ (h − t_f)·t_w
-    # (equivalent to A − 2b·t_f + t_w·t_f with A = 2b·t_f + h_w·t_w)
-    if b is not None and t_f is not None:
+    V_Rd = None  # set below; None means shear check was skipped
+    if b is not None and t_f is not None and t_w is not None:
         A_v  = (h - t_f) * t_w
         h_w  = h - 2 * t_f
         A_v_min = h_w * t_w              # η·h_w·t_w, η = 1.0
         if float(A_v) < float(A_v_min):
             A_v = A_v_min
         av_note = "= (h − t_f)·t_w  [EN 1993-1-1 §6.2.6(3), fillet neglected]"
+        V_Rk = A_v * f_y / 3**0.5
+        V_Rd = V_Rk / gamma_M0
+        blocks.extend([
+            CALC_ROW("A_v",  av_note,          str(A_v)),
+            CALC_ROW("V_Rk", "= A_v·f_y/√3",  str(V_Rk)),
+            CALC_ROW("V_Rd", "= V_Rk / γ_M0", str(V_Rd)),
+        ])
+        blocks.append(cc.check("Shear check: V_Ed / V_Rd", V_Ed, V_Rd))
+        blocks.append(N(
+            "Shear area A_v per EN 1993-1-1 §6.2.6(3). Fillet radius r not stored in the "
+            "section catalog — r is conservatively set to zero, giving A_v = (h − t_f)·t_w. "
+            "With actual fillets, A_v (and hence V_Rd) is slightly larger."
+        ))
+    elif h is not None and t_w is not None:
+        # Manual mode with h and t_w provided — simplified shear area
+        A_v     = h * t_w
+        av_note = "= h·t_w  [simplified — flange not separated]"
+        V_Rk = A_v * f_y / 3**0.5
+        V_Rd = V_Rk / gamma_M0
+        blocks.extend([
+            CALC_ROW("A_v",  av_note,          str(A_v)),
+            CALC_ROW("V_Rk", "= A_v·f_y/√3",  str(V_Rk)),
+            CALC_ROW("V_Rd", "= V_Rk / γ_M0", str(V_Rd)),
+        ])
+        blocks.append(cc.check("Shear check: V_Ed / V_Rd", V_Ed, V_Rd))
+        blocks.append(N(
+            "Simplified shear area A_v = h·t_w used (flange geometry not provided). "
+            "For I-sections and angles verify A_v per EN 1993-1-1 §6.2.6(3)."
+        ))
     else:
-        A_v  = h * t_w
-        av_note = "= h·t_w  [simplified — section dims not available]"
-
-    V_Rk = A_v * f_y / 3**0.5
-    V_Rd = V_Rk / gamma_M0
-    blocks.extend([
-        CALC_ROW("A_v",  av_note,          str(A_v)),
-        CALC_ROW("V_Rk", "= A_v·f_y/√3",  str(V_Rk)),
-        CALC_ROW("V_Rd", "= V_Rk / γ_M0", str(V_Rd)),
-    ])
-    blocks.append(cc.check("Shear check: V_Ed / V_Rd", V_Ed, V_Rd))
-    blocks.append(N(
-        "Shear area A_v per EN 1993-1-1 §6.2.6(3). Fillet radius r not stored in the "
-        "section catalog — r is conservatively set to zero, giving A_v = (h − t_f)·t_w. "
-        "With actual fillets, A_v (and hence V_Rd) is slightly larger."
-    ))
+        blocks.append(N(
+            "Shear check skipped — h or t_w not provided. "
+            "Enter h (mm) and t_w (mm) in the block to enable the shear check."
+        ))
 
     # ── Shear buckling susceptibility — EN 1993-1-1 cl. 6.2.6(6) ─────────────
     blocks.append(S("Shear buckling susceptibility — EN 1993-1-1 cl. 6.2.6(6)"))
@@ -282,17 +322,25 @@ def steel_beam_ipe(
     # ── Combined bending and shear — EN 1993-1-1 cl. 6.2.8 ───────────────────
     blocks.append(S("Combined bending and shear — EN 1993-1-1 cl. 6.2.8"))
 
-    half_V_Rd = 0.5 * V_Rd
-    blocks.extend([
-        CALC_ROW("V_Ed",     "design shear force",  str(V_Ed)),
-        CALC_ROW("0.5·V_Rd", "= 0.5 × V_pl,Rd",    str(half_V_Rd)),
-    ])
-    if float(V_Ed) <= float(half_V_Rd):
+    if V_Rd is None:
+        blocks.append(N(
+            "Combined bending+shear check skipped — V_Rd not computed "
+            "(shear area h and t_w not provided)."
+        ))
+    elif float(V_Ed) <= float(0.5 * V_Rd):
+        blocks.extend([
+            CALC_ROW("V_Ed",     "design shear force",  str(V_Ed)),
+            CALC_ROW("0.5·V_Rd", "= 0.5 × V_pl,Rd",    str(0.5 * V_Rd)),
+        ])
         blocks.append(N(
             "V_Ed ≤ 0.5·V_pl,Rd — no reduction to bending resistance is required "
             "(cl. 6.2.8(2)). Cross-section bending resistance M_Rd governs."
         ))
     else:
+        blocks.extend([
+            CALC_ROW("V_Ed",     "design shear force",  str(V_Ed)),
+            CALC_ROW("0.5·V_Rd", "= 0.5 × V_pl,Rd",    str(0.5 * V_Rd)),
+        ])
         if b is not None and t_f is not None:
             rho_mv  = (2.0 * float(V_Ed / V_Rd) - 1.0) ** 2
             h_w_mv  = h - 2 * t_f
