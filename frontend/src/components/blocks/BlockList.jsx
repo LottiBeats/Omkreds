@@ -12,6 +12,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 
 import HeadingBlock      from './HeadingBlock.jsx'
+import TableBlock        from './TableBlock.jsx'
 import TextBlock         from './TextBlock.jsx'
 import ImageBlock        from './ImageBlock.jsx'
 import PythonBlock       from './PythonBlock.jsx'
@@ -45,6 +46,8 @@ const BLOCK_TYPES = [
     default: { text: '' } },
   { type: 'image',         label: 'Image',             icon: 'IMG', color: '#64748b', component: ImageBlock,
     default: { image_b64: null, caption: '', width_pct: 100 } },
+  { type: 'table',         label: 'Table',             icon: 'TBL', color: '#64748b', component: TableBlock,
+    default: { caption: '', has_header: true, rows: [['Kolonne 1', 'Kolonne 2'], ['', '']] } },
   { type: 'custom_calc',   label: 'Custom calc',       icon: 'CLC', color: '#7c3aed', component: CustomCalcBlock,
     default: { title: 'Custom Calculation', items: [], _result: null } },
   { type: 'python_calc',   label: 'Python script',     icon: 'PY',  color: '#0284c7', component: PythonBlock,
@@ -165,7 +168,7 @@ const TYPE_MAP = Object.fromEntries(BLOCK_TYPES.map(t => [t.type, t]))
 const PANEL_GROUPS = [
   {
     label: 'Content',
-    types: ['heading', 'text', 'image'],
+    types: ['heading', 'text', 'image', 'table'],
   },
   {
     label: 'Loads  (EN 1990)',
@@ -245,6 +248,36 @@ function BlockPreview({ block }) {
             {d.caption && <p style={{ fontSize: 12, color: '#888', marginTop: 6, fontStyle: 'italic' }}>{d.caption}</p>}
           </div>
         : <div style={{ color: '#bbb', fontSize: 13, padding: '10px 0' }}>🖼 Click to add an image</div>
+
+    case 'table': {
+      const rows = d.rows ?? []
+      const numCols = rows[0]?.length ?? 0
+      return (
+        <div>
+          {d.caption && <p style={{ fontSize: 11, color: '#888', marginBottom: 4, fontStyle: 'italic' }}>{d.caption}</p>}
+          <table style={{ borderCollapse: 'collapse', fontSize: 11, width: '100%' }}>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri} style={ri % 2 === 1 && !(d.has_header && ri === 0) ? { background: '#f8fafc' } : {}}>
+                  {row.map((cell, ci) => (
+                    <td key={ci} style={{
+                      padding: '3px 6px',
+                      border: '1px solid #e2e8f0',
+                      background: d.has_header && ri === 0 ? '#1e3a5f' : undefined,
+                      color:      d.has_header && ri === 0 ? '#fff' : '#1c1c1e',
+                      fontWeight: d.has_header && ri === 0 ? 700 : undefined,
+                    }}>{cell || '—'}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>
+            {rows.length} rækker · {numCols} kolonner
+          </p>
+        </div>
+      )
+    }
 
     case 'control_plan': {
       const isReport = d.mode === 'report'

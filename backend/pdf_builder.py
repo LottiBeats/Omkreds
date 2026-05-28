@@ -188,6 +188,81 @@ def _beam_fem_block(block: dict, tmp_files: list) -> list:
     return flat
 
 
+# ── Editable table block ─────────────────────────────────────────────────────
+
+def _table_block(block: dict) -> list:
+    """
+    Render a user-created table block as a PDF table.
+    Data shape: { caption, has_header, rows: str[][] }
+    """
+    d          = block["data"]
+    caption    = d.get("caption", "").strip()
+    has_header = d.get("has_header", True)
+    rows_data  = d.get("rows", [])
+
+    if not rows_data:
+        return []
+
+    NAVY  = rl_colors.HexColor("#1e3a5f")
+    WHITE = rl_colors.white
+    LIGHT = rl_colors.HexColor("#f8fafc")
+    RULE  = rl_colors.HexColor("#e2e8f0")
+
+    hdr_style  = ParagraphStyle("tblHdr",  fontSize=8, textColor=WHITE,
+                                 fontName="Helvetica-Bold", leading=10)
+    cell_style = ParagraphStyle("tblCell", fontSize=8,
+                                 textColor=rl_colors.HexColor("#1e293b"), leading=10)
+    cap_style  = ParagraphStyle("tblCap",  fontSize=8, fontName="Helvetica-Oblique",
+                                 textColor=rl_colors.HexColor("#64748b"), leading=10,
+                                 spaceAfter=2)
+
+    result = []
+    if caption:
+        result.append(Paragraph(caption, cap_style))
+
+    # Build ReportLab rows
+    rl_rows = []
+    for ri, row in enumerate(rows_data):
+        is_hdr = has_header and ri == 0
+        sty    = hdr_style if is_hdr else cell_style
+        rl_rows.append([Paragraph(str(cell), sty) for cell in row])
+
+    # Distribute columns evenly across 170 mm
+    n_cols    = max(len(r) for r in rows_data) if rows_data else 1
+    col_width = (170 / n_cols) * mm
+    col_widths = [col_width] * n_cols
+
+    tbl = Table(rl_rows, colWidths=col_widths, repeatRows=1 if has_header else 0)
+
+    style_cmds = [
+        ("GRID",          (0, 0), (-1, -1),  0.4, RULE),
+        ("TOPPADDING",    (0, 0), (-1, -1),  3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1),  3),
+        ("LEFTPADDING",   (0, 0), (-1, -1),  5),
+        ("RIGHTPADDING",  (0, 0), (-1, -1),  5),
+        ("VALIGN",        (0, 0), (-1, -1),  "MIDDLE"),
+    ]
+    if has_header and rl_rows:
+        style_cmds += [
+            ("BACKGROUND", (0, 0), (-1, 0),  NAVY),
+            ("TEXTCOLOR",  (0, 0), (-1, 0),  WHITE),
+            ("LINEABOVE",  (0, 0), (-1, 0),  1, NAVY),
+        ]
+        # Alternating rows start at row 1
+        for r in range(1, len(rl_rows)):
+            if r % 2 == 0:
+                style_cmds.append(("BACKGROUND", (0, r), (-1, r), LIGHT))
+    else:
+        for r in range(len(rl_rows)):
+            if r % 2 == 1:
+                style_cmds.append(("BACKGROUND", (0, r), (-1, r), LIGHT))
+
+    tbl.setStyle(TableStyle(style_cmds))
+    result.append(tbl)
+    result.append(Spacer(1, 4 * mm))
+    return result
+
+
 # ── DS 1140 Control plan block ────────────────────────────────────────────────
 
 def _control_plan(block: dict) -> list:
@@ -366,6 +441,8 @@ def _convert_block(block: dict, tmp_files: list) -> list:
         return _beam_fem_block(block, tmp_files)
     if t == "control_plan":
         return _control_plan(block)
+    if t == "table":
+        return _table_block(block)
     # bolt_group and fillet_weld share the BoltConnectionBlock data shape
     # but are stored as distinct types — both render via _calc_block
     if t in _CALC_TYPES:

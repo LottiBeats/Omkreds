@@ -492,6 +492,44 @@ def _convert_doc_block(doc: Document, block: dict, tmp_files: list):
                 doc.add_paragraph(f'[Image could not be embedded: {exc}]')
         return
 
+    # ── table (user-created editable table) ──────────────────────────────────
+    if btype == 'table':
+        d          = block["data"]
+        caption    = d.get("caption", "").strip()
+        has_header = d.get("has_header", True)
+        rows_data  = d.get("rows", [])
+        if caption:
+            cap_p = doc.add_paragraph(caption)
+            cap_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in cap_p.runs:
+                run.italic = True
+                run.font.size = Pt(8)
+                run.font.color.rgb = RGBColor(0x64, 0x74, 0x8b)
+        if rows_data:
+            n_cols = max(len(r) for r in rows_data)
+            if n_cols > 0:
+                tbl = doc.add_table(rows=len(rows_data), cols=n_cols)
+                tbl.style = 'Table Grid'
+                for ri, row in enumerate(rows_data):
+                    is_hdr = has_header and ri == 0
+                    cells  = tbl.rows[ri].cells
+                    for ci, cell_val in enumerate(row):
+                        if ci < n_cols:
+                            cells[ci].text = str(cell_val)
+                            if is_hdr:
+                                _set_cell_bg(cells[ci], '1E3A5F')
+                                for run in cells[ci].paragraphs[0].runs:
+                                    run.bold = True
+                                    run.font.color.rgb = RGBColor(0xff, 0xff, 0xff)
+                                    run.font.size = Pt(9)
+                            else:
+                                bg = 'F7F9FC' if ri % 2 == 0 else 'FFFFFF'
+                                _set_cell_bg(cells[ci], bg)
+                                for run in cells[ci].paragraphs[0].runs:
+                                    run.font.size = Pt(9)
+                doc.add_paragraph()
+        return
+
     # ── python_calc ────────────────────────────────────────────────────────────
     if btype == 'python_calc':
         d = block["data"]
