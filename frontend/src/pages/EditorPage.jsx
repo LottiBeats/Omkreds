@@ -7,7 +7,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProject, saveProject, generatePdf, generateWord, getCalcTemplates } from '../api/client.js'
+import { getProject, saveProject, generatePdf, generatePdfZip, generateWord, getCalcTemplates } from '../api/client.js'
 import BlockList            from '../components/blocks/BlockList.jsx'
 import MetadataPanel        from '../components/MetadataPanel.jsx'
 import TemplateEditorModal  from '../components/TemplateEditorModal.jsx'
@@ -557,6 +557,7 @@ export default function EditorPage() {
   const [canRedo,         setCanRedo]         = useState(false)
   const [pdfPreviewUrl,   setPdfPreviewUrl]   = useState(null)   // blob URL for preview modal
   const [pdfGenerating,   setPdfGenerating]   = useState(false)  // shared spinner for both buttons
+  const [pdfZipGenerating,setPdfZipGenerating]= useState(false)  // spinner for separate-PDFs ZIP
   const [wordGenerating,  setWordGenerating]  = useState(false)  // spinner for Word export
   // Adding sub-document: which parent doc is being expanded
   const [addingSubdocFor, setAddingSubdocFor] = useState(null)
@@ -938,6 +939,31 @@ export default function EditorPage() {
     }
   }
 
+  async function handleGeneratePdfZip() {
+    if (!activeDoc) return
+    setPdfZipGenerating(true)
+    setError(null)
+    try {
+      const saved = await _flushSave()
+      if (!saved) {
+        setError('Note: latest changes could not be saved (project may be too large). ' +
+                 'Generating PDFs from last saved version.')
+      }
+      const blob   = await generatePdfZip(projectId, activeDoc)
+      const url    = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href  = url
+      anchor.download = `${project.metadata.project_ref || projectId}_${activeDoc}_separate.zip`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      if (saved) setError(null)
+    } catch (err) {
+      setError(`PDF generation failed: ${err.message}`)
+    } finally {
+      setPdfZipGenerating(false)
+    }
+  }
+
   async function handleGenerateWord() {
     if (!activeDoc) return
     setWordGenerating(true)
@@ -1259,9 +1285,23 @@ export default function EditorPage() {
                 disabled={pdfGenerating}
                 onMouseEnter={e => { if (!pdfGenerating) e.currentTarget.style.background = BRAND_LT }}
                 onMouseLeave={e => { if (!pdfGenerating) e.currentTarget.style.background = BRAND }}
+                title="Export all sub-documents combined into one PDF"
               >
                 ↓ Export PDF
               </button>
+              {/* Separate PDFs button — only when the document has sub-documents */}
+              {(project?.documents?.[activeDoc]?.subdocs?.length > 0) && (
+                <button
+                  style={{ ...styles.pdfBtn, background: '#6d4c9e', opacity: pdfZipGenerating ? 0.6 : 1 }}
+                  onClick={handleGeneratePdfZip}
+                  disabled={pdfZipGenerating}
+                  onMouseEnter={e => { if (!pdfZipGenerating) e.currentTarget.style.background = '#4c2d72' }}
+                  onMouseLeave={e => { if (!pdfZipGenerating) e.currentTarget.style.background = '#6d4c9e' }}
+                  title="Download each sub-document as a separate PDF (ZIP archive)"
+                >
+                  {pdfZipGenerating ? '⏳' : '↓ Separate PDFs'}
+                </button>
+              )}
               <button
                 style={{ ...styles.pdfBtn, background: '#2d6a4f', opacity: wordGenerating ? 0.6 : 1 }}
                 onClick={handleGenerateWord}

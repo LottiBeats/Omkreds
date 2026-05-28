@@ -69,8 +69,9 @@ async function request(method, path, body = null) {
     throw new Error(detail)
   }
 
-  // PDF endpoints return binary, not JSON
-  if (response.headers.get('Content-Type')?.includes('application/pdf')) {
+  // Binary endpoints (PDF, ZIP) return a Blob, not JSON
+  const ct = response.headers.get('Content-Type') ?? ''
+  if (ct.includes('application/pdf') || ct.includes('application/zip')) {
     return response.blob()
   }
 
@@ -126,6 +127,13 @@ export const generatePdf = (projectId, docId) =>
  */
 export const generateWord = (projectId, docId) =>
   request('POST', `/projects/${projectId}/word/${docId}`)
+
+/**
+ * Generate one PDF per sub-document and return them as a ZIP archive.
+ * Returns a Blob — the caller triggers a browser download.
+ */
+export const generatePdfZip = (projectId, docId) =>
+  request('POST', `/projects/${projectId}/pdf-zip/${docId}`)
 
 
 // ── Calculations ──────────────────────────────────────────────────────────────

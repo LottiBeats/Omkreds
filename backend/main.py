@@ -346,6 +346,66 @@ def generate_pdf(project_id: str, doc_id: str, user: dict = Depends(get_current_
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+
+@protected.post("/projects/{project_id}/pdf-zip/{doc_id}", tags=["PDF"])
+def generate_pdf_zip(project_id: str, doc_id: str, user: dict = Depends(get_current_user)):
+    """
+    Generate one PDF per sub-document and return them bundled in a ZIP archive.
+
+    Each sub-document becomes its own .pdf file inside the ZIP, named:
+      <project_ref>_<doc_id>.<n>_<subdoc_name>.pdf
+
+    Falls back to a single-PDF ZIP when the document has no sub-documents.
+    """
+    import zipfile
+    import io as _io
+
+    project = _visible_project(project_id, user)
+    doc = project["documents"].get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found")
+
+    try:
+        from pdf_builder import build_pdf
+
+        ref     = (project["metadata"].get("project_ref") or project_id)
+        subdocs = doc.get("subdocs", [])
+
+        zip_buf = _io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            if subdocs:
+                for i, sd in enumerate(subdocs):
+                    sd_name = sd.get("name") or f"Sub-document {i + 1}"
+                    # Prepend the subdoc name as a heading so each PDF is self-labelled
+                    blocks = [
+                        {"type": "heading", "data": {"level": 1, "text": sd_name}},
+                        *sd.get("blocks", []),
+                    ]
+                    pdf_bytes = build_pdf(project, blocks, doc_id=doc_id)
+                    safe_name = (sd_name
+                                 .replace(" ", "_")
+                                 .replace("/", "-")
+                                 .replace("\\", "-"))
+                    fname = f"{ref}_{doc_id}.{i + 1}_{safe_name}.pdf"
+                    fname = fname.replace(" ", "_")
+                    zf.writestr(fname, pdf_bytes)
+            else:
+                # No sub-documents — put the single PDF in the archive anyway
+                blocks    = doc.get("blocks", [])
+                pdf_bytes = build_pdf(project, blocks, doc_id=doc_id)
+                fname     = f"{ref}_{doc_id}.pdf".replace(" ", "_")
+                zf.writestr(fname, pdf_bytes)
+
+        zip_filename = f"{ref}_{doc_id}_separate.zip".replace(" ", "_").replace("/", "-")
+        return Response(
+            content=zip_buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # -- Word generation -------------------------------------------------------
 
 @protected.post("/projects/{project_id}/word/{doc_id}", tags=["Word"])
