@@ -13,30 +13,86 @@
  *   block    — { id, type: "image", data: { image_b64, caption, width_pct } }
  *   onChange — function(updatedBlock)
  */
-import React, { useRef } from 'react'
+import React, { useRef, useState } from 'react'
+
+/**
+ * Compress an image file to JPEG before embedding as base64.
+ * Caps the longest dimension at maxDim pixels and applies JPEG quality.
+ * SVG files are passed through unchanged (can't canvas-compress vectors).
+ * Returns a Promise<string> resolving to a base64 data URL.
+ */
+function compressImage(file, maxDim = 1920, quality = 0.85) {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const src = ev.target.result
+
+      // SVG: pass through as-is — canvas can't rasterise arbitrary SVG
+      if (file.type === 'image/svg+xml') {
+        resolve(src)
+        return
+      }
+
+      const img = new window.Image()
+      img.onload = () => {
+        let { width, height } = img
+
+        // Scale down proportionally if larger than maxDim
+        if (width > maxDim || height > maxDim) {
+          if (width >= height) {
+            height = Math.round(height * maxDim / width)
+            width  = maxDim
+          } else {
+            width  = Math.round(width * maxDim / height)
+            height = maxDim
+          }
+        }
+
+        const canvas = document.createElement('canvas')
+        canvas.width  = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        // White background so transparent PNGs look right in JPEG output
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height)
+
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.onerror = () => resolve(src)   // fallback: use original if decoding fails
+      img.src = src
+    }
+    reader.readAsDataURL(file)
+  })
+}
 
 export default function ImageBlock({ block, onChange }) {
   const d = block.data
   const fileInputRef = useRef(null)
+  const [compressing, setCompressing] = useState(false)
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
   }
 
-  function handleFileChange(e) {
+  async function handleFileChange(e) {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // FileReader converts the file to a base64 data URL.
-    // This runs asynchronously — the onload callback fires when done.
-    const reader = new FileReader()
-    reader.onload = (ev) => {
+    setCompressing(true)
+    try {
+      const b64 = await compressImage(file)
+      // Rough size in KB for the hint label
+      const kb = Math.round(b64.length * 0.75 / 1024)
       update({
-        image_b64: ev.target.result,   // e.g. "data:image/png;base64,iVBO..."
-        filename:  file.name,
+        image_b64: b64,
+        filename:  `${file.name}  (${kb} KB embedded)`,
       })
+    } finally {
+      setCompressing(false)
+      // Reset so the same file can be re-selected if needed
+      e.target.value = ''
     }
-    reader.readAsDataURL(file)
   }
 
   // If we have an image, show it + controls
@@ -76,10 +132,11 @@ export default function ImageBlock({ block, onChange }) {
 
           {/* Replace / remove */}
           <button
-            style={styles.smallBtn}
+            style={{ ...styles.smallBtn, opacity: compressing ? 0.5 : 1 }}
+            disabled={compressing}
             onClick={() => fileInputRef.current?.click()}
           >
-            Replace
+            {compressing ? 'Compressing…' : 'Replace'}
           </button>
           <button
             style={{ ...styles.smallBtn, ...styles.removeBtn }}
@@ -108,12 +165,14 @@ export default function ImageBlock({ block, onChange }) {
   // No image yet — show a drop zone / click-to-upload area
   return (
     <div
-      style={styles.dropZone}
-      onClick={() => fileInputRef.current?.click()}
+      style={{ ...styles.dropZone, cursor: compressing ? 'default' : 'pointer' }}
+      onClick={() => !compressing && fileInputRef.current?.click()}
     >
-      <div style={styles.dropIcon}>🖼</div>
-      <div style={styles.dropText}>Click to upload an image</div>
-      <div style={styles.dropHint}>PNG, JPG, SVG, WebP</div>
+      <div style={styles.dropIcon}>{compressing ? '⏳' : '🖼'}</div>
+      <div style={styles.dropText}>
+        {compressing ? 'Compressing…' : 'Click to upload an image'}
+      </div>
+      <div style={styles.dropHint}>PNG, JPG, WebP — auto-compressed to JPEG</div>
 
       <input
         ref={fileInputRef}

@@ -51,6 +51,15 @@ async function request(method, path, body = null) {
   }
 
   if (!response.ok) {
+    // 413 means the request body (project JSON) is too large for the server.
+    // This typically happens when very large images are embedded as base64.
+    if (response.status === 413) {
+      throw new Error(
+        'Project is too large to save (HTTP 413). ' +
+        'This is usually caused by large embedded images. ' +
+        'Try reducing image file sizes or use smaller images.'
+      )
+    }
     // Try to get the error message from FastAPI's JSON response
     let detail = `HTTP ${response.status}`
     try {
