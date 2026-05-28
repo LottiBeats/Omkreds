@@ -645,6 +645,11 @@ class StructuralDocTemplate(BaseDocTemplate):
 def build_story(all_blocks, styles):
     story = []
     for b in all_blocks:
+        # Raw ReportLab flowables (e.g. from _control_plan, _table_block) pass
+        # through directly — they already know how to render themselves.
+        if hasattr(b, 'wrap'):
+            story.append(b)
+            continue
         t = b["type"]
 
         # ── structural page blocks ────────────────────────────
