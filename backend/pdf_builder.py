@@ -54,18 +54,34 @@ def _image(block: dict, tmp_files: list) -> list:
     if not b64:
         return []
 
-    # Decode base64 data URL and write to a temp file
     # b64 is like "data:image/png;base64,iVBOR..."
     try:
-        header, data = b64.split(",", 1)
-        ext = "png"
-        if "jpeg" in header or "jpg" in header:
-            ext = "jpg"
-        elif "svg" in header:
-            ext = "svg"
+        header, data_str = b64.split(",", 1)
+        raw = base64.b64decode(data_str)
 
-        tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
-        tmp.write(base64.b64decode(data))
+        # SVG: ReportLab cannot render vector images — skip gracefully
+        if "svg" in header:
+            return [N("SVG images are not supported in PDF export. "
+                      "Please convert to PNG or JPEG before uploading.")]
+
+        # Use Pillow to open & normalise the image.
+        # This handles WebP, HEIC (if pillow-heif is installed), AVIF, RGBA PNGs,
+        # palette images, and anything else the browser can show but ReportLab cannot.
+        from io import BytesIO
+        from PIL import Image as PILImage
+
+        pil_img = PILImage.open(BytesIO(raw))
+
+        # Flatten transparency onto a white background so PDF always gets RGB
+        if pil_img.mode == "RGBA":
+            bg = PILImage.new("RGB", pil_img.size, (255, 255, 255))
+            bg.paste(pil_img, mask=pil_img.split()[3])
+            pil_img = bg
+        elif pil_img.mode not in ("RGB", "L"):
+            pil_img = pil_img.convert("RGB")
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        pil_img.save(tmp, format="PNG")
         tmp.close()
         tmp_files.append(tmp.name)
 

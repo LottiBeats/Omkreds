@@ -820,18 +820,24 @@ def build_story(all_blocks, styles):
             story.append(Spacer(1, 3*mm))
 
         elif t == "figure":
-            img = Image(b["path"])
-            target_w = b.get("width_mm", 170) * mm
-            scale = target_w / img.imageWidth
-            img.drawWidth = target_w
-            img.drawHeight = img.imageHeight * scale
-            flow = [img]
-            caption = b.get("caption", "")
-            if caption:
-                flow.append(Spacer(1, 1.2*mm))
-                flow.append(Paragraph(_para_fmt(caption), styles["note"]))
-            flow.append(Spacer(1, 2.5*mm))
-            story.append(KeepTogether(flow))
+            try:
+                img = Image(b["path"])
+                target_w = b.get("width_mm", 170) * mm
+                scale = target_w / img.imageWidth
+                img.drawWidth = target_w
+                img.drawHeight = img.imageHeight * scale
+                flow = [img]
+                caption = b.get("caption", "")
+                if caption:
+                    flow.append(Spacer(1, 1.2*mm))
+                    flow.append(Paragraph(_para_fmt(caption), styles["note"]))
+                flow.append(Spacer(1, 2.5*mm))
+                story.append(KeepTogether(flow))
+            except Exception as _fig_err:
+                story.append(Paragraph(
+                    _para_fmt(f"[Image could not be rendered in PDF: {_fig_err}]"),
+                    styles["note"],
+                ))
 
     return story
 
