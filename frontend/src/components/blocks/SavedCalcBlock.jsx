@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react'
 import { getCalcTemplate, runCalcTemplate } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
+import NumericInput from './NumericInput.jsx'
 
 export default function SavedCalcBlock({ block, onChange, onOpenTemplateEditor }) {
   const d = block.data
@@ -129,14 +130,10 @@ export default function SavedCalcBlock({ block, onChange, onOpenTemplateEditor }
                 ))}
               </select>
             ) : (
-              <input
+              <NumericInput
                 style={s.input}
-                inputMode="decimal"
-                value={val ?? ''}
-                onChange={e => {
-                  const v = parseFloat(e.target.value)
-                  setParam(param.name, isNaN(v) ? e.target.value : v)
-                }}
+                value={val ?? 0}
+                onChange={v => setParam(param.name, v)}
               />
             )}
           </Field>
