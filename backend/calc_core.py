@@ -290,7 +290,14 @@ def _fmt(s):
       1. Replace Unicode superscript digits (⁰–⁹) with <super>n</super>
       2. Replace Unicode subscript digits (₀–₉) with <sub>n</sub>
       3. Strip Unicode combining characters (e.g. combining overbar in λ̄ → λ)
-      4. Convert _sub / ^sup notation to ReportLab XML tags
+      4. Convert _sub / ^sup ASCII notation to ReportLab XML tags
+
+    Subscript rule: only \w+ (letters, digits, underscore) is subscripted.
+    The old pattern _([^ <]+) was too greedy — it subscripted everything after
+    the underscore including operators and parentheses, e.g.
+      C_my·(1+(λ_y-0.2)·n_y)  →  C<sub>my·(1+(λ_y-0.2)·n_y)</sub>   ← WRONG
+    With _(\w+):
+      C_my·(1+(λ_y-0.2)·n_y)  →  C<sub>my</sub>·(1+(λ<sub>y</sub>-0.2)·n<sub>y</sub>)  ← correct
     """
     s = str(s)
 
@@ -309,9 +316,29 @@ def _fmt(s):
 
     # ── _sub and ^sup ASCII notation ───────────────────────────────────────
     s = re.sub(r'\^\(([^)]+)\)', r'<super>\1</super>', s)
-    s = re.sub(r'\^([^ <]+)',    r'<super>\1</super>', s)
-    s = re.sub(r'_([^ <]+)',     r'<sub>\1</sub>', s)
+    s = re.sub(r'\^(\w+)',       r'<super>\1</super>', s)
+    s = re.sub(r'_(\w+)',        r'<sub>\1</sub>', s)
     return s
+
+
+def _para_fmt(s):
+    """
+    Like _fmt() but designed for note/text/section paragraph content.
+
+    The difference from calling _fmt() on pre-escaped text:
+      - We do NOT escape '<' and '>' from the original string; engineering
+        notes virtually never contain bare < or >, and escaping them BEFORE
+        _fmt() would prevent <sub>/<super> tags from being recognised.
+      - We DO escape '&' first (must be before _fmt adds XML tags).
+      - Newlines are converted to <br/>.
+
+    This ensures that Unicode subscripts like C₁ and combining-char
+    sequences like λ̄ are handled correctly in note and text blocks, not
+    just in calc_row blocks.
+    """
+    s = str(s).replace("&", "&amp;")
+    s = _fmt(s)
+    return s.replace("\n", "<br/>")
 
 
 def _render_hc_block(b, styles):
@@ -641,7 +668,7 @@ def build_story(all_blocks, styles):
         elif t == "h1":
             story.append(_TocAnchor(0, b["content"]))
             story.append(Spacer(1, 3 * mm))
-            story.append(Paragraph(b["content"], styles["h1"]))
+            story.append(Paragraph(_para_fmt(b["content"]), styles["h1"]))
             story.append(HRFlowable(width="100%", thickness=0.8,
                 color=C["text_dark"], spaceAfter=2))
 
@@ -674,18 +701,16 @@ def build_story(all_blocks, styles):
         elif t == "section":
             story.append(_TocAnchor(2, b["content"]))
             story.append(Spacer(1, 2*mm))
-            story.append(Paragraph(b["content"].upper(), styles["section"]))
+            story.append(Paragraph(_para_fmt(b["content"]).upper(), styles["section"]))
             story.append(HRFlowable(width="100%", thickness=0.3,
                 color=C["rule_mid"], spaceAfter=1.5))
 
         elif t == "text":
-            _txt = b["content"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
-            story.append(Paragraph(_txt, styles["normal"]))
+            story.append(Paragraph(_para_fmt(b["content"]), styles["normal"]))
 
         elif t == "note":
             # Left-rule only — no filled box
-            _ntxt = b["content"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
-            tbl = Table([[Paragraph(_ntxt, styles["note"])]],
+            tbl = Table([[Paragraph(_para_fmt(b["content"]), styles["note"])]],
                         colWidths=[170*mm])
             tbl.setStyle(TableStyle([
                 ("LINEBEFORE",   (0,0),(0,-1), 2.5, C["orange"]),
@@ -755,8 +780,8 @@ def build_story(all_blocks, styles):
 
             # No background fill — left accent rule + thin bottom line
             tbl = Table(
-                [[Paragraph(b["label"], styles["normal"]),
-                  Paragraph(b["value"], sty)]],
+                [[Paragraph(_para_fmt(b["label"]), styles["normal"]),
+                  Paragraph(_para_fmt(b["value"]),  sty)]],
                 colWidths=[130*mm, 40*mm], rowHeights=[7.5*mm]
             )
             tbl.setStyle(TableStyle([
@@ -772,9 +797,9 @@ def build_story(all_blocks, styles):
             story.append(KeepTogether([tbl, Spacer(1, 1*mm)]))
 
         elif t == "table":
-            rows = [[Paragraph(h, styles["th"]) for h in b["headers"]]]
+            rows = [[Paragraph(_para_fmt(h), styles["th"]) for h in b["headers"]]]
             for row in b["rows"]:
-                rows.append([Paragraph(str(c), styles["td"]) for c in row])
+                rows.append([Paragraph(_para_fmt(str(c)), styles["td"]) for c in row])
             cw = 170*mm / len(b["headers"])
             tbl = Table(rows, colWidths=[cw]*len(b["headers"]))
             tbl.setStyle(TableStyle([
@@ -804,7 +829,7 @@ def build_story(all_blocks, styles):
             caption = b.get("caption", "")
             if caption:
                 flow.append(Spacer(1, 1.2*mm))
-                flow.append(Paragraph(caption, styles["note"]))
+                flow.append(Paragraph(_para_fmt(caption), styles["note"]))
             flow.append(Spacer(1, 2.5*mm))
             story.append(KeepTogether(flow))
 
