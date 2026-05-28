@@ -437,8 +437,14 @@ class SteelBeamInput(BaseModel):
     section:            str   = "IPE300"
     grade:              str   = "S355"       # S235 / S275 / S355 / S420 / S460
     span_m:             float = 5.0
-    g_k_kNm:            float = 5.0
-    q_k_kNm:            float = 3.0
+    # Load type: how g_k / q_k are interpreted
+    #   'udl'   → kN/m  — full-span uniformly distributed load
+    #   'point' → kN    — single concentrated load at midspan
+    #   'area'  → kN/m² — area load, multiplied by trib_width_m to get kN/m
+    load_type:          str   = "udl"        # udl | point | area
+    trib_width_m:       float = 1.0          # tributary width for 'area' load type [m]
+    g_k_kNm:            float = 5.0          # permanent load  (kN/m, kN, or kN/m² per load_type)
+    q_k_kNm:            float = 3.0          # variable load   (kN/m, kN, or kN/m² per load_type)
     # Load source: when provided, overrides g_k/q_k
     w_Ed_kNm:           float | None = None  # governing ULS load from load_combo block
     combo_label:        str   | None = None  # label of the source combo block (for display)
@@ -453,15 +459,13 @@ class SteelBeamInput(BaseModel):
     buck_y_restrained:  bool  = False
     buck_x_restrained:  bool  = False
     deflection_limit:   int   = 200          # L/n SLS limit (200 = final, 350 = net, 500 = finish)
-    # Manual section properties — bypasses the catalog lookup.
-    # Useful for L-profiles, channels, hollow sections, or custom fabrications
-    # where the user reads W_pl / W_el / I_y from a published table.
-    manual_Wply_cm3:      float | None = None  # plastic section modulus W_pl,y [cm³]
-    manual_Wely_cm3:      float | None = None  # elastic section modulus W_el,y [cm³]
-    manual_Iy_cm4:        float | None = None  # second moment of area I_y [cm⁴]
-    manual_h_mm:          float | None = None  # section height h [mm]
-    manual_tw_mm:         float | None = None  # web / leg thickness t_w [mm] (optional)
-    use_elastic_modulus:  bool          = False # True → use W_el,y; False → use W_pl,y
+    # Manual section properties — kept for API backward-compatibility
+    manual_Wply_cm3:      float | None = None
+    manual_Wely_cm3:      float | None = None
+    manual_Iy_cm4:        float | None = None
+    manual_h_mm:          float | None = None
+    manual_tw_mm:         float | None = None
+    use_elastic_modulus:  bool          = False
 
 
 @protected.post("/calc/steel-beam", tags=["Calculations"])
@@ -547,7 +551,7 @@ def calc_steel_beam(data: SteelBeamInput):
         if data.ltb_length_m is not None and not data.ltb_restrained:
             kwargs_sb["l_cr_ltb"] = data.ltb_length_m * m
 
-        # Load source override priority: FEM > combo > direct g_k/q_k
+        # Load source override priority: FEM > combo > direct
         if data.M_Ed_kNm_direct is not None and data.V_Ed_kN_direct is not None:
             # FEM results: use actual M_Ed and V_Ed from FEM analysis
             kwargs_sb["beam_results"] = {
@@ -564,6 +568,23 @@ def calc_steel_beam(data: SteelBeamInput):
                 "case_name": data.combo_label or "",
                 "M_Ed":      w_Ed_fp * span_fp ** 2 / 8,
                 "V_Ed":      w_Ed_fp * span_fp / 2,
+            }
+        elif data.load_type == "area":
+            # Area load → multiply by tributary width → UDL
+            tw = max(data.trib_width_m or 1.0, 0.001)
+            kwargs_sb["g_k"] = data.g_k_kNm * tw * kN / m
+            kwargs_sb["q_k"] = data.q_k_kNm * tw * kN / m
+            # beam_results stays None → steel_beam_ipe uses UDL formula
+        elif data.load_type == "point":
+            # Concentrated load at midspan
+            G_k = data.g_k_kNm * kN        # g_k_kNm field stores the kN value here
+            Q_k = data.q_k_kNm * kN
+            w_uls = 1.35 * G_k + 1.5 * Q_k
+            kwargs_sb["beam_results"] = {
+                "source":    "Point load at midspan",
+                "case_name": f"G_k = {data.g_k_kNm:.2f} kN  ·  Q_k = {data.q_k_kNm:.2f} kN",
+                "M_Ed":      w_uls * span_fp / 4,
+                "V_Ed":      w_uls / 2,
             }
 
         blocks = steel_beam_ipe(**kwargs_sb)
