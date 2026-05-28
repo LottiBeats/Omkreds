@@ -10,6 +10,39 @@
  */
 import React, { useState, useEffect, useRef } from 'react'
 
+/**
+ * Compress an image file to JPEG via canvas before storing as base64.
+ * Same approach as ImageBlock.jsx — caps the longest dimension at maxDim
+ * and applies JPEG quality. SVG is passed through unchanged.
+ */
+function compressImage(file, maxDim = 1920, quality = 0.85) {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const src = ev.target.result
+      if (file.type === 'image/svg+xml') { resolve(src); return }
+      const img = new window.Image()
+      img.onload = () => {
+        let { width, height } = img
+        if (width > maxDim || height > maxDim) {
+          if (width >= height) { height = Math.round(height * maxDim / width); width = maxDim }
+          else                 { width  = Math.round(width  * maxDim / height); height = maxDim }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width; canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.onerror = () => resolve(src)
+      img.src = src
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 const SECTIONS = [
   {
     title: 'Project',
@@ -48,9 +81,10 @@ const SECTIONS = [
 ]
 
 export default function MetadataPanel({ project, onSave }) {
-  const [meta, setMeta] = useState(project.metadata)
-  const fileInputRef = useRef(null)
-  const [dragOver, setDragOver] = useState(false)
+  const [meta,        setMeta]        = useState(project.metadata)
+  const fileInputRef  = useRef(null)
+  const [dragOver,    setDragOver]    = useState(false)
+  const [compressing, setCompressing] = useState(false)
 
   useEffect(() => {
     setMeta(project.metadata)
@@ -65,15 +99,17 @@ export default function MetadataPanel({ project, onSave }) {
   }
 
   // ── Cover image ────────────────────────────────────────────────────────────
-  function handleCoverImageFile(file) {
+  async function handleCoverImageFile(file) {
     if (!file || !file.type.startsWith('image/')) return
-    const reader = new FileReader()
-    reader.onload = e => {
-      const updated = { ...meta, cover_image_b64: e.target.result }
+    setCompressing(true)
+    try {
+      const b64     = await compressImage(file)
+      const updated = { ...meta, cover_image_b64: b64 }
       setMeta(updated)
       onSave(updated)
+    } finally {
+      setCompressing(false)
     }
-    reader.readAsDataURL(file)
   }
 
   function handleCoverImageDrop(e) {
@@ -131,7 +167,12 @@ export default function MetadataPanel({ project, onSave }) {
           JPG or PNG recommended. Landscape photos work best.
         </div>
 
-        {meta.cover_image_b64 ? (
+        {compressing ? (
+          <div style={{ ...s.dropZone, cursor: 'default', borderColor: '#d1d5db' }}>
+            <div style={s.dropIcon}>⏳</div>
+            <div style={s.dropLabel}>Compressing…</div>
+          </div>
+        ) : meta.cover_image_b64 ? (
           /* ── Preview state ── */
           <div style={s.imgPreviewWrap}>
             <img
@@ -169,7 +210,7 @@ export default function MetadataPanel({ project, onSave }) {
           >
             <div style={s.dropIcon}>🖼</div>
             <div style={s.dropLabel}>Click or drag an image here</div>
-            <div style={s.dropSub}>JPG, PNG, WebP · no size limit</div>
+            <div style={s.dropSub}>JPG, PNG, WebP — auto-compressed to JPEG</div>
           </div>
         )}
 
