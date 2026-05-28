@@ -19,7 +19,8 @@ import React, { useRef, useCallback } from 'react'
 const BRAND = '#d94a2b'
 const NAVY  = '#1e3a5f'
 
-export default function TableBlock({ data, onChange }) {
+export default function TableBlock({ block, onChange }) {
+  const data       = block.data ?? {}
   const caption    = data.caption    ?? ''
   const has_header = data.has_header ?? true
   const rows       = data.rows       ?? [['Kolonne 1', 'Kolonne 2'], ['', '']]
@@ -27,32 +28,34 @@ export default function TableBlock({ data, onChange }) {
   const numCols = rows[0]?.length ?? 2
 
   // ── mutations ──────────────────────────────────────────────────────────────
-  function setCaption(v)         { onChange({ ...data, caption: v }) }
-  function setHasHeader(v)       { onChange({ ...data, has_header: v }) }
+  function upd(patch) { onChange({ ...block, data: { ...data, ...patch } }) }
+
+  function setCaption(v)   { upd({ caption: v }) }
+  function setHasHeader(v) { upd({ has_header: v }) }
 
   function setCell(ri, ci, v) {
     const next = rows.map((r, i) =>
       i === ri ? r.map((c, j) => j === ci ? v : c) : [...r]
     )
-    onChange({ ...data, rows: next })
+    upd({ rows: next })
   }
 
   function addRow() {
-    onChange({ ...data, rows: [...rows, Array(numCols).fill('')] })
+    upd({ rows: [...rows, Array(numCols).fill('')] })
   }
 
   function deleteRow(ri) {
     if (rows.length <= 1) return
-    onChange({ ...data, rows: rows.filter((_, i) => i !== ri) })
+    upd({ rows: rows.filter((_, i) => i !== ri) })
   }
 
   function addCol() {
-    onChange({ ...data, rows: rows.map(r => [...r, '']) })
+    upd({ rows: rows.map(r => [...r, '']) })
   }
 
   function deleteCol(ci) {
     if (numCols <= 1) return
-    onChange({ ...data, rows: rows.map(r => r.filter((_, j) => j !== ci)) })
+    upd({ rows: rows.map(r => r.filter((_, j) => j !== ci)) })
   }
 
   // ── keyboard nav ──────────────────────────────────────────────────────────
