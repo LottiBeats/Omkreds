@@ -7,7 +7,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProject, saveProject, generatePdf, generatePdfZip, generateWord, getCalcTemplates } from '../api/client.js'
+import { getProject, saveProject, generatePdf, generatePdfZip, generateWord, getCalcTemplates, saveProjectAsTemplate } from '../api/client.js'
 import BlockList            from '../components/blocks/BlockList.jsx'
 import MetadataPanel        from '../components/MetadataPanel.jsx'
 import TemplateEditorModal  from '../components/TemplateEditorModal.jsx'
@@ -557,8 +557,11 @@ export default function EditorPage() {
   const [canRedo,         setCanRedo]         = useState(false)
   const [pdfPreviewUrl,   setPdfPreviewUrl]   = useState(null)   // blob URL for preview modal
   const [pdfGenerating,   setPdfGenerating]   = useState(false)  // shared spinner for both buttons
-  const [pdfZipGenerating,setPdfZipGenerating]= useState(false)  // spinner for separate-PDFs ZIP
-  const [wordGenerating,  setWordGenerating]  = useState(false)  // spinner for Word export
+  const [pdfZipGenerating,    setPdfZipGenerating]    = useState(false)  // spinner for separate-PDFs ZIP
+  const [wordGenerating,      setWordGenerating]      = useState(false)  // spinner for Word export
+  const [savingTemplate,      setSavingTemplate]      = useState(false)  // spinner for save-as-template
+  const [tplNamePrompt,       setTplNamePrompt]       = useState(false)  // show name input
+  const [tplNameInput,        setTplNameInput]        = useState('')     // template name
   // Adding sub-document: which parent doc is being expanded
   const [addingSubdocFor, setAddingSubdocFor] = useState(null)
   const [newSubdocName,   setNewSubdocName]   = useState('')
@@ -1024,6 +1027,29 @@ export default function EditorPage() {
     updateBlocks(tpl.make())
   }
 
+  async function handleSaveAsTemplate() {
+    if (!project || !tplNameInput.trim()) return
+    setSavingTemplate(true)
+    setError(null)
+    try {
+      await _flushSave()
+      await saveProjectAsTemplate(projectId, {
+        name:       tplNameInput.trim(),
+        description: '',
+        visibility:  project.visibility || 'team',
+      })
+      setTplNamePrompt(false)
+      setTplNameInput('')
+      // Small confirmation without a blocking dialog
+      setError('✓ Saved as template "' + tplNameInput.trim() + '". Find it on the home page → Templates.')
+      setTimeout(() => setError(null), 4000)
+    } catch (err) {
+      setError('Could not save template: ' + err.message)
+    } finally {
+      setSavingTemplate(false)
+    }
+  }
+
   if (loading) return <div style={{ padding: 40 }}>Loading…</div>
   if (!project) return <div style={{ padding: 40 }}>Project not found.</div>
 
@@ -1181,7 +1207,7 @@ export default function EditorPage() {
           ))}
         </nav>
 
-        {/* Footer: project info link */}
+        {/* Footer: project info + save-as-template */}
         <div style={styles.sidebarFooter}>
           <button
             style={styles.metaBtn(activeDoc === null)}
@@ -1189,6 +1215,56 @@ export default function EditorPage() {
           >
             ⚙ Project info
           </button>
+
+          {/* ── Save as template ── */}
+          {tplNamePrompt ? (
+            <div style={{ padding: '6px 10px 8px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <input
+                value={tplNameInput}
+                onChange={e => setTplNameInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleSaveAsTemplate()
+                  if (e.key === 'Escape') { setTplNamePrompt(false); setTplNameInput('') }
+                }}
+                placeholder="Template name…"
+                autoFocus
+                style={{
+                  fontSize: 11, padding: '5px 7px', fontFamily: 'inherit',
+                  border: '1px solid #cbd5e1', outline: 'none', color: '#1c1c1e',
+                }}
+              />
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  onClick={handleSaveAsTemplate}
+                  disabled={savingTemplate || !tplNameInput.trim()}
+                  style={{
+                    flex: 1, background: '#6366f1', color: '#fff', border: 'none',
+                    padding: '5px 0', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                    fontFamily: 'inherit', opacity: savingTemplate || !tplNameInput.trim() ? 0.5 : 1,
+                  }}
+                >
+                  {savingTemplate ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setTplNamePrompt(false); setTplNameInput('') }}
+                  style={{
+                    background: 'none', border: '1px solid #e2e8f0', color: '#94a3b8',
+                    padding: '5px 8px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >✕</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              style={{ ...styles.metaBtn(false), color: '#6366f1' }}
+              onClick={() => {
+                setTplNameInput(project?.metadata?.project_name || '')
+                setTplNamePrompt(true)
+              }}
+            >
+              📋 Save as template
+            </button>
+          )}
         </div>
 
       </aside>
@@ -1318,7 +1394,12 @@ export default function EditorPage() {
 
         {/* Content */}
         <div style={styles.content}>
-          {error && <div style={styles.error}>{error}</div>}
+          {error && (
+            <div style={error.startsWith('✓')
+              ? { ...styles.error, color: '#15803d', background: '#f0fdf4', border: '1px solid #bbf7d0', borderLeft: '3px solid #16a34a' }
+              : styles.error
+            }>{error}</div>
+          )}
 
           {activeDoc === null ? (
             // No document selected — show project metadata form

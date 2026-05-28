@@ -1,30 +1,29 @@
 /**
  * CreateProjectModal.jsx — modal form for creating a new project
  *
- * Replaces the ugly window.prompt() calls in ProjectsPage.
- * Rendered as an overlay on top of everything else.
+ * Two modes:
+ *   Blank project   — default, same as before
+ *   From template   — pass { templateId, templateName } props to pre-select a template
  *
  * Props:
- *   onCreated — function(newProject) called after successful creation
- *   onCancel  — function() called when user dismisses the modal
- *
- * Usage in ProjectsPage:
- *   {showModal && (
- *     <CreateProjectModal
- *       onCreated={project => navigate(`/projects/${project.id}`)}
- *       onCancel={() => setShowModal(false)}
- *     />
- *   )}
+ *   onCreated       — function(newProject) called after successful creation
+ *   onCancel        — function() called when user dismisses the modal
+ *   templateId      — (optional) ID of the template to clone from
+ *   templateName    — (optional) display name for the template
  */
 import React, { useState, useEffect, useRef } from 'react'
-import { createProject } from '../api/client.js'
+import { createProject, createProjectFromTemplate } from '../api/client.js'
 
-export default function CreateProjectModal({ onCreated, onCancel }) {
+const BRAND = '#d94a2b'
+
+export default function CreateProjectModal({ onCreated, onCancel, templateId = null, templateName = '' }) {
   const [name,       setName]       = useState('')
   const [ref,        setRef]        = useState('')
   const [visibility, setVisibility] = useState('team')
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
+
+  const isFromTemplate = Boolean(templateId)
 
   // Auto-focus the first field when the modal opens
   const firstInputRef = useRef(null)
@@ -42,13 +41,18 @@ export default function CreateProjectModal({ onCreated, onCancel }) {
   }, [onCancel])
 
   async function handleSubmit(e) {
-    e.preventDefault()   // prevent browser page reload (default form behaviour)
+    e.preventDefault()
     if (!name.trim()) return
 
     setLoading(true)
     setError(null)
     try {
-      const project = await createProject(name.trim(), ref.trim(), visibility)
+      let project
+      if (isFromTemplate) {
+        project = await createProjectFromTemplate(templateId, name.trim(), ref.trim(), visibility)
+      } else {
+        project = await createProject(name.trim(), ref.trim(), visibility)
+      }
       onCreated(project)
     } catch (err) {
       setError(err.message)
@@ -57,16 +61,28 @@ export default function CreateProjectModal({ onCreated, onCancel }) {
   }
 
   return (
-    // Clicking the backdrop (outside the modal box) closes the modal
     <div style={styles.backdrop} onClick={onCancel}>
-
-      {/* stopPropagation so clicks inside the box don't bubble up to the backdrop */}
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
 
         <div style={styles.header}>
-          <div style={styles.title}>New Project</div>
-          <button style={styles.closeBtn} onClick={onCancel}>x</button>
+          <div style={styles.title}>
+            {isFromTemplate ? 'New project from template' : 'New project'}
+          </div>
+          <button style={styles.closeBtn} onClick={onCancel}>✕</button>
         </div>
+
+        {/* Template badge */}
+        {isFromTemplate && (
+          <div style={styles.templateBadge}>
+            <span style={styles.templateBadgeIcon}>📋</span>
+            <div>
+              <div style={styles.templateBadgeName}>{templateName || 'Template'}</div>
+              <div style={styles.templateBadgeHint}>
+                Document structure will be copied — fill in your project details below
+              </div>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div style={styles.fields}>
@@ -133,7 +149,9 @@ export default function CreateProjectModal({ onCreated, onCancel }) {
               }}
               disabled={loading || !name.trim()}
             >
-              {loading ? 'Creating...' : 'Create project'}
+              {loading
+                ? (isFromTemplate ? 'Creating…' : 'Creating…')
+                : (isFromTemplate ? 'Create from template' : 'Create project')}
             </button>
           </div>
         </form>
@@ -146,7 +164,7 @@ export default function CreateProjectModal({ onCreated, onCancel }) {
 const styles = {
   backdrop: {
     position:       'fixed',
-    inset:          0,              // shorthand for top/right/bottom/left: 0
+    inset:          0,
     background:     'rgba(0,0,0,0.4)',
     display:        'flex',
     alignItems:     'center',
@@ -164,7 +182,7 @@ const styles = {
     display:        'flex',
     justifyContent: 'space-between',
     alignItems:     'flex-start',
-    marginBottom:   24,
+    marginBottom:   20,
   },
   title: {
     fontSize:   20,
@@ -173,11 +191,37 @@ const styles = {
   closeBtn: {
     background: 'none',
     border:     'none',
-    fontSize:   18,
+    fontSize:   16,
     color:      '#aaa',
     cursor:     'pointer',
     padding:    '0 4px',
     lineHeight: 1,
+  },
+  templateBadge: {
+    display:      'flex',
+    alignItems:   'flex-start',
+    gap:          10,
+    background:   '#fff7ed',
+    border:       '1px solid #fed7aa',
+    borderLeft:   `3px solid ${BRAND}`,
+    padding:      '10px 12px',
+    marginBottom: 20,
+  },
+  templateBadgeIcon: {
+    fontSize:   18,
+    lineHeight: 1,
+    flexShrink: 0,
+    marginTop:  1,
+  },
+  templateBadgeName: {
+    fontSize:     13,
+    fontWeight:   700,
+    color:        '#1c1c1e',
+    marginBottom: 2,
+  },
+  templateBadgeHint: {
+    fontSize: 11,
+    color:    '#6b7280',
   },
   fields: {
     display:       'flex',

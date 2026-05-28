@@ -220,8 +220,100 @@ def me(user: dict = Depends(get_current_user)):
 
 @protected.get("/projects", tags=["Projects"])
 def list_projects(user: dict = Depends(get_current_user)):
-    """Return team projects plus the current user's personal projects."""
-    return _db.load_all_projects(user_id=user["id"])
+    """Return team projects plus the current user's personal projects (excludes templates)."""
+    all_projects = _db.load_all_projects(user_id=user["id"])
+    return [p for p in all_projects if not p.get("_is_template")]
+
+
+@protected.get("/project-templates", tags=["Projects"])
+def list_project_templates(user: dict = Depends(get_current_user)):
+    """Return all project templates visible to this user."""
+    all_projects = _db.load_all_projects(user_id=user["id"])
+    return [p for p in all_projects if p.get("_is_template")]
+
+
+@protected.post("/projects/{project_id}/save-as-template", tags=["Projects"])
+def save_project_as_template(
+    project_id: str,
+    body: dict = Body(default={}),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Duplicate a project as a reusable template.
+
+    The original project is kept unchanged. A new project entry is created
+    with _is_template=True and a _template_name / _template_description.
+    Returns the newly created template.
+    """
+    import copy as _copy
+    source = _visible_project(project_id, user)
+    template = _copy.deepcopy(source)
+    template["id"]                    = uuid.uuid4().hex[:8]
+    template["_is_template"]          = True
+    template["_template_name"]        = (
+        body.get("name") or source["metadata"].get("project_name") or "Untitled template"
+    )
+    template["_template_description"] = body.get("description", "")
+    template["owner_id"]              = user["id"]
+    template["owner_email"]           = user.get("email", "")
+    template["visibility"]            = _clean_visibility(body.get("visibility", "team"))
+    _db.save_project(template, user=user["id"])
+    return template
+
+
+@protected.post("/project-templates/{template_id}/use", tags=["Projects"])
+def create_project_from_template(
+    template_id: str,
+    name: str = "New Project",
+    ref: str = "",
+    visibility: str = "team",
+    user: dict = Depends(get_current_user),
+):
+    """
+    Create a new project by cloning the document structures from a template.
+
+    All document blocks and sub-documents are copied.
+    Project metadata (name, ref, client, date, cover image…) is reset so the
+    user fills in the project-specific details; firm info is carried over.
+    """
+    import copy as _copy
+    template = _visible_project(template_id, user)
+    if not template.get("_is_template"):
+        raise HTTPException(status_code=400, detail="Not a template")
+
+    project = {
+        "id":          uuid.uuid4().hex[:8],
+        "owner_id":    user["id"],
+        "owner_email": user.get("email", ""),
+        "visibility":  _clean_visibility(visibility),
+        "metadata": {
+            # Project-specific — blank for user to fill in
+            "project_name":     name,
+            "project_ref":      ref,
+            "client":           "",
+            "address":          "",
+            "standard":         "",
+            "engineer":         "",
+            "checker":          "",
+            "approver":         "",
+            "date":             "",
+            "revision":         "A",
+            "revision_desc":    "",
+            "cover_image_b64":  "",
+            # Firm info — same across projects, carry from template
+            "firm_name":    template["metadata"].get("firm_name", ""),
+            "firm_address": template["metadata"].get("firm_address", ""),
+            "phone":        template["metadata"].get("phone", ""),
+            "email":        template["metadata"].get("email", ""),
+            "cvr":          template["metadata"].get("cvr", ""),
+            "logo_b64":     template["metadata"].get("logo_b64", ""),
+        },
+        # Copy document structures (blocks + subdocs) verbatim
+        "documents": _copy.deepcopy(template.get("documents", {})),
+        "created": str(date.today()),
+    }
+    _db.save_project(project, user=user["id"])
+    return project
 
 
 @protected.post("/projects", tags=["Projects"])

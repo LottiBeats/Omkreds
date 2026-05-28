@@ -81,15 +81,42 @@ async function request(method, path, body = null) {
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
-/** Fetch all projects from the database. */
+/** Fetch all projects from the database (excludes templates). */
 export const getProjects = () =>
   request('GET', '/projects')
+
+/** Fetch all project templates. */
+export const getProjectTemplates = () =>
+  request('GET', '/project-templates')
 
 /** Create a new empty project. Returns the created project. */
 export function createProject(name, ref = '', visibility = 'team') {
   const params = new URLSearchParams({ name, ref, visibility })
   return request('POST', `/projects?${params}`)
 }
+
+/**
+ * Duplicate a project as a reusable template.
+ * The original project is kept unchanged.
+ * @param {string} projectId  — the project to copy
+ * @param {{ name, description, visibility }} opts
+ */
+export function saveProjectAsTemplate(projectId, { name = '', description = '', visibility = 'team' } = {}) {
+  return request('POST', `/projects/${projectId}/save-as-template`, { name, description, visibility })
+}
+
+/**
+ * Create a new project from a template (copies document structures).
+ * Firm info is carried over; project metadata (name, client, date…) is reset.
+ */
+export function createProjectFromTemplate(templateId, name, ref = '', visibility = 'team') {
+  const params = new URLSearchParams({ name, ref, visibility })
+  return request('POST', `/project-templates/${templateId}/use?${params}`)
+}
+
+/** Delete a project template permanently. */
+export const deleteProjectTemplate = (templateId) =>
+  request('DELETE', `/projects/${templateId}`)
 
 /** Fetch one project by ID. */
 export const getProject = (projectId) =>

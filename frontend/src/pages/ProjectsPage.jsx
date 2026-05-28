@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { UserButton, useUser, useClerk, SignInButton, SignUpButton } from '@clerk/react'
-import { getProjects, deleteProject } from '../api/client.js'
+import { getProjects, deleteProject, getProjectTemplates, deleteProjectTemplate } from '../api/client.js'
 import CreateProjectModal from '../components/CreateProjectModal.jsx'
 
 // ── tokens ────────────────────────────────────────────────────────────────────
@@ -440,8 +440,83 @@ function CtaSection({ onNew }) {
   )
 }
 
+// ── template library ─────────────────────────────────────────────────────────
+function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate }) {
+  if (loading) return (
+    <div style={{ padding: '20px 0', color: MUTED, fontFamily: SANS, fontSize: 13 }}>Loading templates…</div>
+  )
+  if (templates.length === 0) return (
+    <div style={{
+      background: WHITE, border: '1px dashed ' + BORDER, padding: '40px 32px',
+      textAlign: 'center',
+    }}>
+      <div style={{ fontFamily: SANS, fontSize: 28, marginBottom: 12 }}>📋</div>
+      <div style={{ fontFamily: SANS, fontSize: 14, fontWeight: 700, color: TEXT, marginBottom: 6 }}>
+        No templates yet
+      </div>
+      <div style={{ fontFamily: SANS, fontSize: 13, color: MUTED, lineHeight: 1.7, maxWidth: 340, margin: '0 auto' }}>
+        Open a project and click <strong>Save as template</strong> to save its document structure
+        for reuse in future projects.
+      </div>
+    </div>
+  )
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+      {templates.map(tmpl => (
+        <div
+          key={tmpl.id}
+          style={{
+            background: WHITE, border: '1px solid ' + BORDER,
+            borderTop: '2px solid #6366f1',   // indigo — distinguishes templates from projects
+            padding: '20px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>📋</span>
+            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: TEXT, flex: 1, lineHeight: 1.3 }}>
+              {tmpl._template_name || tmpl.metadata?.project_name || 'Untitled template'}
+            </div>
+          </div>
+          {tmpl._template_description && (
+            <div style={{ fontFamily: SANS, fontSize: 12, color: MUTED, marginBottom: 10, lineHeight: 1.5 }}>
+              {tmpl._template_description}
+            </div>
+          )}
+          <div style={{ fontFamily: SANS, fontSize: 11, color: '#94a3b8', marginBottom: 14 }}>
+            {/* List which documents have content */}
+            {Object.entries(tmpl.documents || {})
+              .filter(([, doc]) => (doc.blocks?.length || 0) + (doc.subdocs?.length || 0) > 0)
+              .map(([id]) => id)
+              .join(' · ') || 'Empty template'}
+          </div>
+          <div style={{ borderTop: '1px solid ' + BORDER, paddingTop: 12, display: 'flex', gap: 8 }}>
+            <button
+              style={{
+                flex: 1, background: '#6366f1', color: WHITE, border: 'none',
+                padding: '8px 0', fontFamily: SANS, fontSize: 12, fontWeight: 700,
+                letterSpacing: '0.04em', textTransform: 'uppercase', cursor: 'pointer',
+              }}
+              onClick={() => onUseTemplate(tmpl)}
+            >
+              Use template
+            </button>
+            <button
+              style={{ background: 'none', border: '1px solid ' + BORDER, color: '#94a3b8', padding: '8px 14px', fontFamily: SANS, fontSize: 12, cursor: 'pointer' }}
+              onClick={() => onDeleteTemplate(tmpl)}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── projects dashboard ────────────────────────────────────────────────────────
-function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, isSignedIn }) {
+function ProjectsSection({ projects, templates, templatesLoading, loading, error, onOpen, onDelete, onNew, onUseTemplate, onDeleteTemplate, isSignedIn }) {
+  const [tab, setTab] = useState('projects')   // 'projects' | 'templates'
+
   if (!isSignedIn) return (
     <section id="projects-section" style={{ background: OFF, borderTop: '1px solid ' + BORDER, padding: '80px 40px' }}>
       <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
@@ -461,34 +536,65 @@ function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, is
       </div>
     </section>
   )
+
   return (
     <section id="projects-section" style={{ background: OFF, borderTop: '1px solid ' + BORDER, padding: '64px 40px 96px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-          <div>
-            <h2 style={{ fontFamily: SANS, fontSize: 22, fontWeight: 800, color: TEXT, letterSpacing: '-0.01em' }}>
-              Your Projects
+        {/* Header row: title + tabs + new-project button */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <h2 style={{ fontFamily: SANS, fontSize: 22, fontWeight: 800, color: TEXT, letterSpacing: '-0.01em', margin: 0 }}>
+              {tab === 'projects' ? 'Your Projects' : 'Templates'}
             </h2>
-            {projects.length > 0 && (
-              <div style={{ fontFamily: SANS, fontSize: 13, color: MUTED, marginTop: 4 }}>
-                {projects.length} project{projects.length !== 1 ? 's' : ''}
-              </div>
-            )}
+            {/* Tab toggle */}
+            <div style={{ display: 'flex', border: '1px solid ' + BORDER, background: WHITE, overflow: 'hidden' }}>
+              {[['projects', 'Projects'], ['templates', 'Templates']].map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  style={{
+                    background:  tab === key ? BRAND : 'transparent',
+                    color:       tab === key ? WHITE : MUTED,
+                    border:      'none',
+                    padding:     '6px 14px',
+                    fontFamily:  SANS,
+                    fontSize:    12,
+                    fontWeight:  tab === key ? 700 : 400,
+                    cursor:      'pointer',
+                    transition:  'background 0.15s, color 0.15s',
+                  }}
+                >
+                  {label}
+                  {key === 'templates' && templates.length > 0 && (
+                    <span style={{
+                      marginLeft: 5, background: tab === 'templates' ? 'rgba(255,255,255,0.25)' : '#e5e7eb',
+                      color: tab === 'templates' ? WHITE : MUTED,
+                      fontSize: 10, fontWeight: 700,
+                      padding: '1px 5px', borderRadius: 8,
+                    }}>
+                      {templates.length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
-          <button
-            onClick={onNew}
-            style={{
-              background: BRAND, color: WHITE, border: 'none',
-              padding: '10px 22px', fontFamily: SANS, fontSize: 13, fontWeight: 700,
-              cursor: 'pointer', letterSpacing: '0.02em',
-              transition: 'background 0.2s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = BRAND_DARK}
-            onMouseLeave={e => e.currentTarget.style.background = BRAND}
-          >
-            + New Project
-          </button>
+
+          {tab === 'projects' && (
+            <button
+              onClick={onNew}
+              style={{
+                background: BRAND, color: WHITE, border: 'none',
+                padding: '10px 22px', fontFamily: SANS, fontSize: 13, fontWeight: 700,
+                cursor: 'pointer', letterSpacing: '0.02em', transition: 'background 0.2s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = BRAND_DARK}
+              onMouseLeave={e => e.currentTarget.style.background = BRAND}
+            >
+              + New Project
+            </button>
+          )}
         </div>
 
         {error && (
@@ -497,88 +603,109 @@ function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, is
           </div>
         )}
 
-        {loading ? (
-          <div style={{ padding: '40px 0', color: MUTED, fontFamily: SANS, fontSize: 13 }}>Loading…</div>
-        ) : projects.length === 0 ? (
-          <div style={{
-            background: WHITE, border: '1px solid ' + BORDER, padding: '56px 32px',
-            textAlign: 'center',
-          }}>
-            <div style={{ fontFamily: SANS, fontSize: 32, marginBottom: 16 }}>📐</div>
-            <div style={{ fontFamily: SANS, fontSize: 16, fontWeight: 700, color: TEXT, marginBottom: 8 }}>
-              No projects yet
-            </div>
-            <div style={{ fontFamily: SANS, fontSize: 13, color: MUTED, marginBottom: 24, maxWidth: 320, margin: '0 auto 24px' }}>
-              Create your first project and start generating Eurocode-compliant documentation.
-            </div>
-            <button
-              onClick={onNew}
-              style={{ background: BRAND, color: WHITE, border: 'none', padding: '10px 24px', fontFamily: SANS, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-            >
-              + New Project
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-            {projects.map(project => (
-              <div
-                key={project.id}
-                className="project-card"
-                style={{
-                  background: WHITE, border: '1px solid ' + BORDER,
-                  borderTop: '2px solid ' + BRAND,
-                  padding: '20px', cursor: 'pointer',
-                  transition: 'box-shadow 0.2s, transform 0.2s',
-                }}
-                onClick={() => onOpen(project.id)}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                  <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: TEXT, flex: 1, marginRight: 8, lineHeight: 1.3 }}>
-                    {project.metadata.project_name || 'Untitled project'}
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-                    {project.visibility === 'personal' && (
-                      <span title="Personal — only visible to you" style={{
-                        fontFamily: SANS, fontSize: 10, fontWeight: 700, color: '#4b5563',
-                        background: '#f3f4f6', border: '1px solid #d1d5db',
-                        padding: '2px 6px', whiteSpace: 'nowrap',
-                      }}>
-                        Personal
-                      </span>
-                    )}
-                    {project.metadata.revision && (
-                      <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: MUTED, background: OFF, padding: '2px 6px', border: '1px solid ' + BORDER, whiteSpace: 'nowrap' }}>
-                        Rev {project.metadata.revision}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div style={{ fontFamily: SANS, fontSize: 12, color: MUTED, marginBottom: 12 }}>
-                  {project.metadata.project_ref || '—'}
-                  {project.metadata.client ? ` · ${project.metadata.client}` : ''}
-                </div>
-                <div style={{ fontFamily: SANS, fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>
-                  {project.metadata.engineer ? `${project.metadata.engineer} · ` : ''}
-                  {project.created}
-                </div>
-                <div style={{ borderTop: '1px solid ' + BORDER, paddingTop: 12, display: 'flex', gap: 8 }}>
-                  <button
-                    style={{ flex: 1, background: BRAND, color: WHITE, border: 'none', padding: '8px 0', fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', cursor: 'pointer' }}
-                    onClick={(e) => { e.stopPropagation(); onOpen(project.id) }}
-                  >
-                    Open
-                  </button>
-                  <button
-                    style={{ background: 'none', border: '1px solid ' + BORDER, color: '#94a3b8', padding: '8px 14px', fontFamily: SANS, fontSize: 12, cursor: 'pointer' }}
-                    onClick={(e) => { e.stopPropagation(); onDelete(project, e) }}
-                  >
-                    Delete
-                  </button>
-                </div>
+        {/* ── Projects tab ── */}
+        {tab === 'projects' && (
+          loading ? (
+            <div style={{ padding: '40px 0', color: MUTED, fontFamily: SANS, fontSize: 13 }}>Loading…</div>
+          ) : projects.length === 0 ? (
+            <div style={{ background: WHITE, border: '1px solid ' + BORDER, padding: '56px 32px', textAlign: 'center' }}>
+              <div style={{ fontFamily: SANS, fontSize: 32, marginBottom: 16 }}>📐</div>
+              <div style={{ fontFamily: SANS, fontSize: 16, fontWeight: 700, color: TEXT, marginBottom: 8 }}>
+                No projects yet
               </div>
-            ))}
-          </div>
+              <div style={{ fontFamily: SANS, fontSize: 13, color: MUTED, marginBottom: 24, maxWidth: 320, margin: '0 auto 24px' }}>
+                Create your first project and start generating Eurocode-compliant documentation.
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button
+                  onClick={onNew}
+                  style={{ background: BRAND, color: WHITE, border: 'none', padding: '10px 24px', fontFamily: SANS, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  + New Project
+                </button>
+                {templates.length > 0 && (
+                  <button
+                    onClick={() => setTab('templates')}
+                    style={{ background: 'transparent', color: MUTED, border: '1px solid ' + BORDER, padding: '10px 24px', fontFamily: SANS, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    Browse templates →
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+              {projects.map(project => (
+                <div
+                  key={project.id}
+                  className="project-card"
+                  style={{
+                    background: WHITE, border: '1px solid ' + BORDER,
+                    borderTop: '2px solid ' + BRAND,
+                    padding: '20px', cursor: 'pointer',
+                    transition: 'box-shadow 0.2s, transform 0.2s',
+                  }}
+                  onClick={() => onOpen(project.id)}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: TEXT, flex: 1, marginRight: 8, lineHeight: 1.3 }}>
+                      {project.metadata.project_name || 'Untitled project'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                      {project.visibility === 'personal' && (
+                        <span title="Personal — only visible to you" style={{
+                          fontFamily: SANS, fontSize: 10, fontWeight: 700, color: '#4b5563',
+                          background: '#f3f4f6', border: '1px solid #d1d5db',
+                          padding: '2px 6px', whiteSpace: 'nowrap',
+                        }}>
+                          Personal
+                        </span>
+                      )}
+                      {project.metadata.revision && (
+                        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: MUTED, background: OFF, padding: '2px 6px', border: '1px solid ' + BORDER, whiteSpace: 'nowrap' }}>
+                          Rev {project.metadata.revision}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ fontFamily: SANS, fontSize: 12, color: MUTED, marginBottom: 12 }}>
+                    {project.metadata.project_ref || '—'}
+                    {project.metadata.client ? ` · ${project.metadata.client}` : ''}
+                  </div>
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>
+                    {project.metadata.engineer ? `${project.metadata.engineer} · ` : ''}
+                    {project.created}
+                  </div>
+                  <div style={{ borderTop: '1px solid ' + BORDER, paddingTop: 12, display: 'flex', gap: 8 }}>
+                    <button
+                      style={{ flex: 1, background: BRAND, color: WHITE, border: 'none', padding: '8px 0', fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', cursor: 'pointer' }}
+                      onClick={(e) => { e.stopPropagation(); onOpen(project.id) }}
+                    >
+                      Open
+                    </button>
+                    <button
+                      style={{ background: 'none', border: '1px solid ' + BORDER, color: '#94a3b8', padding: '8px 14px', fontFamily: SANS, fontSize: 12, cursor: 'pointer' }}
+                      onClick={(e) => { e.stopPropagation(); onDelete(project, e) }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         )}
+
+        {/* ── Templates tab ── */}
+        {tab === 'templates' && (
+          <TemplatesSection
+            templates={templates}
+            loading={templatesLoading}
+            onUseTemplate={onUseTemplate}
+            onDeleteTemplate={onDeleteTemplate}
+          />
+        )}
+
       </div>
     </section>
   )
@@ -588,15 +715,19 @@ function ProjectsSection({ projects, loading, error, onOpen, onDelete, onNew, is
 export default function ProjectsPage() {
   const { user, isSignedIn, isLoaded } = useUser()
   const { openSignIn } = useClerk()
-  const [projects,  setProjects]  = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState(null)
-  const [showModal, setShowModal] = useState(false)
+  const [projects,          setProjects]          = useState([])
+  const [templates,         setTemplates]         = useState([])
+  const [loading,           setLoading]           = useState(true)
+  const [templatesLoading,  setTemplatesLoading]  = useState(false)
+  const [error,             setError]             = useState(null)
+  const [showModal,         setShowModal]         = useState(false)
+  // { id, name } when creating from a template; null for blank new project
+  const [selectedTemplate,  setSelectedTemplate]  = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
     if (!isLoaded) return
-    if (isSignedIn) load()
+    if (isSignedIn) { load(); loadTemplates() }
     else setLoading(false)
   }, [isSignedIn, isLoaded])
 
@@ -606,7 +737,14 @@ export default function ProjectsPage() {
     finally { setLoading(false) }
   }
 
-  const onCreated  = (p) => navigate(`/projects/${p.id}`)
+  async function loadTemplates() {
+    try { setTemplatesLoading(true); setTemplates(await getProjectTemplates()) }
+    catch (e) { /* non-fatal */ }
+    finally { setTemplatesLoading(false) }
+  }
+
+  const onCreated = (p) => navigate(`/projects/${p.id}`)
+
   const onDelete = async (project, e) => {
     e.stopPropagation()
     if (!window.confirm(`Delete "${project.metadata.project_name}"?`)) return
@@ -614,8 +752,26 @@ export default function ProjectsPage() {
     catch (e) { setError(e.message) }
   }
 
+  const onDeleteTemplate = async (tmpl) => {
+    const name = tmpl._template_name || tmpl.metadata?.project_name || 'this template'
+    if (!window.confirm(`Delete template "${name}"?`)) return
+    try {
+      await deleteProject(tmpl.id)
+      setTemplates(templates.filter(t => t.id !== tmpl.id))
+    } catch (e) { setError(e.message) }
+  }
+
   const openModal = () => {
     if (!isSignedIn) { openSignIn(); return }
+    setSelectedTemplate(null)
+    setShowModal(true)
+  }
+
+  const useTemplate = (tmpl) => {
+    setSelectedTemplate({
+      id:   tmpl.id,
+      name: tmpl._template_name || tmpl.metadata?.project_name || 'Template',
+    })
     setShowModal(true)
   }
 
@@ -629,12 +785,21 @@ export default function ProjectsPage() {
       <CtaSection onNew={openModal} />
       <ProjectsSection
         projects={projects} loading={loading} error={error}
+        templates={templates} templatesLoading={templatesLoading}
         onOpen={(id) => navigate(`/projects/${id}`)}
-        onDelete={onDelete} onNew={openModal}
+        onDelete={onDelete}
+        onNew={openModal}
+        onUseTemplate={useTemplate}
+        onDeleteTemplate={onDeleteTemplate}
         isSignedIn={isSignedIn}
       />
       {showModal && (
-        <CreateProjectModal onCreated={onCreated} onCancel={() => setShowModal(false)} />
+        <CreateProjectModal
+          onCreated={onCreated}
+          onCancel={() => { setShowModal(false); setSelectedTemplate(null) }}
+          templateId={selectedTemplate?.id ?? null}
+          templateName={selectedTemplate?.name ?? ''}
+        />
       )}
     </div>
   )
