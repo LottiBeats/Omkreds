@@ -821,13 +821,23 @@ export default function EditorPage() {
    * complete.  Call this before any PDF/Word export so the backend always reads
    * the latest _result values from the database.
    */
+  // Flush pending auto-save before export.
+  // Returns true if the save succeeded, false if it failed (e.g. project too
+  // large). Callers should proceed with export anyway — the server will use
+  // whatever was last successfully saved to the database.
   async function _flushSave() {
     clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = null
-    if (!project) return
+    if (!project) return true
     setSaving(true)
     try {
       await saveProject(project)
+      return true
+    } catch (err) {
+      // Non-fatal: log but don't block export. The PDF/Word endpoint will use
+      // the last successfully saved version from the database.
+      console.warn('Pre-export save failed (proceeding with DB state):', err.message)
+      return false
     } finally {
       setSaving(false)
     }
@@ -836,9 +846,13 @@ export default function EditorPage() {
   async function handleGeneratePdf() {
     if (!activeDoc) return
     setPdfGenerating(true)
+    setError(null)
     try {
-      // Ensure all calc results are persisted before asking the server to render
-      await _flushSave()
+      const saved = await _flushSave()
+      if (!saved) {
+        setError('Note: latest changes could not be saved (project may be too large). ' +
+                 'Generating PDF from last saved version.')
+      }
       const blob     = await generatePdf(projectId, activeDoc)
       const url      = URL.createObjectURL(blob)
       const anchor   = document.createElement('a')
@@ -846,6 +860,7 @@ export default function EditorPage() {
       anchor.download = `${project.metadata.project_ref || projectId}_${activeDoc}.pdf`
       anchor.click()
       URL.revokeObjectURL(url)
+      if (saved) setError(null)
     } catch (err) {
       setError(`PDF generation failed: ${err.message}`)
     } finally {
@@ -856,9 +871,13 @@ export default function EditorPage() {
   async function handleGenerateWord() {
     if (!activeDoc) return
     setWordGenerating(true)
+    setError(null)
     try {
-      // Ensure all calc results are persisted before asking the server to render
-      await _flushSave()
+      const saved = await _flushSave()
+      if (!saved) {
+        setError('Note: latest changes could not be saved (project may be too large). ' +
+                 'Generating Word export from last saved version.')
+      }
       const blob   = await generateWord(projectId, activeDoc)
       const url    = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
@@ -866,6 +885,7 @@ export default function EditorPage() {
       anchor.download = `${project.metadata.project_ref || projectId}_${activeDoc}.docx`
       anchor.click()
       URL.revokeObjectURL(url)
+      if (saved) setError(null)
     } catch (err) {
       setError(`Word export failed: ${err.message}`)
     } finally {
@@ -876,13 +896,17 @@ export default function EditorPage() {
   async function handlePreviewPdf() {
     if (!activeDoc) return
     setPdfGenerating(true)
+    setError(null)
     try {
-      // Ensure all calc results are persisted before asking the server to render
-      await _flushSave()
+      const saved = await _flushSave()
+      if (!saved) {
+        setError('Note: latest changes could not be saved (project may be too large). ' +
+                 'Showing PDF from last saved version.')
+      }
       const blob = await generatePdf(projectId, activeDoc)
-      // Revoke any previous preview URL to free memory
       if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl)
       setPdfPreviewUrl(URL.createObjectURL(blob))
+      if (saved) setError(null)
     } catch (err) {
       setError(`PDF preview failed: ${err.message}`)
     } finally {
