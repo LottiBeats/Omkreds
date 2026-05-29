@@ -1583,13 +1583,15 @@ class FrameNodeIn(BaseModel):
     y:   float
 
 class FrameElemIn(BaseModel):
-    id:      int
-    ni:      int
-    nj:      int
-    type:    str   = "beam"   # "beam" | "truss"
-    E_GPa:   float = 210.0
-    A_cm2:   float = 28.5
-    I_cm4:   float = 1943.0
+    id:       int
+    ni:       int
+    nj:       int
+    type:     str   = "beam"   # "beam" | "truss"
+    releases: str   = "none"   # "none" | "both" | "start" | "end"
+    E_GPa:    float = 210.0
+    A_cm2:    float = 28.5
+    I_cm4:    float = 1943.0
+    preset:   str   = ""       # UI label, ignored by solver
 
 class FrameSupportIn(BaseModel):
     node_id: int
@@ -1640,7 +1642,8 @@ def calc_frame_fem(data: FrameFemInput):
                    "Run: pip install openseespy",
         )
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        import traceback
+        raise HTTPException(status_code=422, detail=str(exc) + "\n" + traceback.format_exc())
 
 
 class RcColumnInput(BaseModel):
