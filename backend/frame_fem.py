@@ -358,7 +358,34 @@ def _run(nodes, elements, supports, loads, title):
         "max_disp_mm": round(max(all_disp, default=0.0), 4),
     }
 
-    # ── Figure ────────────────────────────────────────────────────────────────
+    # ── OpsVis force-diagram images ───────────────────────────────────────────
+    # OpsVis reads from the live OpenSeesPy model, so call before wipe().
+    span = max(
+        max(n["x"] for n in nodes) - min(n["x"] for n in nodes),
+        max(n["y"] for n in nodes) - min(n["y"] for n in nodes),
+        0.1,
+    )
+
+    def _opsvis_png(ftype, max_abs):
+        import opsvis as opsv
+        sfac = span * 0.12 / max(float(max_abs), 0.001)
+        opsv.section_force_diagram_2d(ftype, sfac, fig_wi_he=(9, 5))
+        fig = plt.gcf()
+        fig.patch.set_facecolor("white")
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=110, bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return base64.b64encode(buf.read()).decode()
+
+    try:
+        ops_n_b64 = _opsvis_png("N", summary["max_N_kN"])
+        ops_v_b64 = _opsvis_png("V", summary["max_V_kN"])
+        ops_m_b64 = _opsvis_png("M", summary["max_M_kNm"])
+    except Exception as exc:
+        ops_n_b64 = ops_v_b64 = ops_m_b64 = None
+
+    # ── Matplotlib combined figure (used by PDF export) ───────────────────────
     node_disp_dict = {d["node_id"]: d for d in node_disps}
     fig_b64 = _make_figure(
         nodes, elements, supports, loads,
@@ -367,6 +394,9 @@ def _run(nodes, elements, supports, loads, title):
 
     return {
         "fig_b64":         fig_b64,
+        "ops_n_b64":       ops_n_b64,
+        "ops_v_b64":       ops_v_b64,
+        "ops_m_b64":       ops_m_b64,
         "node_disps":      node_disps,
         "reactions":       reactions,
         "element_results": elem_results,

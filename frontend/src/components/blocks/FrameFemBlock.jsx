@@ -463,8 +463,8 @@ export default function FrameFemBlock({ block, onChange }) {
         supports,
         loads,
       })
-      // Keep xs/N_arr/V_arr/M_arr for SVG diagrams; drop fig_b64 (matplotlib PNG)
-      // so the stored document stays within the nginx body limit.
+      // Drop the combined matplotlib PNG (large, used only for PDF).
+      // Keep ops_n/v/m_b64 (OpsVis force diagrams) and the array data.
       const { fig_b64: _dropped, ...lean } = res
       update({ _result: lean })
     } catch (err) {

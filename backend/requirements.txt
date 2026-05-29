@@ -17,3 +17,4 @@ handcalcs
 reportlab
 pypdfium2
 openseespy      # 2D/3D FEM solver for frame_fem block
+opsvis          # OpenSeesPy visualisation (force diagrams)

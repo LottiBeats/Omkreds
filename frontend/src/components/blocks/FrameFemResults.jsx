@@ -720,10 +720,18 @@ export default function FrameFemResults({ result, nodes, elements, supports, loa
           <DeformedSvg nodes={nodes} elements={elements}
             nodeDisps={result.node_disps} W={680} H={340} />
         )}
-        {(tab === 'N' || tab === 'V' || tab === 'M') && (
-          <DiagramSvg nodes={nodes} elements={elements}
-            elemResults={ers} type={tab} W={680} H={400} />
-        )}
+        {(tab === 'N' || tab === 'V' || tab === 'M') && (() => {
+          const b64 = result[`ops_${tab.toLowerCase()}_b64`]
+          return b64
+            ? <img
+                src={`data:image/png;base64,${b64}`}
+                alt={`${tab} diagram`}
+                style={{ width: '100%', maxWidth: 700, display: 'block',
+                         margin: '0 auto', padding: 8 }}
+              />
+            : <DiagramSvg nodes={nodes} elements={elements}
+                elemResults={ers} type={tab} W={680} H={400} />
+        })()}
         {tab === 'tables' && (
           <ResultTables reactions={result.reactions} elemResults={ers} />
         )}
