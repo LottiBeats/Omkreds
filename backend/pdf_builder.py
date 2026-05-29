@@ -214,21 +214,27 @@ def _pdf(s) -> str:
 def _table_block(block: dict) -> list:
     """
     Render a user-created table block as a PDF table.
-    Data shape: { caption, has_header, rows: str[][] }
+    Data shape: { caption, has_header, rows: str[][], highlighted: str[] }
+
+    highlighted is a list of "ri,ci" strings — those cells get a yellow
+    background in the PDF, matching the frontend highlight mode.
     """
-    d          = block["data"]
-    caption    = d.get("caption", "").strip()
-    has_header = d.get("has_header", True)
-    rows_data  = d.get("rows", [])
+    d           = block["data"]
+    caption     = d.get("caption", "").strip()
+    has_header  = d.get("has_header", True)
+    rows_data   = d.get("rows", [])
+    highlighted = set(d.get("highlighted", []))  # e.g. {"1,0", "1,1", ...}
 
     if not rows_data:
         return []
 
-    HDR_BG = rl_colors.HexColor("#f0f0f0")   # light grey — no brand colour
-    BLACK  = rl_colors.HexColor("#111111")
-    LIGHT  = rl_colors.HexColor("#f9f9f9")
-    RULE   = rl_colors.HexColor("#d8d8d8")
-    RULE_H = rl_colors.HexColor("#999999")   # heavier rule under header
+    HDR_BG    = rl_colors.HexColor("#f0f0f0")   # light grey header
+    BLACK     = rl_colors.HexColor("#111111")
+    LIGHT     = rl_colors.HexColor("#f9f9f9")
+    RULE      = rl_colors.HexColor("#d8d8d8")
+    RULE_H    = rl_colors.HexColor("#999999")   # heavier rule under header
+    HL_BG     = rl_colors.HexColor("#fef08a")   # yellow highlight (matches frontend)
+    HL_BORDER = rl_colors.HexColor("#ca8a04")   # amber border for highlighted cells
 
     hdr_style  = ParagraphStyle("tblHdr",  fontSize=8, textColor=BLACK,
                                  fontName="Helvetica-Bold", leading=10)
@@ -277,6 +283,16 @@ def _table_block(block: dict) -> list:
         for r in range(len(rl_rows)):
             if r % 2 == 0:
                 style_cmds.append(("BACKGROUND", (0, r), (-1, r), LIGHT))
+
+    # Highlighted cells — applied last so they override alternating-row colours
+    for key in highlighted:
+        try:
+            ri, ci = (int(x) for x in key.split(","))
+            if 0 <= ri < len(rl_rows) and 0 <= ci < n_cols:
+                style_cmds.append(("BACKGROUND", (ci, ri), (ci, ri), HL_BG))
+                style_cmds.append(("BOX",        (ci, ri), (ci, ri), 0.8, HL_BORDER))
+        except ValueError:
+            pass   # malformed key — skip silently
 
     tbl.setStyle(TableStyle(style_cmds))
     result.append(tbl)
