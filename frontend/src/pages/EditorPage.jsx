@@ -501,6 +501,118 @@ function makeB1Template() {
   ]
 }
 
+// ── A2: Portal frame ──────────────────────────────────────────────────────────
+function makePortalFrameTemplate() {
+  let id = Date.now()
+  return [
+    { id: id++, type: 'heading', data: { level: 1, text: 'Portalstel — 2D FEM-analyse' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Forudsætninger' } },
+    { id: id++, type: 'text', data: { text:
+      'Statisk system: Portalstel med 2 søjler og 1 bjælke.\n' +
+      'Profiler: Søjler IPE 240 (S235), Bjælke IPE 300 (S235)\n' +
+      'Spændvidde: L = 6,0 m   Søjlehøjde: h = 4,0 m\n' +
+      'Understøtning: Begge søjlebaser indspændt (fixed)\n' +
+      'Laster (karakteristiske):\n' +
+      '  Nyttelast (UDL): q = 20 kN/m nedad på bjælke\n' +
+      '  Vindlast (horisontal): H = 10 kN ved venstre søjletop' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'FEM-model' } },
+    {
+      id: id++, type: 'frame_fem', data: {
+        title: 'Portalstel — IPE 240/300 S235',
+        nodes: [
+          { id: 1, x: 0.0, y: 0.0 },   // left column base
+          { id: 2, x: 6.0, y: 0.0 },   // right column base
+          { id: 3, x: 0.0, y: 4.0 },   // left top
+          { id: 4, x: 6.0, y: 4.0 },   // right top
+        ],
+        elements: [
+          { id: 1, ni: 1, nj: 3, type: 'beam', E_GPa: 210, A_cm2: 39.1, I_cm4: 3892,  preset: 'IPE 240 (S235)' },
+          { id: 2, ni: 3, nj: 4, type: 'beam', E_GPa: 210, A_cm2: 53.8, I_cm4: 8356,  preset: 'IPE 300 (S235)' },
+          { id: 3, ni: 2, nj: 4, type: 'beam', E_GPa: 210, A_cm2: 39.1, I_cm4: 3892,  preset: 'IPE 240 (S235)' },
+        ],
+        supports: [
+          { node_id: 1, ux: true, uy: true, rz: true },
+          { node_id: 2, ux: true, uy: true, rz: true },
+        ],
+        loads: [
+          { type: 'udl',    elem_id: 2,  wy_kNm: 20.0, wx_kNm: 0.0 },
+          { type: 'nodal',  node_id: 3,  Fx_kN: 10.0,  Fy_kN: 0.0,  Mz_kNm: 0.0 },
+        ],
+      }
+    },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Konklusion' } },
+    { id: id++, type: 'text', data: { text: '[Indsæt konklusion med maks. moment, reaktioner og udnyttelsesgrad — udfyld efter kørsel af analysen ovenfor]' } },
+  ]
+}
+
+// ── A2: Pratt truss ───────────────────────────────────────────────────────────
+function makePrattTrussTemplate() {
+  let id = Date.now()
+  return [
+    { id: id++, type: 'heading', data: { level: 1, text: 'Pratt-fagvark — 2D FEM-analyse' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Forudsætninger' } },
+    { id: id++, type: 'text', data: { text:
+      'Statisk system: Pratt-fagvark, 3 felter, simpelt understøttet.\n' +
+      'Spændvidde: L = 9,0 m   Konstruktionshøjde: h = 2,0 m\n' +
+      'Profil (alle stænger): IPE 200 (S235)  E = 210 GPa  A = 28,5 cm²\n' +
+      '  Bjælke-type bruges til chord; truss-type til diagonaler og vertikaler\n' +
+      'Understøtning: Venstre ende pin (ux+uy), højre ende rulle (uy)\n' +
+      'Laster: Nodallast P = 30 kN nedad i hvert knudepunkt på underkorden (N6, N7, N8)' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'FEM-model' } },
+    {
+      id: id++, type: 'frame_fem', data: {
+        title: 'Pratt-fagvark 3-felt — IPE 200 S235',
+        nodes: [
+          // Top chord  (y = 2 m)
+          { id: 1, x: 0.0, y: 2.0 },   // top-left
+          { id: 2, x: 3.0, y: 2.0 },   // top 1/3
+          { id: 3, x: 6.0, y: 2.0 },   // top 2/3
+          { id: 4, x: 9.0, y: 2.0 },   // top-right
+          // Bottom chord (y = 0 m)
+          { id: 5, x: 0.0, y: 0.0 },   // bottom-left  (support)
+          { id: 6, x: 3.0, y: 0.0 },   // bottom 1/3
+          { id: 7, x: 6.0, y: 0.0 },   // bottom 2/3
+          { id: 8, x: 9.0, y: 0.0 },   // bottom-right (support)
+        ],
+        elements: [
+          // Top chord (beam — carries compression, has I for stability)
+          { id: 1, ni: 1, nj: 2, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 2, ni: 2, nj: 3, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 3, ni: 3, nj: 4, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          // Bottom chord (beam)
+          { id: 4, ni: 5, nj: 6, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 5, ni: 6, nj: 7, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 6, ni: 7, nj: 8, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          // Verticals (truss — axial only)
+          { id: 7,  ni: 1, nj: 5, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 8,  ni: 2, nj: 6, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 9,  ni: 3, nj: 7, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 10, ni: 4, nj: 8, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          // Diagonals — Pratt: lean toward centre from each end (tension under gravity)
+          { id: 11, ni: 1, nj: 6, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 12, ni: 4, nj: 7, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+        ],
+        supports: [
+          { node_id: 5, ux: true,  uy: true, rz: false },   // pin
+          { node_id: 8, ux: false, uy: true, rz: false },   // roller
+        ],
+        loads: [
+          { type: 'nodal', node_id: 6, Fx_kN: 0, Fy_kN: -30.0, Mz_kNm: 0 },
+          { type: 'nodal', node_id: 7, Fx_kN: 0, Fy_kN: -30.0, Mz_kNm: 0 },
+        ],
+      }
+    },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Konklusion' } },
+    { id: id++, type: 'text', data: { text: '[Indsæt konklusion med maks. stangkraft (N), reaktioner og kritisk stang — udfyld efter kørsel af analysen ovenfor]' } },
+  ]
+}
+
 function makeA3Template() {
   let id = Date.now()
   return [
@@ -637,6 +749,18 @@ const DOC_TEMPLATES = {
       label:       'Projektgrundlag',
       description: 'Projektbeskrivelse · Normer · CC-klasse · Laster · Materialer · Geoteknik',
       make:        makeA1Template,
+    },
+  ],
+  A2: [
+    {
+      label:       'Portalstel — 2D FEM',
+      description: 'IPE 240/300 · 6m spænd · 4m søjler · 2 indspændte baser · UDL + vandret last',
+      make:        makePortalFrameTemplate,
+    },
+    {
+      label:       'Pratt-fagvark — 2D FEM',
+      description: 'IPE 200 · 9m spænd · 3 felter · 2m højde · pin+rulle · nodallast',
+      make:        makePrattTrussTemplate,
     },
   ],
   A3: [
