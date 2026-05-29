@@ -71,6 +71,15 @@ Use:
 CLERK_ISSUER=https://proven-sawfly-11.clerk.accounts.dev
 DATABASE_PATH=/opt/structuralcalc/data/calc.db
 ALLOWED_ORIGINS=https://calc.yourcompany.com
+
+# User allowlist — only these emails can access the API (comma-separated).
+# Any Clerk account NOT in this list gets HTTP 403.
+# Remove this line to allow all valid Clerk accounts (not recommended).
+ALLOWED_EMAILS=you@yourfirm.com
+
+# Python Script block — who can run exec() on the server.
+# Defaults to ALLOWED_EMAILS above if not set separately.
+ADMIN_EMAIL=you@yourfirm.com
 ```
 
 Frontend env file:

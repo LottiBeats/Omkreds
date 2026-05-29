@@ -169,6 +169,32 @@ DOC_DEFS = {
 
 VALID_VISIBILITIES = {"personal", "team"}
 
+# ── Global user allowlist ─────────────────────────────────────────────────────
+# Set ALLOWED_EMAILS=you@firm.com,colleague@firm.com in your .env / server env.
+# If the variable is not set, every valid Clerk account can access the API.
+# When set, users not on the list get HTTP 403 — even with a valid Clerk token.
+_ALLOWED_EMAILS: frozenset[str] = frozenset(
+    e.strip().lower()
+    for e in _os.environ.get("ALLOWED_EMAILS", "").split(",")
+    if e.strip()
+)
+
+
+def get_authorized_user(user: dict = Depends(get_current_user)) -> dict:
+    """
+    Clerk token verified (get_current_user) AND user is on the ALLOWED_EMAILS
+    allowlist (if configured).  Returns the user dict on success.
+    Raises HTTP 403 if the caller's email is not permitted.
+    """
+    if _ALLOWED_EMAILS:
+        email = (user.get("email") or "").strip().lower()
+        if email not in _ALLOWED_EMAILS:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied. Your account is not authorised to use this API.",
+            )
+    return user
+
 
 def _clean_visibility(value: str | None) -> str:
     return value if value in VALID_VISIBILITIES else "personal"
@@ -202,11 +228,13 @@ def health():
     return {"status": "ok", "version": "2.0"}
 
 
-# ── Protected router (all routes below require a valid Clerk Bearer token) ────
-# Auth is handled by Clerk (clerk.com) — no login/logout endpoints here.
-# Users are managed in the Clerk dashboard at dashboard.clerk.com.
+# ── Protected router ──────────────────────────────────────────────────────────
+# All routes below require:
+#   1. A valid Clerk Bearer token (get_current_user)
+#   2. The caller's email to be in ALLOWED_EMAILS, if that env var is set
+#      (get_authorized_user — wraps get_current_user)
 
-protected = APIRouter(dependencies=[Depends(get_current_user)])
+protected = APIRouter(dependencies=[Depends(get_authorized_user)])
 
 
 # ── Auth — current user (convenient endpoint) ─────────────────────────────────
@@ -1301,19 +1329,33 @@ def run_python_script(data: PythonScriptInput, user: dict = Depends(get_current_
     import os as _os
 
     # ── Access control ────────────────────────────────────────────────────────
-    # PYTHON_SCRIPT_ALLOWED_EMAILS = "alice@firm.com,bob@firm.com"
-    # If not set, falls back to ADMIN_EMAIL (the account owner).
-    raw_allowed = _os.environ.get("PYTHON_SCRIPT_ALLOWED_EMAILS", "").strip()
-    admin_email = _os.environ.get("ADMIN_EMAIL", "").strip()
-    allowed = {e.strip().lower() for e in raw_allowed.split(",") if e.strip()}
-    if admin_email:
-        allowed.add(admin_email.lower())
-
-    caller = (user.get("email") or "").strip().lower()
-    if allowed and caller not in allowed:
+    # Python script runs exec() — it cannot be safely sandboxed.
+    # Build the allowlist from (in order of priority):
+    #   1. PYTHON_SCRIPT_ALLOWED_EMAILS  (comma-separated, Python-specific)
+    #   2. ADMIN_EMAIL                   (single owner email)
+    #   3. ALLOWED_EMAILS                (global app allowlist)
+    # If none of these are set, deny everyone — fail closed, not open.
+    raw_py   = _os.environ.get("PYTHON_SCRIPT_ALLOWED_EMAILS", "").strip()
+    raw_adm  = _os.environ.get("ADMIN_EMAIL", "").strip()
+    allowed: set[str] = {e.strip().lower() for e in raw_py.split(",") if e.strip()}
+    if raw_adm:
+        allowed.add(raw_adm.lower())
+    if not allowed:
+        # Fall back to global ALLOWED_EMAILS
+        allowed = {e for e in _ALLOWED_EMAILS}   # already lower-cased
+    if not allowed:
+        # Nothing configured — deny everyone rather than allow everyone
         raise HTTPException(
             status_code=403,
-            detail="Python Script blocks are restricted to admin users. "
+            detail="Python Script execution is disabled: set ADMIN_EMAIL or "
+                   "PYTHON_SCRIPT_ALLOWED_EMAILS in the server environment.",
+        )
+
+    caller = (user.get("email") or "").strip().lower()
+    if caller not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="Python Script blocks are restricted to authorised users. "
                    "Contact the system administrator.",
         )
 
