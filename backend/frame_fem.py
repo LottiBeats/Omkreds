@@ -192,14 +192,19 @@ def _run(nodes, elements, supports, loads, title):
         ltype = ld.get("type", "")
 
         if ltype == "nodal":
-            n_tag = node_map[ld["node_id"]]
+            nid = ld.get("node_id")
+            if nid is None or nid not in node_map:
+                continue
+            n_tag = node_map[nid]
             ops.load(n_tag,
                      float(ld.get("Fx_kN", 0.0)),
                      float(ld.get("Fy_kN", 0.0)),
                      float(ld.get("Mz_kNm", 0.0)))
 
         elif ltype == "udl":
-            eid = ld["elem_id"]
+            eid = ld.get("elem_id")
+            if eid is None or eid not in elem_info:
+                continue   # UDL row with no element selected — skip silently
             ei  = elem_info[eid]
             c, s = ei["c"], ei["s"]
 
