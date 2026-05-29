@@ -57,14 +57,37 @@ def init_db(path: Path | None = None) -> None:
             ("calc_library", "code       TEXT DEFAULT ''"),
             ("calc_library", "items      TEXT DEFAULT '[]'"),
             ("projects",     "owner_id   TEXT DEFAULT ''"),
-            ("projects",     "visibility TEXT DEFAULT 'team'"),
+            ("projects",     "visibility TEXT DEFAULT 'personal'"),
             ("calc_library", "owner_id   TEXT DEFAULT ''"),
-            ("calc_library", "visibility TEXT DEFAULT 'team'"),
+            ("calc_library", "visibility TEXT DEFAULT 'personal'"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
             except sqlite3.OperationalError:
                 pass   # column already exists
+
+        # One-time migration: claim orphaned 'team' projects for their last editor.
+        # Before the owner_id feature existed every project defaulted to visibility='team'
+        # which made them visible to all users. Fix: set owner_id = updated_by and
+        # flip visibility to 'personal' so only the original author sees them.
+        conn.execute("""
+            UPDATE projects
+            SET   owner_id   = updated_by,
+                  visibility = 'personal'
+            WHERE visibility = 'team'
+              AND (owner_id = '' OR owner_id IS NULL)
+              AND updated_by IS NOT NULL
+              AND updated_by != ''
+        """)
+        conn.execute("""
+            UPDATE calc_library
+            SET   owner_id   = created_by,
+                  visibility = 'personal'
+            WHERE visibility = 'team'
+              AND (owner_id = '' OR owner_id IS NULL)
+              AND created_by IS NOT NULL
+              AND created_by != ''
+        """)
         conn.commit()
 
 
@@ -122,7 +145,7 @@ def save_project(project: dict, user: str = "", path: Path | None = None) -> Non
     project["_updated_by"] = user
     data_str = json.dumps(project, ensure_ascii=False)
     owner_id   = project.get("owner_id",   "")
-    visibility = project.get("visibility", "team")
+    visibility = project.get("visibility", "personal")
     with _lock:
         with sqlite3.connect(p) as conn:
             conn.execute("""

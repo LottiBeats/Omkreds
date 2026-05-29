@@ -171,11 +171,12 @@ VALID_VISIBILITIES = {"personal", "team"}
 
 
 def _clean_visibility(value: str | None) -> str:
-    return value if value in VALID_VISIBILITIES else "team"
+    return value if value in VALID_VISIBILITIES else "personal"
 
 
 def _is_visible(item: dict, user: dict) -> bool:
-    return item.get("visibility", "team") == "team" or item.get("owner_id") == user["id"]
+    vis = item.get("visibility", "personal")
+    return vis == "team" or item.get("owner_id") == user["id"]
 
 
 def _visible_project(project_id: str, user: dict) -> dict:
@@ -256,7 +257,7 @@ def save_project_as_template(
     template["_template_description"] = body.get("description", "")
     template["owner_id"]              = user["id"]
     template["owner_email"]           = user.get("email", "")
-    template["visibility"]            = _clean_visibility(body.get("visibility", "team"))
+    template["visibility"]            = _clean_visibility(body.get("visibility", "personal"))
     _db.save_project(template, user=user["id"])
     return template
 
@@ -266,7 +267,7 @@ def create_project_from_template(
     template_id: str,
     name: str = "New Project",
     ref: str = "",
-    visibility: str = "team",
+    visibility: str = "personal",
     user: dict = Depends(get_current_user),
 ):
     """
@@ -320,7 +321,7 @@ def create_project_from_template(
 def create_project(
     name: str = "New Project",
     ref: str = "",
-    visibility: str = "team",
+    visibility: str = "personal",
     user: dict = Depends(get_current_user),
 ):
     """

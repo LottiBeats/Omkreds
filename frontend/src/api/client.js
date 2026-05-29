@@ -90,7 +90,7 @@ export const getProjectTemplates = () =>
   request('GET', '/project-templates')
 
 /** Create a new empty project. Returns the created project. */
-export function createProject(name, ref = '', visibility = 'team') {
+export function createProject(name, ref = '', visibility = 'personal') {
   const params = new URLSearchParams({ name, ref, visibility })
   return request('POST', `/projects?${params}`)
 }
@@ -101,7 +101,7 @@ export function createProject(name, ref = '', visibility = 'team') {
  * @param {string} projectId  — the project to copy
  * @param {{ name, description, visibility }} opts
  */
-export function saveProjectAsTemplate(projectId, { name = '', description = '', visibility = 'team' } = {}) {
+export function saveProjectAsTemplate(projectId, { name = '', description = '', visibility = 'personal' } = {}) {
   return request('POST', `/projects/${projectId}/save-as-template`, { name, description, visibility })
 }
 
@@ -109,7 +109,7 @@ export function saveProjectAsTemplate(projectId, { name = '', description = '', 
  * Create a new project from a template (copies document structures).
  * Firm info is carried over; project metadata (name, client, date…) is reset.
  */
-export function createProjectFromTemplate(templateId, name, ref = '', visibility = 'team') {
+export function createProjectFromTemplate(templateId, name, ref = '', visibility = 'personal') {
   const params = new URLSearchParams({ name, ref, visibility })
   return request('POST', `/project-templates/${templateId}/use?${params}`)
 }
