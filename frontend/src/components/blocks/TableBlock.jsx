@@ -7,6 +7,7 @@
  *     has_header:      boolean         — style first row as header
  *     rows:            string[][]      — 2-D array of cell text
  *     highlighted:     string[]        — selected cells as "ri,ci" keys (persisted)
+ *     col_widths:      number[] | null — column widths in %, null = auto equal
  *   }
  *
  * Interactions:
@@ -18,25 +19,32 @@
  *   Highlight mode (✦ button in toolbar):
  *   Click any cell → toggle yellow highlight (persisted in data)
  *   Click again → deselect
+ *
+ *   Column resize:
+ *   Drag the handle on the right edge of any header cell to resize columns.
+ *   Widths are stored as percentages in col_widths.
+ *   "↔ Auto" button in toolbar resets to equal widths.
  */
 import React, { useState, useRef, useCallback } from 'react'
 
 const HDR_BG        = '#f0f0f0'
 const HDR_TEXT      = '#111'
-const HIGHLIGHT_BG  = '#fef08a'   // yellow — matches engineering PDF style
-const HIGHLIGHT_BDR = '#ca8a04'   // amber border for selected cells
+const HIGHLIGHT_BG  = '#fef08a'
+const HIGHLIGHT_BDR = '#ca8a04'
 
 export default function TableBlock({ block, onChange }) {
   const data        = block.data ?? {}
   const caption     = data.caption     ?? ''
   const has_header  = data.has_header  ?? true
   const rows        = data.rows        ?? [['Kolonne 1', 'Kolonne 2'], ['', '']]
-  const highlighted = data.highlighted ?? []   // persisted: ["ri,ci", ...]
+  const highlighted = data.highlighted ?? []
+  const col_widths  = data.col_widths  ?? null   // null = equal / auto
 
   const numCols = rows[0]?.length ?? 2
 
   // Local UI state — not persisted
-  const [selectMode, setSelectMode] = useState(false)
+  const [selectMode, setSelectMode]       = useState(false)
+  const [resizingWidths, setResizingWidths] = useState(null)  // live widths while dragging
 
   // ── mutations ──────────────────────────────────────────────────────────────
   function upd(patch) { onChange({ ...block, data: { ...data, ...patch } }) }
@@ -57,7 +65,6 @@ export default function TableBlock({ block, onChange }) {
 
   function deleteRow(ri) {
     if (rows.length <= 1) return
-    // also remove highlights for deleted row
     const nextHL = highlighted.filter(k => !k.startsWith(`${ri},`))
       .map(k => {
         const [r, c] = k.split(',').map(Number)
@@ -67,7 +74,10 @@ export default function TableBlock({ block, onChange }) {
   }
 
   function addCol() {
-    upd({ rows: rows.map(r => [...r, '']) })
+    const nextWidths = col_widths
+      ? [...col_widths.map(w => w * numCols / (numCols + 1)), 100 / (numCols + 1)]
+      : null
+    upd({ rows: rows.map(r => [...r, '']), col_widths: nextWidths })
   }
 
   function deleteCol(ci) {
@@ -79,7 +89,17 @@ export default function TableBlock({ block, onChange }) {
       const [r, c] = k.split(',').map(Number)
       return c > ci ? `${r},${c - 1}` : k
     })
-    upd({ rows: rows.map(r => r.filter((_, j) => j !== ci)), highlighted: nextHL })
+    let nextWidths = null
+    if (col_widths) {
+      const removed = col_widths.filter((_, i) => i !== ci)
+      const total   = removed.reduce((s, w) => s + w, 0)
+      nextWidths = removed.map(w => (w / total) * 100)
+    }
+    upd({
+      rows:       rows.map(r => r.filter((_, j) => j !== ci)),
+      highlighted: nextHL,
+      col_widths: nextWidths,
+    })
   }
 
   // ── highlight helpers ──────────────────────────────────────────────────────
@@ -127,6 +147,64 @@ export default function TableBlock({ block, onChange }) {
     const inp = gridRef.current.querySelector(`[data-r="${ri}"][data-c="${ci}"]`)
     inp?.focus()
   }
+
+  // ── column resize ─────────────────────────────────────────────────────────
+  const resizeDraft = useRef(null)
+
+  function startResize(e, ci) {
+    e.preventDefault()
+    e.stopPropagation()
+    // Compute base widths: use stored widths or equal distribution
+    const baseWidths = col_widths
+      ? [...col_widths]
+      : Array(numCols).fill(100 / numCols)
+
+    resizeDraft.current = {
+      ci,
+      startX:     e.clientX,
+      baseWidths,
+      current:    [...baseWidths],
+    }
+
+    function onMove(ev) {
+      const draft = resizeDraft.current
+      if (!draft) return
+      const tableEl = gridRef.current?.closest('table') ?? gridRef.current
+      if (!tableEl) return
+      const tableWidth = tableEl.offsetWidth || 800
+      const delta = ((ev.clientX - draft.startX) / tableWidth) * 100
+
+      const next = [...draft.baseWidths]
+      next[ci]     = Math.max(3, draft.baseWidths[ci] + delta)
+      if (ci + 1 < next.length) {
+        next[ci + 1] = Math.max(3, draft.baseWidths[ci + 1] - delta)
+      }
+      // Keep total sum stable by clamping
+      draft.current = next
+      setResizingWidths([...next])
+    }
+
+    function onUp() {
+      if (resizeDraft.current) {
+        const finalWidths = resizeDraft.current.current
+        // Normalise to exactly 100%
+        const total = finalWidths.reduce((s, w) => s + w, 0)
+        upd({ col_widths: finalWidths.map(w => (w / total) * 100) })
+      }
+      setResizingWidths(null)
+      resizeDraft.current = null
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
+  function resetColWidths() { upd({ col_widths: null }) }
+
+  // Display widths: live during drag, otherwise stored, otherwise null (auto)
+  const displayWidths = resizingWidths ?? col_widths
 
   // ── styles ────────────────────────────────────────────────────────────────
   const s = {
@@ -181,6 +259,7 @@ export default function TableBlock({ block, onChange }) {
     table: {
       width: '100%',
       borderCollapse: 'collapse',
+      tableLayout: displayWidths ? 'fixed' : 'auto',
     },
     headerCell: (hl) => ({
       background: hl ? HIGHLIGHT_BG : HDR_BG,
@@ -193,6 +272,7 @@ export default function TableBlock({ block, onChange }) {
       position: 'relative',
       cursor: selectMode ? 'pointer' : 'default',
       transition: 'background 0.1s',
+      overflow: 'hidden',
     }),
     dataCell: (hl, evenRow) => ({
       background: hl ? HIGHLIGHT_BG : (evenRow ? '#f9f9f9' : '#fff'),
@@ -204,6 +284,7 @@ export default function TableBlock({ block, onChange }) {
       position: 'relative',
       cursor: selectMode ? 'pointer' : 'default',
       transition: 'background 0.1s',
+      overflow: 'hidden',
     }),
     cellInput: {
       width: '100%',
@@ -231,6 +312,17 @@ export default function TableBlock({ block, onChange }) {
       boxSizing: 'border-box',
       pointerEvents: selectMode ? 'none' : 'auto',
       userSelect: selectMode ? 'none' : 'auto',
+    },
+    resizeHandle: {
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      bottom: 0,
+      width: 5,
+      cursor: 'col-resize',
+      zIndex: 2,
+      background: 'transparent',
+      transition: 'background 0.1s',
     },
     delRowBtn: {
       display: 'block',
@@ -306,6 +398,17 @@ export default function TableBlock({ block, onChange }) {
             − Kolonne
           </button>
         )}
+
+        {/* Reset column widths */}
+        {col_widths && (
+          <button
+            style={{ ...s.toolBtn, color: '#6366f1', borderColor: '#c7d2fe' }}
+            onClick={resetColWidths}
+            title="Reset all columns to equal width"
+          >
+            ↔ Auto-bredde
+          </button>
+        )}
       </div>
 
       {/* Hint when select mode is active */}
@@ -315,19 +418,40 @@ export default function TableBlock({ block, onChange }) {
         </div>
       )}
 
+      {/* Resize hint */}
+      {!selectMode && !col_widths && has_header && (
+        <div style={{ padding: '3px 10px', fontSize: 10, color: '#94a3b8', borderBottom: '1px solid #f1f5f9', background: '#fafbfc' }}>
+          Træk kanten i kolonneoverskriften for at justere kolonnebredder
+        </div>
+      )}
+
       {/* Table */}
       <div style={s.tableWrap}>
         <table style={s.table} ref={gridRef}>
+          {/* Column width definitions */}
+          {displayWidths && (
+            <colgroup>
+              {displayWidths.map((w, i) => (
+                <col key={i} style={{ width: `${w}%` }} />
+              ))}
+              {/* Extra col for delete-row button column */}
+              <col style={{ width: 24 }} />
+            </colgroup>
+          )}
+
           <tbody>
             {rows.map((row, ri) => {
               const isHeader = has_header && ri === 0
               return (
                 <tr key={ri}>
                   {row.map((cell, ci) => {
-                    const hl = isHL(ri, ci)
+                    const hl      = isHL(ri, ci)
                     const tdStyle = isHeader
                       ? s.headerCell(hl)
                       : s.dataCell(hl, ri % 2 === 0)
+
+                    // Show resize handle only on header cells, not on the last column
+                    const showHandle = isHeader && !selectMode && ci < numCols - 1
 
                     return (
                       <td
@@ -346,11 +470,22 @@ export default function TableBlock({ block, onChange }) {
                           readOnly={selectMode}
                           tabIndex={selectMode ? -1 : 0}
                         />
+
+                        {/* Resize handle — right edge of header cell */}
+                        {showHandle && (
+                          <div
+                            style={s.resizeHandle}
+                            onMouseDown={e => startResize(e, ci)}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.35)' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                            title="Træk for at ændre kolonnebredde"
+                          />
+                        )}
                       </td>
                     )
                   })}
                   {/* Delete row button — hidden in select mode */}
-                  <td style={{ border: 'none', padding: 0, verticalAlign: 'middle', background: isHeader ? HDR_BG : 'transparent' }}>
+                  <td style={{ border: 'none', padding: 0, verticalAlign: 'middle', background: isHeader ? HDR_BG : 'transparent', width: 24 }}>
                     {!selectMode && (!isHeader || rows.length > 1) && (
                       <button
                         style={s.delRowBtn}

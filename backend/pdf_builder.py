@@ -255,10 +255,16 @@ def _table_block(block: dict) -> list:
         sty    = hdr_style if is_hdr else cell_style
         rl_rows.append([Paragraph(_pdf(cell), sty) for cell in row])
 
-    # Distribute columns evenly across 170 mm
-    n_cols    = max(len(r) for r in rows_data) if rows_data else 1
-    col_width = (170 / n_cols) * mm
-    col_widths = [col_width] * n_cols
+    # Column widths — use stored percentages if available, else distribute evenly
+    n_cols = max(len(r) for r in rows_data) if rows_data else 1
+    stored_widths = d.get("col_widths")   # list of percentages (sum ~100) or None
+    TOTAL_MM = 170
+    if stored_widths and len(stored_widths) == n_cols:
+        # Normalise in case they don't sum to exactly 100
+        total_pct = sum(stored_widths)
+        col_widths = [(w / total_pct) * TOTAL_MM * mm for w in stored_widths]
+    else:
+        col_widths = [(TOTAL_MM / n_cols) * mm] * n_cols
 
     tbl = Table(rl_rows, colWidths=col_widths, repeatRows=1 if has_header else 0)
 
