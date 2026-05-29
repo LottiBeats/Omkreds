@@ -25,7 +25,9 @@ const PAL = {
 }
 
 // ── Coordinate transform ──────────────────────────────────────────────────────
-function makeXform(nodes, elemResults, type, W, H, PAD = 52) {
+// Fits the STRUCTURE (nodes only) into the viewport.  Diagrams are drawn in
+// SVG-pixel space afterwards — no world-unit expansion needed here.
+function makeXform(nodes, W, H, PAD = 52) {
   if (!nodes.length) return null
 
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
@@ -34,36 +36,9 @@ function makeXform(nodes, elemResults, type, W, H, PAD = 52) {
     y0 = Math.min(y0, n.y); y1 = Math.max(y1, n.y)
   }
 
-  // Expand bounds to include diagram offsets
-  if (type && elemResults?.length) {
-    const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]))
-    const allVals = elemResults.flatMap(er => er[`${type}_arr`] || [])
-    const maxAbs  = Math.max(...allVals.map(Math.abs), 0.001)
-    const baseSpan = Math.max(x1 - x0, y1 - y0, 1)
-    const dscale   = (baseSpan * 0.28) / maxAbs
-    const sign     = type === 'M' ? -1 : 1
-
-    for (const er of elemResults) {
-      const ni = nodeMap[er.ni], nj = nodeMap[er.nj]
-      if (!ni || !nj) continue
-      const dx = nj.x - ni.x, dy = nj.y - ni.y
-      const L  = er.L_m || Math.hypot(dx, dy)
-      const c  = dx / L, s = dy / L
-      const xs  = er.xs  || [], vals = er[`${type}_arr`] || []
-      for (let k = 0; k < xs.length; k++) {
-        const F  = (vals[k] || 0) * dscale * sign
-        const wx = ni.x + xs[k] * c + (-s) * F
-        const wy = ni.y + xs[k] * s +  c   * F
-        x0 = Math.min(x0, wx); x1 = Math.max(x1, wx)
-        y0 = Math.min(y0, wy); y1 = Math.max(y1, wy)
-      }
-    }
-  }
-
-  // 10% margin each side
   const bw = Math.max(x1 - x0, 0.5), bh = Math.max(y1 - y0, 0.5)
-  x0 -= bw * 0.12; x1 += bw * 0.12
-  y0 -= bh * 0.12; y1 += bh * 0.12
+  x0 -= bw * 0.10; x1 += bw * 0.10
+  y0 -= bh * 0.10; y1 += bh * 0.10
 
   const scale = Math.min((W - 2 * PAD) / (x1 - x0), (H - 2 * PAD) / (y1 - y0))
   const dw = (x1 - x0) * scale, dh = (y1 - y0) * scale
@@ -73,7 +48,6 @@ function makeXform(nodes, elemResults, type, W, H, PAD = 52) {
     toSvg: (x, y) => [ox + (x - x0) * scale, H - oy - (y - y0) * scale],
     scale,
     span: Math.max(bw, bh),
-    x0, y0,
   }
 }
 
@@ -142,7 +116,7 @@ function LoadArrows({ loads, elements, xform }) {
 
 // ── Model SVG ─────────────────────────────────────────────────────────────────
 function ModelSvg({ nodes, elements, supports, loads, W = 680, H = 320 }) {
-  const xf = makeXform(nodes, [], null, W, H)
+  const xf = makeXform(nodes, W, H)
   if (!xf) return null
   const { toSvg, scale, span } = xf
   const sz = Math.max(6, Math.min(14, span * scale * 0.04))
@@ -274,7 +248,7 @@ function ModelSvg({ nodes, elements, supports, loads, W = 680, H = 320 }) {
 
 // ── Deformed shape SVG ────────────────────────────────────────────────────────
 function DeformedSvg({ nodes, elements, nodeDisps, W = 680, H = 320 }) {
-  const xf = makeXform(nodes, [], null, W, H)
+  const xf = makeXform(nodes, W, H)
   if (!xf || !nodeDisps?.length) return null
   const { toSvg, scale, span } = xf
   const nodeMap  = Object.fromEntries(nodes.map(n => [n.id, n]))
@@ -347,63 +321,100 @@ function DeformedSvg({ nodes, elements, nodeDisps, W = 680, H = 320 }) {
 }
 
 // ── Force / moment diagram SVG ────────────────────────────────────────────────
-function DiagramSvg({ nodes, elements, elemResults, type, W = 680, H = 360 }) {
-  const [hoverVal, setHoverVal] = useState(null)
-  const svgRef = useRef(null)
+// All perpendicular offsets are computed in SVG pixel space so the diagram
+// height is always a fixed number of pixels regardless of model scale.
+// MAX_PX = the pixel offset for the largest force value.
+const MAX_PX = 55
+
+function DiagramSvg({ nodes, elements, elemResults, type, W = 680, H = 400 }) {
   const col = PAL[type]
 
-  const xf = makeXform(nodes, elemResults, type, W, H)
+  // Fit structure in viewport with generous padding for diagram bleed
+  const xf = makeXform(nodes, W, H, 80)
   if (!xf || !elemResults?.length) return null
 
-  const { toSvg, scale, span } = xf
+  const { toSvg } = xf
   const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]))
+
   const allVals = elemResults.flatMap(er => er[`${type}_arr`] || [])
   const maxAbs  = Math.max(...allVals.map(Math.abs), 0.001)
-  const dscale  = (span * 0.28) / maxAbs
-  const sign    = type === 'M' ? -1 : 1
+  const allZero = maxAbs < 0.005
 
-  // Build SVG polygon data for each element
-  const diagData = elemResults.map(er => {
-    const ni = nodeMap[er.ni], nj = nodeMap[er.nj]
-    if (!ni || !nj) return null
-
-    const dx = nj.x - ni.x, dy = nj.y - ni.y
-    const L  = er.L_m || Math.hypot(dx, dy)
-    const c  = dx / L, s = dy / L
-    const xs  = er.xs  || []
-    const vals = er[`${type}_arr`] || []
-    if (!xs.length) return null
-
-    const axisPts = xs.map(x => toSvg(ni.x + x * c, ni.y + x * s))
-    const diagPts = xs.map((x, k) => {
-      const F  = (vals[k] || 0) * dscale * sign
-      return toSvg(ni.x + x * c + (-s) * F, ni.y + x * s + c * F)
-    })
-
-    // Peak
-    const peakK   = vals.reduce((b, v, i) => Math.abs(v) > Math.abs(vals[b]) ? i : b, 0)
-    const peakVal = vals[peakK]
-    const peakPt  = diagPts[peakK]
-
-    // Start/end values for end-labels
-    const startVal = vals[0], endVal = vals[vals.length - 1]
-    const startPt  = diagPts[0], endPt = diagPts[diagPts.length - 1]
-
-    // Poly string: axis forward + diag reversed
-    const poly = [...axisPts, ...[...diagPts].reverse()]
-      .map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ')
-
-    // Envelope path
-    const path = 'M ' + diagPts.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' L ')
-
-    return { er, axisPts, diagPts, poly, path, peakVal, peakPt, startVal, startPt, endVal, endPt }
-  }).filter(Boolean)
+  // px per force unit — max force maps to MAX_PX pixels
+  const dscale = MAX_PX / maxAbs
 
   const unit = type === 'M' ? 'kNm' : 'kN'
 
+  // Build diagram polygons entirely in SVG pixel space
+  const diagData = elemResults.map(er => {
+    const ni = nodeMap[er.ni], nj = nodeMap[er.nj]
+    if (!ni || !nj) return null
+    const vals = er[`${type}_arr`] || []
+    const xs   = er.xs || []
+    if (!xs.length) return null
+
+    // SVG pixel endpoints
+    const [sx1, sy1] = toSvg(ni.x, ni.y)
+    const [sx2, sy2] = toSvg(nj.x, nj.y)
+    const elen = Math.hypot(sx2 - sx1, sy2 - sy1)
+    if (elen < 1) return null
+
+    // Unit vector along element (SVG space)
+    const eUx = (sx2 - sx1) / elen
+    const eUy = (sy2 - sy1) / elen
+
+    // Perpendicular (90° CCW): rotates (ux,uy) → (−uy, ux)
+    // Positive force → offset in this direction
+    const pUx = -eUy
+    const pUy =  eUx
+
+    const L_m = er.L_m || 1
+
+    // Positions along axis in SVG pixels
+    const axisPts = xs.map(x => {
+      const t = x / L_m
+      return [sx1 + t * (sx2 - sx1), sy1 + t * (sy2 - sy1)]
+    })
+
+    // Diagram tip positions
+    const diagPts = xs.map((x, k) => {
+      const [ax, ay] = axisPts[k]
+      const F = (vals[k] || 0) * dscale
+      return [ax + pUx * F, ay + pUy * F]
+    })
+
+    const poly = [...axisPts, ...[...diagPts].reverse()]
+      .map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ')
+
+    const path = 'M ' + diagPts
+      .map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' L ')
+
+    // Peak label — one per element, at maximum absolute value
+    const peakK   = vals.reduce((b, v, i) => Math.abs(v) > Math.abs(vals[b]) ? i : b, 0)
+    const peakVal = vals[peakK]
+    const [ax, ay] = axisPts[peakK]
+    const [dx, dy] = diagPts[peakK]
+    // Place label at 110% of offset from axis (just beyond the tip)
+    const lx = ax + (dx - ax) * 1.18
+    const ly = ay + (dy - ay) * 1.18
+
+    // End values for beam-type elements (linear N/V/M variation)
+    const startVal = vals[0]
+    const endVal   = vals[vals.length - 1]
+    const [eax0, eay0] = diagPts[0]
+    const [eaxN, eayN] = diagPts[diagPts.length - 1]
+
+    return {
+      er, axisPts, diagPts, poly, path,
+      peakVal, lx, ly,
+      startVal, endVal,
+      eax0, eay0, eaxN, eayN,
+    }
+  }).filter(Boolean)
+
   return (
-    <svg ref={svgRef} width={W} height={H}
-      style={{ display: 'block', background: '#fafbfc', cursor: 'crosshair' }}>
+    <svg width={W} height={H}
+      style={{ display: 'block', background: '#fafbfc', overflow: 'visible' }}>
       <defs>
         <pattern id={`grid-${type}`} width={40} height={40} patternUnits="userSpaceOnUse">
           <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#f0f0f0" strokeWidth={0.5} />
@@ -411,7 +422,7 @@ function DiagramSvg({ nodes, elements, elemResults, type, W = 680, H = 360 }) {
       </defs>
       <rect width={W} height={H} fill={`url(#grid-${type})`} />
 
-      {/* Skeleton */}
+      {/* Structure skeleton (dashed) */}
       {elements.map(elem => {
         const ni = nodeMap[elem.ni], nj = nodeMap[elem.nj]
         if (!ni || !nj) return null
@@ -419,34 +430,88 @@ function DiagramSvg({ nodes, elements, elemResults, type, W = 680, H = 360 }) {
         const [x2, y2] = toSvg(nj.x, nj.y)
         return (
           <line key={elem.id} x1={x1} y1={y1} x2={x2} y2={y2}
-            stroke="#94a3b8" strokeWidth={1} strokeDasharray="4,3" />
+            stroke="#cbd5e1" strokeWidth={1} strokeDasharray="4,3" />
         )
       })}
 
-      {/* Filled polygons */}
-      {diagData.map(({ poly }, i) => (
-        <polygon key={i} points={poly}
-          fill={col.fill} stroke="none" fillOpacity={0.9} />
-      ))}
+      {/* All-zero notice */}
+      {allZero && (
+        <text x={W / 2} y={H / 2} fontSize={13} textAnchor="middle"
+          fill="#94a3b8" fontFamily="inherit">
+          all {unit === 'kNm' ? 'M' : type} values ≈ 0
+        </text>
+      )}
 
-      {/* Envelope lines */}
-      {diagData.map(({ path }, i) => (
-        <path key={i} d={path} fill="none" stroke={col.stroke} strokeWidth={2.2} />
-      ))}
+      {!allZero && <>
+        {/* Filled polygons */}
+        {diagData.map(({ poly }, i) => (
+          <polygon key={i} points={poly}
+            fill={col.fill} stroke="none" fillOpacity={0.88} />
+        ))}
 
-      {/* Close lines at element ends */}
-      {diagData.map(({ axisPts, diagPts }, i) => (
-        <g key={i}>
-          <line x1={axisPts[0][0]}  y1={axisPts[0][1]}
-                x2={diagPts[0][0]}  y2={diagPts[0][1]}
-            stroke={col.stroke} strokeWidth={1.2} />
-          <line x1={axisPts[axisPts.length-1][0]} y1={axisPts[axisPts.length-1][1]}
-                x2={diagPts[diagPts.length-1][0]} y2={diagPts[diagPts.length-1][1]}
-            stroke={col.stroke} strokeWidth={1.2} />
-        </g>
-      ))}
+        {/* Envelope lines */}
+        {diagData.map(({ path }, i) => (
+          <path key={i} d={path} fill="none" stroke={col.stroke} strokeWidth={2} />
+        ))}
 
-      {/* Structure axes on top */}
+        {/* Close lines at element ends */}
+        {diagData.map(({ axisPts, diagPts }, i) => (
+          <g key={i}>
+            <line x1={axisPts[0][0]}  y1={axisPts[0][1]}
+                  x2={diagPts[0][0]}  y2={diagPts[0][1]}
+              stroke={col.stroke} strokeWidth={1} />
+            <line x1={axisPts[axisPts.length-1][0]} y1={axisPts[axisPts.length-1][1]}
+                  x2={diagPts[diagPts.length-1][0]} y2={diagPts[diagPts.length-1][1]}
+              stroke={col.stroke} strokeWidth={1} />
+          </g>
+        ))}
+
+        {/* Peak value labels — one per element */}
+        {diagData.map(({ peakVal, lx, ly, startVal, endVal,
+                         eax0, eay0, eaxN, eayN, axisPts, diagPts }, i) => {
+          const showPeak = Math.abs(peakVal) > maxAbs * 0.02
+          // Show end-values for elements with significant variation (beams)
+          // Skip if very similar to peak to avoid clutter
+          const showStart = Math.abs(startVal) > maxAbs * 0.02 &&
+                            Math.abs(startVal - peakVal) > maxAbs * 0.08
+          const showEnd   = Math.abs(endVal) > maxAbs * 0.02 &&
+                            Math.abs(endVal - peakVal) > maxAbs * 0.08
+
+          return (
+            <g key={i}>
+              {showPeak && (
+                <g>
+                  <rect x={lx - 24} y={ly - 9} width={48} height={15}
+                    rx={2} fill="white" fillOpacity={0.92}
+                    stroke={col.stroke} strokeWidth={0.6} />
+                  <text x={lx} y={ly + 3}
+                    textAnchor="middle" fontSize={9.5}
+                    fontFamily="'Courier New', monospace"
+                    fontWeight="700" fill={col.stroke}>
+                    {peakVal.toFixed(2)}
+                  </text>
+                </g>
+              )}
+              {showStart && (
+                <text x={eax0 + 3} y={eay0 - 3}
+                  fontSize={8} fontFamily="monospace"
+                  fill={col.stroke} fontWeight="600">
+                  {startVal.toFixed(2)}
+                </text>
+              )}
+              {showEnd && (
+                <text x={eaxN + 3} y={eayN - 3}
+                  fontSize={8} fontFamily="monospace"
+                  fill={col.stroke} fontWeight="600">
+                  {endVal.toFixed(2)}
+                </text>
+              )}
+            </g>
+          )
+        })}
+      </>}
+
+      {/* Structure axes on top of diagrams */}
       {elements.map(elem => {
         const ni = nodeMap[elem.ni], nj = nodeMap[elem.nj]
         if (!ni || !nj) return null
@@ -458,45 +523,6 @@ function DiagramSvg({ nodes, elements, elemResults, type, W = 680, H = 360 }) {
         )
       })}
 
-      {/* Peak value labels */}
-      {diagData.map(({ peakVal, peakPt, startVal, startPt, endVal, endPt }, i) => {
-        const labels = []
-        // Peak
-        if (Math.abs(peakVal) > maxAbs * 0.02) {
-          labels.push(
-            <g key="peak">
-              <rect x={peakPt[0] - 22} y={peakPt[1] - 15}
-                width={44} height={13} rx={2}
-                fill="white" fillOpacity={0.88} stroke={col.stroke} strokeWidth={0.6} />
-              <text x={peakPt[0]} y={peakPt[1] - 5}
-                textAnchor="middle" fontSize={9.5}
-                fontFamily="'Courier New', monospace"
-                fontWeight="700" fill={col.stroke}>
-                {peakVal.toFixed(2)}
-              </text>
-            </g>
-          )
-        }
-        // Start end values (if different from peak)
-        if (Math.abs(startVal) > maxAbs * 0.02 && startPt !== peakPt) {
-          labels.push(
-            <text key="start" x={startPt[0] + 4} y={startPt[1] - 4}
-              fontSize={8} fontFamily="monospace" fill={col.stroke} fontWeight="600">
-              {startVal.toFixed(1)}
-            </text>
-          )
-        }
-        if (Math.abs(endVal) > maxAbs * 0.02 && endPt !== peakPt) {
-          labels.push(
-            <text key="end" x={endPt[0] + 4} y={endPt[1] - 4}
-              fontSize={8} fontFamily="monospace" fill={col.stroke} fontWeight="600">
-              {endVal.toFixed(1)}
-            </text>
-          )
-        }
-        return <g key={i}>{labels}</g>
-      })}
-
       {/* Nodes */}
       {nodes.map(n => {
         const [nx, ny] = toSvg(n.x, n.y)
@@ -504,14 +530,10 @@ function DiagramSvg({ nodes, elements, elemResults, type, W = 680, H = 360 }) {
           fill="#fff" stroke={PAL.navy} strokeWidth={2} />
       })}
 
-      {/* Unit label */}
-      <text x={W - 10} y={H - 10} fontSize={10} textAnchor="end"
-        fill="#94a3b8" fontFamily="monospace">
-        [{unit}]
-      </text>
-
-      {/* Sign convention note */}
-      <text x={10} y={H - 10} fontSize={9} fill="#94a3b8">
+      {/* Legend */}
+      <text x={W - 10} y={H - 8} fontSize={10} textAnchor="end"
+        fill="#94a3b8" fontFamily="monospace">[{unit}]</text>
+      <text x={10} y={H - 8} fontSize={9} fill="#94a3b8">
         {type === 'N' ? 'tension (+)  compression (−)'
           : type === 'V' ? 'upward on left face (+)'
           : 'sagging (+)  hogging (−)'}
@@ -700,7 +722,7 @@ export default function FrameFemResults({ result, nodes, elements, supports, loa
         )}
         {(tab === 'N' || tab === 'V' || tab === 'M') && (
           <DiagramSvg nodes={nodes} elements={elements}
-            elemResults={ers} type={tab} W={680} H={380} />
+            elemResults={ers} type={tab} W={680} H={400} />
         )}
         {tab === 'tables' && (
           <ResultTables reactions={result.reactions} elemResults={ers} />

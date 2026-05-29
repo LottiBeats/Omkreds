@@ -514,8 +514,12 @@ def _draw_diagram(ax, nodes, elements, er_by_id, node_xy, force_type,
 
     all_x = [n["x"] for n in nodes]
     all_y = [n["y"] for n in nodes]
-    span  = max(max(all_x) - min(all_x), max(all_y) - min(all_y), 0.1)
-    diag_scale = (span * 0.25) / max_abs   # diagram height = 25% of span
+    span   = max(max(all_x) - min(all_x), max(all_y) - min(all_y), 0.1)
+    depth  = max(max(all_y) - min(all_y), 0.5)   # structural depth (height)
+    # Cap diagram height to 60% of structural depth so it never overlaps
+    # members on the other chord.  Also cap at 18% of span for wide frames.
+    diag_height = min(depth * 0.60, span * 0.18)
+    diag_scale  = diag_height / max_abs
 
     # Plot diagrams per element
     for elem in elements:
