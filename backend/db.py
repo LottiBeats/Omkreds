@@ -66,28 +66,50 @@ def init_db(path: Path | None = None) -> None:
             except sqlite3.OperationalError:
                 pass   # column already exists
 
-        # One-time migration: claim orphaned 'team' projects for their last editor.
-        # Before the owner_id feature existed every project defaulted to visibility='team'
-        # which made them visible to all users. Fix: set owner_id = updated_by and
-        # flip visibility to 'personal' so only the original author sees them.
+        # ── One-time data migrations ──────────────────────────────────────────
+        # Tracked in the migrations table so each runs exactly once, not on
+        # every request.  Add new entries here as needed; never remove old ones.
         conn.execute("""
-            UPDATE projects
-            SET   owner_id   = updated_by,
-                  visibility = 'personal'
-            WHERE visibility = 'team'
-              AND (owner_id = '' OR owner_id IS NULL)
-              AND updated_by IS NOT NULL
-              AND updated_by != ''
+            CREATE TABLE IF NOT EXISTS migrations (
+                id         TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
         """)
-        conn.execute("""
-            UPDATE calc_library
-            SET   owner_id   = created_by,
-                  visibility = 'personal'
-            WHERE visibility = 'team'
-              AND (owner_id = '' OR owner_id IS NULL)
-              AND created_by IS NOT NULL
-              AND created_by != ''
-        """)
+
+        def _migration_done(mid: str) -> bool:
+            return bool(conn.execute(
+                "SELECT 1 FROM migrations WHERE id = ?", (mid,)
+            ).fetchone())
+
+        def _mark_done(mid: str) -> None:
+            conn.execute(
+                "INSERT OR IGNORE INTO migrations (id) VALUES (?)", (mid,)
+            )
+
+        # Migration 001 — fix orphaned 'team' projects (no owner_id set yet)
+        if not _migration_done("001_fix_team_projects_orphaned"):
+            conn.execute("""
+                UPDATE projects
+                SET   owner_id   = updated_by,
+                      visibility = 'personal'
+                WHERE visibility = 'team'
+                  AND (owner_id = '' OR owner_id IS NULL)
+                  AND updated_by IS NOT NULL AND updated_by != ''
+            """)
+            _mark_done("001_fix_team_projects_orphaned")
+
+        # Migration 002 — flip ALL remaining 'team' records to 'personal'.
+        # Covers calc templates and projects that already had owner_id set but
+        # still carried the old default visibility = 'team'.
+        if not _migration_done("002_flip_all_team_to_personal"):
+            conn.execute(
+                "UPDATE projects     SET visibility = 'personal' WHERE visibility = 'team'"
+            )
+            conn.execute(
+                "UPDATE calc_library SET visibility = 'personal' WHERE visibility = 'team'"
+            )
+            _mark_done("002_flip_all_team_to_personal")
+
         conn.commit()
 
 

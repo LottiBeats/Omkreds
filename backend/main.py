@@ -2115,7 +2115,7 @@ class CalcTemplateInput(BaseModel):
     parameters:  list = []
     code:        str  = ""
     items:       list = []
-    visibility:  str  = "team"   # 'personal' | 'team'
+    visibility:  str  = "personal"   # 'personal' | 'team'
 
 
 @protected.get("/calc-templates", tags=["Templates"])
