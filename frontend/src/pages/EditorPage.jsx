@@ -549,6 +549,11 @@ function makePortalFrameTemplate() {
 }
 
 // ── A2: Pratt truss ───────────────────────────────────────────────────────────
+// Correct 4-panel Pratt truss: 10 nodes, 17 members (all truss).
+// Statically determinate: m = 2n − 3  →  17 = 2×10 − 3  ✓
+// Loads at top chord (purlin loads from roof).
+// Supports at bottom chord ends.
+// Diagonals all in tension under gravity (Pratt pattern).
 function makePrattTrussTemplate() {
   let id = Date.now()
   return [
@@ -556,60 +561,84 @@ function makePrattTrussTemplate() {
 
     { id: id++, type: 'heading', data: { level: 2, text: 'Forudsætninger' } },
     { id: id++, type: 'text', data: { text:
-      'Statisk system: Pratt-fagvark, 3 felter, simpelt understøttet.\n' +
-      'Spændvidde: L = 9,0 m   Konstruktionshøjde: h = 2,0 m\n' +
+      'Statisk system: Pratt-fagvark, 4 felter, simpelt understøttet.\n' +
+      'Spændvidde: L = 10,0 m   Konstruktionshøjde: h = 2,0 m\n' +
       'Profil (alle stænger): IPE 200 (S235)  E = 210 GPa  A = 28,5 cm²\n' +
-      '  Bjælke-type bruges til chord; truss-type til diagonaler og vertikaler\n' +
-      'Understøtning: Venstre ende pin (ux+uy), højre ende rulle (uy)\n' +
-      'Laster: Nodallast P = 30 kN nedad i hvert knudepunkt på underkorden (N6, N7, N8)' } },
+      'Topkorde og bundkorde: 4 bjælker hver  |  Vertikaler: 5 (inkl. enderne)  |  Diagonaler: 4\n' +
+      'Statisk bestemt: m = 2n − 3 = 17  ✓  (alle elementer er truss-type = leddet samling)\n' +
+      'Understøtning: Venstre ende pin (N6), højre ende rulle (N10)\n' +
+      'Laster (karakteristiske, fra spær/beklædning):\n' +
+      '  Endepunkter N1, N5: P = 10 kN nedad   (halvt felt)\n' +
+      '  Indre punkter N2, N3, N4: P = 20 kN nedad   (fuldt felt)\n' +
+      '  Total last: 80 kN  →  reaktioner: 40 kN pr. understøtning' } },
 
     { id: id++, type: 'heading', data: { level: 2, text: 'FEM-model' } },
     {
       id: id++, type: 'frame_fem', data: {
-        title: 'Pratt-fagvark 3-felt — IPE 200 S235',
+        title: 'Pratt-fagvark 4-felt — IPE 200 S235',
         nodes: [
-          // Top chord  (y = 2 m)
-          { id: 1, x: 0.0, y: 2.0 },   // top-left
-          { id: 2, x: 3.0, y: 2.0 },   // top 1/3
-          { id: 3, x: 6.0, y: 2.0 },   // top 2/3
-          { id: 4, x: 9.0, y: 2.0 },   // top-right
-          // Bottom chord (y = 0 m)
-          { id: 5, x: 0.0, y: 0.0 },   // bottom-left  (support)
-          { id: 6, x: 3.0, y: 0.0 },   // bottom 1/3
-          { id: 7, x: 6.0, y: 0.0 },   // bottom 2/3
-          { id: 8, x: 9.0, y: 0.0 },   // bottom-right (support)
+          // Top chord (y = 2 m) — lastpåføringspunkter fra tagbeklædning
+          { id: 1,  x: 0.0,  y: 2.0 },  // top-left  (end)
+          { id: 2,  x: 2.5,  y: 2.0 },  // top 1/4
+          { id: 3,  x: 5.0,  y: 2.0 },  // top center
+          { id: 4,  x: 7.5,  y: 2.0 },  // top 3/4
+          { id: 5,  x: 10.0, y: 2.0 },  // top-right (end)
+          // Bottom chord (y = 0 m) — understøttet i enderne
+          { id: 6,  x: 0.0,  y: 0.0 },  // bottom-left  (PIN support)
+          { id: 7,  x: 2.5,  y: 0.0 },  // bottom 1/4
+          { id: 8,  x: 5.0,  y: 0.0 },  // bottom center
+          { id: 9,  x: 7.5,  y: 0.0 },  // bottom 3/4
+          { id: 10, x: 10.0, y: 0.0 },  // bottom-right (ROLLER support)
         ],
         elements: [
-          // Top chord (beam — carries compression, has I for stability)
-          { id: 1, ni: 1, nj: 2, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          { id: 2, ni: 2, nj: 3, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          { id: 3, ni: 3, nj: 4, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          // Bottom chord (beam)
-          { id: 4, ni: 5, nj: 6, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          { id: 5, ni: 6, nj: 7, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          { id: 6, ni: 7, nj: 8, type: 'beam',  E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          // Verticals (truss — axial only)
-          { id: 7,  ni: 1, nj: 5, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          { id: 8,  ni: 2, nj: 6, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          { id: 9,  ni: 3, nj: 7, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          { id: 10, ni: 4, nj: 8, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          // Diagonals — Pratt: lean toward centre from each end (tension under gravity)
-          { id: 11, ni: 1, nj: 6, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
-          { id: 12, ni: 4, nj: 7, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          // Top chord — truss (compression under gravity)
+          { id: 1,  ni: 1,  nj: 2,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 2,  ni: 2,  nj: 3,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 3,  ni: 3,  nj: 4,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 4,  ni: 4,  nj: 5,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          // Bottom chord — truss (tension under gravity)
+          { id: 5,  ni: 6,  nj: 7,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 6,  ni: 7,  nj: 8,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 7,  ni: 8,  nj: 9,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 8,  ni: 9,  nj: 10, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          // Verticals — truss (compression under gravity; ends carry reaction only)
+          { id: 9,  ni: 1,  nj: 6,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 10, ni: 2,  nj: 7,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 11, ni: 3,  nj: 8,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 12, ni: 4,  nj: 9,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 13, ni: 5,  nj: 10, type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          // Diagonals — Pratt pattern (all in TENSION under gravity).
+          // Left half: top outer → bottom inner  (╲ direction)
+          { id: 14, ni: 1,  nj: 7,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 15, ni: 2,  nj: 8,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          // Right half: top outer → bottom inner  (╱ direction, symmetric)
+          { id: 16, ni: 4,  nj: 8,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
+          { id: 17, ni: 5,  nj: 9,  type: 'truss', E_GPa: 210, A_cm2: 28.5, I_cm4: 1943, preset: 'IPE 200 (S235)' },
         ],
         supports: [
-          { node_id: 5, ux: true,  uy: true, rz: false },   // pin
-          { node_id: 8, ux: false, uy: true, rz: false },   // roller
+          { node_id: 6,  ux: true,  uy: true,  rz: false },   // pin
+          { node_id: 10, ux: false, uy: true,  rz: false },   // roller
         ],
         loads: [
-          { type: 'nodal', node_id: 6, Fx_kN: 0, Fy_kN: -30.0, Mz_kNm: 0 },
-          { type: 'nodal', node_id: 7, Fx_kN: 0, Fy_kN: -30.0, Mz_kNm: 0 },
+          // Half-field load at end nodes, full-field load at interior nodes
+          { type: 'nodal', node_id: 1,  Fx_kN: 0, Fy_kN: -10.0, Mz_kNm: 0 },
+          { type: 'nodal', node_id: 2,  Fx_kN: 0, Fy_kN: -20.0, Mz_kNm: 0 },
+          { type: 'nodal', node_id: 3,  Fx_kN: 0, Fy_kN: -20.0, Mz_kNm: 0 },
+          { type: 'nodal', node_id: 4,  Fx_kN: 0, Fy_kN: -20.0, Mz_kNm: 0 },
+          { type: 'nodal', node_id: 5,  Fx_kN: 0, Fy_kN: -10.0, Mz_kNm: 0 },
         ],
       }
     },
 
     { id: id++, type: 'heading', data: { level: 2, text: 'Konklusion' } },
-    { id: id++, type: 'text', data: { text: '[Indsæt konklusion med maks. stangkraft (N), reaktioner og kritisk stang — udfyld efter kørsel af analysen ovenfor]' } },
+    { id: id++, type: 'text', data: { text:
+      'Pratt-fagvark 4-felt, statisk bestemt (m = 2n − 3 = 17).\n\n' +
+      'Forventede resultater:\n' +
+      '  Topkorde: Trykstænger (N < 0)  — maks. tryk i midterfeltet\n' +
+      '  Bundkorde: Trækstænger (N > 0) — maks. træk i midterfeltet\n' +
+      '  Diagonaler: Trækstænger (N > 0) — Pratt-princip\n' +
+      '  Vertikaler: Trykstænger (N < 0) — bortset fra enderne\n\n' +
+      '[Udfyld maks. stangkraft og kritisk stang efter kørsel af analysen]' } },
   ]
 }
 
@@ -759,7 +788,7 @@ const DOC_TEMPLATES = {
     },
     {
       label:       'Pratt-fagvark — 2D FEM',
-      description: 'IPE 200 · 9m spænd · 3 felter · 2m højde · pin+rulle · nodallast',
+      description: 'IPE 200 · 10m spænd · 4 felter · 17 stænger · statisk bestemt · m=2n-3 ✓',
       make:        makePrattTrussTemplate,
     },
   ],
