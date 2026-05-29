@@ -206,6 +206,8 @@ def _run(nodes, elements, supports, loads, title):
             if eid is None or eid not in elem_info:
                 continue   # UDL row with no element selected — skip silently
             ei  = elem_info[eid]
+            if ei["elem"].get("type", "beam") == "truss":
+                continue   # OpenSeesPy Truss elements don't support eleLoad
             c, s = ei["c"], ei["s"]
 
             # User inputs in GLOBAL coords:

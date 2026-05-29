@@ -199,14 +199,17 @@ function SupportRow({ sup, nodes, onChange, onRemove }) {
 }
 
 function LoadRow({ load, nodes, elements, onChange, onRemove }) {
-  const ltype   = load.type ?? 'nodal'
-  const nodeIds = nodes.map(n => n.id)
-  const elemIds = elements.map(e => e.id)
+  const ltype    = load.type ?? 'nodal'
+  const nodeIds  = nodes.map(n => n.id)
+  const elemIds  = elements.map(e => e.id)
+  // UDL is only valid on beam elements (not truss — OpenSeesPy doesn't support eleLoad on Truss)
+  const beamElems = elements.filter(e => (e.type ?? 'beam') === 'beam')
+  const beamIds   = beamElems.map(e => e.id)
 
   // Auto-heal null ids — happens when a load was switched type or saved before an id was set
   React.useEffect(() => {
-    if (ltype === 'udl'   && load.elem_id == null && elemIds[0] != null)
-      onChange({ ...load, elem_id: elemIds[0] })
+    if (ltype === 'udl'   && load.elem_id == null && beamIds[0] != null)
+      onChange({ ...load, elem_id: beamIds[0] })
     if (ltype === 'nodal' && load.node_id == null && nodeIds[0] != null)
       onChange({ ...load, node_id: nodeIds[0] })
   }, [ltype, load.elem_id, load.node_id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -218,8 +221,8 @@ function LoadRow({ load, nodes, elements, onChange, onRemove }) {
           onChange={e => {
             const t = e.target.value
             // Ensure the id field is always populated when switching type
-            if (t === 'udl' && (load.elem_id == null) && elemIds.length > 0)
-              return onChange({ ...load, type: t, elem_id: elemIds[0] })
+            if (t === 'udl' && (load.elem_id == null) && beamIds.length > 0)
+              return onChange({ ...load, type: t, elem_id: beamIds[0] })
             if (t === 'nodal' && (load.node_id == null) && nodeIds.length > 0)
               return onChange({ ...load, type: t, node_id: nodeIds[0] })
             onChange({ ...load, type: t })
@@ -254,11 +257,11 @@ function LoadRow({ load, nodes, elements, onChange, onRemove }) {
       </>}
 
       {ltype === 'udl' && <>
-        <LabelledInput label="Element" width={70}>
+        <LabelledInput label="Beam elem." width={80}>
           <select style={s.inp}
-            value={load.elem_id != null && elemIds.includes(load.elem_id) ? load.elem_id : (elemIds[0] ?? '')}
+            value={load.elem_id != null && beamIds.includes(load.elem_id) ? load.elem_id : (beamIds[0] ?? '')}
             onChange={e => onChange({ ...load, elem_id: Number(e.target.value) })}>
-            {elemIds.map(eid => <option key={eid} value={eid}>E{eid}</option>)}
+            {beamElems.map(el => <option key={el.id} value={el.id}>E{el.id} ({el.preset ?? 'custom'})</option>)}
           </select>
         </LabelledInput>
         <LabelledInput label="wy (kN/m)" hint="↓ pos" width={88}>
@@ -440,7 +443,8 @@ export default function FrameFemBlock({ block, onChange }) {
   function removeLoad(i)      { update({ loads: loads.filter((_, j) => j !== i) }) }
   function addLoad(type = 'nodal') {
     if (type === 'udl') {
-      update({ loads: [...loads, { type: 'udl', elem_id: elements[0]?.id ?? 1, wy_kNm: 10, wx_kNm: 0 }] })
+      const firstBeam = elements.find(e => (e.type ?? 'beam') === 'beam')
+      update({ loads: [...loads, { type: 'udl', elem_id: firstBeam?.id ?? null, wy_kNm: 10, wx_kNm: 0 }] })
     } else {
       update({ loads: [...loads, { type: 'nodal', node_id: nodes[0]?.id ?? 1, Fx_kN: 0, Fy_kN: -10, Mz_kNm: 0 }] })
     }
