@@ -188,6 +188,144 @@ def _beam_fem_block(block: dict, tmp_files: list) -> list:
     return flat
 
 
+# ── 2D Frame FEM block ────────────────────────────────────────────────────────
+
+def _fem_table(rows, has_header=True, col_widths_mm=None, font_pt=8) -> list:
+    """Build a compact ReportLab table for the FEM result sections."""
+    HDR_BG = rl_colors.HexColor("#f0f0f0")
+    LIGHT  = rl_colors.HexColor("#f9f9f9")
+    RULE   = rl_colors.HexColor("#d8d8d8")
+    RULE_H = rl_colors.HexColor("#999999")
+    BLACK  = rl_colors.HexColor("#111111")
+
+    hdr_sty  = ParagraphStyle("femHdr",  fontSize=font_pt, fontName="Helvetica-Bold",
+                               textColor=BLACK, leading=font_pt + 2)
+    cell_sty = ParagraphStyle("femCell", fontSize=font_pt,
+                               textColor=BLACK, leading=font_pt + 2)
+
+    n_cols  = max(len(r) for r in rows) if rows else 1
+    if col_widths_mm is None:
+        col_widths_mm = [(170 / n_cols) * mm] * n_cols
+
+    rl_rows = []
+    for ri, row in enumerate(rows):
+        sty = hdr_sty if (has_header and ri == 0) else cell_sty
+        rl_rows.append([Paragraph(_pdf(str(cell)), sty) for cell in row])
+
+    tbl = Table(rl_rows, colWidths=col_widths_mm, repeatRows=1 if has_header else 0)
+    cmds = [
+        ("GRID",          (0, 0), (-1, -1), 0.4, RULE),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ]
+    if has_header and rl_rows:
+        cmds += [
+            ("BACKGROUND", (0, 0), (-1, 0), HDR_BG),
+            ("LINEBELOW",  (0, 0), (-1, 0), 1.2, RULE_H),
+        ]
+    for r in range(1 if has_header else 0, len(rl_rows)):
+        if r % 2 == 0:
+            cmds.append(("BACKGROUND", (0, r), (-1, r), LIGHT))
+    tbl.setStyle(TableStyle(cmds))
+    return [tbl, Spacer(1, 4 * mm)]
+
+
+def _frame_fem_block(block: dict, tmp_files: list) -> list:
+    """
+    Render a frame_fem block to PDF:
+      1. Regenerate the 5-panel matplotlib figure from the stored arrays
+         (xs / N_arr / V_arr / M_arr are kept in element_results)
+      2. Summary bar table  (max M / V / N / δ)
+      3. Reactions table
+      4. Element forces table
+
+    No re-running of OpenSeesPy is needed — all data was saved on last Run.
+    """
+    d      = block["data"]
+    title  = d.get("title", "2D Frame Analysis")
+    result = d.get("_result")
+
+    if result is None:
+        return [S(title),
+                N("Block has not been run yet — open the editor and click 'Run analysis'.")]
+
+    out = [S(title)]
+
+    # ── 1. Figure ─────────────────────────────────────────────────────────────
+    try:
+        from frame_fem import _make_figure   # internal but safe — same package
+        nodes        = d.get("nodes", [])
+        elements     = d.get("elements", [])
+        supports     = d.get("supports", [])
+        loads        = d.get("loads", [])
+        elem_results = result.get("element_results", [])
+        node_disps   = result.get("node_disps", [])
+        nd_dict      = {nd["node_id"]: nd for nd in node_disps}
+
+        fig_b64 = _make_figure(nodes, elements, supports, loads,
+                               elem_results, nd_dict, title)
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        tmp.write(base64.b64decode(fig_b64))
+        tmp.close()
+        tmp_files.append(tmp.name)
+        out.append(FIG(tmp.name, title, width_mm=170))
+    except Exception as exc:
+        out.append(N(f"Could not render FEM figure: {exc}"))
+
+    # ── 2. Summary ────────────────────────────────────────────────────────────
+    sm = result.get("summary", {})
+    if sm:
+        out += _fem_table([
+            ["max M (kNm)", "max V (kN)", "max N (kN)", "max δ (mm)"],
+            [f"{sm.get('max_M_kNm', 0):.3f}",
+             f"{sm.get('max_V_kN',  0):.3f}",
+             f"{sm.get('max_N_kN',  0):.3f}",
+             f"{sm.get('max_disp_mm', 0):.4f}"],
+        ], col_widths_mm=[42.5 * mm] * 4)
+
+    # ── 3. Reactions ──────────────────────────────────────────────────────────
+    reactions = result.get("reactions", [])
+    if reactions:
+        out.append(S("Reactions"))
+        rows = [["Node", "Rx (kN)", "Ry (kN)", "Mz (kNm)"]]
+        for r in reactions:
+            rows.append([
+                f"N{r['node_id']}",
+                f"{r.get('Rx_kN',  0):.3f}",
+                f"{r.get('Ry_kN',  0):.3f}",
+                f"{r.get('Mz_kNm', 0):.3f}",
+            ])
+        out += _fem_table(rows,
+                          col_widths_mm=[20 * mm, 50 * mm, 50 * mm, 50 * mm])
+
+    # ── 4. Element forces ─────────────────────────────────────────────────────
+    ers = result.get("element_results", [])
+    if ers:
+        out.append(S("Element forces"))
+        rows = [["Elem", "L(m)", "Ni(kN)", "Nj(kN)",
+                 "Vi(kN)", "Vj(kN)", "Mi(kNm)", "Mj(kNm)", "|M|max"]]
+        for er in ers:
+            rows.append([
+                f"E{er['elem_id']}",
+                f"{er.get('L_m',        0):.2f}",
+                f"{er.get('N_start_kN', 0):.2f}",
+                f"{er.get('N_end_kN',   0):.2f}",
+                f"{er.get('V_start_kN', 0):.2f}",
+                f"{er.get('V_end_kN',   0):.2f}",
+                f"{er.get('M_start_kNm',0):.2f}",
+                f"{er.get('M_end_kNm',  0):.2f}",
+                f"{er.get('M_max_kNm',  0):.2f}",
+            ])
+        # 9 columns — use 6 pt so it fits on the 170 mm page width
+        cw = [mm * w for w in [16, 14, 20, 20, 20, 20, 20, 20, 20]]
+        out += _fem_table(rows, col_widths_mm=cw, font_pt=6)
+
+    return out
+
+
 # ── Unicode → PDF-safe text ──────────────────────────────────────────────────
 # Helvetica (the default PDF font) only covers Latin-1 + some extras.
 # Unicode subscript/superscript digits and a handful of other maths symbols
@@ -492,6 +630,8 @@ def _convert_block(block: dict, tmp_files: list) -> list:
         return _python_calc(block, tmp_files)
     if t == "beam_fem":
         return _beam_fem_block(block, tmp_files)
+    if t == "frame_fem":
+        return _frame_fem_block(block, tmp_files)
     if t == "control_plan":
         return _control_plan(block)
     if t == "table":
