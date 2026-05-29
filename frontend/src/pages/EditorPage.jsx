@@ -98,21 +98,24 @@ function makeA1Template() {
     { id: id++, type: 'table', data: {
       caption: 'Tabel 2.2 — Vejledende graensevaerdier for konsekvensklasse (DS/INF 1990:2024, Tabel 2)',
       has_header: true,
+      highlighted: [],
+      // Nr 3.5% | Bygn.anvend. 35% | Spandv.×3 6.5% each | Hojde×3 9% each | Etager×3 5% each = 100%
+      col_widths: [3.5, 35, 6.5, 6.5, 6.5, 9, 9, 9, 5, 5, 5],
       rows: [
-        ['Nr.', 'Bygningsanvendelse', 'Spandv. CC1 [m]', 'Spandv. CC2 [m]', 'Spandv. CC3 [m]', 'Hojde CC1 o.t./u.t. [m]', 'Hojde CC2 o.t./u.t. [m]', 'Hojde CC3 o.t./u.t. [m]', 'Etager CC1', 'Etager CC2', 'Etager CC3'],
+        ['Nr.', 'Bygningsanvendelse', 'Spandv.\nCC1 [m]', 'Spandv.\nCC2 [m]', 'Spandv.\nCC3 [m]', 'Hojde CC1\no.t./u.t. [m]', 'Hojde CC2\no.t./u.t. [m]', 'Hojde CC3\no.t./u.t. [m]', 'Etager\nCC1', 'Etager\nCC2', 'Etager\nCC3'],
         ['1',  'Laengere ophold: beboelse, kontor, hotel, feriehus, dag-/doegninstitution, undervisning, klinik', '+', '16', '*', '0 / 0', '12 / 6', '+ / 9', '+', '5',  '15'],
-        ['2',  'Hospital',                                                                                         '+', '16', '*', '0 / 0', '+ / 6', '+ / 9', '+', '2',  '5'],
-        ['3',  'Forsamling (<=150 pers.): koncert, sport, kirke, auditorium, udstilling, teater, scene, detailhandel, spisesteder, overdaekninger', '+', '16', '36', '0 / 0', '12 / 6', '20 / 9', '+', '2', '5'],
-        ['4',  'Forsamling (>150 pers.): koncert, sport, kirke, auditorium, udstilling, teater, scene, detailhandel, spisesteder, overdaekninger', '+', '12', '24', '0 / 0', '6 / 0',  '20 / 6', '+', '1', '2'],
-        ['5',  'Forsamling, tribuner (>150 pers.)',                                                                '0', '8',  '12', '0 / 0', '8 / 6',  '16 / 9', '+', '+',  '+'],
-        ['6',  'Forsamling, overdaekning af udendoerstribuner og -scener (>150 pers.)',                            '0', '12', '24', '0 / +', '16 / +', '20 / +', '+', '+',  '+'],
-        ['7',  'Industri og lager: saerligt store konsekvenser af svigt — sundhedsskadelige kemikalier',           '+', '0',  '0',  '0 / 0', '0 / 0',  '0 / 0',  '+', '+',  '+'],
-        ['8',  'Industri og lager: meget store konsekvenser — forurenende produktion, arkiver af samfundsmaessig bet.', '+', '0', '40', '0 / 0', '0 / 0', '12 / 6', '+', '+', '3'],
-        ['9',  'Industri og lager: andre betydelige konsekvenser — kraftvarme, visse typer vareproduktion',        '+', '40', '*', '0 / 0', '12 / 6', '20 / 9', '+', '+',  '5'],
-        ['10', 'Industri og lager med ophold for fa personer: landbrug, vaeksthuse, siloanlæg',                   '40', '*', '*', '20 / 3', '30 / 6', '50 / 9', '+', '+',  '+'],
-        ['11', 'Dyrehold med arbejdspladser',                                                                     '20', '40', '*', '12 / 3', '16 / 6', '* / 9',  '+', '+',  '+'],
-        ['12', 'Parkeringsanlaeg',                                                                                '6',  '18', '*', '+ / 0', '20 / 6', '+ / 9',  '1', '6',  '15'],
-        ['13', 'Master og skorstene (abent ubeboet landskab)',                                                    '+',  '+',  '+', '50 / +', '200 / +', '* / *', '+', '+',  '+'],
+        ['2',  'Hospital', '+', '16', '*', '0 / 0', '+ / 6', '+ / 9', '+', '2',  '5'],
+        ['3',  'Forsamling <=150 pers. (koncert, sport, kirke, udstilling, teater, scene, detailhandel, spisested)', '+', '16', '36', '0 / 0', '12 / 6', '20 / 9', '+', '2', '5'],
+        ['4',  'Forsamling >150 pers. (koncert, sport, kirke, udstilling, teater, scene, detailhandel, spisested)', '+', '12', '24', '0 / 0', '6 / 0',  '20 / 6', '+', '1', '2'],
+        ['5',  'Forsamling, tribuner >150 pers.', '0', '8',  '12', '0 / 0', '8 / 6',  '16 / 9', '+', '+',  '+'],
+        ['6',  'Forsamling, overdaekning af udendoerstribuner og -scener (>150 pers.)', '0', '12', '24', '0 / +', '16 / +', '20 / +', '+', '+',  '+'],
+        ['7',  'Industri — sundhedsskadelige kemikalier (saerligt store konsekvenser)', '+', '0',  '0',  '0 / 0', '0 / 0',  '0 / 0',  '+', '+',  '+'],
+        ['8',  'Industri — forurenende produktion, arkiver af samfundsmaessig bet. (meget store konsekvenser)', '+', '0', '40', '0 / 0', '0 / 0', '12 / 6', '+', '+', '3'],
+        ['9',  'Industri — kraftvarme, visse typer vareproduktion (andre betydelige konsekvenser)', '+', '40', '*', '0 / 0', '12 / 6', '20 / 9', '+', '+',  '5'],
+        ['10', 'Industri/lager med fa personer: landbrug, vaeksthuse, siloanlæg', '40', '*', '*', '20 / 3', '30 / 6', '50 / 9', '+', '+',  '+'],
+        ['11', 'Dyrehold med arbejdspladser', '20', '40', '*', '12 / 3', '16 / 6', '* / 9',  '+', '+',  '+'],
+        ['12', 'Parkeringsanlaeg', '6',  '18', '*', '+ / 0', '20 / 6', '+ / 9',  '1', '6',  '15'],
+        ['13', 'Master og skorstene (abent ubeboet landskab)', '+',  '+',  '+', '50 / +', '200 / +', '* / *', '+', '+',  '+'],
       ]
     }},
     { id: id++, type: 'text', data: { text: 'Projektets bygningsanvendelse: Raekke [nr.] — [beskrivelse]\nStorste konstruktionsspaendvidde: ... m\nBygningshojde: ... m over terraen (Htop) / ... m under terraen (Ho)\nAntal etager over terraen: ...\n\nValgt konsekvensklasse: CC[1/2/3]\nPaalidelighedsklasse: RC[1/2/3]\n\nTeknisk-faglig vurdering og begrundelse:\n[Beskriv hvordan bygningens anvendelse, konstruktionsspaendvidde, hojde og etageantal placerer den i den valgte CC-klasse med reference til DS/INF 1990:2024 Tabel 2. DS/INF 1990 er vejledende — afvigelse fra tabellen skal begrundes her.]' } },
@@ -341,6 +344,7 @@ function makeA1Template() {
     { id: id++, type: 'table', data: {
       caption: 'Tabel 6.1 — ULS lastsikkerhedsfaktorer (DS/EN 1990 DK NA:2024, Tabel A1.2(B), STR/GEO)',
       has_header: true,
+      col_widths: [8, 52, 10, 10, 12, 8],
       rows: [
         ['Formel', 'Udtryk', 'gamma_G,sup', 'gamma_G,inf', 'gamma_Q,1', 'xi (DK NA)'],
         ['6.10a', 'gamma_G,sup x KFI x Gk + sum(gamma_Q,i x KFI x psi0,i x Qk,i)', '1,35', '1,00', '1,50 x psi0,i', '--'],
@@ -391,6 +395,7 @@ function makeA1Template() {
       caption: 'Tabel 6.4 — psi-faktorer for variable laster (DS/EN 1990 DK NA:2024, Tabel A1.1)',
       has_header: true,
       highlighted: [],
+      col_widths: [28, 52, 7, 7, 6],
       rows: [
         ['Lasttype', 'Lastkategori / anvendelse', 'psi0', 'psi1', 'psi2'],
         ['Nyttelast — Kat. A', 'Boliger og boligformaal', '0,5', '0,3', '0,2'],

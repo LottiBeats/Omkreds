@@ -236,10 +236,31 @@ def _table_block(block: dict) -> list:
     HL_BG     = rl_colors.HexColor("#fef08a")   # yellow highlight (matches frontend)
     HL_BORDER = rl_colors.HexColor("#ca8a04")   # amber border for highlighted cells
 
-    hdr_style  = ParagraphStyle("tblHdr",  fontSize=8, textColor=BLACK,
-                                 fontName="Helvetica-Bold", leading=10)
-    cell_style = ParagraphStyle("tblCell", fontSize=8,
-                                 textColor=BLACK, leading=10)
+    # Column widths — use stored percentages if available, else distribute evenly
+    n_cols = max(len(r) for r in rows_data) if rows_data else 1
+    stored_widths = d.get("col_widths")   # list of percentages (sum ~100) or None
+    TOTAL_MM = 170
+    if stored_widths and len(stored_widths) == n_cols:
+        # Normalise in case they don't sum to exactly 100
+        total_pct = sum(stored_widths)
+        col_widths_mm = [(w / total_pct) * TOTAL_MM * mm for w in stored_widths]
+    else:
+        col_widths_mm = [(TOTAL_MM / n_cols) * mm] * n_cols
+
+    # Auto-scale font size based on column count so wide tables don't wrap horribly.
+    # 8pt works fine up to ~6 columns. Each extra column above 6 costs half a point,
+    # floored at 6pt (still readable, just compact).
+    if n_cols <= 6:
+        font_pt = 8
+    elif n_cols <= 8:
+        font_pt = 7
+    else:
+        font_pt = 6
+
+    hdr_style  = ParagraphStyle("tblHdr",  fontSize=font_pt, textColor=BLACK,
+                                 fontName="Helvetica-Bold", leading=font_pt + 2)
+    cell_style = ParagraphStyle("tblCell", fontSize=font_pt,
+                                 textColor=BLACK, leading=font_pt + 2)
     cap_style  = ParagraphStyle("tblCap",  fontSize=8, fontName="Helvetica-Oblique",
                                  textColor=rl_colors.HexColor("#555555"), leading=10,
                                  spaceAfter=2)
@@ -255,18 +276,7 @@ def _table_block(block: dict) -> list:
         sty    = hdr_style if is_hdr else cell_style
         rl_rows.append([Paragraph(_pdf(cell), sty) for cell in row])
 
-    # Column widths — use stored percentages if available, else distribute evenly
-    n_cols = max(len(r) for r in rows_data) if rows_data else 1
-    stored_widths = d.get("col_widths")   # list of percentages (sum ~100) or None
-    TOTAL_MM = 170
-    if stored_widths and len(stored_widths) == n_cols:
-        # Normalise in case they don't sum to exactly 100
-        total_pct = sum(stored_widths)
-        col_widths = [(w / total_pct) * TOTAL_MM * mm for w in stored_widths]
-    else:
-        col_widths = [(TOTAL_MM / n_cols) * mm] * n_cols
-
-    tbl = Table(rl_rows, colWidths=col_widths, repeatRows=1 if has_header else 0)
+    tbl = Table(rl_rows, colWidths=col_widths_mm, repeatRows=1 if has_header else 0)
 
     style_cmds = [
         ("GRID",          (0, 0), (-1, -1),  0.4, RULE),
