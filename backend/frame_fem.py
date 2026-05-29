@@ -91,9 +91,12 @@ def _run(nodes, elements, supports, loads, title):
     # Nodes with at least one RIGID beam connection — these must NOT have rz auto-fixed.
     beam_nodes: set = set()
 
-    # OpenSeesPy elasticBeamColumn -release codes:
-    #   0 = rigid  1 = pin at i-end  2 = pin at j-end  3 = pin at both ends
+    # elasticBeamColumn -release codes for pinned-end beams:
+    #   0=rigid  1=pin at i  2=pin at j  3=pin both ends
     _rcode = {"none": 0, "start": 1, "end": 2, "both": 3}
+
+    # Section / integration tags are offset past element tags to avoid collisions.
+    _n = len(elements)
 
     elem_info = {}
     for idx, elem in enumerate(elements):
@@ -121,24 +124,37 @@ def _run(nodes, elements, supports, loads, title):
             mat_tag = idx + 1
             ops.uniaxialMaterial("Elastic", mat_tag, E)
             ops.element("Truss", ops_tag, ni_tag, nj_tag, A, mat_tag)
+            force_src = "truss"
+        elif rcode == 0:
+            # Rigid-joint beam: forceBeamColumn with elastic section.
+            # OpenSeesPy returns N and M at each Gauss-Lobatto integration point
+            # via eleResponse('section', i, 'force') — no manual formula needed.
+            sec_tag = _n + idx + 1
+            int_tag = _n + idx + 1
+            ops.section("Elastic", sec_tag, E, A, I)
+            ops.beamIntegration("Lobatto", int_tag, sec_tag, 5)
+            ops.element("forceBeamColumn", ops_tag, ni_tag, nj_tag, 1, int_tag)
+            beam_nodes.add(ni_id)
+            beam_nodes.add(nj_id)
+            force_src = "forceBeam"
         else:
+            # Released beam: elasticBeamColumn with built-in -release parameter.
+            # OpenSeesPy enforces M=0 at released ends; localForce gives the exact
+            # end forces — V and N are linearly correct from equilibrium.
+            ops.element("elasticBeamColumn", ops_tag,
+                        ni_tag, nj_tag, A, E, I, 1,
+                        "-release", rcode)
             if releases not in ("both", "start"):
                 beam_nodes.add(ni_id)
             if releases not in ("both", "end"):
                 beam_nodes.add(nj_id)
-
-            if rcode == 0:
-                ops.element("elasticBeamColumn", ops_tag,
-                            ni_tag, nj_tag, A, E, I, 1)
-            else:
-                ops.element("elasticBeamColumn", ops_tag,
-                            ni_tag, nj_tag, A, E, I, 1,
-                            "-release", rcode)
+            force_src = "elasticRelease"
 
         elem_info[elem["id"]] = {
-            "ops_tag": ops_tag, "elem": elem,
+            "ops_tag":   ops_tag, "elem": elem,
             "c": c, "s": s, "L": L,
             "xi": xi, "yi": yi, "xj": xj, "yj": yj,
+            "force_src": force_src,
         }
 
     # ── Boundary conditions ───────────────────────────────────────────────────
@@ -259,37 +275,62 @@ def _run(nodes, elements, supports, loads, title):
 
         xs = np.linspace(0.0, L, n_pts)
 
-        if etype == "truss":
-            # For truss: compute N from node displacements
+        force_src = ei["force_src"]
+
+        if force_src == "truss":
+            # Axial force from axial displacement (exact for truss elements)
             ni_tag = node_map[elem["ni"]]
             nj_tag = node_map[elem["nj"]]
             di = ops.nodeDisp(ni_tag)
             dj = ops.nodeDisp(nj_tag)
             du = (dj[0] - di[0]) * c + (dj[1] - di[1]) * s
-            E  = float(elem["E_GPa"]) * 1e6
-            A  = float(elem["A_cm2"]) * 1e-4
-            N_val = E * A * du / L
-            N_arr = np.full(n_pts, N_val)
+            E_  = float(elem["E_GPa"]) * 1e6
+            A_  = float(elem["A_cm2"]) * 1e-4
+            N_arr = np.full(n_pts, E_ * A_ * du / L)
             V_arr = np.zeros(n_pts)
             M_arr = np.zeros(n_pts)
-        else:
-            # Get local forces at element ends
-            lf = ops.eleResponse(ei["ops_tag"], "localForce")
-            # lf = [N_i, Vy_i, Mz_i, N_j, Vy_j, Mz_j]
-            # These are forces the element exerts ON the nodes.
-            # The internal section forces at x=0+ (equilibrium from left):
-            N0 = -lf[0]                          # tension positive
-            V0 = -lf[1]                          # upward-on-left-face positive
-            M0 = -lf[2]                          # sagging positive
 
-            # wy_local in OpenSeesPy: positive = upward (local y).
-            # We want wy_down = -wy_local (positive = downward) for the formula.
-            wy_down = -distrib["wy"]
-            wx_axial = distrib["wx"]             # along element, positive = tensile
+        elif force_src == "forceBeam":
+            # forceBeamColumn: OpenSeesPy returns N and M at each of the 5
+            # Gauss-Lobatto integration points via section force queries.
+            # No manual formula — the solver computed these directly.
+            sqrt37 = np.sqrt(3.0 / 7.0)
+            lob_t  = [0.0, (1-sqrt37)/2, 0.5, (1+sqrt37)/2, 1.0]
+            lob_x  = np.array([t * L for t in lob_t])
 
-            N_arr =  N0 + wx_axial * xs
-            V_arr =  V0 - wy_down  * xs
-            M_arr =  M0 + V0 * xs  - wy_down * xs ** 2 / 2.0
+            N_lob, M_lob = [], []
+            for i in range(1, 6):   # sections 1..5 correspond to Lobatto points 1..5
+                sf = ops.eleResponse(ei["ops_tag"], "section", i, "force")
+                N_lob.append(sf[0])   # axial force  N  (kN)
+                M_lob.append(sf[1])   # bending moment M (kNm)
+
+            N_arr = np.interp(xs, lob_x, N_lob)
+            M_arr = np.interp(xs, lob_x, M_lob)
+
+            # V: OpenSeesPy gives exact end shears via localForce.
+            # For UDL, V is linear between the two ends — interpolate.
+            lf    = ops.eleResponse(ei["ops_tag"], "localForce")
+            V_i   = -lf[1]   # internal shear at x=0  (tension-positive convention)
+            V_j   =  lf[4]   # internal shear at x=L
+            V_arr = np.linspace(V_i, V_j, n_pts)
+
+        else:  # elasticRelease
+            # elasticBeamColumn with -release: OpenSeesPy enforces M=0 at released
+            # ends.  localForce gives the exact end forces after analysis.
+            lf  = ops.eleResponse(ei["ops_tag"], "localForce")
+            # lf = [N_i, Vy_i, Mz_i, N_j, Vy_j, Mz_j] — forces element → nodes
+            N_i = -lf[0];  V_i = -lf[1];  M_i = -lf[2]
+            N_j =  lf[3];  V_j =  lf[4];  M_j =  lf[5]
+            # N and V are linearly distributed; M is parabolic due to UDL.
+            # Since OpenSeesPy sets M=0 at pinned ends, we simply interpolate
+            # N and V from end values and get M from the end moments.
+            N_arr = np.linspace(N_i, -N_j, n_pts)
+            V_arr = np.linspace(V_i,  V_j, n_pts)
+            # M: linearly interpolate between end moments (only correct without UDL).
+            # With UDL the parabolic shape needs the distributed load magnitude.
+            # We keep the end-force-based formula here; it is exact by equilibrium.
+            wy_down  = -distrib["wy"]
+            M_arr    = M_i + V_i * xs - wy_down * xs**2 / 2.0
 
         elem_results.append({
             "elem_id":     eid,
