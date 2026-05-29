@@ -12,6 +12,7 @@
  */
 import React, { useState } from 'react'
 import { calcFrameFem } from '../../api/client.js'
+import FrameFemResults from './FrameFemResults.jsx'
 
 // ── Section presets ───────────────────────────────────────────────────────────
 const SECTION_PRESETS = {
@@ -429,16 +430,9 @@ export default function FrameFemBlock({ block, onChange }) {
         supports,
         loads,
       })
-      // Strip the per-element point arrays (xs, N_arr, V_arr, M_arr) before
-      // storing in the project — they're only used for the figure, which is
-      // already captured in fig_b64.  Keeping them would make the project
-      // document too large for the nginx body limit.
-      const lean = {
-        ...res,
-        element_results: res.element_results?.map(
-          ({ xs, N_arr, V_arr, M_arr, ...scalar }) => scalar
-        ),
-      }
+      // Keep xs/N_arr/V_arr/M_arr for SVG diagrams; drop fig_b64 (matplotlib PNG)
+      // so the stored document stays within the nginx body limit.
+      const { fig_b64: _dropped, ...lean } = res
       update({ _result: lean })
     } catch (err) {
       setError(err.message)
@@ -522,7 +516,15 @@ export default function FrameFemBlock({ block, onChange }) {
       )}
 
       {/* Results */}
-      {d._result && <ResultPanel result={d._result} />}
+      {d._result && (
+        <FrameFemResults
+          result={d._result}
+          nodes={nodes}
+          elements={elements}
+          supports={supports}
+          loads={loads}
+        />
+      )}
 
     </div>
   )
