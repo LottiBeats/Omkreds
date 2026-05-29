@@ -115,25 +115,39 @@ function makeA1Template() {
         ['13', 'Master og skorstene (abent ubeboet landskab)',                                                    '+',  '+',  '+', '50 / +', '200 / +', '* / *', '+', '+',  '+'],
       ]
     }},
-    { id: id++, type: 'text', data: { text: 'Projektets bygningsanvendelse: Raekke [nr.] — [beskrivelse]\nStorste konstruktionsspaendvidde: ... m\nBygningshojde: ... m over terraen (Htop) / ... m under terraen (Ho)\nAntal etager over terraen: ...\n\nValgt konsekvensklasse: CC[1/2/3]\nKFI-faktor (STR/GEO): [0,9 / 1,0 / 1,1]   Paalidelighedsklasse: RC[1/2/3]\n\nTeknisk-faglig vurdering og begrundelse:\n[Beskriv hvordan bygningens anvendelse, konstruktionsspaendvidde, hojde og etageantal placerer den i den valgte CC-klasse med reference til DS/INF 1990:2024 Tabel 2. DS/INF 1990 er vejledende — afvigelse fra tabellen skal begrundes her.]' } },
+    { id: id++, type: 'text', data: { text: 'Projektets bygningsanvendelse: Raekke [nr.] — [beskrivelse]\nStorste konstruktionsspaendvidde: ... m\nBygningshojde: ... m over terraen (Htop) / ... m under terraen (Ho)\nAntal etager over terraen: ...\n\nValgt konsekvensklasse: CC[1/2/3]\nPaalidelighedsklasse: RC[1/2/3]\n\nTeknisk-faglig vurdering og begrundelse:\n[Beskriv hvordan bygningens anvendelse, konstruktionsspaendvidde, hojde og etageantal placerer den i den valgte CC-klasse med reference til DS/INF 1990:2024 Tabel 2. DS/INF 1990 er vejledende — afvigelse fra tabellen skal begrundes her.]' } },
+    { id: id++, type: 'table', data: {
+      caption: 'Tabel 2.2a — KFI-faktorer pr. konsekvensklasse (DS/EN 1990 DK NA:2024)',
+      has_header: true,
+      highlighted: [],
+      rows: [
+        ['Konsekvensklasse', 'Paalidelighedsklasse', 'KFI — STR/GEO (6.10a/b)', 'KFI — EQU', 'KFI — Geoteknisk'],
+        ['CC1', 'RC1', '0,9', '1,0', '1,0'],
+        ['CC2', 'RC2', '1,0', '1,0', '1,0'],
+        ['CC3', 'RC3', '1,1', '1,1', '1,1'],
+      ]
+    }},
+    { id: id++, type: 'text', data: { text: 'OBS: KFI for CC1 = 0,9 kun for STR/GEO lasttilfaelde (brudgraense, styrke og stabilitet). For EQU (ligevaegt) og geotekniske konstruktioner galder KFI = 1,0 ogsaa ved CC1 (DK NA:2024 Tabel A1.2 note).\n\nValgt KFI-faktor for dette projekt (STR/GEO): [0,9 / 1,0 / 1,1]' } },
 
     { id: id++, type: 'heading', data: { level: 3, text: '2.2.2 Konstruktionsklasse — DS 1140:2014 og BR18' } },
     { id: id++, type: 'text', data: { text: 'Konstruktioner henfoeres til konstruktionsklasse KK[2] iht. BR18.\n\nHovedreglen: KK-klassen foelger CC-klassen direkte (CC1->KK1, CC2->KK2, CC3->KK3).\n\nUndtagelse — BR18 §489 (CC3-bygning kan placeres i KK2 naar alle tre krav er opfyldt):\n  1. Simpel og traditionel ombygning/forandring af eksisterende enkel konstruktion\n  2. Etagebyggeri til laengere ophold (beboelse, kontor, hotel, dag-/doegninstitution)\n  3. Hojst 6 etager over terraen OG spaendvidde pa hojst 8 m\n\nValgt konstruktionsklasse: KK[2]\nBegrundelse: ...' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 2.3 — Krav pr. konstruktionsklasse (DS 1140:2014)',
+      caption: 'Tabel 2.3 — Krav pr. konstruktionsklasse (DS 1140:2014 + BR18)',
       has_header: true,
+      highlighted: [],
       rows: [
         ['Klasse', 'CC', 'Projekteringskontrol', 'Udforelseskontrol', 'Dokumentation'],
         ['KK1', 'CC1', 'Egenkontrol af projekterende', 'Egenkontrol af udforende', 'Ingen saerlige krav'],
-        ['KK2', 'CC2', 'Uvildig kontrol — anden person i firmaet er OK', 'Egenkontrol + stikprovekontrol', 'Kontrolplan B2 + kontrolrapport B3'],
-        ['KK3', 'CC3', 'Ekstern uvildig kontrol (eksternt firma kraeves)', 'Udvidet uvildig udforelseskontrol', 'B2 + B3 + tredjepartsgodkendelse'],
-        ['KK4', 'Saerlig', 'Saerlig kontrol — aftales individuelt', 'Saerlig kontrol — aftales', 'Individuel aftale med bygningsmyndighed'],
+        ['KK2', 'CC2', 'Uafhaengig kontrol: A1 skal kontrolleres af anden person. Beregninger og tegninger kontrolleres af person der ikke har udfort den paagaeldende del. Internt i samme firma er OK.', 'Egenkontrol + systematisk stikproevekontrol af udforende', 'Kontrolplan B2 + kontrolrapport B3'],
+        ['KK3', 'CC3', 'Ekstern uvildig kontrol af alt projektmateriale — kraever eksternt firma', 'Udvidet ekstern uvildig udforelseskontrol', 'B2 + B3 + tredjepartsgodkendelse af projektgrundlag'],
+        ['KK4', 'Saerlig', 'Saerlig kontrol — aftales individuelt med bygningsmyndighed', 'Saerlig kontrol — aftales individuelt', 'Individuel aftale med bygningsmyndighed'],
       ]
     }},
+    { id: id++, type: 'text', data: { text: 'Naermere om KK2-kontrolkrav (DS 1140:2014 Tabel B4b, Note 2):\n- Projektgrundlag A1: Krav om uafhaengig kontrol (anden person end den der har udarbejdet den paagaeldende del).\n- Statiske beregninger A2 og tegninger A3: Kontrolleres af person der ikke har udfort netop den paagaeldende delberegning eller tegning — internt firma er tilstraekkeligt.\n- Kontrollen dokumenteres i B2 (kontrolplan) og B3 (kontrolrapport).' } },
 
     // ── 2.3 Sikkerhed ────────────────────────────────────────────────────────
     { id: id++, type: 'heading', data: { level: 3, text: '2.3 Sikkerhed' } },
-    { id: id++, type: 'text', data: { text: 'Bygningen henfoeres til foelgende sikkerhedsklasser:\n  Konsekvensklasse:    CC[2]\n  Konstruktionsklasse: KK[2]\n  Paalidelighedsklasse: RC[2]\n  KFI-faktor (STR/GEO): [1,0]\n  Geoteknisk kategori: GK[2]\n  Brandklasse (BR18):  BK[2]' } },
+    { id: id++, type: 'text', data: { text: 'Bygningen henfoeres til foelgende sikkerhedsklasser:\n  Konsekvensklasse:          CC[2]\n  Konstruktionsklasse:       KK[2]\n  Paalidelighedsklasse:      RC[2]\n  KFI-faktor (STR/GEO):      [1,0]   (se Tabel 2.2a for CC-afhaengighed)\n  KFI-faktor (EQU/geoteknik): 1,0    (galder uafhaengigt af CC iht. DK NA:2024)\n  Geoteknisk kategori:       GK[2]\n  Brandklasse (BR18):        BK[2]' } },
 
     // ── 2.4 IKT-vaerktoejer ──────────────────────────────────────────────────
     { id: id++, type: 'heading', data: { level: 3, text: '2.4 IKT-vaerktojer' } },
@@ -141,7 +155,7 @@ function makeA1Template() {
 
     // ── 2.5 Referencer ───────────────────────────────────────────────────────
     { id: id++, type: 'heading', data: { level: 3, text: '2.5 Referencer' } },
-    { id: id++, type: 'text', data: { text: '[1] Bygningsreglement BR18, seneste udgave\n[2] SBi-anvisning 271, 3. udgave — Dokumentation og kontrol af baerende konstruktioner\n[3] DS/INF 1990:2021+Till.1:2022 — Vejledning til konsekvensklasser\n[4] [Geoteknisk rapport, firma, rapport nr., dato]\n[5] [Arkitekttegninger, tegningsliste, revisioner]\n[6] [Evt. andre referencer]' } },
+    { id: id++, type: 'text', data: { text: '[1] Bygningsreglement BR18, seneste udgave\n[2] SBi-anvisning 271, 3. udgave — Dokumentation og kontrol af baerende konstruktioner\n[3] DS/INF 1990:2024 — Vejledning til konsekvensklasser\n[4] [Geoteknisk rapport, firma, rapport nr., dato]\n[5] [Arkitekttegninger, tegningsliste, revisioner]\n[6] [Evt. andre referencer]' } },
 
     // ─────────────────────────────────────────────────────────────────────────
     // 3. FORUNDERSOEGELSER
@@ -183,21 +197,19 @@ function makeA1Template() {
     { id: id++, type: 'text', data: { text: 'Der stilles krav til udbojning (SLS):\n  Daek og bjaelker generelt: L/300 for karakteristiske lastkombinationer\n  Daek med skroebelig belaegning (fliser, terrazzo): L/400\n  Tagelementer: L/200\n\n[Tilpas efter projektets krav og aftale med bygherre. Angiv evt. absolutte vaerdier for nedbojning i mm.]' } },
 
     { id: id++, type: 'heading', data: { level: 3, text: '4.3 Komfortkrav' } },
-    { id: id++, type: 'text', data: { text: 'Der stilles krav til vibrationskomfort for etagedaek. Niveau IV er normalt tilfredsstillende for etagebygninger (boliger, kontorer, hoteller).' } },
+    { id: id++, type: 'text', data: { text: 'Der stilles krav til vibrationskomfort for etagedaek iht. DS/EN 1990 DK NA:2024 Tabel A1.4. Kravene angiver minimumsegenfrekvens og maksimal RMS-acceleration for behagelighed.' } },
     { id: id++, type: 'table', data: {
-      caption: 'Tabel 4.1 — Komfortniveauer for etagedaek (acceleration og hastighed)',
+      caption: 'Tabel 4.1 — Krav til vibrationskomfort for etagedaek (DS/EN 1990 DK NA:2024, Tabel A1.4)',
       has_header: true,
+      highlighted: [],
       rows: [
-        ['Niveau', 'w_1kN [mm]', 'f1 >= 8 Hz: v_rms [m/s]', '4,5 Hz <= f1 < 8 Hz: a_rms [m/s2]', 'Typisk anvendelse'],
-        ['I',  '0,25', '0,40 x 10-3', '0,020', 'Operationsrum, sensorlaboratorier'],
-        ['II', '0,25', '0,80 x 10-3', '0,040', 'Soverum i hoteller (nat)'],
-        ['III','0,50', '1,20 x 10-3', '0,060', 'Boliger'],
-        ['IV', '0,80', '2,00 x 10-3', '0,100', 'Kontorer, hoteller (dag) — standard'],
-        ['V',  '1,20', '3,00 x 10-3', '0,150', 'Industri, restauranter'],
-        ['VI', '1,60', '4,00 x 10-3', '0,200', 'Robuste industribygninger'],
+        ['Konstruktionstype / rum', 'Min. egenfrekvens f1 [Hz]', 'Maks. RMS-acceleration a_rms [% g]', 'a_rms ca. [m/s2]'],
+        ['Tribuner med fikserede saeder',   '3,4', '5,0', '~0,49'],
+        ['Boliger og hotelvaerelser',        '8,0', '0,5', '~0,049'],
+        ['Kontorlokaler',                   '4,0', '1,0', '~0,098'],
       ]
     }},
-    { id: id++, type: 'text', data: { text: 'Valgt komfortniveau: [IV]\nBegrundelse: [fx standard etagebygning med boliger/kontorer]' } },
+    { id: id++, type: 'text', data: { text: 'Egenfrekvens og acceleration kontrolleres for den dominerende fodgangerfrekvens (typisk 2 Hz lodrette trin) iht. bilag til DS/EN 1990.\n\nValgt anvendelse: [fx Kontorer] — krav: f1 >= [4,0] Hz og a_rms <= [1,0] % g\nBeregnede vaerdier kontrolleres i A2.' } },
 
     { id: id++, type: 'heading', data: { level: 3, text: '4.4 Funktionskrav' } },
     { id: id++, type: 'text', data: { text: 'Byggeriet gennemfoeres iht. bestemmelserne i BR18 og gaeldende normer.\n[Beskriv saerlige funktionskrav — akustik, vandtaethed, brandadskillelsesvagge, adskillelse fra installationer, etc.]' } },
@@ -378,18 +390,22 @@ function makeA1Template() {
     { id: id++, type: 'table', data: {
       caption: 'Tabel 6.4 — psi-faktorer for variable laster (DS/EN 1990 DK NA:2024, Tabel A1.1)',
       has_header: true,
+      highlighted: [],
       rows: [
-        ['Lasttype', 'Lastkategori', 'psi0', 'psi1', 'psi2'],
+        ['Lasttype', 'Lastkategori / anvendelse', 'psi0', 'psi1', 'psi2'],
         ['Nyttelast — Kat. A', 'Boliger og boligformaal', '0,5', '0,3', '0,2'],
         ['Nyttelast — Kat. B', 'Kontor og administrationsarealer', '0,6', '0,4', '0,2'],
-        ['Nyttelast — Kat. C', 'Forsamlingslokaler (C1-C5)', '0,6', '0,6', '0,5'],
+        ['Nyttelast — Kat. C1-C4', 'Forsamlingslokaler, biografer, kirker, museer, restauranter', '0,6', '0,6', '0,5'],
+        ['Nyttelast — Kat. C5', 'Forsamlingslokaler med risiko for traengsel (stadioner, koncerter)', '0,8', '0,7', '0,6'],
         ['Nyttelast — Kat. D', 'Butikker og forretningsarealer', '0,6', '0,6', '0,5'],
         ['Nyttelast — Kat. E', 'Lagerbygninger', '0,8', '0,8', '0,7'],
-        ['Nyttelast — Kat. F', 'Let trafik <= 30 kN (parkering)', '0,6', '0,6', '0,5'],
-        ['Nyttelast — Kat. H', 'Tage (ikke tilgaengeligt)', '0', '0', '0'],
-        ['Snelast (DK)', 'Andre kombinationer', '0,3', '0,2', '0'],
-        ['Snelast (DK)', 'Kombineret med vindlast', '0', '0', '0'],
-        ['Vindlast (DK)', 'Andre kombinationer', '0,3', '0,2', '0'],
+        ['Nyttelast — Kat. F', 'Trafiklast <= 30 kN (lette koeretoejer, parkering)', '0,6', '0,6', '0,5'],
+        ['Nyttelast — Kat. G', 'Trafiklast 30-160 kN (tunge koeretoejer)', '0,6', '0,5', '0,3'],
+        ['Nyttelast — Kat. H', 'Tage (ikke tilgaengelige)', '0', '0', '0'],
+        ['Snelast (DK)', 'Kombineret med andre variable laster (prim/sek)', '0,3', '0,2', '0'],
+        ['Snelast (DK)', 'Kombineret med vindlast som primaaer', '0', '—', '—'],
+        ['Vindlast (DK)', 'Kombineret med andre variable laster', '0,3', '0,2', '0'],
+        ['Temperaturlast (DK)', 'Termiske deformationer (ikke brand)', '0,6', '0,5', '0'],
       ]
     }},
 
