@@ -203,11 +203,27 @@ function LoadRow({ load, nodes, elements, onChange, onRemove }) {
   const nodeIds = nodes.map(n => n.id)
   const elemIds = elements.map(e => e.id)
 
+  // Auto-heal null ids — happens when a load was switched type or saved before an id was set
+  React.useEffect(() => {
+    if (ltype === 'udl'   && load.elem_id == null && elemIds[0] != null)
+      onChange({ ...load, elem_id: elemIds[0] })
+    if (ltype === 'nodal' && load.node_id == null && nodeIds[0] != null)
+      onChange({ ...load, node_id: nodeIds[0] })
+  }, [ltype, load.elem_id, load.node_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div style={{ ...s.row, flexWrap: 'wrap', gap: 6 }}>
       <LabelledInput label="Type" width={80}>
         <select style={s.inp} value={ltype}
-          onChange={e => onChange({ ...load, type: e.target.value })}>
+          onChange={e => {
+            const t = e.target.value
+            // Ensure the id field is always populated when switching type
+            if (t === 'udl' && (load.elem_id == null) && elemIds.length > 0)
+              return onChange({ ...load, type: t, elem_id: elemIds[0] })
+            if (t === 'nodal' && (load.node_id == null) && nodeIds.length > 0)
+              return onChange({ ...load, type: t, node_id: nodeIds[0] })
+            onChange({ ...load, type: t })
+          }}>
           <option value="nodal">Nodal</option>
           <option value="udl">UDL</option>
         </select>
@@ -239,7 +255,8 @@ function LoadRow({ load, nodes, elements, onChange, onRemove }) {
 
       {ltype === 'udl' && <>
         <LabelledInput label="Element" width={70}>
-          <select style={s.inp} value={load.elem_id ?? elemIds[0]}
+          <select style={s.inp}
+            value={load.elem_id != null && elemIds.includes(load.elem_id) ? load.elem_id : (elemIds[0] ?? '')}
             onChange={e => onChange({ ...load, elem_id: Number(e.target.value) })}>
             {elemIds.map(eid => <option key={eid} value={eid}>E{eid}</option>)}
           </select>
