@@ -125,25 +125,28 @@ def _run(nodes, elements, supports, loads, title):
             ops.uniaxialMaterial("Elastic", mat_tag, E)
             ops.element("Truss", ops_tag, ni_tag, nj_tag, A, mat_tag)
             force_src = "truss"
-        else:
-            # All beam elements use forceBeamColumn with an elastic section and
-            # 5-point Gauss-Lobatto integration.  OpenSeesPy returns N and M at
-            # each integration point via eleResponse('section', i, 'force').
-            # For moment releases, pass -release releaseCode directly to the element.
+        elif rcode == 0:
+            # Rigid beam: forceBeamColumn + elastic section + 5-pt Gauss-Lobatto.
+            # Section forces queried directly from OpenSeesPy at each integration pt.
             sec_tag = _n + idx + 1
             int_tag = _n + idx + 1
             ops.section("Elastic", sec_tag, E, A, I)
             ops.beamIntegration("Lobatto", int_tag, sec_tag, 5)
-            if rcode == 0:
-                ops.element("forceBeamColumn", ops_tag, ni_tag, nj_tag, 1, int_tag)
-            else:
-                ops.element("forceBeamColumn", ops_tag, ni_tag, nj_tag, 1, int_tag,
-                            "-release", rcode)
+            ops.element("forceBeamColumn", ops_tag, ni_tag, nj_tag, 1, int_tag)
+            beam_nodes.add(ni_id)
+            beam_nodes.add(nj_id)
+            force_src = "forceBeam"
+        else:
+            # Released beam: elasticBeamColumn with -release (only this element
+            # supports the -release parameter in OpenSeesPy).
+            ops.element("elasticBeamColumn", ops_tag,
+                        ni_tag, nj_tag, A, E, I, 1,
+                        "-release", rcode)
             if releases not in ("both", "start"):
                 beam_nodes.add(ni_id)
             if releases not in ("both", "end"):
                 beam_nodes.add(nj_id)
-            force_src = "forceBeam"
+            force_src = "elasticRelease"
 
         elem_info[elem["id"]] = {
             "ops_tag":   ops_tag, "elem": elem,
@@ -309,6 +312,17 @@ def _run(nodes, elements, supports, loads, title):
             V_j   =  lf[4]   # internal shear at x=L
             V_arr = np.linspace(V_i, V_j, n_pts)
 
+        else:  # elasticRelease
+            # elasticBeamColumn -release enforces M=0 at pinned ends.
+            # localForce gives exact end forces; M is parabolic from equilibrium —
+            # exact because OpenSeesPy guarantees M_i = 0 at the pin.
+            lf      = ops.eleResponse(ei["ops_tag"], "localForce")
+            N_i     = -lf[0];  V_i = -lf[1];  M_i = -lf[2]   # M_i ≈ 0 at pin
+            V_j     =  lf[4]
+            wy_down = -distrib["wy"]
+            N_arr   = np.full(n_pts, N_i)
+            V_arr   = np.linspace(V_i, V_j, n_pts)
+            M_arr   = M_i + V_i * xs - wy_down * xs**2 / 2.0
 
         elem_results.append({
             "elem_id":     eid,
