@@ -90,6 +90,18 @@ function ElemRow({ elem, nodes, onChange, onRemove }) {
         </select>
       </LabelledInput>
 
+      {(elem.type ?? 'beam') === 'beam' && (
+        <LabelledInput label="Releases" width={100}>
+          <select style={s.inp} value={elem.releases ?? 'none'}
+            onChange={e => onChange({ ...elem, releases: e.target.value })}>
+            <option value="none">Rigid</option>
+            <option value="both">Pin–Pin</option>
+            <option value="start">Pin–Rigid</option>
+            <option value="end">Rigid–Pin</option>
+          </select>
+        </LabelledInput>
+      )}
+
       <LabelledInput label="From" width={60}>
         <select style={s.inp} value={elem.ni}
           onChange={e => onChange({ ...elem, ni: Number(e.target.value) })}>

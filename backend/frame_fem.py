@@ -86,21 +86,29 @@ def _run(nodes, elements, supports, loads, title):
 
     ops.geomTransf("Linear", 1)
 
-    # Track which nodes have at least one beam element attached (for rotation DOF)
+    # beam_nodes: only nodes with RIGID beam connections (no end release).
+    # Used to decide which nodes need rz auto-fixed (truss-only or fully-released nodes).
     beam_nodes: set = set()
+
+    nid_map = {n["id"]: n for n in nodes}
+
+    # Dummy nodes for moment releases start after the last real node tag.
+    # equalDOF couples a dummy node's Ux/Uy to the real joint while leaving rz free,
+    # giving M = 0 at that beam end (simply-supported end behaviour).
+    dummy_node_counter = len(nodes)
 
     elem_info = {}          # user id → {ops_tag, elem_dict, c, s, L}
     for idx, elem in enumerate(elements):
         ops_tag = idx + 1
         etype = elem.get("type", "beam")
+        # releases: "none" (rigid, default) | "both" | "start" | "end"
+        releases = elem.get("releases", "none") if etype == "beam" else "none"
 
         ni_id = elem["ni"]
         nj_id = elem["nj"]
         ni_tag = node_map[ni_id]
         nj_tag = node_map[nj_id]
 
-        # Node coordinates
-        nid_map = {n["id"]: n for n in nodes}
         xi, yi = nid_map[ni_id]["x"], nid_map[ni_id]["y"]
         xj, yj = nid_map[nj_id]["x"], nid_map[nj_id]["y"]
         dx, dy = xj - xi, yj - yi
@@ -116,9 +124,35 @@ def _run(nodes, elements, supports, loads, title):
             ops.uniaxialMaterial("Elastic", mat_tag, E)
             ops.element("Truss", ops_tag, ni_tag, nj_tag, A, mat_tag)
         else:
-            beam_nodes.add(ni_id)
-            beam_nodes.add(nj_id)
-            ops.element("elasticBeamColumn", ops_tag, ni_tag, nj_tag, A, E, I, 1)
+            release_i = releases in ("both", "start")
+            release_j = releases in ("both", "end")
+
+            # Only rigid connections contribute rotational stiffness to the joint
+            if not release_i:
+                beam_nodes.add(ni_id)
+            if not release_j:
+                beam_nodes.add(nj_id)
+
+            # Create hinge dummy nodes for released ends.
+            # The dummy node shares Ux/Uy with the real joint (equalDOF 1 2)
+            # but has an independent rz → zero moment at that end.
+            actual_ni_tag = ni_tag
+            actual_nj_tag = nj_tag
+
+            if release_i:
+                dummy_node_counter += 1
+                ops.node(dummy_node_counter, float(xi), float(yi))
+                ops.equalDOF(ni_tag, dummy_node_counter, 1, 2)
+                actual_ni_tag = dummy_node_counter
+
+            if release_j:
+                dummy_node_counter += 1
+                ops.node(dummy_node_counter, float(xj), float(yj))
+                ops.equalDOF(nj_tag, dummy_node_counter, 1, 2)
+                actual_nj_tag = dummy_node_counter
+
+            ops.element("elasticBeamColumn", ops_tag,
+                        actual_ni_tag, actual_nj_tag, A, E, I, 1)
 
         elem_info[elem["id"]] = {
             "ops_tag": ops_tag, "elem": elem,
