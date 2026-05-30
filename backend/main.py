@@ -1859,6 +1859,33 @@ class GenFrameFemInput(BaseModel):
     loads:    list[GenFrameLoadIn]     = []
 
 
+@protected.post("/calc/general-frame-fem/preview", tags=["Calculations"])
+def preview_general_frame_fem(data: GenFrameFemInput):
+    """
+    Draw the static structural model (geometry, supports, releases, loads).
+    No FEM analysis — pure matplotlib. Returns { _model_b64 }.
+    """
+    import traceback
+    try:
+        from general_frame_fem import plot_model
+        import math
+
+        nodes    = [n.model_dump() for n in data.nodes]
+        elements = [e.model_dump() for e in data.elements]
+        supports = [s.model_dump() for s in data.supports]
+        loads    = [l.model_dump() for l in data.loads]
+
+        xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
+        ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+
+        b64 = plot_model(data.title, nodes, elements, supports, loads, ref_size)
+        return { "_model_b64": b64 }
+
+    except Exception as exc:
+        raise HTTPException(status_code=422,
+                            detail=str(exc) + "\n" + traceback.format_exc())
+
+
 @protected.post("/calc/general-frame-fem", tags=["Calculations"])
 def calc_general_frame_fem(data: GenFrameFemInput):
     """
@@ -1883,7 +1910,10 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
         ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
 
-        figs_b64 = make_figures(
+        # Static model figure first, then analysis results
+        from general_frame_fem import plot_model
+        model_fig = plot_model(data.title, nodes, elements, supports, loads, ref_size)
+        figs_b64 = [model_fig] + make_figures(
             data.title, nodes, elements, supports, loads,
             res['ele_forces'], res['node_disps'], ref_size,
         )

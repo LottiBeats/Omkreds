@@ -12,7 +12,7 @@
  *   - Summary: max displacements, max moment, reactions
  */
 import React, { useState } from 'react'
-import { calcGeneralFrameFem } from '../../api/client.js'
+import { calcGeneralFrameFem, previewGeneralFrameFem } from '../../api/client.js'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
 
@@ -206,7 +206,7 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
 // ── Result panel ──────────────────────────────────────────────────────────────
 
 const TABS = ['Figures', 'Elements', 'Nodes', 'Loads', 'Reactions']
-const FIG_LABELS = ['Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
+const FIG_LABELS = ['Static model', 'Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
 
 function Tbl({ headers, rows, zebra = true }) {
   return (
@@ -349,9 +349,26 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
   const [error,   setError]   = useState(null)
 
   const comboBlocks = blocks.filter(b => b.type === 'load_combo')
+  const [previewing, setPreviewing] = useState(false)
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
+  }
+
+  async function handlePreview() {
+    setPreviewing(true)
+    try {
+      const res = await previewGeneralFrameFem({
+        title: d.title ?? '2D Frame FEM',
+        nodes: d.nodes ?? [], elements: d.elements ?? [],
+        supports: d.supports ?? [], loads: d.loads ?? [],
+      })
+      update({ _model_b64: res._model_b64 })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPreviewing(false)
+    }
   }
 
   // Nodes
@@ -478,20 +495,36 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
           onChange={v => updateLoad(i, v)} onRemove={() => removeLoad(i)} />
       ))}
 
-      {/* Run */}
+      {/* Actions */}
       <div style={s.actionRow}>
-        <button style={{ ...s.btn, ...s.btnRun }} onClick={handleRun} disabled={running}>
+        <button style={{ ...s.btn, ...s.btnRun }} onClick={handleRun} disabled={running || previewing}>
           {running ? '⏳  Running…' : '▶  Run FEM'}
+        </button>
+        <button style={s.btn} onClick={handlePreview} disabled={running || previewing}>
+          {previewing ? '⏳ …' : '🔍  Preview model'}
         </button>
         {d._summary && (
           <button style={s.btn}
-            onClick={() => update({ _figs_b64: null, _summary: null, _result: null })}>
+            onClick={() => update({ _figs_b64: null, _summary: null, _result: null, _model_b64: null })}>
             ✕  Clear
           </button>
         )}
       </div>
 
       {error && <div style={s.error}>{error}</div>}
+
+      {/* Static model preview */}
+      {d._model_b64 && !d._summary && (
+        <div style={s.resultPanel}>
+          <div style={{ ...s.summaryBar, cursor: 'default' }}>
+            <span style={s.summaryBadge}>Static model</span>
+          </div>
+          <div style={{ padding: '12px 14px' }}>
+            <img src={`data:image/png;base64,${d._model_b64}`}
+              alt="Static model" style={{ width: '100%', display: 'block' }} />
+          </div>
+        </div>
+      )}
 
       {d._summary && d._figs_b64 && (
         <ResultPanel figs={d._figs_b64} summary={d._summary} />

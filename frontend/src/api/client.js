@@ -232,6 +232,10 @@ export const calcPortalFrameFem = (data) =>
 export const calcGeneralFrameFem = (data) =>
   request('POST', '/calc/general-frame-fem', data)
 
+/** Draw static model (geometry, supports, releases, loads) — no FEM analysis. */
+export const previewGeneralFrameFem = (data) =>
+  request('POST', '/calc/general-frame-fem/preview', data)
+
 /**
  * Run an EN 1993-1-1 §6.3.1 steel column compression + buckling check.
  */

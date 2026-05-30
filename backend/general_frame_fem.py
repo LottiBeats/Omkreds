@@ -188,6 +188,206 @@ def solve(nodes, elements, supports, loads):
     }
 
 
+def plot_model(title, nodes, elements, supports, loads, ref_size):
+    """
+    Draw the static structural model: geometry, supports, releases, loads.
+    Pure matplotlib — no OpenSeesPy required.
+    Returns a base64 PNG string.
+    """
+    dict_nodes = {n['id']: n for n in nodes}
+
+    # ── Palette ───────────────────────────────────────────────────────────────
+    C_BEAM    = '#1C1C1E'
+    C_TRUSS   = '#1C1C1E'
+    C_NODE    = '#1C1C1E'
+    C_SUPPORT = '#4B5563'
+    C_LOAD    = '#DC2626'
+    C_RELEASE = '#E74825'
+    C_LABEL   = '#6E6E73'
+    C_GRID    = '#E5E5EA'
+
+    def elem_geom(el):
+        ni = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
+        xi, yi = ni['x'], ni['y']; xj, yj = nj['x'], nj['y']
+        L  = math.hypot(xj - xi, yj - yi) or 1e-9
+        ca = (xj - xi) / L; sa = (yj - yi) / L
+        return xi, yi, xj, yj, L, ca, sa
+
+    sz = ref_size * 0.055   # support symbol size
+
+    fig, ax = plt.subplots(figsize=(13, 7))
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('white')
+
+    # ── Elements ──────────────────────────────────────────────────────────────
+    for el in elements:
+        xi, yi, xj, yj, L, ca, sa = elem_geom(el)
+        ls   = '-'  if el.get('type', 'beam') == 'beam' else '--'
+        lw   = 2.8  if el.get('type', 'beam') == 'beam' else 1.8
+        col  = C_BEAM if el.get('type', 'beam') == 'beam' else C_TRUSS
+        ax.plot([xi, xj], [yi, yj], color=col, lw=lw, ls=ls,
+                solid_capstyle='round', zorder=3)
+
+        # Element ID label at midpoint (offset perpendicular)
+        mx, my = (xi+xj)/2 - sa*sz*0.6, (yi+yj)/2 + ca*sz*0.6
+        ax.text(mx, my, str(el['id']), fontsize=7.5, color=C_LABEL,
+                ha='center', va='center', zorder=5,
+                bbox=dict(fc='white', ec='none', pad=0.5))
+
+        # Moment release symbols (open circles at element ends)
+        rel = el.get('release', 'none')
+        r_circ = sz * 0.22
+        if rel in ('start', 'both'):
+            cx = xi + ca * r_circ * 1.5
+            cy = yi + sa * r_circ * 1.5
+            circ = plt.Circle((cx, cy), r_circ, fc='white', ec=C_RELEASE, lw=1.5, zorder=6)
+            ax.add_patch(circ)
+        if rel in ('end', 'both'):
+            cx = xj - ca * r_circ * 1.5
+            cy = yj - sa * r_circ * 1.5
+            circ = plt.Circle((cx, cy), r_circ, fc='white', ec=C_RELEASE, lw=1.5, zorder=6)
+            ax.add_patch(circ)
+
+    # ── Nodes ─────────────────────────────────────────────────────────────────
+    for n in nodes:
+        ax.plot(n['x'], n['y'], 'o', color=C_NODE, ms=5,
+                markerfacecolor='white', markeredgewidth=1.8, zorder=7)
+        ax.text(n['x'] + sz*0.35, n['y'] + sz*0.35,
+                str(n['id']), fontsize=7.5, color=C_LABEL,
+                ha='left', va='bottom', zorder=8)
+
+    # ── Supports ──────────────────────────────────────────────────────────────
+    for sup in supports:
+        n  = dict_nodes[sup['node_id']]
+        x, y = n['x'], n['y']
+        ux = sup.get('ux', False); uy = sup.get('uy', False); rz = sup.get('rz', False)
+
+        if ux and uy and rz:
+            # Fixed — wall rectangle
+            rect = plt.Rectangle((x - sz*0.55, y - sz), sz*1.1, sz,
+                                  fc='#D1D5DB', ec=C_SUPPORT, lw=1.2, zorder=4)
+            ax.add_patch(rect)
+            for k in range(5):
+                hx = x - sz*0.45 + k * sz*0.22
+                ax.plot([hx, hx - sz*0.18], [y - sz, y - sz*1.3],
+                        color=C_SUPPORT, lw=0.9, zorder=4)
+        elif ux and uy:
+            # Pin
+            tri = plt.Polygon([[x, y], [x - sz*0.55, y - sz], [x + sz*0.55, y - sz]],
+                               fc='white', ec=C_SUPPORT, lw=1.2, zorder=4)
+            ax.add_patch(tri)
+            ax.plot([x - sz*0.7, x + sz*0.7], [y - sz, y - sz],
+                    color=C_SUPPORT, lw=1.5, zorder=4)
+            for k in range(5):
+                hx = x - sz*0.6 + k * sz*0.3
+                ax.plot([hx, hx - sz*0.15], [y - sz, y - sz*1.25],
+                        color=C_SUPPORT, lw=0.8, zorder=4)
+        elif uy:
+            # Roller
+            circ = plt.Circle((x, y - sz*0.55), sz*0.28,
+                               fc='white', ec=C_SUPPORT, lw=1.2, zorder=4)
+            ax.add_patch(circ)
+            ax.plot([x - sz*0.7, x + sz*0.7], [y - sz*0.9, y - sz*0.9],
+                    color=C_SUPPORT, lw=1.5, zorder=4)
+        elif ux:
+            # Horizontal roller — rotated triangle
+            tri = plt.Polygon([[x, y], [x - sz, y - sz*0.55], [x - sz, y + sz*0.55]],
+                               fc='white', ec=C_SUPPORT, lw=1.2, zorder=4)
+            ax.add_patch(tri)
+            ax.plot([x - sz, x - sz], [y - sz*0.7, y + sz*0.7],
+                    color=C_SUPPORT, lw=1.5, zorder=4)
+
+    # ── Applied loads ──────────────────────────────────────────────────────────
+    udl_by_elem = {}
+    for ld in loads:
+        if ld.get('type') in ('udl', 'combo_udl'):
+            udl_by_elem[ld.get('elem_id')] = ld
+
+    arr = sz * 1.5   # arrow length
+
+    for eid, ld in udl_by_elem.items():
+        el = next((e for e in elements if e['id'] == eid), None)
+        if not el: continue
+        xi, yi, xj, yj, L, ca, sa = elem_geom(el)
+        wy = float(ld.get('wy_kNm', 0) or 0)
+        if ld.get('type') == 'combo_udl':
+            wy = 1.0   # placeholder — show as symbolic if not yet resolved
+        if abs(wy) < 1e-10 and ld.get('type') != 'combo_udl': continue
+        sign = -1 if wy >= 0 else 1   # positive wy = downward
+        n_arr = max(4, int(L / (ref_size * 0.12)) + 1)
+        # Draw arrows perpendicular to element
+        for k in range(n_arr + 1):
+            t  = k / n_arr
+            px = xi + t*(xj - xi); py = yi + t*(yj - yi)
+            ox = -sa * arr * sign; oy = ca * arr * sign
+            ax.annotate('', xy=(px, py), xytext=(px + ox, py + oy),
+                        arrowprops=dict(arrowstyle='->', color=C_LOAD, lw=1.0,
+                                        mutation_scale=8), zorder=6)
+        # Connecting line at tips
+        tip_xs = [xi - sa*arr*sign + k/n_arr*(xj-xi) for k in range(n_arr+1)]
+        tip_ys = [yi + ca*arr*sign + k/n_arr*(yj-yi) for k in range(n_arr+1)]
+        ax.plot(tip_xs, tip_ys, color=C_LOAD, lw=1.2, zorder=5)
+        # Label
+        lbl = f'{abs(wy):.1f} kN/m' if ld.get('type') != 'combo_udl' else 'w_Ed [combo]'
+        ax.text((xi+xj)/2 - sa*arr*sign*1.6, (yi+yj)/2 + ca*arr*sign*1.6,
+                lbl, fontsize=7.5, color=C_LOAD, ha='center', va='center',
+                bbox=dict(fc='white', ec='none', pad=1), zorder=7)
+
+    for ld in loads:
+        if ld.get('type') != 'nodal': continue
+        n = dict_nodes.get(ld.get('node_id'))
+        if not n: continue
+        Fx = float(ld.get('Fx_kN', 0)); Fy = float(ld.get('Fy_kN', 0))
+        F  = math.hypot(Fx, Fy)
+        if F < 1e-10: continue
+        scale = arr / F
+        ax.annotate('', xy=(n['x'], n['y']),
+                    xytext=(n['x'] - Fx*scale, n['y'] - Fy*scale),
+                    arrowprops=dict(arrowstyle='->', color=C_LOAD,
+                                    lw=1.8, mutation_scale=13), zorder=8)
+        ax.text(n['x'] - Fx*scale*1.3, n['y'] - Fy*scale*1.3,
+                f'{F:.1f} kN', fontsize=7.5, color=C_LOAD,
+                ha='center', va='center',
+                bbox=dict(fc='white', ec='none', pad=1), zorder=9)
+
+    # ── Styling ───────────────────────────────────────────────────────────────
+    ax.set_aspect('equal')
+    for sp in ax.spines.values():
+        sp.set_color(C_GRID)
+    ax.tick_params(colors='#888', labelsize=8)
+    ax.set_xlabel('x  [m]', fontsize=9, color='#555', labelpad=5)
+    ax.set_ylabel('y  [m]', fontsize=9, color='#555', labelpad=5)
+    ax.set_title('Statisk model', fontsize=12, fontweight='bold', color='#1C1C1E', pad=10)
+    ax.grid(True, ls=':', lw=0.5, color=C_GRID, zorder=0)
+
+    ax.autoscale()
+    xl, yl = ax.get_xlim(), ax.get_ylim()
+    pw = max((xl[1]-xl[0]) * 0.18, sz * 3)
+    ph = max((yl[1]-yl[0]) * 0.18, sz * 3)
+    ax.set_xlim(xl[0]-pw, xl[1]+pw)
+    ax.set_ylim(yl[0]-ph, yl[1]+ph)
+
+    # Legend entries
+    handles = [
+        plt.Line2D([0],[0], color=C_BEAM,    lw=2.5, label='Beam element'),
+        plt.Line2D([0],[0], color=C_TRUSS,   lw=1.8, ls='--', label='Truss element'),
+        plt.Line2D([0],[0], color=C_LOAD,    lw=1.5, label='Applied load'),
+        plt.Line2D([0],[0], marker='o', color=C_RELEASE, ms=7,
+                   markerfacecolor='white', lw=0, label='Moment release'),
+    ]
+    ax.legend(handles=handles, fontsize=8, frameon=False, loc='upper right')
+
+    fig.suptitle(title, fontsize=10, color='#6E6E73', y=0.98, style='italic')
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight',
+                facecolor='white', edgecolor='none')
+    buf.seek(0)
+    plt.close(fig)
+    return base64.b64encode(buf.read()).decode()
+
+
 def make_figures(title, nodes, elements, supports, loads,
                  ele_forces, node_disps, ref_size):
     """
