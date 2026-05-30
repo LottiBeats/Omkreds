@@ -191,296 +191,70 @@ def solve(nodes, elements, supports, loads):
 def make_figures(title, nodes, elements, supports, loads,
                  ele_forces, node_disps, ref_size):
     """
-    Generate custom matplotlib figures for the frame analysis.
+    Generate OpsVis figures for the frame analysis.
     Returns list of base64 PNG strings: [deformed shape, M diagram, V diagram].
     """
-    import numpy as np
-    from matplotlib.patches import FancyArrowPatch, Polygon
-    from matplotlib.collections import PatchCollection
-    import matplotlib.ticker as ticker
+    if not _OPSVIS_AVAILABLE:
+        raise ImportError("opsvis is required. pip install opsvis")
 
-    # ── Palette (OMKREDS brand) ───────────────────────────────────────────────
-    C_STRUCT   = '#1C1C1E'   # dark charcoal — undeformed structure
-    C_UNDEFO   = '#C8C8CC'   # light grey — ghost of undeformed in defo plot
-    C_DEFO     = '#E74825'   # OMKREDS orange — deformed shape
-    C_SUPPORT  = '#4B5563'   # slate — support symbols
-    C_LOAD     = '#DC2626'   # red — applied loads
-    C_M        = '#1A6640'   # engineering green — moment
-    C_V        = '#1A4FA0'   # steel blue — shear
-    C_NODE     = '#1C1C1E'
-    C_GRID     = '#E5E5EA'
-
-    dict_nodes = {n['id']: n for n in nodes}
-
-    # UDL lookup: elem_id → wy_kNm (positive = downward in UI)
-    udl_by_elem = {}
-    nodal_loads = []
-    for ld in loads:
-        if ld['type'] == 'udl':
-            udl_by_elem[ld['elem_id']] = ld
-        elif ld['type'] == 'nodal':
-            nodal_loads.append(ld)
-
-    def elem_geom(el):
-        ni = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
-        xi, yi = ni['x'], ni['y']; xj, yj = nj['x'], nj['y']
-        L  = math.hypot(xj - xi, yj - yi)
-        ca = (xj - xi) / L; sa = (yj - yi) / L
-        return xi, yi, xj, yj, L, ca, sa
-
-    def capture(fig):
+    def _capture():
         buf = io.BytesIO()
+        fig = plt.gcf()
+        fig.patch.set_facecolor('white')
         fig.savefig(buf, format='png', dpi=150, bbox_inches='tight',
-                    facecolor='white', edgecolor='none')
+                    facecolor='white')
         buf.seek(0)
         plt.close(fig)
         return base64.b64encode(buf.read()).decode()
 
-    def style_ax(ax, subtitle):
-        ax.set_aspect('equal')
-        ax.set_facecolor('white')
-        for sp in ax.spines.values():
-            sp.set_color(C_GRID)
-        ax.tick_params(colors='#888', labelsize=8)
-        ax.set_xlabel('x  [m]', fontsize=9, color='#555', labelpad=6)
-        ax.set_ylabel('y  [m]', fontsize=9, color='#555', labelpad=6)
-        ax.set_title(subtitle, fontsize=10, color='#1C1C1E', pad=8)
-        ax.grid(True, ls=':', lw=0.5, color=C_GRID, zorder=0)
-        ax.autoscale()
-        xl, yl = ax.get_xlim(), ax.get_ylim()
-        pw = max((xl[1]-xl[0]) * 0.15, ref_size * 0.15)
-        ph = max((yl[1]-yl[0]) * 0.15, ref_size * 0.15)
-        ax.set_xlim(xl[0]-pw, xl[1]+pw)
-        ax.set_ylim(yl[0]-ph, yl[1]+ph)
-
-    def draw_members(ax, color=C_STRUCT, lw=2.0, alpha=1.0, zorder=3):
-        for el in elements:
-            xi, yi, xj, yj, *_ = elem_geom(el)
-            ls = '-' if el.get('type', 'beam') == 'beam' else '--'
-            ax.plot([xi, xj], [yi, yj], color=color, lw=lw,
-                    ls=ls, alpha=alpha, solid_capstyle='round', zorder=zorder)
-
-    def draw_nodes(ax, color=C_NODE, ms=5, zorder=5):
-        for n in nodes:
-            ax.plot(n['x'], n['y'], 'o', color=color, ms=ms,
-                    markerfacecolor='white', markeredgewidth=1.5, zorder=zorder)
-
-    def draw_supports(ax):
-        sz = ref_size * 0.06
-        for sup in supports:
-            n  = dict_nodes[sup['node_id']]
-            x, y = n['x'], n['y']
-            ux = sup.get('ux', False); uy = sup.get('uy', False); rz = sup.get('rz', False)
-            if ux and uy and rz:
-                # Fixed: filled rectangle
-                rect = plt.Rectangle((x - sz*0.5, y - sz*0.9), sz, sz*0.9,
-                                     fc='#D1D5DB', ec=C_SUPPORT, lw=1.2, zorder=4)
-                ax.add_patch(rect)
-                # Hatch lines
-                for k in range(4):
-                    hx = x - sz*0.4 + k * sz*0.27
-                    ax.plot([hx, hx - sz*0.2], [y - sz*0.9, y - sz*1.15],
-                            color=C_SUPPORT, lw=0.8, zorder=4)
-            elif ux and uy:
-                # Pin: triangle
-                tri = plt.Polygon(
-                    [[x, y], [x - sz*0.55, y - sz], [x + sz*0.55, y - sz]],
-                    fc='white', ec=C_SUPPORT, lw=1.2, zorder=4)
-                ax.add_patch(tri)
-                ax.plot([x - sz*0.7, x + sz*0.7], [y - sz, y - sz],
-                        color=C_SUPPORT, lw=1.5, zorder=4)
-                for k in range(5):
-                    hx = x - sz*0.6 + k * sz*0.3
-                    ax.plot([hx, hx - sz*0.15], [y - sz, y - sz*1.2],
-                            color=C_SUPPORT, lw=0.8, zorder=4)
-            elif uy:
-                # Roller
-                circ = plt.Circle((x, y - sz*0.55), sz*0.25,
-                                  fc='white', ec=C_SUPPORT, lw=1.2, zorder=4)
-                ax.add_patch(circ)
-                ax.plot([x - sz*0.7, x + sz*0.7], [y - sz*0.85, y - sz*0.85],
-                        color=C_SUPPORT, lw=1.5, zorder=4)
-
-    def draw_loads_on_ax(ax):
-        arr_len = ref_size * 0.10
-        for ld in nodal_loads:
-            n = dict_nodes.get(ld['node_id']);
-            if not n: continue
-            Fx = float(ld.get('Fx_kN', 0)); Fy = float(ld.get('Fy_kN', 0))
-            F  = math.hypot(Fx, Fy)
-            if F < 1e-10: continue
-            scale = arr_len / F
-            ax.annotate('', xy=(n['x'], n['y']),
-                        xytext=(n['x'] - Fx*scale, n['y'] - Fy*scale),
-                        arrowprops=dict(arrowstyle='->', color=C_LOAD,
-                                        lw=1.8, mutation_scale=12), zorder=6)
-            ax.text(n['x'] - Fx*scale*1.25, n['y'] - Fy*scale*1.25,
-                    f'{F:.1f} kN', fontsize=7, color=C_LOAD,
-                    ha='center', va='center', zorder=6)
-
-        for eid, ld in udl_by_elem.items():
-            el = next((e for e in elements if e['id'] == eid), None)
-            if not el: continue
-            xi, yi, xj, yj, L, ca, sa = elem_geom(el)
-            wy = float(ld.get('wy_kNm', 0))
-            if abs(wy) < 1e-10: continue
-            n_arr = max(4, int(L / (ref_size * 0.12)) + 1)
-            sign = -1 if wy > 0 else 1   # wy>0 = downward = negative local y
-            al   = arr_len * 0.9
-            for k in range(n_arr + 1):
-                t  = k / n_arr
-                px = xi + t*(xj - xi); py = yi + t*(yj - yi)
-                # Arrow tip at element, tail offset perpendicular
-                ox = -sa * al * sign; oy = ca * al * sign
-                ax.annotate('', xy=(px, py), xytext=(px + ox, py + oy),
-                            arrowprops=dict(arrowstyle='->', color=C_LOAD,
-                                            lw=1.0, mutation_scale=8), zorder=6)
-            # Label
-            mx = (xi+xj)/2 - sa*al*sign*1.5
-            my = (yi+yj)/2 + ca*al*sign*1.5
-            ax.text(mx, my, f'{abs(wy):.1f} kN/m',
-                    fontsize=7.5, color=C_LOAD, ha='center', va='center', zorder=6)
-
-    def force_diagram(ax, force_idx_i, force_idx_j, fac, color, label, udl_comp=False):
-        """
-        Draw N/V/M diagram perpendicular to each beam element.
-        udl_comp: if True, add parabolic UDL correction to the moment diagram.
-        """
-        N_PTS = 30
-        beam_eles = [el for el in elements if el.get('type', 'beam') == 'beam']
-        for el in beam_eles:
-            xi, yi, xj, yj, L, ca, sa = elem_geom(el)
-            f   = ele_forces[el['id']]
-            Fi  = f[force_idx_i]
-            Fj  = f[force_idx_j]
-
-            # UDL on this element (in local y, wy_ops = -wy_kNm*1e3 from solver)
-            wy_local = 0.0
-            if udl_comp and el['id'] in udl_by_elem:
-                wy_local = -float(udl_by_elem[el['id']].get('wy_kNm', 0)) * 1e3
-
-            pts_x = []; pts_y = []
-            for k in range(N_PTS + 1):
-                t  = k / N_PTS
-                x  = t * L
-                px = xi + t*(xj - xi); py = yi + t*(yj - yi)
-                # Linear interpolation (exact for no UDL)
-                Fval = Fi*(1-t) + Fj*t
-                if udl_comp and abs(wy_local) > 1e-10:
-                    # Add parabolic correction for UDL bending moment
-                    # M(x) = M_i + V_i*x + wy_local*x²/2
-                    Vi = f[1]
-                    Fval = f[2] + Vi*x + wy_local*x**2/2
-                # Perpendicular offset (local y → global)
-                ox = -sa * Fval * fac
-                oy =  ca * Fval * fac
-                pts_x.append(px + ox); pts_y.append(py + oy)
-
-            # Filled polygon
-            poly_x = [xi] + pts_x + [xj]
-            poly_y = [yi] + pts_y + [yj]
-            ax.fill(poly_x, poly_y, color=color, alpha=0.15, zorder=2)
-            ax.plot(pts_x, pts_y, color=color, lw=1.8, zorder=3)
-            # Baseline
-            ax.plot([xi, xj], [yi, yj], color=C_STRUCT, lw=1.5, zorder=3)
-
-            # Annotate peak value (midpoint)
-            mid_t  = 0.5; mid_x = mid_t * L
-            mid_F  = (Fi + Fj) / 2
-            if udl_comp and abs(wy_local) > 1e-10:
-                mid_F = f[2] + f[1]*mid_x + wy_local*mid_x**2/2
-            if abs(mid_F) > 1e-6:
-                mpx = (xi+xj)/2 - sa*mid_F*fac
-                mpy = (yi+yj)/2 + ca*mid_F*fac
-                ax.text(mpx, mpy, f'{mid_F*1e-3:.2f}',
-                        fontsize=6.5, color=color, ha='center', va='center',
-                        bbox=dict(fc='white', ec='none', pad=1), zorder=5)
-
-        # Zero lines on truss elements
-        for el in elements:
-            if el.get('type') == 'truss':
-                xi, yi, xj, yj, *_ = elem_geom(el)
-                ax.plot([xi, xj], [yi, yj], color=C_STRUCT, lw=1.5, ls='--', zorder=3)
-
-    # ── Auto scale ────────────────────────────────────────────────────────────
     beam_eles = [el for el in elements if el.get('type', 'beam') == 'beam']
     max_M = max(
         (max(abs(ele_forces[el['id']][2]), abs(ele_forces[el['id']][5]))
-         for el in beam_eles if el['id'] in ele_forces), default=1.0)
+         for el in beam_eles if el['id'] in ele_forces),
+        default=1.0,
+    )
     max_V = max(
         (max(abs(ele_forces[el['id']][1]), abs(ele_forces[el['id']][4]))
-         for el in beam_eles if el['id'] in ele_forces), default=1.0)
+         for el in beam_eles if el['id'] in ele_forces),
+        default=1.0,
+    )
+    mFac = (ref_size * 0.25) / max_M if max_M > 1e-6 else 5e-6
+    vFac = (ref_size * 0.25) / max_V if max_V > 1e-6 else 15e-6
 
-    target = ref_size * 0.22
-    mFac = target / max_M if max_M > 1e-6 else 1e-6
-    vFac = target / max_V if max_V > 1e-6 else 1e-6
+    figs = []
 
-    # Deformation magnification
-    max_d = max(
-        (math.hypot(node_disps[n['id']][0], node_disps[n['id']][1]) for n in nodes),
-        default=1e-10)
-    mag = (ref_size * 0.08) / max_d if max_d > 1e-10 else 1.0
-    mag = max(1.0, round(mag, 0))
+    plt.close('all')
+    opsv.plot_defo(
+        fig_wi_he=(12, 6),
+        fmt_defo={'color': '#E74825', 'linestyle': (0, (4, 5)), 'linewidth': 2.0},
+        fmt_undefo={'color': '#AEAEB2', 'linestyle': 'solid', 'linewidth': 1.5},
+    )
+    plt.title(f'{title} — Deflection', fontsize=11, fontweight='bold', pad=10)
+    plt.xlabel('x [m]', fontsize=9); plt.ylabel('y [m]', fontsize=9)
+    plt.grid(True, ls=':', lw=0.5, alpha=0.6)
+    plt.tight_layout()
+    figs.append(_capture())
 
-    figs_b64 = []
-
-    # ── Figure 1: Deformed shape ──────────────────────────────────────────────
-    fig, ax = plt.subplots(figsize=(12, 7))
-    fig.patch.set_facecolor('white')
-    fig.suptitle(title, fontsize=12, fontweight='bold', color='#1C1C1E', y=0.98)
-
-    draw_members(ax, color=C_UNDEFO, lw=1.2, alpha=0.6, zorder=2)
-    draw_supports(ax)
-    draw_loads_on_ax(ax)
-
-    for el in elements:
-        xi, yi, xj, yj, *_ = elem_geom(el)
-        di = node_disps[el['ni']]; dj = node_disps[el['nj']]
-        xdi = xi + di[0]*mag; ydi = yi + di[1]*mag
-        xdj = xj + dj[0]*mag; ydj = yj + dj[1]*mag
-        ax.plot([xdi, xdj], [ydi, ydj], color=C_DEFO,
-                lw=2.5, solid_capstyle='round', zorder=5)
-    for n in nodes:
-        d = node_disps[n['id']]
-        ax.plot(n['x'] + d[0]*mag, n['y'] + d[1]*mag, 'o',
-                color=C_DEFO, ms=5, markerfacecolor='white',
-                markeredgewidth=1.8, zorder=6)
-
-    style_ax(ax, f'Deflected shape  (magnification ×{int(mag)})')
-    ax.plot([], [], color=C_UNDEFO, lw=1.5, label='Undeformed')
-    ax.plot([], [], color=C_DEFO,   lw=2.5, label='Deformed')
-    ax.legend(fontsize=8, frameon=False, loc='upper right')
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-    figs_b64.append(capture(fig))
-
-    # ── Figure 2: Bending moment ──────────────────────────────────────────────
     if beam_eles:
-        fig, ax = plt.subplots(figsize=(12, 7))
-        fig.patch.set_facecolor('white')
-        fig.suptitle(title, fontsize=12, fontweight='bold', color='#1C1C1E', y=0.98)
-        force_diagram(ax, 2, 5, mFac, C_M, 'M', udl_comp=True)
-        draw_nodes(ax, color=C_NODE, ms=4)
-        draw_supports(ax)
-        style_ax(ax, 'Bending moment diagram  [kNm]')
-        ax.plot([], [], color=C_M, lw=2, label='Bending moment M')
-        ax.legend(fontsize=8, frameon=False, loc='upper right')
-        fig.tight_layout(rect=[0, 0, 1, 0.96])
-        figs_b64.append(capture(fig))
+        opsv.section_force_diagram_2d('M', mFac, fig_wi_he=(12, 6),
+                                      fmt_secforce1={'color': '#1A6640'},
+                                      fmt_secforce2={'color': '#1A6640'})
+        plt.title(f'{title} — Bending Moment [kNm]', fontsize=11, fontweight='bold', pad=10)
+        plt.xlabel('x [m]', fontsize=9); plt.ylabel('y [m]', fontsize=9)
+        plt.grid(True, ls=':', lw=0.5, alpha=0.6)
+        plt.tight_layout()
+        figs.append(_capture())
 
-        # ── Figure 3: Shear force ─────────────────────────────────────────────
-        fig, ax = plt.subplots(figsize=(12, 7))
-        fig.patch.set_facecolor('white')
-        fig.suptitle(title, fontsize=12, fontweight='bold', color='#1C1C1E', y=0.98)
-        force_diagram(ax, 1, 4, vFac, C_V, 'V')
-        draw_nodes(ax, color=C_NODE, ms=4)
-        draw_supports(ax)
-        style_ax(ax, 'Shear force diagram  [kN]')
-        ax.plot([], [], color=C_V, lw=2, label='Shear force V')
-        ax.legend(fontsize=8, frameon=False, loc='upper right')
-        fig.tight_layout(rect=[0, 0, 1, 0.96])
-        figs_b64.append(capture(fig))
+        opsv.section_force_diagram_2d('V', vFac, fig_wi_he=(12, 6),
+                                      fmt_secforce1={'color': '#1A4FA0'},
+                                      fmt_secforce2={'color': '#1A4FA0'})
+        plt.title(f'{title} — Shear Force [kN]', fontsize=11, fontweight='bold', pad=10)
+        plt.xlabel('x [m]', fontsize=9); plt.ylabel('y [m]', fontsize=9)
+        plt.grid(True, ls=':', lw=0.5, alpha=0.6)
+        plt.tight_layout()
+        figs.append(_capture())
 
-    return figs_b64
+    return figs
 
 
 def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports, loads):
