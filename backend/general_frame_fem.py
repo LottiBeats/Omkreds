@@ -115,9 +115,11 @@ def solve(nodes, elements, supports, loads):
         eid  = el['id']
         ni   = el['ni']
         nj   = el['nj']
-        E    = float(el.get('E_GPa',  210.0)) * 1e9
-        A    = float(el.get('A_cm2',  50.0))  * 1e-4
-        Iz   = float(el.get('Iz_cm4', 5000.0))* 1e-8
+        # Use kN/m unit system: E in kN/m² (kPa), A in m², Iz in m⁴
+        # → eleForce returns kN and kN·m, OpsVis labels in kN / kN·m
+        E    = float(el.get('E_GPa',  210.0)) * 1e6   # GPa → kN/m²
+        A    = float(el.get('A_cm2',  50.0))  * 1e-4  # cm² → m²
+        Iz   = float(el.get('Iz_cm4', 5000.0))* 1e-8  # cm⁴ → m⁴
         etype   = el.get('type', 'beam')
         release = el.get('release', 'none')
 
@@ -143,16 +145,15 @@ def solve(nodes, elements, supports, loads):
         ops.pattern('Plain', 1, 1)
         for ld in loads:
             if ld['type'] == 'nodal':
+                # Loads already in kN / kN·m — pass directly
                 ops.load(ld['node_id'],
-                         float(ld.get('Fx_kN',  0.0)) * 1e3,
-                         float(ld.get('Fy_kN',  0.0)) * 1e3,
-                         float(ld.get('Mz_kNm', 0.0)) * 1e3)
+                         float(ld.get('Fx_kN',  0.0)),
+                         float(ld.get('Fy_kN',  0.0)),
+                         float(ld.get('Mz_kNm', 0.0)))
             elif ld['type'] == 'udl':
-                wy = -abs(float(ld.get('wy_kNm', 0.0))) * 1e3 if ld.get('wy_kNm', 0) != 0 \
-                     else float(ld.get('wy_kNm', 0.0)) * 1e3
-                # wy_kNm: positive = downward in UI → negative in OpenSeesPy local y
-                wy_ops = -float(ld.get('wy_kNm', 0.0)) * 1e3
-                wx_ops =  float(ld.get('wx_kNm', 0.0)) * 1e3
+                # wy_kNm positive = downward in UI → negative in OpenSeesPy local y
+                wy_ops = -float(ld.get('wy_kNm', 0.0))
+                wx_ops =  float(ld.get('wx_kNm', 0.0))
                 ops.eleLoad('-ele', ld['elem_id'], '-type', '-beamUniform', wy_ops, wx_ops)
 
     # Analysis
@@ -504,9 +505,9 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
     for nid in sup_node_ids:
         R = node_reactions[nid]
         reactions[str(nid)] = {
-            'Fx_kN':  round(R[0] * 1e-3, 3),
-            'Fy_kN':  round(R[1] * 1e-3, 3),
-            'Mz_kNm': round(R[2] * 1e-3, 3),
+            'Fx_kN':  round(R[0], 3),
+            'Fy_kN':  round(R[1], 3),
+            'Mz_kNm': round(R[2], 3),
         }
 
     # ── Full node displacement table ──────────────────────────────────────────
@@ -541,14 +542,14 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
             'E_GPa':   el.get('E_GPa', 210),
             'A_cm2':   el.get('A_cm2', 0),
             'Iz_cm4':  el.get('Iz_cm4', 0),
-            # End i (local)
-            'N_i_kN':  round(f[0] * 1e-3, 3),
-            'V_i_kN':  round(f[1] * 1e-3, 3),
-            'M_i_kNm': round(f[2] * 1e-3, 3),
+            # End i (local) — already in kN / kN·m
+            'N_i_kN':  round(f[0], 3),
+            'V_i_kN':  round(f[1], 3),
+            'M_i_kNm': round(f[2], 3),
             # End j (local)
-            'N_j_kN':  round(f[3] * 1e-3, 3),
-            'V_j_kN':  round(f[4] * 1e-3, 3),
-            'M_j_kNm': round(f[5] * 1e-3, 3),
+            'N_j_kN':  round(f[3], 3),
+            'V_j_kN':  round(f[4], 3),
+            'M_j_kNm': round(f[5], 3),
         })
 
     # ── Applied loads summary ─────────────────────────────────────────────────
@@ -581,7 +582,7 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
         'max_ux_node':    node_max_ux['id'],
         'max_uy_mm':      round(max_uy * 1e3, 3),
         'max_uy_node':    node_max_uy['id'],
-        'max_moment_kNm': round(max_M * 1e-3, 3),
+        'max_moment_kNm': round(max_M, 3),
         'max_moment_ele': el_max_M['id'] if el_max_M else None,
         # Detailed tables
         'reactions':       reactions,
