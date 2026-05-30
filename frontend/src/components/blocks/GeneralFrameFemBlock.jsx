@@ -174,7 +174,7 @@ function LoadRow({ load, onChange, onRemove }) {
 // ── Result panel ──────────────────────────────────────────────────────────────
 
 const TABS = ['Figures', 'Elements', 'Nodes', 'Loads', 'Reactions']
-const FIG_LABELS = ['Deflection', 'Bending Moment', 'Shear Force']
+const FIG_LABELS = ['Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
 
 function Tbl({ headers, rows, zebra = true }) {
   return (

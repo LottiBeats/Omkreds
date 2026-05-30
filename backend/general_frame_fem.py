@@ -261,6 +261,18 @@ def make_figures(title, nodes, elements, supports, loads,
                                       fmt_secforce2={'color': '#1A4FA0'})
         figs.append(_style_and_capture('Shear force  [kN]'))
 
+    # Axial force — all element types
+    max_N = max(
+        (max(abs(ele_forces[el['id']][0]), abs(ele_forces[el['id']][3]))
+         for el in elements if el['id'] in ele_forces),
+        default=1.0,
+    )
+    nFac = (ref_size * 0.25) / max_N if max_N > 1e-6 else 5e-6
+    opsv.section_force_diagram_2d('N', nFac, fig_wi_he=(13, 7),
+                                  fmt_secforce1={'color': '#B45309'},
+                                  fmt_secforce2={'color': '#B45309'})
+    figs.append(_style_and_capture('Axial force  [kN]'))
+
     return figs
 
 

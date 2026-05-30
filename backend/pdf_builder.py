@@ -635,7 +635,7 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
     # ── Figures ──────────────────────────────────────────────────────────────
     out += _figs_b64_to_pdf(
         figs, tmp_files,
-        ["Deflected shape", "Bending moment diagram", "Shear force diagram"],
+        ["Deflected shape", "Bending moment diagram", "Shear force diagram", "Axial force diagram"],
     )
 
     # ── Headline results ─────────────────────────────────────────────────────
@@ -742,7 +742,7 @@ def _portal_frame_fem_block(block: dict, tmp_files: list) -> list:
 
     out += _figs_b64_to_pdf(
         figs, tmp_files,
-        ["Deflected shape", "Bending moment diagram", "Shear force diagram"],
+        ["Deflected shape", "Bending moment diagram", "Shear force diagram", "Axial force diagram"],
     )
 
     out.append(S("Key results"))
