@@ -601,6 +601,180 @@ def _control_plan(block: dict) -> list:
     return result
 
 
+# ── General / Portal Frame FEM blocks ────────────────────────────────────────
+
+def _figs_b64_to_pdf(figs_b64: list, tmp_files: list, captions: list) -> list:
+    """Decode a list of base64 PNGs and return FIG() blocks."""
+    out = []
+    for i, b64 in enumerate(figs_b64):
+        try:
+            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            tmp.write(base64.b64decode(b64))
+            tmp.close()
+            tmp_files.append(tmp.name)
+            caption = captions[i] if i < len(captions) else ""
+            out.append(FIG(tmp.name, caption, width_mm=160))
+        except Exception as exc:
+            out.append(N(f"Could not embed figure: {exc}"))
+    return out
+
+
+def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
+    from calc_core import MH, S, T, TBL, N, FIG, H1
+    d       = block["data"]
+    title   = d.get("title", "2D Frame FEM")
+    summary = d.get("_summary")
+    figs    = d.get("_figs_b64", [])
+
+    out = [MH(title, "2D Frame FEM — OpenSeesPy", "general")]
+
+    if not summary:
+        out.append(N("Block has not been run yet — open the editor and click ▶ Run FEM."))
+        return out
+
+    # ── Figures ──────────────────────────────────────────────────────────────
+    out += _figs_b64_to_pdf(
+        figs, tmp_files,
+        ["Deflected shape", "Bending moment diagram", "Shear force diagram"],
+    )
+
+    # ── Headline results ─────────────────────────────────────────────────────
+    out.append(S("Key results"))
+    out.append(TBL(
+        ["Result", "Value", "Location"],
+        [
+            ["Max horizontal displacement δ_x",
+             f"{summary['max_ux_mm']:.2f} mm", f"Node {summary['max_ux_node']}"],
+            ["Max vertical displacement δ_y",
+             f"{summary['max_uy_mm']:.2f} mm", f"Node {summary['max_uy_node']}"],
+            ["Max bending moment M",
+             f"{summary['max_moment_kNm']:.2f} kNm",
+             f"Element {summary['max_moment_ele']}"],
+        ],
+    ))
+
+    # ── Applied loads ─────────────────────────────────────────────────────────
+    loads_table = summary.get("loads_table", [])
+    if loads_table:
+        out.append(S("Applied loads"))
+        out.append(TBL(
+            ["Type", "Target", "Fx (kN)", "Fy (kN)", "Mz (kNm)", "wy (kN/m)", "wx (kN/m)"],
+            [
+                [
+                    l["type"], l["target"],
+                    f"{l['Fx_kN']:.2f}"  if l.get("Fx_kN")  is not None else "—",
+                    f"{l['Fy_kN']:.2f}"  if l.get("Fy_kN")  is not None else "—",
+                    f"{l['Mz_kNm']:.2f}" if l.get("Mz_kNm") is not None else "—",
+                    f"{l['wy_kNm']:.2f}" if l.get("wy_kNm") is not None else "—",
+                    f"{l['wx_kNm']:.2f}" if l.get("wx_kNm") is not None else "—",
+                ]
+                for l in loads_table
+            ],
+        ))
+
+    # ── Element section forces ────────────────────────────────────────────────
+    ele_table = summary.get("ele_force_table", [])
+    if ele_table:
+        out.append(S("Element cross-section forces"))
+        out.append(T(
+            "Forces in local element axes. "
+            "End i = start node, end j = end node. "
+            "N: axial (+ tension)  V: shear  M: bending moment."
+        ))
+        out.append(TBL(
+            ["Elem", "Type", "L (m)", "A (cm²)", "Iz (cm⁴)",
+             "N_i (kN)", "V_i (kN)", "M_i (kNm)",
+             "N_j (kN)", "V_j (kN)", "M_j (kNm)"],
+            [
+                [
+                    str(e["id"]), e["type"], f"{e['L_m']:.2f}",
+                    str(e["A_cm2"]),
+                    str(e["Iz_cm4"]) if e["type"] == "beam" else "—",
+                    f"{e['N_i_kN']:.2f}", f"{e['V_i_kN']:.2f}", f"{e['M_i_kNm']:.2f}",
+                    f"{e['N_j_kN']:.2f}", f"{e['V_j_kN']:.2f}", f"{e['M_j_kNm']:.2f}",
+                ]
+                for e in ele_table
+            ],
+        ))
+
+    # ── Node displacements ────────────────────────────────────────────────────
+    node_table = summary.get("node_disp_table", [])
+    if node_table:
+        out.append(S("Nodal displacements"))
+        out.append(TBL(
+            ["Node", "x (m)", "y (m)", "δ_x (mm)", "δ_y (mm)", "θ_z (mrad)"],
+            [
+                [
+                    str(n["id"]), f"{n['x_m']:.3f}", f"{n['y_m']:.3f}",
+                    f"{n['ux_mm']:.3f}", f"{n['uy_mm']:.3f}", f"{n['rz_mrad']:.3f}",
+                ]
+                for n in node_table
+            ],
+        ))
+
+    # ── Reactions ─────────────────────────────────────────────────────────────
+    reactions = summary.get("reactions", {})
+    if reactions:
+        out.append(S("Support reactions"))
+        out.append(TBL(
+            ["Node", "Fx (kN)", "Fy (kN)", "Mz (kNm)"],
+            [
+                [nid, f"{R['Fx_kN']:.2f}", f"{R['Fy_kN']:.2f}", f"{R['Mz_kNm']:.2f}"]
+                for nid, R in reactions.items()
+            ],
+        ))
+
+    return out
+
+
+def _portal_frame_fem_block(block: dict, tmp_files: list) -> list:
+    from calc_core import MH, S, T, TBL, N
+    d       = block["data"]
+    title   = d.get("title", "Portal Frame FEM")
+    summary = d.get("_summary")
+    figs    = d.get("_figs_b64", [])
+
+    out = [MH(title, "Portal Frame FEM — OpenSeesPy", "general")]
+
+    if not summary:
+        out.append(N("Block has not been run yet — open the editor and click ▶ Run FEM."))
+        return out
+
+    out += _figs_b64_to_pdf(
+        figs, tmp_files,
+        ["Deflected shape", "Bending moment diagram", "Shear force diagram"],
+    )
+
+    out.append(S("Key results"))
+    out.append(TBL(
+        ["Result", "Value", "Location"],
+        [
+            ["Max lateral displacement δ_x",
+             f"{summary['max_lateral_disp_mm']:.2f} mm",
+             f"Node {summary['max_lateral_disp_node']}"],
+            ["Max vertical displacement δ_y",
+             f"{summary['max_vertical_disp_mm']:.2f} mm",
+             f"Node {summary['max_vertical_disp_node']}"],
+            ["Max bending moment M",
+             f"{summary['max_moment_kNm']:.2f} kNm",
+             f"Element {summary['max_moment_ele']}"],
+        ],
+    ))
+
+    reactions = summary.get("reactions", {})
+    if reactions:
+        out.append(S("Support reactions"))
+        out.append(TBL(
+            ["Column", "Fx (kN)", "Fy (kN)", "Mz (kNm)"],
+            [
+                [col, f"{R['Fx_kN']:.2f}", f"{R['Fy_kN']:.2f}", f"{R['Mz_kNm']:.2f}"]
+                for col, R in reactions.items()
+            ],
+        ))
+
+    return out
+
+
 # ── Dispatch table ────────────────────────────────────────────────────────────
 
 _CALC_TYPES = {
@@ -632,6 +806,10 @@ def _convert_block(block: dict, tmp_files: list) -> list:
         return _beam_fem_block(block, tmp_files)
     if t == "frame_fem":
         return _frame_fem_block(block, tmp_files)
+    if t == "general_frame_fem":
+        return _general_frame_fem_block(block, tmp_files)
+    if t == "portal_frame_fem":
+        return _portal_frame_fem_block(block, tmp_files)
     if t == "control_plan":
         return _control_plan(block)
     if t == "table":
