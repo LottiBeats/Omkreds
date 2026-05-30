@@ -50,10 +50,28 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
   const comboReady  = !!comboExp?.E_d_uls
 
   // ── FEM source ────────────────────────────────────────────────────────────
-  const femBlocks  = blocks.filter(b => b.type === 'beam_fem')
+  const femBlocks  = blocks.filter(b => b.type === 'beam_fem' || b.type === 'general_frame_fem')
   const selFem     = femBlocks.find(b => b.id === d.fem_block_id) ?? femBlocks[0]
+  const isGenFem   = selFem?.type === 'general_frame_fem'
   const femSummary = selFem?.data?._summary
-  const femReady   = !!femSummary?.M_Ed_kNm
+  const genExports = selFem?.data?._exports?.elements ?? []
+  const selElemId  = d.fem_elem_id ?? genExports[0]?.id
+  const selEnd     = d.fem_end ?? 'max'
+  const selElem    = genExports.find(e => e.id === selElemId) ?? genExports[0]
+  const femReady   = isGenFem ? !!selElem : !!femSummary?.M_Ed_kNm
+
+  function getFemMV() {
+    if (!selFem) return {}
+    if (!isGenFem) return { M: femSummary?.M_Ed_kNm, V: femSummary?.V_Ed_kN }
+    if (!selElem) return {}
+    const M = selEnd === 'i' ? Math.abs(selElem.M_i_kNm)
+            : selEnd === 'j' ? Math.abs(selElem.M_j_kNm)
+            : selElem.M_max_kNm
+    const V = selEnd === 'i' ? Math.abs(selElem.V_i_kN)
+            : selEnd === 'j' ? Math.abs(selElem.V_j_kN)
+            : selElem.V_max_kN
+    return { M, V }
+  }
 
   const runDisabled =
     (source === 'combo'   && !comboReady) ||
@@ -91,11 +109,13 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         // Pass all ULS combinations so the backend finds the truly governing one
         // via max(E_d / k_mod) — not just max(E_d). EN 1995-1-1 §2.2.3.
         payload.uls_combinations = comboExp.uls_combinations ?? null
-      } else if (source === 'fem' && femSummary) {
-        // FEM gives actual M_Ed and V_Ed — load_duration stays as manually set
-        payload.M_Ed_kNm_direct = femSummary.M_Ed_kNm
-        payload.V_Ed_kN_direct  = femSummary.V_Ed_kN
-        payload.fem_label       = selFem?.data?.title ?? 'FEM'
+      } else if (source === 'fem' && femReady) {
+        const { M, V } = getFemMV()
+        payload.M_Ed_kNm_direct = M
+        payload.V_Ed_kN_direct  = V
+        payload.fem_label       = isGenFem
+          ? `${selFem?.data?.title ?? 'Frame FEM'} — ${selElem?.label ?? ''}`
+          : selFem?.data?.title ?? 'Beam FEM'
       }
 
       const blocks_result = await calcTimberBeam(payload)
@@ -174,29 +194,42 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         <Field label="FEM block" style={{ gridColumn: '1/-1' }}>
           {femBlocks.length === 0 ? (
             <span style={{ fontSize: 12, color: '#e67e22' }}>
-              No Beam FEM blocks in this document — add one first.
+              No FEM blocks in this document — add a Beam FEM or General Frame FEM block first.
             </span>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <select style={{ ...s, width: 'auto', minWidth: 180 }}
                 value={selFem?.id ?? ''}
-                onChange={e => update({ fem_block_id: Number(e.target.value) })}>
+                onChange={e => update({ fem_block_id: Number(e.target.value), fem_elem_id: null })}>
                 {femBlocks.map(b => (
                   <option key={b.id} value={b.id}>
-                    {b.data.title ?? 'Beam FEM Analysis'}
+                    {b.data.title ?? b.type}  [{b.type === 'general_frame_fem' ? 'Frame' : 'Beam'}]
                   </option>
                 ))}
               </select>
-              {femReady
-                ? <span style={{ fontSize: 12, color: '#27ae60' }}>
-                    ✓ M_Ed = {femSummary.M_Ed_kNm.toFixed(2)} kNm
-                    {'  ·  '}
-                    V_Ed = {femSummary.V_Ed_kN.toFixed(2)} kN
-                  </span>
-                : <span style={{ fontSize: 12, color: '#e67e22' }}>
-                    Run the FEM block first
-                  </span>
-              }
+
+              {isGenFem && genExports.length > 0 && (<>
+                <select style={{ ...s, width: 'auto', minWidth: 160 }}
+                  value={selElemId ?? ''}
+                  onChange={e => update({ fem_elem_id: Number(e.target.value) })}>
+                  {genExports.map(e => (
+                    <option key={e.id} value={e.id}>{e.label}</option>
+                  ))}
+                </select>
+                <select style={{ ...s, width: 'auto', minWidth: 90 }}
+                  value={selEnd}
+                  onChange={e => update({ fem_end: e.target.value })}>
+                  <option value="max">Max end</option>
+                  <option value="i">End i</option>
+                  <option value="j">End j</option>
+                </select>
+              </>)}
+
+              {femReady ? (() => { const {M,V} = getFemMV(); return (
+                <span style={{ fontSize: 12, color: '#27ae60' }}>
+                  ✓ M_Ed = {M?.toFixed(2)} kNm · V_Ed = {V?.toFixed(2)} kN
+                </span>
+              )})() : <span style={{ fontSize: 12, color: '#e67e22' }}>Run the FEM block first</span>}
             </div>
           )}
         </Field>

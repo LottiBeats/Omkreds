@@ -138,17 +138,23 @@ function SupportRow({ sup, onChange, onRemove }) {
   )
 }
 
-function LoadRow({ load, onChange, onRemove }) {
+function LoadRow({ load, onChange, onRemove, comboBlocks }) {
   const lt = load.type ?? 'nodal'
+  const selCombo = lt === 'combo_udl'
+    ? (comboBlocks.find(b => b.data.label === load.combo_label) ?? comboBlocks[0])
+    : null
+  const comboW = selCombo?.data?._exports?.E_d_uls
+
   return (
     <div style={s.listRow}>
       <div style={s.listRowInner}>
         <div style={s.fieldWrap}>
           <label style={s.miniLabel}>Type</label>
-          <select style={{ ...s.smallInput, width: 72 }} value={lt}
+          <select style={{ ...s.smallInput, width: 88 }} value={lt}
             onChange={e => onChange({ ...load, type: e.target.value })}>
             <option value="nodal">Nodal</option>
             <option value="udl">UDL</option>
+            <option value="combo_udl">Combo UDL</option>
           </select>
         </div>
 
@@ -164,6 +170,32 @@ function LoadRow({ load, onChange, onRemove }) {
           <NumField label="wy (kN/m)" val={load.wy_kNm ?? 10} set={v => onChange({ ...load, wy_kNm: v })} />
           <NumField label="wx (kN/m)" val={load.wx_kNm ?? 0}  set={v => onChange({ ...load, wx_kNm: v })} />
           <span style={s.hint}>wy +ve=down</span>
+        </>}
+
+        {lt === 'combo_udl' && <>
+          <NumField label="Elem" val={load.elem_id ?? 1} set={v => onChange({ ...load, elem_id: Math.round(v) })} width={50} />
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>Combo</label>
+            {comboBlocks.length === 0
+              ? <span style={{ fontSize: 10, color: '#e67e22' }}>No combo blocks</span>
+              : <select style={{ ...s.smallInput, width: 120 }}
+                  value={selCombo?.data?.label ?? ''}
+                  onChange={e => onChange({ ...load, combo_label: e.target.value })}>
+                  {comboBlocks.map(b => (
+                    <option key={b.id} value={b.data.label ?? ''}>{b.data.label}</option>
+                  ))}
+                </select>
+            }
+          </div>
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>wy (kN/m)</label>
+            {comboW != null
+              ? <span style={{ fontSize: 12, color: '#27ae60', fontWeight: 700, padding: '4px 6px' }}>
+                  {comboW.toFixed(2)}
+                </span>
+              : <span style={{ fontSize: 10, color: '#e67e22', padding: '4px 6px' }}>run combo first</span>
+            }
+          </div>
         </>}
       </div>
       <button onClick={onRemove} style={s.removeBtn}>✕</button>
@@ -311,10 +343,12 @@ function ResultPanel({ figs, summary }) {
 
 // ── Main block ────────────────────────────────────────────────────────────────
 
-export default function GeneralFrameFemBlock({ block, onChange }) {
+export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
+
+  const comboBlocks = blocks.filter(b => b.type === 'load_combo')
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
@@ -347,19 +381,50 @@ export default function GeneralFrameFemBlock({ block, onChange }) {
   function updateLoad(i, v)  { const a = [...loads]; a[i] = v; update({ loads: a }) }
   function addLoad(type)      { update({ loads: [...loads,
     type === 'udl'
-      ? { type: 'udl',   elem_id: elements[0]?.id ?? 1, wy_kNm: 10, wx_kNm: 0 }
-      : { type: 'nodal', node_id: nodes[0]?.id    ?? 1, Fx_kN: 0, Fy_kN: 0, Mz_kNm: 0 }
+      ? { type: 'udl',       elem_id: elements[0]?.id ?? 1, wy_kNm: 10, wx_kNm: 0 }
+      : type === 'combo_udl'
+      ? { type: 'combo_udl', elem_id: elements[0]?.id ?? 1, combo_label: comboBlocks[0]?.data?.label ?? '' }
+      : { type: 'nodal',     node_id: nodes[0]?.id    ?? 1, Fx_kN: 0, Fy_kN: 0, Mz_kNm: 0 }
   ]}) }
   function removeLoad(i)      { update({ loads: loads.filter((_, j) => j !== i) }) }
 
   async function handleRun() {
     setRunning(true); setError(null)
     try {
-      const res = await calcGeneralFrameFem({
-        title:    d.title    ?? '2D Frame FEM',
-        nodes, elements, supports, loads,
+      // Resolve combo_udl loads to their current E_d_uls value
+      const resolvedLoads = loads.map(ld => {
+        if (ld.type !== 'combo_udl') return ld
+        const cb = comboBlocks.find(b => b.data.label === ld.combo_label) ?? comboBlocks[0]
+        const w  = cb?.data?._exports?.E_d_uls ?? 0
+        return { type: 'udl', elem_id: ld.elem_id ?? 1, wy_kNm: w, wx_kNm: 0 }
       })
-      update({ _figs_b64: res._figs_b64, _summary: res._summary, _result: res._result })
+
+      const res = await calcGeneralFrameFem({
+        title:    d.title ?? '2D Frame FEM',
+        nodes, elements, supports,
+        loads: resolvedLoads,
+      })
+
+      // Build _exports so capacity check blocks can read element forces
+      const eleTable = res._summary?.ele_force_table ?? []
+      const exports_ = {
+        elements: eleTable.map(e => ({
+          id:        e.id,
+          label:     `Elem ${e.id}  (${e.ni}→${e.nj}, L=${e.L_m}m)`,
+          M_max_kNm: Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)),
+          V_max_kN:  Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)),
+          N_max_kN:  Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)),
+          M_i_kNm: e.M_i_kNm, V_i_kN: e.V_i_kN, N_i_kN: e.N_i_kN,
+          M_j_kNm: e.M_j_kNm, V_j_kN: e.V_j_kN, N_j_kN: e.N_j_kN,
+        })),
+      }
+
+      update({
+        _figs_b64: res._figs_b64,
+        _summary:  res._summary,
+        _result:   res._result,
+        _exports:  exports_,
+      })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -406,9 +471,11 @@ export default function GeneralFrameFemBlock({ block, onChange }) {
         <SectionLabel text="Loads" />
         <button style={s.addBtn} onClick={() => addLoad('nodal')}>+ Nodal</button>
         <button style={s.addBtn} onClick={() => addLoad('udl')}>+ UDL</button>
+        <button style={s.addBtn} onClick={() => addLoad('combo_udl')}>+ Combo UDL</button>
       </div>
       {loads.map((ld, i) => (
-        <LoadRow key={i} load={ld} onChange={v => updateLoad(i, v)} onRemove={() => removeLoad(i)} />
+        <LoadRow key={i} load={ld} comboBlocks={comboBlocks}
+          onChange={v => updateLoad(i, v)} onRemove={() => removeLoad(i)} />
       ))}
 
       {/* Run */}
