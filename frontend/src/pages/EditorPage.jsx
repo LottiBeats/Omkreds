@@ -540,6 +540,178 @@ function makePortalFrameTemplate() {
 
 // ── A2: Pratt truss ───────────────────────────────────────────────────────────
 // Correct 4-panel Pratt truss: 10 nodes, 17 members (all truss).
+// ── A2: Full portal frame workflow (combo → FEM → checks) ─────────────────────
+// Block IDs are pre-assigned so FEM + capacity check blocks are linked out of the box.
+function makeFullPortalFrameWorkflowTemplate() {
+  const base = Date.now()
+  let n = 0
+  const nid = () => base + n++
+
+  // Assign IDs up front so we can cross-reference them
+  const ids = {
+    h1:         nid(),
+    intro:      nid(),
+    hCombo:     nid(),
+    combo:      nid(),   // ← load_combo block (label 'LC1')
+    hFem:       nid(),
+    fem:        nid(),   // ← general_frame_fem block
+    hChecks:    nid(),
+    hRafter:    nid(),
+    chkRafter:  nid(),   // ← steel_beam: element 2 (rafter)
+    hColLeft:   nid(),
+    chkColLeft: nid(),   // ← steel_beam: element 1 (left column)
+    hColRight:  nid(),
+    chkColRight:nid(),   // ← steel_beam: element 3 (right column)
+    hConclusion:nid(),
+    conclusion: nid(),
+  }
+
+  return [
+    // ── Title ──────────────────────────────────────────────────────────────
+    { id: ids.h1, type: 'heading', data: { level: 1, text: 'Portalstel — Komplet rammeanalyse' } },
+    { id: ids.intro, type: 'text', data: { text:
+      'Statisk system: Portalstel · 1 fag · L = 6,0 m · h = 4,0 m\n' +
+      'Profiler: Søjler IPE 240 S235  |  Rafter IPE 300 S235\n' +
+      'Understøtning: Begge søjlebaser indspændt (fixed)\n\n' +
+      'Beregningsgang:\n' +
+      '  1. Lastkombination (EN 1990 lign. 6.10a/b) → designlast w_Ed\n' +
+      '  2. FEM-analyse (OpenSeesPy) → snitkræfter og flytninger\n' +
+      '  3. Kapacitetskontrol (EN 1993-1-1) → udnyttelsesgrad per element\n\n' +
+      'Kør blokkene i rækkefølge: Lastkombination → FEM → Kapacitetskontrol' } },
+
+    // ── Load combination ───────────────────────────────────────────────────
+    { id: ids.hCombo, type: 'heading', data: { level: 2, text: '1. Lastkombination' } },
+    { id: ids.combo, type: 'load_combo', data: {
+      title:             'Lastkombinationer — Portalstel',
+      label:             'LC1',
+      unit:              'kN/m',
+      G_k:               5.0,     // permanent: self-weight + cladding
+      G_fav:             false,
+      loads:             [
+        { label: 'Nyttelast', Q_k: 3.0, category: 'B' },
+      ],
+      method:            '6.10ab',
+      consequence_class: 'CC2',
+      _result:           null,
+      _exports:          null,
+    }},
+
+    // ── FEM model ──────────────────────────────────────────────────────────
+    { id: ids.hFem, type: 'heading', data: { level: 2, text: '2. FEM-analyse' } },
+    { id: ids.fem, type: 'general_frame_fem', data: {
+      title:    'Portalstel — IPE 240/300 S235',
+      nodes: [
+        { id: 1, x: 0, y: 0 },   // left base
+        { id: 2, x: 0, y: 4 },   // left eave
+        { id: 3, x: 6, y: 4 },   // right eave
+        { id: 4, x: 6, y: 0 },   // right base
+      ],
+      elements: [
+        { id: 1, ni: 1, nj: 2, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1, Iz_cm4: 3892 },  // IPE 240 left col
+        { id: 2, ni: 2, nj: 3, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 53.8, Iz_cm4: 8356 },  // IPE 300 rafter
+        { id: 3, ni: 4, nj: 3, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1, Iz_cm4: 3892 },  // IPE 240 right col
+      ],
+      supports: [
+        { node_id: 1, ux: true, uy: true, rz: true },
+        { node_id: 4, ux: true, uy: true, rz: true },
+      ],
+      loads: [
+        { type: 'combo_udl', elem_id: 2, combo_label: 'LC1' },          // design UDL on rafter from combo
+        { type: 'nodal', node_id: 2, Fx_kN: 10, Fy_kN: 0, Mz_kNm: 0 }, // wind 10 kN at left eave
+      ],
+      _figs_b64: null, _summary: null, _result: null, _exports: null,
+    }},
+
+    // ── Capacity checks ────────────────────────────────────────────────────
+    { id: ids.hChecks, type: 'heading', data: { level: 2, text: '3. Kapacitetskontrol (EN 1993-1-1)' } },
+
+    // Rafter
+    { id: ids.hRafter, type: 'heading', data: { level: 3, text: 'Rafter — IPE 300 S235 (element 2)' } },
+    { id: ids.chkRafter, type: 'steel_beam', data: {
+      title:             'Rafter IPE 300 — Bjælkecheck',
+      label:             'B1',
+      section:           'IPE300',
+      grade:             'S235',
+      span_m:            6.0,
+      load_source:       'fem',
+      fem_block_id:      ids.fem,   // ← pre-wired to the FEM block above
+      fem_elem_id:       2,         // rafter element
+      fem_end:           'max',
+      load_type:         'udl',
+      trib_width_m:      1.0,
+      g_k_kNm:           5.0,
+      q_k_kNm:           3.0,
+      gamma_M0:          1.0,
+      gamma_M1:          1.0,
+      ltb_restrained:    false,
+      buck_y_restrained: true,
+      buck_x_restrained: true,
+      deflection_limit:  200,
+      _result:           null,
+    }},
+
+    // Left column
+    { id: ids.hColLeft, type: 'heading', data: { level: 3, text: 'Venstre søjle — IPE 240 S235 (element 1)' } },
+    { id: ids.chkColLeft, type: 'steel_beam', data: {
+      title:             'Søjle IPE 240 — Bjælkecheck (venstre)',
+      label:             'S1',
+      section:           'IPE240',
+      grade:             'S235',
+      span_m:            4.0,
+      load_source:       'fem',
+      fem_block_id:      ids.fem,
+      fem_elem_id:       1,         // left column element
+      fem_end:           'max',
+      load_type:         'udl',
+      trib_width_m:      1.0,
+      g_k_kNm:           5.0,
+      q_k_kNm:           3.0,
+      gamma_M0:          1.0,
+      gamma_M1:          1.0,
+      ltb_restrained:    true,
+      buck_y_restrained: true,
+      buck_x_restrained: false,
+      deflection_limit:  200,
+      _result:           null,
+    }},
+
+    // Right column
+    { id: ids.hColRight, type: 'heading', data: { level: 3, text: 'Højre søjle — IPE 240 S235 (element 3)' } },
+    { id: ids.chkColRight, type: 'steel_beam', data: {
+      title:             'Søjle IPE 240 — Bjælkecheck (højre)',
+      label:             'S2',
+      section:           'IPE240',
+      grade:             'S235',
+      span_m:            4.0,
+      load_source:       'fem',
+      fem_block_id:      ids.fem,
+      fem_elem_id:       3,         // right column element
+      fem_end:           'max',
+      load_type:         'udl',
+      trib_width_m:      1.0,
+      g_k_kNm:           5.0,
+      q_k_kNm:           3.0,
+      gamma_M0:          1.0,
+      gamma_M1:          1.0,
+      ltb_restrained:    true,
+      buck_y_restrained: true,
+      buck_x_restrained: false,
+      deflection_limit:  200,
+      _result:           null,
+    }},
+
+    // ── Conclusion ─────────────────────────────────────────────────────────
+    { id: ids.hConclusion, type: 'heading', data: { level: 2, text: '4. Konklusion' } },
+    { id: ids.conclusion, type: 'text', data: { text:
+      '[Udfyld efter kørsel af alle blokke]\n\n' +
+      'Rafter IPE 300:  Udnyttelsesgrad = … %  ✓/✗\n' +
+      'Søjle IPE 240 (venstre):  Udnyttelsesgrad = … %  ✓/✗\n' +
+      'Søjle IPE 240 (højre):  Udnyttelsesgrad = … %  ✓/✗\n\n' +
+      'Bemærkning: Søjlerne er her kontrolleret for bøjning og forskydning (EN 1993-1-1 §6.2).\n' +
+      'For kombineret tryk + bøjning (§6.3.3) bør en bjælke-søjle-kontrol udføres.' } },
+  ]
+}
+
 // ── A2: General Frame FEM ─────────────────────────────────────────────────────
 function makeGeneralFrameFemTemplate() {
   let id = Date.now()
@@ -821,6 +993,11 @@ const DOC_TEMPLATES = {
       label:       'Portalstel — 2D FEM',
       description: 'IPE 240/300 · 6m spænd · 4m søjler · 2 indspændte baser · UDL + vandret last',
       make:        makePortalFrameTemplate,
+    },
+    {
+      label:       'Portalstel — Komplet workflow',
+      description: 'Lastkombination (EN 1990) → FEM-analyse (OpenSeesPy) → kapacitetskontrol (EN 1993-1-1) · Alle blokke forudkoblet · Kør i rækkefølge',
+      make:        makeFullPortalFrameWorkflowTemplate,
     },
     {
       label:       'Generel ramme — 2D FEM',
