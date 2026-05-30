@@ -1885,7 +1885,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
         figs_b64 = make_figures(
             data.title, nodes, elements, supports, loads,
-            res['ele_forces'], ref_size,
+            res['ele_forces'], res['node_disps'], ref_size,
         )
 
         summary = summarise(nodes, elements,
