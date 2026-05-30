@@ -510,7 +510,7 @@ function makePortalFrameTemplate() {
     { id: id++, type: 'heading', data: { level: 2, text: 'Forudsætninger' } },
     { id: id++, type: 'text', data: { text:
       'Statisk system: Portalstel med 2 søjler og 1 bjælke.\n' +
-      'Profiler: Søjler IPE 240 (S235), Bjælke IPE 300 (S235)\n' +
+      'Profiler: IPE 240 (S235) — alle elementer\n' +
       'Spændvidde: L = 6,0 m   Søjlehøjde: h = 4,0 m\n' +
       'Understøtning: Begge søjlebaser indspændt (fixed)\n' +
       'Laster (karakteristiske):\n' +
@@ -519,27 +519,17 @@ function makePortalFrameTemplate() {
 
     { id: id++, type: 'heading', data: { level: 2, text: 'FEM-model' } },
     {
-      id: id++, type: 'frame_fem', data: {
-        title: 'Portalstel — IPE 240/300 S235',
-        nodes: [
-          { id: 1, x: 0.0, y: 0.0 },   // left column base
-          { id: 2, x: 6.0, y: 0.0 },   // right column base
-          { id: 3, x: 0.0, y: 4.0 },   // left top
-          { id: 4, x: 6.0, y: 4.0 },   // right top
-        ],
-        elements: [
-          { id: 1, ni: 1, nj: 3, type: 'beam', E_GPa: 210, A_cm2: 39.1, I_cm4: 3892,  preset: 'IPE 240 (S235)' },
-          { id: 2, ni: 3, nj: 4, type: 'beam', E_GPa: 210, A_cm2: 53.8, I_cm4: 8356,  preset: 'IPE 300 (S235)' },
-          { id: 3, ni: 2, nj: 4, type: 'beam', E_GPa: 210, A_cm2: 39.1, I_cm4: 3892,  preset: 'IPE 240 (S235)' },
-        ],
-        supports: [
-          { node_id: 1, ux: true, uy: true, rz: true },
-          { node_id: 2, ux: true, uy: true, rz: true },
-        ],
-        loads: [
-          { type: 'udl',    elem_id: 2,  wy_kNm: 20.0, wx_kNm: 0.0 },
-          { type: 'nodal',  node_id: 3,  Fx_kN: 10.0,  Fy_kN: 0.0,  Mz_kNm: 0.0 },
-        ],
+      id: id++, type: 'portal_frame_fem', data: {
+        title:         'Portalstel — IPE 240 S235',
+        n_bays:        1,
+        h_bay_m:       4.0,
+        w_bay_m:       6.0,
+        E_GPa:         210.0,
+        A_cm2:         39.1,   // IPE 240
+        Iz_cm4:        3892.0, // IPE 240
+        rafter_loads:  [{ rafter_idx: 0, wy_kNm: -20.0 }],
+        lateral_loads: [{ col_idx: 0, Fx_kN: 10.0 }],
+        _figs_b64: null, _summary: null, _result: null,
       }
     },
 
