@@ -203,6 +203,42 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
   )
 }
 
+// ── Equal-DOF row (pin joints between co-located nodes) ──────────────────────
+
+function EqualDOFRow({ eq, onChange, onRemove }) {
+  const dofs = eq.dofs ?? [1, 2]
+  function toggleDof(d) {
+    const next = dofs.includes(d) ? dofs.filter(x => x !== d) : [...dofs, d].sort()
+    onChange({ ...eq, dofs: next })
+  }
+  return (
+    <div style={s.listRow}>
+      <div style={s.listRowInner}>
+        <NumField label="Retained node"    val={eq.r_node ?? 1}
+          set={v => onChange({ ...eq, r_node: Math.round(v) })} width={56} />
+        <NumField label="Constrained node" val={eq.c_node ?? 2}
+          set={v => onChange({ ...eq, c_node: Math.round(v) })} width={56} />
+        <div style={s.fieldWrap}>
+          <label style={s.miniLabel}>Shared DOFs</label>
+          <div style={{ display: 'flex', gap: 6, paddingTop: 4 }}>
+            {[['ux', 1], ['uy', 2], ['rz', 3]].map(([lbl, d]) => (
+              <label key={d} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
+                <input type="checkbox" checked={dofs.includes(d)}
+                  onChange={() => toggleDof(d)} />
+                {lbl}
+              </label>
+            ))}
+          </div>
+        </div>
+        <span style={{ ...s.hint, alignSelf: 'center' }}>
+          {dofs.includes(3) ? 'rigid' : 'pin joint'}
+        </span>
+      </div>
+      <button onClick={onRemove} style={s.removeBtn}>✕</button>
+    </div>
+  )
+}
+
 // ── Result panel ──────────────────────────────────────────────────────────────
 
 const TABS = ['Figures', 'Elements', 'Nodes', 'Loads', 'Reactions']
@@ -425,6 +461,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
         title: d.title ?? '2D Frame FEM',
         nodes: d.nodes ?? [], elements: d.elements ?? [],
         supports: d.supports ?? [], loads: d.loads ?? [],
+        equal_dofs: equalDofs,
       })
       update({ _model_b64: res._model_b64 })
     } catch (err) {
@@ -455,6 +492,12 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
   function updateSup(i, v)   { const a = [...supports]; a[i] = v; update({ supports: a }) }
   function addSup()           { update({ supports: [...supports, { node_id: nodes[0]?.id ?? 1, ux: true, uy: true, rz: false }] }) }
   function removeSup(i)       { update({ supports: supports.filter((_, j) => j !== i) }) }
+
+  // Equal-DOF constraints
+  const equalDofs = d.equal_dofs ?? []
+  function updateEqDof(i, v) { const a = [...equalDofs]; a[i] = v; update({ equal_dofs: a }) }
+  function addEqDof()        { update({ equal_dofs: [...equalDofs, { r_node: 1, c_node: 2, dofs: [1, 2] }] }) }
+  function removeEqDof(i)    { update({ equal_dofs: equalDofs.filter((_, j) => j !== i) }) }
 
   // Loads
   const loads = d.loads ?? []
@@ -492,6 +535,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
         nodes, elements, supports,
         loads:        resolvedLoads,
         combinations,
+        equal_dofs:   equalDofs,
       })
 
       // Build _exports so capacity check blocks can read element forces
@@ -553,6 +597,17 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
       </div>
       {supports.map((sup, i) => (
         <SupportRow key={i} sup={sup} onChange={v => updateSup(i, v)} onRemove={() => removeSup(i)} />
+      ))}
+
+      {/* Equal-DOF (pin joints) */}
+      <div style={s.rowHeader}>
+        <SectionLabel text="Pin joints (equalDOF)" />
+        <button style={s.addBtn} onClick={addEqDof}>+ Pin joint</button>
+      </div>
+      {equalDofs.map((eq, i) => (
+        <EqualDOFRow key={i} eq={eq}
+          onChange={v => updateEqDof(i, v)}
+          onRemove={() => removeEqDof(i)} />
       ))}
 
       {/* Load mode selector */}

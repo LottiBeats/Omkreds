@@ -53,7 +53,7 @@ import base64
 # Solver
 # ---------------------------------------------------------------------------
 
-def solve(nodes, elements, supports, loads):
+def solve(nodes, elements, supports, loads, equal_dofs=None):
     """
     Build and solve a 2D linear elastic frame/truss model.
 
@@ -61,6 +61,11 @@ def solve(nodes, elements, supports, loads):
     ----------
     nodes : list of dict
         Each: {id: int, x: float, y: float}
+    equal_dofs : list of dict, optional
+        Each: {r_node: int, c_node: int, dofs: list[int]}
+        Ties the listed DOFs of c_node to r_node (1=ux, 2=uy, 3=rz).
+        Use to model pin joints between co-located nodes:
+          equalDOF(ridge_left, ridge_right, [1, 2])  →  shared translation, free rotation
     elements : list of dict
         Each: {id, ni, nj, type ('beam'|'truss'),
                E_GPa, A_cm2, Iz_cm4,
@@ -109,6 +114,11 @@ def solve(nodes, elements, supports, loads):
                 1 if sup.get('ux') else 0,
                 1 if sup.get('uy') else 0,
                 1 if sup.get('rz') else 0)
+
+    # Equal-DOF constraints (pin joints between co-located nodes)
+    for eq in (equal_dofs or []):
+        dofs = [int(d) for d in eq.get('dofs', [1, 2])]
+        ops.equalDOF(int(eq['r_node']), int(eq['c_node']), *dofs)
 
     # Elements
     for el in elements:
@@ -253,7 +263,7 @@ def _project_load(ld, elements, dict_nodes):
     return {'type': 'udl', 'elem_id': eid, 'wy_kNm': wy, 'wx_kNm': wx}
 
 
-def solve_combinations(nodes, elements, supports, combinations):
+def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None):
     """
     Run the FEM once per load combination and return envelope results.
 
@@ -277,7 +287,7 @@ def solve_combinations(nodes, elements, supports, combinations):
             if proj is not None:
                 resolved.append(proj)
 
-        result = solve(nodes, elements, supports, resolved)
+        result = solve(nodes, elements, supports, resolved, equal_dofs)
         all_results.append({
             'name':            combo['name'],
             'node_disps':      result['node_disps'],

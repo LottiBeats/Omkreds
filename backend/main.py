@@ -1919,13 +1919,19 @@ class FrameComboIn(BaseModel):
     name:  str
     loads: list[FrameComboLoadIn] = []
 
+class GenFrameEqualDOFIn(BaseModel):
+    r_node: int            # retained node
+    c_node: int            # constrained node
+    dofs:   list[int] = [1, 2]  # DOFs to tie: 1=ux, 2=uy, 3=rz
+
 class GenFrameFemInput(BaseModel):
-    title:        str                      = "2D Frame FEM"
-    nodes:        list[GenFrameNodeIn]     = []
-    elements:     list[GenFrameElemIn]     = []
-    supports:     list[GenFrameSupportIn]  = []
-    loads:        list[GenFrameLoadIn]     = []
-    combinations: list[FrameComboIn]      = []  # from Frame Load Cases block
+    title:        str                       = "2D Frame FEM"
+    nodes:        list[GenFrameNodeIn]      = []
+    elements:     list[GenFrameElemIn]      = []
+    supports:     list[GenFrameSupportIn]   = []
+    loads:        list[GenFrameLoadIn]      = []
+    combinations: list[FrameComboIn]       = []
+    equal_dofs:   list[GenFrameEqualDOFIn] = []  # pin joints between co-located nodes
 
 
 @protected.post("/calc/general-frame-fem/preview", tags=["Calculations"])
@@ -1974,7 +1980,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         elements = [e.model_dump() for e in data.elements]
         supports = [s.model_dump() for s in data.supports]
         loads    = [l.model_dump() for l in data.loads]
-        combos   = [c.model_dump() for c in data.combinations]
+        combos      = [c.model_dump() for c in data.combinations]
+        equal_dofs  = [e.model_dump() for e in data.equal_dofs]
 
         xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
         ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
@@ -1984,7 +1991,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
         # ── Combination mode ──────────────────────────────────────────────────
         if combos:
-            envelope, all_results = solve_combinations(nodes, elements, supports, combos)
+            envelope, all_results = solve_combinations(nodes, elements, supports, combos, equal_dofs)
 
             # Generate figures for every combination so the frontend can switch
             combo_figs = []
@@ -2024,7 +2031,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
         # ── Simple mode (flat loads) ──────────────────────────────────────────
         else:
-            res = solve(nodes, elements, supports, loads)
+            res = solve(nodes, elements, supports, loads, equal_dofs)
             figs_b64 = [model_fig] + make_figures(
                 data.title, nodes, elements, supports, loads,
                 res['ele_forces'], res['node_disps'], ref_size,

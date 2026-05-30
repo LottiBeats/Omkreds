@@ -855,22 +855,25 @@ function makeTimberRoofTemplate() {
         { id: 2, x: 6.0, y: 0.0 },   // højre murplade
         { id: 3, x: 1.8, y: 1.2 },   // venstre hanebåndssamling
         { id: 4, x: 4.2, y: 1.2 },   // højre hanebåndssamling
-        { id: 5, x: 3.0, y: 2.0 },   // rygning
+        { id: 5, x: 3.0, y: 2.0 },   // rygningsknude — venstre spær
+        { id: 6, x: 3.0, y: 2.0 },   // rygningsknude — højre spær (samme position, fri rotation)
       ],
       elements: [
         // Spær 45×145 C24
         { id: 1, ni: 1, nj: 3, type: 'beam', release: 'none',
           E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // venstre nedre spær
         { id: 2, ni: 3, nj: 5, type: 'beam', release: 'none',
-          E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // venstre øvre spær
-        { id: 3, ni: 5, nj: 4, type: 'beam', release: 'none',
-          E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // højre øvre spær
+          E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // venstre øvre spær → knude 5
+        { id: 3, ni: 6, nj: 4, type: 'beam', release: 'none',
+          E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // højre øvre spær ← knude 6
         { id: 4, ni: 4, nj: 2, type: 'beam', release: 'none',
           E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // højre nedre spær
         // Hanebånd 45×95 C24 — leddet begge ender → kun aksial
         { id: 5, ni: 3, nj: 4, type: 'beam', release: 'both',
           E_GPa: 11, A_cm2: HAN_A, Iz_cm4: HAN_I },
       ],
+      // Rygningstappe: knude 5 og 6 er samplacerede men har uafhængige rotationer (taphængsel)
+      equal_dofs: [{ r_node: 5, c_node: 6, dofs: [1, 2] }],
       supports: [
         { node_id: 1, ux: true,  uy: true,  rz: false },   // tap (venstre)
         { node_id: 2, ux: false, uy: true,  rz: false },   // rolle (højre)
