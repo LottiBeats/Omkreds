@@ -540,6 +540,52 @@ function makePortalFrameTemplate() {
 
 // ── A2: Pratt truss ───────────────────────────────────────────────────────────
 // Correct 4-panel Pratt truss: 10 nodes, 17 members (all truss).
+// ── A2: General Frame FEM ─────────────────────────────────────────────────────
+function makeGeneralFrameFemTemplate() {
+  let id = Date.now()
+  return [
+    { id: id++, type: 'heading', data: { level: 1, text: 'Rammeanalyse — Generel 2D FEM' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Forudsætninger' } },
+    { id: id++, type: 'text', data: { text:
+      'Statisk system: Portalstel med 2 søjler og 1 bjælke.\n' +
+      'Profiler: Søjler IPE 240 (S235), Bjælke IPE 300 (S235)\n' +
+      'Spændvidde: L = 6,0 m   Søjlehøjde: h = 4,0 m\n' +
+      'Understøtning: Begge søjlebaser indspændt\n' +
+      'Laster: q = 20 kN/m nedad på bjælke  |  H = 10 kN vandret ved venstre søjletop' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'FEM-model' } },
+    {
+      id: id++, type: 'general_frame_fem', data: {
+        title: 'Portalstel — IPE 240/300 S235',
+        nodes: [
+          { id: 1, x: 0, y: 0 },
+          { id: 2, x: 0, y: 4 },
+          { id: 3, x: 6, y: 4 },
+          { id: 4, x: 6, y: 0 },
+        ],
+        elements: [
+          { id: 1, ni: 1, nj: 2, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1,  Iz_cm4: 3892  },
+          { id: 2, ni: 2, nj: 3, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 53.8,  Iz_cm4: 8356  },
+          { id: 3, ni: 4, nj: 3, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1,  Iz_cm4: 3892  },
+        ],
+        supports: [
+          { node_id: 1, ux: true, uy: true, rz: true },
+          { node_id: 4, ux: true, uy: true, rz: true },
+        ],
+        loads: [
+          { type: 'udl',   elem_id: 2, wy_kNm: 20, wx_kNm: 0 },
+          { type: 'nodal', node_id: 2, Fx_kN: 10, Fy_kN: 0, Mz_kNm: 0 },
+        ],
+        _figs_b64: null, _summary: null, _result: null,
+      }
+    },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Konklusion' } },
+    { id: id++, type: 'text', data: { text: '[Indsæt konklusion med maks. moment, reaktioner og udnyttelsesgrad]' } },
+  ]
+}
+
 // Statically determinate: m = 2n − 3  →  17 = 2×10 − 3  ✓
 // Loads at top chord (purlin loads from roof).
 // Supports at bottom chord ends.
@@ -775,6 +821,11 @@ const DOC_TEMPLATES = {
       label:       'Portalstel — 2D FEM',
       description: 'IPE 240/300 · 6m spænd · 4m søjler · 2 indspændte baser · UDL + vandret last',
       make:        makePortalFrameTemplate,
+    },
+    {
+      label:       'Generel ramme — 2D FEM',
+      description: 'Frit definerede knudepunkter og stænger · IPE 240/300 · UDL + vandret last · OpsVis figurer',
+      make:        makeGeneralFrameFemTemplate,
     },
     {
       label:       'Pratt-fagvark — 2D FEM',
