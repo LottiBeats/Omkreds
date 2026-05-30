@@ -1818,6 +1818,116 @@ def calc_portal_frame_fem(data: PortalFrameFemInput):
         raise HTTPException(status_code=422, detail=str(exc) + "\n" + traceback.format_exc())
 
 
+# ── General 2D Frame FEM (OpenSeesPy + OpsVis) ────────────────────────────────
+
+class GenFrameNodeIn(BaseModel):
+    id:  int
+    x:   float
+    y:   float
+
+class GenFrameElemIn(BaseModel):
+    id:       int
+    ni:       int
+    nj:       int
+    type:     str   = "beam"   # "beam" | "truss"
+    release:  str   = "none"   # "none" | "start" | "end" | "both"
+    E_GPa:    float = 210.0
+    A_cm2:    float = 39.1
+    Iz_cm4:   float = 3892.0
+
+class GenFrameSupportIn(BaseModel):
+    node_id: int
+    ux:      bool = False
+    uy:      bool = False
+    rz:      bool = False
+
+class GenFrameLoadIn(BaseModel):
+    type:     str         # "nodal" | "udl"
+    node_id:  int | None = None
+    elem_id:  int | None = None
+    Fx_kN:    float = 0.0
+    Fy_kN:    float = 0.0
+    Mz_kNm:   float = 0.0
+    wy_kNm:   float = 0.0   # positive = downward
+    wx_kNm:   float = 0.0
+
+class GenFrameFemInput(BaseModel):
+    title:    str                      = "2D Frame FEM"
+    nodes:    list[GenFrameNodeIn]     = []
+    elements: list[GenFrameElemIn]     = []
+    supports: list[GenFrameSupportIn]  = []
+    loads:    list[GenFrameLoadIn]     = []
+
+
+@protected.post("/calc/general-frame-fem", tags=["Calculations"])
+def calc_general_frame_fem(data: GenFrameFemInput):
+    """
+    General 2D frame / truss FEM using OpenSeesPy.
+    Returns three OpsVis matplotlib figures (deformed shape, M, V)
+    as base64 PNGs plus a summary dict and calc_core blocks.
+    """
+    import traceback
+    try:
+        from general_frame_fem import solve, make_figures, summarise
+        from calc_core import S, T, TBL
+        import math
+
+        nodes    = [n.model_dump() for n in data.nodes]
+        elements = [e.model_dump() for e in data.elements]
+        supports = [s.model_dump() for s in data.supports]
+        loads    = [l.model_dump() for l in data.loads]
+
+        res = solve(nodes, elements, supports, loads)
+
+        # Reference size for auto-scaling diagrams
+        xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
+        ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+
+        figs_b64 = make_figures(
+            data.title, nodes, elements, supports, loads,
+            res['ele_forces'], ref_size,
+        )
+
+        summary = summarise(nodes, elements,
+                            res['node_disps'], res['node_reactions'],
+                            res['ele_forces'], supports)
+
+        result_blocks = [
+            S(data.title),
+            T(f"{len(nodes)} nodes · {len(elements)} elements · "
+              f"{len([s for s in supports if s.get('ux') or s.get('uy')])} supports"),
+            TBL(
+                ["Result", "Value", "Location"],
+                [
+                    ["Max horiz. disp. δ_x", f"{summary['max_ux_mm']:.2f} mm",
+                     f"node {summary['max_ux_node']}"],
+                    ["Max vert. disp. δ_y",  f"{summary['max_uy_mm']:.2f} mm",
+                     f"node {summary['max_uy_node']}"],
+                    ["Max bending moment M",  f"{summary['max_moment_kNm']:.2f} kNm",
+                     f"element {summary['max_moment_ele']}"],
+                ],
+            ),
+        ]
+        for nid, R in summary['reactions'].items():
+            result_blocks.append(
+                T(f"  Node {nid}: Fx={R['Fx_kN']:+.2f} kN  "
+                  f"Fy={R['Fy_kN']:+.2f} kN  Mz={R['Mz_kNm']:+.2f} kNm")
+            )
+
+        return {
+            "_figs_b64": figs_b64,
+            "_summary":  summary,
+            "_result":   result_blocks,
+        }
+
+    except ImportError as exc:
+        raise HTTPException(status_code=501,
+                            detail=f"Missing dependency: {exc}. pip install openseespy opsvis")
+    except Exception as exc:
+        raise HTTPException(status_code=422,
+                            detail=str(exc) + "\n" + traceback.format_exc())
+
+
 class RcColumnInput(BaseModel):
     label:      str   = "C1"
     h_mm:       float = 300.0

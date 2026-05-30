@@ -226,6 +226,13 @@ export const calcPortalFrameFem = (data) =>
   request('POST', '/calc/portal-frame-fem', data)
 
 /**
+ * Run the general 2D frame/truss FEM solver (OpenSeesPy + OpsVis).
+ * Returns { _figs_b64, _summary, _result }
+ */
+export const calcGeneralFrameFem = (data) =>
+  request('POST', '/calc/general-frame-fem', data)
+
+/**
  * Run an EN 1993-1-1 §6.3.1 steel column compression + buckling check.
  */
 export const calcSteelColumn = (data) =>
