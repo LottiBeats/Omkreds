@@ -1998,6 +1998,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             # _figs_b64 = static model + governing combo (backward compat)
             best_combo_name = max(envelope.values(), key=lambda v: v['M_max_kNm'],
                                   default={}).get('M_combo', combos[0]['name'])
+            best_res = next((r for r in all_results if r['name'] == best_combo_name),
+                             all_results[0])
             best_figs = next((c['figs'] for c in combo_figs if c['name'] == best_combo_name),
                               combo_figs[0]['figs'])
             figs_b64 = [model_fig] + best_figs
