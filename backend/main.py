@@ -1646,6 +1646,178 @@ def calc_frame_fem(data: FrameFemInput):
         raise HTTPException(status_code=422, detail=str(exc) + "\n" + traceback.format_exc())
 
 
+# ── Portal Frame FEM (OpenSeesPy) ─────────────────────────────────────────────
+
+class PortalRafterLoad(BaseModel):
+    rafter_idx: int   = 0      # 0-based rafter index
+    wy_kNm:     float = -10.0  # kN/m, negative = downward
+
+class PortalLateralLoad(BaseModel):
+    col_idx: int   = 0    # 0-based column index
+    Fx_kN:   float = 0.0  # horizontal force at eave [kN]
+
+class PortalFrameFemInput(BaseModel):
+    title:          str   = "Portal Frame FEM"
+    n_bays:         int   = 1
+    h_bay_m:        float = 5.0
+    w_bay_m:        float = 10.0
+    E_GPa:          float = 200.0
+    A_cm2:          float = 300.0    # cross-section area [cm²]
+    Iz_cm4:         float = 30000.0  # second moment of area [cm⁴]
+    rafter_loads:   list[PortalRafterLoad]   = []
+    lateral_loads:  list[PortalLateralLoad]  = []
+
+
+@protected.post("/calc/portal-frame-fem", tags=["Calculations"])
+def calc_portal_frame_fem(data: PortalFrameFemInput):
+    """
+    2D elastic portal frame FEM using OpenSeesPy + OpsVis.
+    Returns three matplotlib figures (deformed shape, M, V) as base64 PNGs,
+    a summary dict, and calc_core blocks for PDF export.
+    """
+    import io
+    import base64
+    import traceback
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    try:
+        from portal_frame_fem import PortalFrameFEM
+        import opsvis as opsv
+        from calc_core import S, T, TBL
+
+        A  = data.A_cm2  * 1e-4   # cm² → m²
+        Iz = data.Iz_cm4 * 1e-8   # cm⁴ → m⁴
+        E  = data.E_GPa  * 1e9    # GPa → Pa
+
+        frame = PortalFrameFEM(
+            n_bays = data.n_bays,
+            h_bay  = data.h_bay_m,
+            w_bay  = data.w_bay_m,
+            E=E, A=A, Iz=Iz,
+        )
+
+        for rl in data.rafter_loads:
+            frame.add_rafter_udl(rl.rafter_idx, rl.wy_kNm * 1e3)
+
+        for ll in data.lateral_loads:
+            frame.add_lateral_load(ll.col_idx, ll.Fx_kN * 1e3)
+
+        frame.solve()
+
+        def _fig_to_b64(fig):
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
+            buf.seek(0)
+            return base64.b64encode(buf.read()).decode()
+
+        # Auto scale factors — target max diagram ≈ 25% of bay width
+        ref_size = data.w_bay_m * data.n_bays * 0.25
+        max_M = max((max(abs(f[2]), abs(f[5])) for f in frame.ele_forces.values()), default=1.0)
+        max_V = max((max(abs(f[1]), abs(f[4])) for f in frame.ele_forces.values()), default=1.0)
+        mFac = ref_size / max_M if max_M > 0 else 5e-6
+        vFac = ref_size / max_V if max_V > 0 else 15e-6
+
+        figs_b64 = []
+
+        # Figure 1 — deformed shape
+        plt.close("all")
+        opsv.plot_defo(
+            fig_wi_he=(12, 6),
+            fmt_defo={'color': 'red', 'linestyle': (0, (4, 5)), 'linewidth': 1.5},
+            fmt_undefo={'color': '#555', 'linestyle': 'solid', 'linewidth': 1.5},
+        )
+        plt.title(f"{data.title} — Deflection")
+        plt.xlabel("x [m]"); plt.ylabel("y [m]"); plt.grid(True); plt.tight_layout()
+        figs_b64.append(_fig_to_b64(plt.gcf()))
+        plt.close("all")
+
+        # Figure 2 — bending moment
+        opsv.section_force_diagram_2d('M', mFac, fig_wi_he=(12, 6),
+                                      fmt_secforce1={'color': 'green'},
+                                      fmt_secforce2={'color': 'green'})
+        plt.title(f"{data.title} — Bending Moment")
+        plt.xlabel("x [m]"); plt.ylabel("y [m]"); plt.grid(True); plt.tight_layout()
+        figs_b64.append(_fig_to_b64(plt.gcf()))
+        plt.close("all")
+
+        # Figure 3 — shear force
+        opsv.section_force_diagram_2d('V', vFac, fig_wi_he=(12, 6),
+                                      fmt_secforce1={'color': 'steelblue'},
+                                      fmt_secforce2={'color': 'steelblue'})
+        plt.title(f"{data.title} — Shear Force")
+        plt.xlabel("x [m]"); plt.ylabel("y [m]"); plt.grid(True); plt.tight_layout()
+        figs_b64.append(_fig_to_b64(plt.gcf()))
+        plt.close("all")
+
+        # Summary
+        ux, ux_node = frame.max_lateral_disp()
+        uy, uy_node = frame.max_vertical_disp()
+        M_max, M_ele = frame.max_moment()
+
+        reactions_out = {}
+        for i in range(frame.n_cols):
+            tag = frame.base_node(i)
+            R = frame.node_reactions[tag]
+            reactions_out[f"col{i}"] = {
+                "Fx_kN": round(R[0] * 1e-3, 3),
+                "Fy_kN": round(R[1] * 1e-3, 3),
+                "Mz_kNm": round(R[2] * 1e-3, 3),
+            }
+
+        summary = {
+            "max_lateral_disp_mm":    round(ux * 1e3, 3),
+            "max_lateral_disp_node":  ux_node,
+            "max_vertical_disp_mm":   round(uy * 1e3, 3),
+            "max_vertical_disp_node": uy_node,
+            "max_moment_kNm":         round(M_max * 1e-3, 3),
+            "max_moment_ele":         M_ele,
+            "reactions":              reactions_out,
+        }
+
+        # calc_core blocks for PDF
+        result_blocks = [
+            S(data.title),
+            T(f"Portal frame  {data.n_bays} bay(s) × {data.w_bay_m:.1f} m wide, "
+              f"height {data.h_bay_m:.1f} m. "
+              f"E = {data.E_GPa:.0f} GPa  A = {data.A_cm2:.1f} cm²  Iz = {data.Iz_cm4:.0f} cm⁴"),
+            TBL(
+                ["Result", "Value", "Node / Element"],
+                [
+                    ["Max lateral disp. δ_x", f"{summary['max_lateral_disp_mm']:.2f} mm",
+                     f"node {summary['max_lateral_disp_node']}"],
+                    ["Max vertical disp. δ_y", f"{summary['max_vertical_disp_mm']:.2f} mm",
+                     f"node {summary['max_vertical_disp_node']}"],
+                    ["Max bending moment M", f"{summary['max_moment_kNm']:.2f} kNm",
+                     f"element {summary['max_moment_ele']}"],
+                ],
+            ),
+            T("Support reactions:"),
+        ]
+        for col_key, R in reactions_out.items():
+            result_blocks.append(
+                T(f"  {col_key}: Fx = {R['Fx_kN']:+.2f} kN  "
+                  f"Fy = {R['Fy_kN']:+.2f} kN  "
+                  f"Mz = {R['Mz_kNm']:+.2f} kNm")
+            )
+
+        return {
+            "_figs_b64": figs_b64,
+            "_summary":  summary,
+            "_result":   result_blocks,
+        }
+
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail=f"Missing dependency: {exc}. "
+                   "Run: pip install openseespy opsvis",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc) + "\n" + traceback.format_exc())
+
+
 class RcColumnInput(BaseModel):
     label:      str   = "C1"
     h_mm:       float = 300.0

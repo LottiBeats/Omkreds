@@ -25,7 +25,8 @@ import TimberBeamBlock   from './TimberBeamBlock.jsx'
 import TimberColumnBlock from './TimberColumnBlock.jsx'
 import MasonryWallBlock  from './MasonryWallBlock.jsx'
 import BeamFemBlock      from './BeamFemBlock.jsx'
-import FrameFemBlock     from './FrameFemBlock.jsx'
+import FrameFemBlock          from './FrameFemBlock.jsx'
+import PortalFrameFemBlock    from './PortalFrameFemBlock.jsx'
 import WindLoadBlock     from './WindLoadBlock.jsx'
 import SnowLoadBlock     from './SnowLoadBlock.jsx'
 import FoundationBlock     from './FoundationBlock.jsx'
@@ -107,6 +108,12 @@ const BLOCK_TYPES = [
                supports: [{ x: 0, type: 'pin' }, { x: 6.0, type: 'roller' }],
                loads: [{ type: 'udl', w_kNm: 10.0, x1: 0, x2: 6.0 }],
                _fig_b64: null, _summary: null, _result: null } },
+  { type: 'portal_frame_fem', label: 'Portal Frame FEM',  icon: 'PF',  color: '#0f766e', component: PortalFrameFemBlock,
+    default: { title: 'Portal Frame FEM', n_bays: 1, h_bay_m: 5.0, w_bay_m: 10.0,
+               E_GPa: 200.0, A_cm2: 300.0, Iz_cm4: 30000.0,
+               rafter_loads: [{ rafter_idx: 0, wy_kNm: -10.0 }],
+               lateral_loads: [],
+               _figs_b64: null, _summary: null, _result: null } },
   { type: 'frame_fem',     label: '2D Frame FEM',       icon: '2DF', color: '#0f766e', component: FrameFemBlock,
     default: { title: '2D Frame Analysis',
                nodes:    [{ id: 1, x: 0.0, y: 0.0 }, { id: 2, x: 5.0, y: 0.0 }],

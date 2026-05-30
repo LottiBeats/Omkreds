@@ -219,6 +219,13 @@ export const calcBeamFem = (data) =>
   request('POST', '/calc/beam-fem', data)
 
 /**
+ * Run the portal frame FEM solver (OpenSeesPy).
+ * Returns { _figs_b64, _summary, _result }
+ */
+export const calcPortalFrameFem = (data) =>
+  request('POST', '/calc/portal-frame-fem', data)
+
+/**
  * Run an EN 1993-1-1 §6.3.1 steel column compression + buckling check.
  */
 export const calcSteelColumn = (data) =>
