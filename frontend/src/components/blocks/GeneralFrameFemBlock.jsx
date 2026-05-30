@@ -206,7 +206,8 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
 // ── Result panel ──────────────────────────────────────────────────────────────
 
 const TABS = ['Figures', 'Elements', 'Nodes', 'Loads', 'Reactions']
-const FIG_LABELS = ['Static model', 'Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
+const FIG_LABELS       = ['Static model', 'Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
+const COMBO_FIG_LABELS = ['Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
 
 function Tbl({ headers, rows, zebra = true }) {
   return (
@@ -226,9 +227,10 @@ function Tbl({ headers, rows, zebra = true }) {
 }
 
 function ResultPanel({ figs, summary }) {
-  const [open,   setOpen]   = useState(true)
-  const [tab,    setTab]    = useState('Figures')
-  const [figIdx, setFigIdx] = useState(0)
+  const [open,      setOpen]      = useState(true)
+  const [tab,       setTab]       = useState('Figures')
+  const [figIdx,    setFigIdx]    = useState(0)
+  const [comboIdx,  setComboIdx]  = useState(null)  // null = static model
 
   return (
     <div style={s.resultPanel}>
@@ -260,21 +262,59 @@ function ResultPanel({ figs, summary }) {
           </div>
 
           {/* ── Figures ── */}
-          {tab === 'Figures' && figs?.length > 0 && (
-            <div>
-              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                {FIG_LABELS.slice(0, figs.length).map((lbl, i) => (
-                  <button key={i}
-                    style={{ ...s.tabBtn, ...(figIdx === i ? s.tabBtnActive : {}) }}
-                    onClick={() => setFigIdx(i)}>
-                    {lbl}
-                  </button>
-                ))}
+          {tab === 'Figures' && figs?.length > 0 && (() => {
+            const comboFigs    = summary?.combo_figs ?? []
+            const hasComboFigs = comboFigs.length > 0
+
+            // Active figure set
+            const isStatic   = comboIdx === null || !hasComboFigs
+            const activeFigs = isStatic ? figs : (comboFigs[comboIdx]?.figs ?? [])
+            const labels     = isStatic
+              ? FIG_LABELS.slice(0, figs.length)
+              : COMBO_FIG_LABELS.slice(0, activeFigs.length)
+            const idx = Math.min(figIdx, activeFigs.length - 1)
+
+            return (
+              <div>
+                {/* Combination selector — only when combo mode */}
+                {hasComboFigs && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={s.detailLabel}>Combination</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                      <button
+                        style={{ ...s.tabBtn, ...(isStatic ? s.tabBtnActive : {}) }}
+                        onClick={() => setComboIdx(null)}>
+                        Static model
+                      </button>
+                      {comboFigs.map((cf, ci) => (
+                        <button key={ci}
+                          style={{ ...s.tabBtn, ...(comboIdx === ci ? s.tabBtnActive : {}) }}
+                          onClick={() => { setComboIdx(ci); setFigIdx(0) }}>
+                          {cf.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Diagram type tabs */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                  {labels.map((lbl, i) => (
+                    <button key={i}
+                      style={{ ...s.tabBtn, ...(idx === i ? s.tabBtnActive : {}) }}
+                      onClick={() => setFigIdx(i)}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                {activeFigs[idx] && (
+                  <img src={`data:image/png;base64,${activeFigs[idx]}`}
+                    alt={labels[idx]}
+                    style={{ width: '100%', display: 'block' }} />
+                )}
               </div>
-              <img src={`data:image/png;base64,${figs[figIdx]}`} alt={FIG_LABELS[figIdx]}
-                style={{ width: '100%', display: 'block' }} />
-            </div>
-          )}
+            )
+          })()}
 
           {/* ── Elements ── */}
           {/* ── Envelope (combination mode) ── */}

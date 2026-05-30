@@ -1986,16 +1986,21 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         if combos:
             envelope, all_results = solve_combinations(nodes, elements, supports, combos)
 
-            # Use results from the worst-M combination for figures
+            # Generate figures for every combination so the frontend can switch
+            combo_figs = []
+            for r in all_results:
+                figs = make_figures(
+                    r['name'], nodes, elements, supports, [],
+                    r['ele_forces'], r['node_disps'], ref_size,
+                )
+                combo_figs.append({'name': r['name'], 'figs': figs})
+
+            # _figs_b64 = static model + governing combo (backward compat)
             best_combo_name = max(envelope.values(), key=lambda v: v['M_max_kNm'],
                                   default={}).get('M_combo', combos[0]['name'])
-            best_res = next((r for r in all_results if r['name'] == best_combo_name),
-                             all_results[0])
-
-            figs_b64 = [model_fig] + make_figures(
-                data.title, nodes, elements, supports, combos[0]['loads'],
-                best_res['ele_forces'], best_res['node_disps'], ref_size,
-            )
+            best_figs = next((c['figs'] for c in combo_figs if c['name'] == best_combo_name),
+                              combo_figs[0]['figs'])
+            figs_b64 = [model_fig] + best_figs
 
             # Build envelope summary for frontend
             summary = summarise(nodes, elements,
@@ -2003,6 +2008,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                                 best_res['ele_forces'], supports, [])
             summary['envelope']      = envelope
             summary['combinations']  = [r['name'] for r in all_results]
+            summary['combo_figs']    = combo_figs   # [{name, figs:[defo,M,V,N]}]
 
             result_blocks = [S(data.title), T(f'{len(combos)} load combinations analysed')]
             result_blocks.append(TBL(
