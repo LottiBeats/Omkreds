@@ -207,7 +207,7 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Analysis',
-    types: ['beam_fem', 'general_frame_fem', 'portal_frame_fem', 'frame_fem'],
+    types: ['beam_fem', 'general_frame_fem', 'portal_frame_fem'],
   },
   {
     label: 'Custom',
