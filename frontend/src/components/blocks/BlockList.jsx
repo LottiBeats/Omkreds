@@ -28,6 +28,7 @@ import BeamFemBlock      from './BeamFemBlock.jsx'
 import FrameFemBlock          from './FrameFemBlock.jsx'
 import PortalFrameFemBlock    from './PortalFrameFemBlock.jsx'
 import GeneralFrameFemBlock  from './GeneralFrameFemBlock.jsx'
+import FrameLoadCasesBlock  from './FrameLoadCasesBlock.jsx'
 import WindLoadBlock     from './WindLoadBlock.jsx'
 import SnowLoadBlock     from './SnowLoadBlock.jsx'
 import FoundationBlock     from './FoundationBlock.jsx'
@@ -109,6 +110,22 @@ const BLOCK_TYPES = [
                supports: [{ x: 0, type: 'pin' }, { x: 6.0, type: 'roller' }],
                loads: [{ type: 'udl', w_kNm: 10.0, x1: 0, x2: 6.0 }],
                _fig_b64: null, _summary: null, _result: null } },
+  { type: 'frame_load_cases', label: 'Frame Load Cases',  icon: 'FLC', color: '#7c3aed', component: FrameLoadCasesBlock,
+    default: { title: 'Frame Load Cases', consequence_class: 'CC2', method: '6.10ab',
+               cases: [
+                 { id: 'G', type: 'permanent', loads: [
+                     { load_type: 'udl', elem_id: 1, value_kNm: 5, direction: 'vertical' },
+                     { load_type: 'udl', elem_id: 2, value_kNm: 5, direction: 'vertical' },
+                     { load_type: 'udl', elem_id: 3, value_kNm: 5, direction: 'vertical' },
+                   ] },
+                 { id: 'S', type: 'snow', loads: [
+                     { load_type: 'udl', elem_id: 2, value_kNm: 1.5, direction: 'projected' },
+                   ] },
+                 { id: 'W', type: 'wind', loads: [
+                     { load_type: 'nodal', node_id: 2, Fx_kN: 10, Fy_kN: 0 },
+                   ] },
+               ],
+               _exports: null, _result: null } },
   { type: 'general_frame_fem', label: 'General Frame FEM', icon: 'GF',  color: '#0f766e', component: GeneralFrameFemBlock,
     default: { title: '2D Frame FEM',
                nodes:    [{ id: 1, x: 0, y: 0 }, { id: 2, x: 0, y: 4 }, { id: 3, x: 6, y: 4 }, { id: 4, x: 6, y: 0 }],
@@ -191,7 +208,7 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Loads  (EN 1990)',
-    types: ['load_combo'],
+    types: ['load_combo', 'frame_load_cases'],
   },
   {
     label: 'Steel  (EC3)',

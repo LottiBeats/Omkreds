@@ -189,6 +189,125 @@ def solve(nodes, elements, supports, loads):
     }
 
 
+# ---------------------------------------------------------------------------
+# Multi-combination solver (Frame Load Cases)
+# ---------------------------------------------------------------------------
+
+def _project_load(ld, elements, dict_nodes):
+    """
+    Convert a frame-load-case load to the internal eleLoad/nodal format
+    used by solve(), applying geometry-based projection where needed.
+
+    Directions
+    ----------
+    'vertical'   : global Y downward — projects onto local element axes.
+                   For horizontal elements this is simply wy = -p.
+    'projected'  : snow on horizontal projection.
+                   p [kN/m horizontal] → wy_local = -p·cos²α, wx_local = -p·cosα·sinα
+    'horizontal' : global X (wind) → wy_local = -p·sinα, wx_local = p·cosα
+    """
+    if ld.get('load_type') == 'nodal':
+        return {
+            'type':    'nodal',
+            'node_id': ld['node_id'],
+            'Fx_kN':   float(ld.get('Fx_kN',  0.0)),
+            'Fy_kN':   float(ld.get('Fy_kN',  0.0)),
+            'Mz_kNm':  float(ld.get('Mz_kNm', 0.0)),
+        }
+
+    eid = ld['elem_id']
+    el  = next((e for e in elements if e['id'] == eid), None)
+    if el is None:
+        return None
+
+    ni = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
+    dx = nj['x'] - ni['x'];   dy = nj['y'] - ni['y']
+    L  = math.hypot(dx, dy) or 1e-9
+    ca = dx / L   # cos of element angle from horizontal
+    sa = dy / L   # sin of element angle from horizontal
+
+    p   = float(ld.get('value_kNm', 0.0))
+    direction = ld.get('direction', 'vertical')
+
+    if direction == 'projected':
+        # Snow load per unit horizontal length, global downward.
+        # Per unit element length: p·cosα downward.
+        # local y: dot((0,-1), (-sa, ca))  = -ca  →  wy = -p·ca²
+        # local x: dot((0,-1), ( ca, sa))  = -sa  →  wx = -p·ca·sa
+        wy = -p * ca * ca
+        wx = -p * ca * sa
+
+    elif direction == 'horizontal':
+        # Wind: p kN/m globally rightward (positive X).
+        # local y: dot((1,0), (-sa, ca))  = -sa  →  wy = -p·sa
+        # local x: dot((1,0), ( ca, sa))  =  ca  →  wx =  p·ca
+        wy = -p * sa
+        wx =  p * ca
+
+    else:  # 'vertical' or default — global Y downward
+        # local y: dot((0,-1), (-sa, ca))  = -ca  →  wy = -p·ca
+        # local x: dot((0,-1), ( ca, sa))  = -sa  →  wx = -p·sa
+        wy = -p * ca
+        wx = -p * sa
+
+    return {'type': 'udl', 'elem_id': eid, 'wy_kNm': wy, 'wx_kNm': wx}
+
+
+def solve_combinations(nodes, elements, supports, combinations):
+    """
+    Run the FEM once per load combination and return envelope results.
+
+    Parameters
+    ----------
+    combinations : list of dicts
+        Each: { name: str, loads: [frame-load-case load dicts] }
+
+    Returns
+    -------
+    envelope : dict  {elem_id: {M_max_kNm, M_combo, V_max_kN, V_combo, N_max_kN, N_combo}}
+    all_results : list of {name, node_disps, ele_forces, node_reactions}
+    """
+    dict_nodes = {n['id']: n for n in nodes}
+    all_results = []
+
+    for combo in combinations:
+        resolved = []
+        for ld in combo.get('loads', []):
+            proj = _project_load(ld, elements, dict_nodes)
+            if proj is not None:
+                resolved.append(proj)
+
+        result = solve(nodes, elements, supports, resolved)
+        all_results.append({
+            'name':            combo['name'],
+            'node_disps':      result['node_disps'],
+            'node_reactions':  result['node_reactions'],
+            'ele_forces':      result['ele_forces'],
+        })
+
+    # Envelope — worst-case M, V, N per element across all combinations
+    envelope = {}
+    for el in elements:
+        eid  = el['id']
+        best = {'M': 0.0, 'M_combo': '', 'V': 0.0, 'V_combo': '',
+                'N': 0.0, 'N_combo': ''}
+        for r in all_results:
+            f = r['ele_forces'].get(eid, [0.0] * 6)
+            M = max(abs(f[2]), abs(f[5]))
+            V = max(abs(f[1]), abs(f[4]))
+            N = max(abs(f[0]), abs(f[3]))
+            if M > best['M']: best['M'] = M; best['M_combo'] = r['name']
+            if V > best['V']: best['V'] = V; best['V_combo'] = r['name']
+            if N > best['N']: best['N'] = N; best['N_combo'] = r['name']
+        envelope[eid] = {
+            'M_max_kNm': round(best['M'], 3), 'M_combo': best['M_combo'],
+            'V_max_kN':  round(best['V'], 3), 'V_combo': best['V_combo'],
+            'N_max_kN':  round(best['N'], 3), 'N_combo': best['N_combo'],
+        }
+
+    return envelope, all_results
+
+
 def plot_model(title, nodes, elements, supports, loads, ref_size):
     """
     Draw the static structural model: geometry, supports, releases, loads.

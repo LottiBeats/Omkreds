@@ -808,6 +808,8 @@ def _convert_block(block: dict, tmp_files: list) -> list:
         return _frame_fem_block(block, tmp_files)
     if t == "general_frame_fem":
         return _general_frame_fem_block(block, tmp_files)
+    if t == "frame_load_cases":
+        return _calc_block(block)   # _result already contains calc_core blocks
     if t == "portal_frame_fem":
         return _portal_frame_fem_block(block, tmp_files)
     if t == "control_plan":

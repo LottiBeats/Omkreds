@@ -237,6 +237,13 @@ export const previewGeneralFrameFem = (data) =>
   request('POST', '/calc/general-frame-fem/preview', data)
 
 /**
+ * Generate EN 1990 load combinations from named load cases.
+ * Returns { _exports: { combinations }, _result }
+ */
+export const calcFrameLoadCases = (data) =>
+  request('POST', '/calc/frame-load-cases', data)
+
+/**
  * Run an EN 1993-1-1 §6.3.1 steel column compression + buckling check.
  */
 export const calcSteelColumn = (data) =>

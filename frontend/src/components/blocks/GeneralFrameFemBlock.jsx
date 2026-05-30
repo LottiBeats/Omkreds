@@ -277,6 +277,21 @@ function ResultPanel({ figs, summary }) {
           )}
 
           {/* ── Elements ── */}
+          {/* ── Envelope (combination mode) ── */}
+          {tab === 'Elements' && summary?.envelope && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={s.detailLabel}>Envelope — worst case per element (all combinations)</div>
+              <Tbl
+                headers={['Elem', 'M_max (kNm)', 'Governing combo (M)', 'V_max (kN)', 'N_max (kN)']}
+                rows={Object.entries(summary.envelope).map(([eid, v]) => [
+                  eid,
+                  v.M_max_kNm.toFixed(2), v.M_combo,
+                  v.V_max_kN.toFixed(2),  v.N_max_kN.toFixed(2),
+                ])}
+              />
+            </div>
+          )}
+
           {tab === 'Elements' && (
             <div>
               <div style={s.detailLabel}>Section properties</div>
@@ -348,7 +363,15 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
 
-  const comboBlocks = blocks.filter(b => b.type === 'load_combo')
+  const comboBlocks      = blocks.filter(b => b.type === 'load_combo')
+  const loadCaseBlocks   = blocks.filter(b => b.type === 'frame_load_cases')
+  const selLoadCaseBlock = loadCaseBlocks.find(b => b.id === d.load_cases_block_id)
+                           ?? loadCaseBlocks[0]
+  const loadCaseCombos   = selLoadCaseBlock?.data?._exports?.combinations ?? []
+  const loadCasesReady   = loadCaseCombos.length > 0
+
+  const loadMode = d.load_mode ?? 'simple'   // 'simple' | 'load_cases'
+
   const [previewing, setPreviewing] = useState(false)
 
   function update(changes) {
@@ -408,18 +431,27 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
   async function handleRun() {
     setRunning(true); setError(null)
     try {
-      // Resolve combo_udl loads to their current E_d_uls value
-      const resolvedLoads = loads.map(ld => {
-        if (ld.type !== 'combo_udl') return ld
-        const cb = comboBlocks.find(b => b.data.label === ld.combo_label) ?? comboBlocks[0]
-        const w  = cb?.data?._exports?.E_d_uls ?? 0
-        return { type: 'udl', elem_id: ld.elem_id ?? 1, wy_kNm: w, wx_kNm: 0 }
-      })
+      let resolvedLoads = []
+      let combinations  = []
+
+      if (loadMode === 'load_cases') {
+        // Combination mode — pass all combos to backend
+        combinations = loadCaseCombos
+      } else {
+        // Simple mode — resolve combo_udl loads
+        resolvedLoads = loads.map(ld => {
+          if (ld.type !== 'combo_udl') return ld
+          const cb = comboBlocks.find(b => b.data.label === ld.combo_label) ?? comboBlocks[0]
+          const w  = cb?.data?._exports?.E_d_uls ?? 0
+          return { type: 'udl', elem_id: ld.elem_id ?? 1, wy_kNm: w, wx_kNm: 0 }
+        })
+      }
 
       const res = await calcGeneralFrameFem({
-        title:    d.title ?? '2D Frame FEM',
+        title:        d.title ?? '2D Frame FEM',
         nodes, elements, supports,
-        loads: resolvedLoads,
+        loads:        resolvedLoads,
+        combinations,
       })
 
       // Build _exports so capacity check blocks can read element forces
@@ -483,21 +515,72 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
         <SupportRow key={i} sup={sup} onChange={v => updateSup(i, v)} onRemove={() => removeSup(i)} />
       ))}
 
-      {/* Loads */}
+      {/* Load mode selector */}
       <div style={s.rowHeader}>
         <SectionLabel text="Loads" />
-        <button style={s.addBtn} onClick={() => addLoad('nodal')}>+ Nodal</button>
-        <button style={s.addBtn} onClick={() => addLoad('udl')}>+ UDL</button>
-        <button style={s.addBtn} onClick={() => addLoad('combo_udl')}>+ Combo UDL</button>
+        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+          {[['simple', 'Simple'], ['load_cases', 'Frame Load Cases']].map(([v, l]) => (
+            <button key={v}
+              style={{ ...s.addBtn, ...(loadMode === v ? { background: '#111', color: '#fff', border: '1px solid #111' } : {}) }}
+              onClick={() => update({ load_mode: v })}>
+              {l}
+            </button>
+          ))}
+        </div>
       </div>
-      {loads.map((ld, i) => (
-        <LoadRow key={i} load={ld} comboBlocks={comboBlocks}
-          onChange={v => updateLoad(i, v)} onRemove={() => removeLoad(i)} />
-      ))}
+
+      {/* Frame Load Cases picker */}
+      {loadMode === 'load_cases' && (
+        <div style={{ background: '#fafafa', border: '1px solid #e8e8e8', padding: '10px 12px', borderRadius: 2 }}>
+          {loadCaseBlocks.length === 0 ? (
+            <span style={{ fontSize: 12, color: '#e67e22' }}>
+              No Frame Load Cases blocks in this document — add one first.
+            </span>
+          ) : (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={s.fieldWrap}>
+                <label style={s.miniLabel}>Load cases block</label>
+                <select style={{ ...s.smallInput, width: 220 }}
+                  value={selLoadCaseBlock?.id ?? ''}
+                  onChange={e => update({ load_cases_block_id: Number(e.target.value) })}>
+                  {loadCaseBlocks.map(b => (
+                    <option key={b.id} value={b.id}>{b.data.title ?? 'Frame Load Cases'}</option>
+                  ))}
+                </select>
+              </div>
+              {loadCasesReady
+                ? <span style={{ fontSize: 12, color: '#27ae60', fontWeight: 700 }}>
+                    ✓ {loadCaseCombos.length} combinations ready — FEM will run all and envelope
+                  </span>
+                : <span style={{ fontSize: 12, color: '#e67e22' }}>
+                    Run the Frame Load Cases block first
+                  </span>
+              }
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Simple loads list */}
+      {loadMode === 'simple' && (<>
+        <div style={s.rowHeader}>
+          <button style={s.addBtn} onClick={() => addLoad('nodal')}>+ Nodal</button>
+          <button style={s.addBtn} onClick={() => addLoad('udl')}>+ UDL</button>
+          <button style={s.addBtn} onClick={() => addLoad('combo_udl')}>+ Combo UDL</button>
+        </div>
+        {loads.map((ld, i) => (
+          <LoadRow key={i} load={ld} comboBlocks={comboBlocks}
+            onChange={v => updateLoad(i, v)} onRemove={() => removeLoad(i)} />
+        ))}
+      </>)}
 
       {/* Actions */}
       <div style={s.actionRow}>
-        <button style={{ ...s.btn, ...s.btnRun }} onClick={handleRun} disabled={running || previewing}>
+        <button style={{ ...s.btn, ...s.btnRun,
+                         opacity: (loadMode === 'load_cases' && !loadCasesReady) ? 0.5 : 1 }}
+          onClick={handleRun}
+          disabled={running || previewing || (loadMode === 'load_cases' && !loadCasesReady)}
+          title={loadMode === 'load_cases' && !loadCasesReady ? 'Run the Frame Load Cases block first' : undefined}>
           {running ? '⏳  Running…' : '▶  Run FEM'}
         </button>
         <button style={s.btn} onClick={handlePreview} disabled={running || previewing}>

@@ -1818,6 +1818,59 @@ def calc_portal_frame_fem(data: PortalFrameFemInput):
         raise HTTPException(status_code=422, detail=str(exc) + "\n" + traceback.format_exc())
 
 
+# ── Frame Load Cases (EN 1990) ────────────────────────────────────────────────
+
+class FrameLoadIn(BaseModel):
+    load_type:  str         # 'udl' | 'nodal'
+    # UDL
+    elem_id:    int | None  = None
+    value_kNm:  float       = 0.0
+    direction:  str         = 'vertical'   # 'vertical' | 'projected' | 'horizontal'
+    # Nodal
+    node_id:    int | None  = None
+    Fx_kN:      float       = 0.0
+    Fy_kN:      float       = 0.0
+    Mz_kNm:     float       = 0.0
+
+class FrameCaseIn(BaseModel):
+    id:    str               # e.g. 'G', 'S', 'W'
+    type:  str               # 'permanent' | 'snow' | 'wind' | 'imposed'
+    loads: list[FrameLoadIn] = []
+
+class FrameLoadCasesInput(BaseModel):
+    title:              str              = "Frame Load Cases"
+    consequence_class:  str              = "CC2"
+    method:             str              = "6.10ab"
+    cases:              list[FrameCaseIn] = []
+
+
+@protected.post("/calc/frame-load-cases", tags=["Calculations"])
+def calc_frame_load_cases(data: FrameLoadCasesInput):
+    """
+    Generate EN 1990 ULS load combinations from named load cases.
+    Returns combination table (for display) and _exports for use by FEM block.
+    """
+    try:
+        from frame_load_cases import generate_combinations, combinations_to_calc_blocks
+
+        cases = [c.model_dump() for c in data.cases]
+        combos = generate_combinations(cases, data.method, data.consequence_class)
+
+        result_blocks = combinations_to_calc_blocks(
+            cases, combos, data.consequence_class, data.method
+        )
+
+        return {
+            "_exports": {"combinations": combos},
+            "_result":  result_blocks,
+        }
+
+    except Exception as exc:
+        import traceback
+        raise HTTPException(status_code=422,
+                            detail=str(exc) + "\n" + traceback.format_exc())
+
+
 # ── General 2D Frame FEM (OpenSeesPy + OpsVis) ────────────────────────────────
 
 class GenFrameNodeIn(BaseModel):
@@ -1851,12 +1904,28 @@ class GenFrameLoadIn(BaseModel):
     wy_kNm:   float = 0.0   # positive = downward
     wx_kNm:   float = 0.0
 
+class FrameComboLoadIn(BaseModel):
+    """One load inside a combination (from Frame Load Cases block)."""
+    load_type:  str
+    elem_id:    int | None = None
+    value_kNm:  float      = 0.0
+    direction:  str        = 'vertical'
+    node_id:    int | None = None
+    Fx_kN:      float      = 0.0
+    Fy_kN:      float      = 0.0
+    Mz_kNm:     float      = 0.0
+
+class FrameComboIn(BaseModel):
+    name:  str
+    loads: list[FrameComboLoadIn] = []
+
 class GenFrameFemInput(BaseModel):
-    title:    str                      = "2D Frame FEM"
-    nodes:    list[GenFrameNodeIn]     = []
-    elements: list[GenFrameElemIn]     = []
-    supports: list[GenFrameSupportIn]  = []
-    loads:    list[GenFrameLoadIn]     = []
+    title:        str                      = "2D Frame FEM"
+    nodes:        list[GenFrameNodeIn]     = []
+    elements:     list[GenFrameElemIn]     = []
+    supports:     list[GenFrameSupportIn]  = []
+    loads:        list[GenFrameLoadIn]     = []
+    combinations: list[FrameComboIn]      = []  # from Frame Load Cases block
 
 
 @protected.post("/calc/general-frame-fem/preview", tags=["Calculations"])
@@ -1890,12 +1959,14 @@ def preview_general_frame_fem(data: GenFrameFemInput):
 def calc_general_frame_fem(data: GenFrameFemInput):
     """
     General 2D frame / truss FEM using OpenSeesPy.
-    Returns three OpsVis matplotlib figures (deformed shape, M, V)
-    as base64 PNGs plus a summary dict and calc_core blocks.
+    When combinations are supplied (from a Frame Load Cases block) the solver
+    runs once per combination and returns envelope M/V/N per element.
+    Otherwise runs with the flat loads list (simple mode).
     """
     import traceback
     try:
-        from general_frame_fem import solve, make_figures, summarise
+        from general_frame_fem import (solve, solve_combinations,
+                                       make_figures, summarise, plot_model)
         from calc_core import S, T, TBL
         import math
 
@@ -1903,52 +1974,75 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         elements = [e.model_dump() for e in data.elements]
         supports = [s.model_dump() for s in data.supports]
         loads    = [l.model_dump() for l in data.loads]
+        combos   = [c.model_dump() for c in data.combinations]
 
-        res = solve(nodes, elements, supports, loads)
-
-        # Reference size for auto-scaling diagrams
         xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
         ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
 
-        # Static model figure first, then analysis results
-        from general_frame_fem import plot_model
-        model_fig = plot_model(data.title, nodes, elements, supports, loads, ref_size)
-        figs_b64 = [model_fig] + make_figures(
-            data.title, nodes, elements, supports, loads,
-            res['ele_forces'], res['node_disps'], ref_size,
-        )
+        model_fig = plot_model(data.title, nodes, elements, supports,
+                               loads or [], ref_size)
 
-        summary = summarise(nodes, elements,
-                            res['node_disps'], res['node_reactions'],
-                            res['ele_forces'], supports, loads)
+        # ── Combination mode ──────────────────────────────────────────────────
+        if combos:
+            envelope, all_results = solve_combinations(nodes, elements, supports, combos)
 
-        result_blocks = [
-            S(data.title),
-            T(f"{len(nodes)} nodes · {len(elements)} elements · "
-              f"{len([s for s in supports if s.get('ux') or s.get('uy')])} supports"),
-            TBL(
-                ["Result", "Value", "Location"],
-                [
-                    ["Max horiz. disp. δ_x", f"{summary['max_ux_mm']:.2f} mm",
-                     f"node {summary['max_ux_node']}"],
-                    ["Max vert. disp. δ_y",  f"{summary['max_uy_mm']:.2f} mm",
-                     f"node {summary['max_uy_node']}"],
-                    ["Max bending moment M",  f"{summary['max_moment_kNm']:.2f} kNm",
-                     f"element {summary['max_moment_ele']}"],
-                ],
-            ),
-        ]
-        for nid, R in summary['reactions'].items():
-            result_blocks.append(
-                T(f"  Node {nid}: Fx={R['Fx_kN']:+.2f} kN  "
-                  f"Fy={R['Fy_kN']:+.2f} kN  Mz={R['Mz_kNm']:+.2f} kNm")
+            # Use results from the worst-M combination for figures
+            best_combo_name = max(envelope.values(), key=lambda v: v['M_max_kNm'],
+                                  default={}).get('M_combo', combos[0]['name'])
+            best_res = next((r for r in all_results if r['name'] == best_combo_name),
+                             all_results[0])
+
+            figs_b64 = [model_fig] + make_figures(
+                data.title, nodes, elements, supports, combos[0]['loads'],
+                best_res['ele_forces'], best_res['node_disps'], ref_size,
             )
 
-        return {
-            "_figs_b64": figs_b64,
-            "_summary":  summary,
-            "_result":   result_blocks,
-        }
+            # Build envelope summary for frontend
+            summary = summarise(nodes, elements,
+                                best_res['node_disps'], best_res['node_reactions'],
+                                best_res['ele_forces'], supports, [])
+            summary['envelope']      = envelope
+            summary['combinations']  = [r['name'] for r in all_results]
+
+            result_blocks = [S(data.title), T(f'{len(combos)} load combinations analysed')]
+            result_blocks.append(TBL(
+                ['Element', 'M_max (kNm)', 'Governing combo (M)',
+                 'V_max (kN)', 'N_max (kN)'],
+                [[str(eid),
+                  f"{v['M_max_kNm']:.2f}", v['M_combo'],
+                  f"{v['V_max_kN']:.2f}", f"{v['N_max_kN']:.2f}"]
+                 for eid, v in envelope.items()],
+            ))
+
+        # ── Simple mode (flat loads) ──────────────────────────────────────────
+        else:
+            res = solve(nodes, elements, supports, loads)
+            figs_b64 = [model_fig] + make_figures(
+                data.title, nodes, elements, supports, loads,
+                res['ele_forces'], res['node_disps'], ref_size,
+            )
+            summary = summarise(nodes, elements,
+                                res['node_disps'], res['node_reactions'],
+                                res['ele_forces'], supports, loads)
+            result_blocks = [
+                S(data.title),
+                T(f"{len(nodes)} nodes · {len(elements)} elements"),
+                TBL(["Result", "Value", "Location"], [
+                    ["Max δ_x", f"{summary['max_ux_mm']:.2f} mm",
+                     f"node {summary['max_ux_node']}"],
+                    ["Max δ_y", f"{summary['max_uy_mm']:.2f} mm",
+                     f"node {summary['max_uy_node']}"],
+                    ["Max M",   f"{summary['max_moment_kNm']:.2f} kNm",
+                     f"element {summary['max_moment_ele']}"],
+                ]),
+            ]
+            for nid, R in summary['reactions'].items():
+                result_blocks.append(
+                    T(f"  Node {nid}: Fx={R['Fx_kN']:+.2f} kN  "
+                      f"Fy={R['Fy_kN']:+.2f} kN  Mz={R['Mz_kNm']:+.2f} kNm")
+                )
+
+        return {"_figs_b64": figs_b64, "_summary": summary, "_result": result_blocks}
 
     except ImportError as exc:
         raise HTTPException(status_code=501,
