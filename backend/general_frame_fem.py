@@ -197,12 +197,31 @@ def make_figures(title, nodes, elements, supports, loads,
     if not _OPSVIS_AVAILABLE:
         raise ImportError("opsvis is required. pip install opsvis")
 
-    def _capture():
-        buf = io.BytesIO()
+    def _style_and_capture(subtitle):
+        """Apply clean styling to the current OpsVis figure, then capture it."""
         fig = plt.gcf()
         fig.patch.set_facecolor('white')
+        fig.set_size_inches(13, 7)
+
+        for ax in fig.axes:
+            ax.set_facecolor('white')
+            ax.set_title(subtitle, fontsize=12, fontweight='bold',
+                         color='#1C1C1E', pad=10)
+            ax.set_xlabel('x  [m]', fontsize=9, color='#555', labelpad=5)
+            ax.set_ylabel('y  [m]', fontsize=9, color='#555', labelpad=5)
+            ax.tick_params(colors='#888', labelsize=8)
+            ax.grid(True, ls=':', lw=0.5, color='#E5E5EA', zorder=0)
+            for spine in ax.spines.values():
+                spine.set_color('#E5E5EA')
+                spine.set_linewidth(0.8)
+
+        fig.suptitle(title, fontsize=10, color='#6E6E73',
+                     y=0.98, style='italic')
+        fig.tight_layout(rect=[0, 0, 1, 0.96])
+
+        buf = io.BytesIO()
         fig.savefig(buf, format='png', dpi=150, bbox_inches='tight',
-                    facecolor='white')
+                    facecolor='white', edgecolor='none')
         buf.seek(0)
         plt.close(fig)
         return base64.b64encode(buf.read()).decode()
@@ -225,34 +244,22 @@ def make_figures(title, nodes, elements, supports, loads,
 
     plt.close('all')
     opsv.plot_defo(
-        fig_wi_he=(12, 6),
-        fmt_defo={'color': '#E74825', 'linestyle': (0, (4, 5)), 'linewidth': 2.0},
+        fig_wi_he=(13, 7),
+        fmt_defo={'color': '#E74825', 'linestyle': (0, (4, 5)), 'linewidth': 2.2},
         fmt_undefo={'color': '#AEAEB2', 'linestyle': 'solid', 'linewidth': 1.5},
     )
-    plt.title(f'{title} — Deflection', fontsize=11, fontweight='bold', pad=10)
-    plt.xlabel('x [m]', fontsize=9); plt.ylabel('y [m]', fontsize=9)
-    plt.grid(True, ls=':', lw=0.5, alpha=0.6)
-    plt.tight_layout()
-    figs.append(_capture())
+    figs.append(_style_and_capture('Deflected shape'))
 
     if beam_eles:
-        opsv.section_force_diagram_2d('M', mFac, fig_wi_he=(12, 6),
+        opsv.section_force_diagram_2d('M', mFac, fig_wi_he=(13, 7),
                                       fmt_secforce1={'color': '#1A6640'},
                                       fmt_secforce2={'color': '#1A6640'})
-        plt.title(f'{title} — Bending Moment [kNm]', fontsize=11, fontweight='bold', pad=10)
-        plt.xlabel('x [m]', fontsize=9); plt.ylabel('y [m]', fontsize=9)
-        plt.grid(True, ls=':', lw=0.5, alpha=0.6)
-        plt.tight_layout()
-        figs.append(_capture())
+        figs.append(_style_and_capture('Bending moment  [kNm]'))
 
-        opsv.section_force_diagram_2d('V', vFac, fig_wi_he=(12, 6),
+        opsv.section_force_diagram_2d('V', vFac, fig_wi_he=(13, 7),
                                       fmt_secforce1={'color': '#1A4FA0'},
                                       fmt_secforce2={'color': '#1A4FA0'})
-        plt.title(f'{title} — Shear Force [kN]', fontsize=11, fontweight='bold', pad=10)
-        plt.xlabel('x [m]', fontsize=9); plt.ylabel('y [m]', fontsize=9)
-        plt.grid(True, ls=':', lw=0.5, alpha=0.6)
-        plt.tight_layout()
-        figs.append(_capture())
+        figs.append(_style_and_capture('Shear force  [kN]'))
 
     return figs
 
