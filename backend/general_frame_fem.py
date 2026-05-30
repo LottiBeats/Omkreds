@@ -254,15 +254,17 @@ def make_figures(title, nodes, elements, supports, loads,
     return figs
 
 
-def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports):
-    """Return structured summary dict."""
-    # Max displacements
+def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports, loads):
+    """Return structured summary dict including full element and node detail."""
+    import math
+
+    # ── Max displacements ─────────────────────────────────────────────────────
     max_ux = max((abs(node_disps[n['id']][0]) for n in nodes), default=0.0)
     max_uy = max((abs(node_disps[n['id']][1]) for n in nodes), default=0.0)
     node_max_ux = max(nodes, key=lambda n: abs(node_disps[n['id']][0]))
     node_max_uy = max(nodes, key=lambda n: abs(node_disps[n['id']][1]))
 
-    # Max moment
+    # ── Max moment ────────────────────────────────────────────────────────────
     beam_eles = [el for el in elements if el.get('type', 'beam') == 'beam']
     if beam_eles:
         el_max_M = max(beam_eles,
@@ -274,7 +276,7 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports)
         el_max_M = None
         max_M = 0.0
 
-    # Reactions at supported nodes
+    # ── Reactions ─────────────────────────────────────────────────────────────
     sup_node_ids = {s['node_id'] for s in supports}
     reactions = {}
     for nid in sup_node_ids:
@@ -285,12 +287,83 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports)
             'Mz_kNm': round(R[2] * 1e-3, 3),
         }
 
+    # ── Full node displacement table ──────────────────────────────────────────
+    node_disp_table = []
+    for n in nodes:
+        d = node_disps[n['id']]
+        node_disp_table.append({
+            'id':    n['id'],
+            'x_m':  round(n['x'], 4),
+            'y_m':  round(n['y'], 4),
+            'ux_mm': round(d[0] * 1e3, 4),
+            'uy_mm': round(d[1] * 1e3, 4),
+            'rz_mrad': round(d[2] * 1e3, 4),
+        })
+
+    # ── Full element force table ──────────────────────────────────────────────
+    dict_nodes = {n['id']: n for n in nodes}
+    ele_force_table = []
+    for el in elements:
+        eid = el['id']
+        f   = ele_forces[eid]
+        ni  = dict_nodes[el['ni']]
+        nj  = dict_nodes[el['nj']]
+        L   = math.hypot(nj['x'] - ni['x'], nj['y'] - ni['y'])
+        ele_force_table.append({
+            'id':      eid,
+            'ni':      el['ni'],
+            'nj':      el['nj'],
+            'type':    el.get('type', 'beam'),
+            'release': el.get('release', 'none'),
+            'L_m':     round(L, 3),
+            'E_GPa':   el.get('E_GPa', 210),
+            'A_cm2':   el.get('A_cm2', 0),
+            'Iz_cm4':  el.get('Iz_cm4', 0),
+            # End i (local)
+            'N_i_kN':  round(f[0] * 1e-3, 3),
+            'V_i_kN':  round(f[1] * 1e-3, 3),
+            'M_i_kNm': round(f[2] * 1e-3, 3),
+            # End j (local)
+            'N_j_kN':  round(f[3] * 1e-3, 3),
+            'V_j_kN':  round(f[4] * 1e-3, 3),
+            'M_j_kNm': round(f[5] * 1e-3, 3),
+        })
+
+    # ── Applied loads summary ─────────────────────────────────────────────────
+    loads_table = []
+    for ld in loads:
+        if ld['type'] == 'nodal':
+            loads_table.append({
+                'type':    'Nodal',
+                'target':  f"Node {ld['node_id']}",
+                'Fx_kN':   round(float(ld.get('Fx_kN',  0)), 3),
+                'Fy_kN':   round(float(ld.get('Fy_kN',  0)), 3),
+                'Mz_kNm':  round(float(ld.get('Mz_kNm', 0)), 3),
+                'wy_kNm':  None,
+                'wx_kNm':  None,
+            })
+        elif ld['type'] == 'udl':
+            loads_table.append({
+                'type':    'UDL',
+                'target':  f"Elem {ld['elem_id']}",
+                'Fx_kN':   None,
+                'Fy_kN':   None,
+                'Mz_kNm':  None,
+                'wy_kNm':  round(float(ld.get('wy_kNm', 0)), 3),
+                'wx_kNm':  round(float(ld.get('wx_kNm', 0)), 3),
+            })
+
     return {
-        'max_ux_mm':     round(max_ux * 1e3, 3),
-        'max_ux_node':   node_max_ux['id'],
-        'max_uy_mm':     round(max_uy * 1e3, 3),
-        'max_uy_node':   node_max_uy['id'],
+        # Headline figures
+        'max_ux_mm':      round(max_ux * 1e3, 3),
+        'max_ux_node':    node_max_ux['id'],
+        'max_uy_mm':      round(max_uy * 1e3, 3),
+        'max_uy_node':    node_max_uy['id'],
         'max_moment_kNm': round(max_M * 1e-3, 3),
         'max_moment_ele': el_max_M['id'] if el_max_M else None,
-        'reactions':     reactions,
+        # Detailed tables
+        'reactions':       reactions,
+        'node_disp_table': node_disp_table,
+        'ele_force_table': ele_force_table,
+        'loads_table':     loads_table,
     }

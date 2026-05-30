@@ -1890,7 +1890,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
         summary = summarise(nodes, elements,
                             res['node_disps'], res['node_reactions'],
-                            res['ele_forces'], supports)
+                            res['ele_forces'], supports, loads)
 
         result_blocks = [
             S(data.title),

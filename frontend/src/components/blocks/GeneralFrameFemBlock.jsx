@@ -173,20 +173,41 @@ function LoadRow({ load, onChange, onRemove }) {
 
 // ── Result panel ──────────────────────────────────────────────────────────────
 
+const TABS = ['Figures', 'Elements', 'Nodes', 'Loads', 'Reactions']
+const FIG_LABELS = ['Deflection', 'Bending Moment', 'Shear Force']
+
+function Tbl({ headers, rows, zebra = true }) {
+  return (
+    <table style={s.table}>
+      <thead><tr>{headers.map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr key={i} style={{ background: zebra && i % 2 ? '#fafafa' : '#fff' }}>
+            {row.map((cell, j) => (
+              <td key={j} style={{ ...s.td, fontWeight: j > 0 ? 600 : 400 }}>{cell ?? '—'}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 function ResultPanel({ figs, summary }) {
-  const [open, setOpen]     = useState(true)
+  const [open,   setOpen]   = useState(true)
+  const [tab,    setTab]    = useState('Figures')
   const [figIdx, setFigIdx] = useState(0)
-  const FIG_LABELS = ['Deflection', 'Bending Moment', 'Shear Force']
 
   return (
     <div style={s.resultPanel}>
+      {/* Header bar */}
       <button style={s.summaryBar} onClick={() => setOpen(o => !o)}>
         <span style={s.summaryBadge}>
           δ_x = {summary.max_ux_mm.toFixed(2)} mm
           &nbsp;·&nbsp;
           δ_y = {summary.max_uy_mm.toFixed(2)} mm
           &nbsp;·&nbsp;
-          M = {summary.max_moment_kNm.toFixed(2)} kNm
+          M_max = {summary.max_moment_kNm.toFixed(2)} kNm
         </span>
         <span style={{ flex: 1 }} />
         <span style={s.summaryChevron}>{open ? 'Hide ▲' : 'Show ▼'}</span>
@@ -195,7 +216,19 @@ function ResultPanel({ figs, summary }) {
       {open && (
         <div style={s.resultBody}>
 
-          {figs?.length > 0 && (
+          {/* Tab bar */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
+            {TABS.map(t => (
+              <button key={t}
+                style={{ ...s.tabBtn, ...(tab === t ? s.tabBtnActive : {}) }}
+                onClick={() => setTab(t)}>
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Figures ── */}
+          {tab === 'Figures' && figs?.length > 0 && (
             <div>
               <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
                 {FIG_LABELS.slice(0, figs.length).map((lbl, i) => (
@@ -206,63 +239,70 @@ function ResultPanel({ figs, summary }) {
                   </button>
                 ))}
               </div>
-              <img
-                src={`data:image/png;base64,${figs[figIdx]}`}
-                alt={FIG_LABELS[figIdx]}
-                style={{ width: '100%', display: 'block', marginBottom: 16 }}
+              <img src={`data:image/png;base64,${figs[figIdx]}`} alt={FIG_LABELS[figIdx]}
+                style={{ width: '100%', display: 'block' }} />
+            </div>
+          )}
+
+          {/* ── Elements ── */}
+          {tab === 'Elements' && (
+            <div>
+              <div style={s.detailLabel}>Section properties</div>
+              <Tbl
+                headers={['Elem', 'Type', 'ni→nj', 'L (m)', 'E (GPa)', 'A (cm²)', 'Iz (cm⁴)', 'Release']}
+                rows={(summary.ele_force_table ?? []).map(e => [
+                  e.id, e.type, `${e.ni}→${e.nj}`, e.L_m.toFixed(2),
+                  e.E_GPa, e.A_cm2, e.type === 'beam' ? e.Iz_cm4 : '—', e.release,
+                ])}
+              />
+              <div style={{ ...s.detailLabel, marginTop: 12 }}>End forces (local axes)</div>
+              <Tbl
+                headers={['Elem', 'N_i (kN)', 'V_i (kN)', 'M_i (kNm)', 'N_j (kN)', 'V_j (kN)', 'M_j (kNm)']}
+                rows={(summary.ele_force_table ?? []).map(e => [
+                  e.id,
+                  e.N_i_kN.toFixed(2), e.V_i_kN.toFixed(2), e.M_i_kNm.toFixed(2),
+                  e.N_j_kN.toFixed(2), e.V_j_kN.toFixed(2), e.M_j_kNm.toFixed(2),
+                ])}
               />
             </div>
           )}
 
-          <table style={s.table}>
-            <thead>
-              <tr>{['Result', 'Value', 'Location'].map(h =>
-                <th key={h} style={s.th}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style={s.td}>Max horiz. disp. δ_x</td>
-                <td style={{ ...s.td, fontWeight: 600 }}>{summary.max_ux_mm.toFixed(2)} mm</td>
-                <td style={s.td}>node {summary.max_ux_node}</td>
-              </tr>
-              <tr style={{ background: '#fafafa' }}>
-                <td style={s.td}>Max vert. disp. δ_y</td>
-                <td style={{ ...s.td, fontWeight: 600 }}>{summary.max_uy_mm.toFixed(2)} mm</td>
-                <td style={s.td}>node {summary.max_uy_node}</td>
-              </tr>
-              <tr>
-                <td style={s.td}>Max bending moment M</td>
-                <td style={{ ...s.td, fontWeight: 600 }}>{summary.max_moment_kNm.toFixed(2)} kNm</td>
-                <td style={s.td}>element {summary.max_moment_ele ?? '—'}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          {summary.reactions && Object.keys(summary.reactions).length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <SectionLabel text="Reactions" />
-              <table style={s.table}>
-                <thead>
-                  <tr>
-                    <th style={s.th}>Node</th>
-                    <th style={s.th}>Fx (kN)</th>
-                    <th style={s.th}>Fy (kN)</th>
-                    <th style={s.th}>Mz (kNm)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(summary.reactions).map(([nid, R], i) => (
-                    <tr key={nid} style={{ background: i % 2 ? '#fafafa' : '#fff' }}>
-                      <td style={s.td}>{nid}</td>
-                      <td style={{ ...s.td, fontWeight: 600 }}>{R.Fx_kN?.toFixed(2)}</td>
-                      <td style={{ ...s.td, fontWeight: 600 }}>{R.Fy_kN?.toFixed(2)}</td>
-                      <td style={{ ...s.td, fontWeight: 600 }}>{R.Mz_kNm?.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {/* ── Nodes ── */}
+          {tab === 'Nodes' && (
+            <Tbl
+              headers={['Node', 'x (m)', 'y (m)', 'δ_x (mm)', 'δ_y (mm)', 'θ_z (mrad)']}
+              rows={(summary.node_disp_table ?? []).map(n => [
+                n.id, n.x_m, n.y_m,
+                n.ux_mm.toFixed(3), n.uy_mm.toFixed(3), n.rz_mrad.toFixed(3),
+              ])}
+            />
           )}
+
+          {/* ── Loads ── */}
+          {tab === 'Loads' && (
+            <Tbl
+              headers={['Type', 'Target', 'Fx (kN)', 'Fy (kN)', 'Mz (kNm)', 'wy (kN/m)', 'wx (kN/m)']}
+              rows={(summary.loads_table ?? []).map(l => [
+                l.type, l.target,
+                l.Fx_kN  != null ? l.Fx_kN.toFixed(2)  : '—',
+                l.Fy_kN  != null ? l.Fy_kN.toFixed(2)  : '—',
+                l.Mz_kNm != null ? l.Mz_kNm.toFixed(2) : '—',
+                l.wy_kNm != null ? l.wy_kNm.toFixed(2) : '—',
+                l.wx_kNm != null ? l.wx_kNm.toFixed(2) : '—',
+              ])}
+            />
+          )}
+
+          {/* ── Reactions ── */}
+          {tab === 'Reactions' && (
+            <Tbl
+              headers={['Node', 'Fx (kN)', 'Fy (kN)', 'Mz (kNm)']}
+              rows={Object.entries(summary.reactions ?? {}).map(([nid, R]) => [
+                nid, R.Fx_kN.toFixed(2), R.Fy_kN.toFixed(2), R.Mz_kNm.toFixed(2),
+              ])}
+            />
+          )}
+
         </div>
       )}
     </div>
@@ -441,4 +481,6 @@ const s = {
                   fontSize: 10, fontWeight: 700, color: '#888', letterSpacing: '0.06em',
                   textTransform: 'uppercase', background: '#fafafa', fontFamily: 'inherit' },
   td:           { padding: '5px 10px', borderBottom: '1px solid #f0f0f0', fontSize: 12 },
+  detailLabel:  { fontSize: 10, fontWeight: 700, color: '#aaa', letterSpacing: '0.1em',
+                  textTransform: 'uppercase', marginBottom: 6 },
 }
