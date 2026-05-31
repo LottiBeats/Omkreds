@@ -38,11 +38,16 @@ import BoltConnectionBlock from './BoltConnectionBlock.jsx'
 import PlateGirderBlock    from './PlateGirderBlock.jsx'
 import SavedCalcBlock      from './SavedCalcBlock.jsx'
 import ControlPlanBlock    from './ControlPlanBlock.jsx'
+import ProjectBasisBlock   from './ProjectBasisBlock.jsx'
 
 // ── Block registry ────────────────────────────────────────────────────────────
 
 // icon: short text badge shown in the left panel (max 3 chars, monospace)
 const BLOCK_TYPES = [
+  { type: 'project_basis', label: 'Project Basis (A1)', icon: 'A1', color: '#0f172a', component: ProjectBasisBlock,
+    default: { title: 'Project Basis', consequence_class: 'CC2', wind_zone: 2, terrain_category: 'II',
+               snow_zone: 1, gamma_M0: 1.00, gamma_M1: 1.00, gamma_M2: 1.25,
+               gamma_c: 1.50, gamma_s: 1.15, gamma_M_timber: 1.30, _exports: null } },
   { type: 'heading',       label: 'Heading',           icon: 'H',   color: '#64748b', component: HeadingBlock,
     default: { level: 1, text: '' } },
   { type: 'text',          label: 'Paragraph',         icon: 'TXT', color: '#64748b', component: TextBlock,
@@ -203,6 +208,10 @@ const TYPE_MAP = Object.fromEntries(BLOCK_TYPES.map(t => [t.type, t]))
 
 const PANEL_GROUPS = [
   {
+    label: 'Project',
+    types: ['project_basis'],
+  },
+  {
     label: 'Content',
     types: ['heading', 'text', 'image', 'table'],
   },
@@ -313,6 +322,24 @@ function BlockPreview({ block }) {
           <p style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>
             {rows.length} rækker · {numCols} kolonner
           </p>
+        </div>
+      )
+    }
+
+    case 'project_basis': {
+      const cc  = d.consequence_class ?? 'CC2'
+      const kfi = { CC1: 0.9, CC2: 1.0, CC3: 1.1 }[cc] ?? 1.0
+      const wz  = d.wind_zone ?? 2
+      const sz  = d.snow_zone ?? 1
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', fontSize: 13, padding: '2px 0' }}>
+          <span style={{ fontWeight: 700, color: '#0f172a' }}>{d.title || 'Project Basis'}</span>
+          <span style={{ color: '#475569' }}>{cc}</span>
+          <span style={{ color: '#475569' }}>K_FI = {kfi.toFixed(1)}</span>
+          <span style={{ color: '#475569' }}>Wind Z{wz}</span>
+          <span style={{ color: '#475569' }}>Terrain {d.terrain_category ?? 'II'}</span>
+          <span style={{ color: '#475569' }}>Snow Z{sz}</span>
+          <span style={{ color: '#475569' }}>γ_M0={d.gamma_M0 ?? 1.00}  γ_M1={d.gamma_M1 ?? 1.00}  γ_c={d.gamma_c ?? 1.50}</span>
         </div>
       )
     }
@@ -596,6 +623,16 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
   }
 
+  function addBlockAfter(blockId, type, customData = {}) {
+    const def = TYPE_MAP[type]; if (!def) return
+    const idx = blocks.findIndex(b => b.id === blockId)
+    const insertAt = idx >= 0 ? idx + 1 : blocks.length
+    const nb = { id: Date.now(), type, data: { ...def.default, ...customData } }
+    const n = [...blocks]; n.splice(insertAt, 0, nb); onChange(n)
+    setSelectedId(nb.id)
+    setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
+  }
+
   function deleteBlock(i, e) {
     e.stopPropagation()
     if (!window.confirm('Delete this block?')) return
@@ -811,6 +848,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
                         onChange={b => updateBlock(index, b)}
                         onOpenTemplateEditor={onOpenTemplateEditor}
                         blocks={blocks}
+                        onAddBlock={(type, data) => addBlockAfter(block.id, type, data)}
                       />
                     </div>
                   )}

@@ -312,7 +312,65 @@ function BucklingModeViewer({ figs }) {
   )
 }
 
-function ResultPanel({ figs, summary }) {
+// ── Create-check dropdown button (shown per element row) ─────────────────────
+
+const CHECK_TYPES = [
+  { type: 'steel_beam',  label: 'Steel beam (EC3)' },
+  { type: 'beam_column', label: 'Beam-column N+M (EC3)' },
+  { type: 'timber_beam', label: 'Timber beam (EC5)' },
+  { type: 'rc_beam',     label: 'RC beam (EC2)' },
+]
+
+function CreateCheckButton({ elemId, elemL, blockId, onAddBlock }) {
+  const [open, setOpen] = useState(false)
+  if (!onAddBlock) return null
+
+  function create(type) {
+    onAddBlock(type, {
+      label:        `E${elemId}`,
+      title:        `${CHECK_TYPES.find(c => c.type === type)?.label} — Elem ${elemId}`,
+      load_source:  'fem',
+      fem_block_id: blockId,
+      fem_elem_id:  elemId,
+      fem_end:      'max',
+      span_m:       parseFloat(elemL.toFixed(2)),
+    })
+    setOpen(false)
+  }
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+        style={{ fontSize: 10, padding: '2px 7px', background: '#1e3a5f', color: '#fff',
+                 border: 'none', cursor: 'pointer', borderRadius: 2, whiteSpace: 'nowrap' }}>
+        → Check
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+               onClick={() => setOpen(false)} />
+          <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100,
+                        background: '#fff', border: '1px solid #e0e0e0',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 190, paddingBlock: 4 }}>
+            {CHECK_TYPES.map(c => (
+              <button key={c.type} onClick={() => create(c.type)}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px',
+                         fontSize: 12, background: 'none', border: 'none', cursor: 'pointer',
+                         fontFamily: 'inherit' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function ResultPanel({ figs, summary, onAddBlock, blockId }) {
   const [open,      setOpen]      = useState(true)
   const [tab,       setTab]       = useState('Figures')
   const [figIdx,    setFigIdx]    = useState(0)
@@ -404,8 +462,8 @@ function ResultPanel({ figs, summary }) {
 
           {/* ── Buckling ── */}
           {tab === 'Buckling' && (() => {
-            const modeFigs    = d._buckling_figs    ?? summary?.buckling_mode_figs ?? []
-            const buckLengths = d._buckling_lengths ?? summary?.buckling_lengths   ?? {}
+            const modeFigs    = summary?.buckling_mode_figs ?? []
+            const buckLengths = summary?.buckling_lengths   ?? {}
             const buckRows   = Object.entries(buckLengths)
             return (
               <div>
@@ -477,14 +535,36 @@ function ResultPanel({ figs, summary }) {
                 ])}
               />
               <div style={{ ...s.detailLabel, marginTop: 12 }}>End forces (local axes)</div>
-              <Tbl
-                headers={['Elem', 'N_i (kN)', 'V_i (kN)', 'M_i (kNm)', 'N_j (kN)', 'V_j (kN)', 'M_j (kNm)']}
-                rows={(summary.ele_force_table ?? []).map(e => [
-                  e.id,
-                  e.N_i_kN.toFixed(2), e.V_i_kN.toFixed(2), e.M_i_kNm.toFixed(2),
-                  e.N_j_kN.toFixed(2), e.V_j_kN.toFixed(2), e.M_j_kNm.toFixed(2),
-                ])}
-              />
+              <table style={s.table}>
+                <thead>
+                  <tr>
+                    {['Elem','N_i (kN)','V_i (kN)','M_i (kNm)','N_j (kN)','V_j (kN)','M_j (kNm)',''].map(h => (
+                      <th key={h} style={s.th}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(summary.ele_force_table ?? []).map((e, i) => (
+                    <tr key={e.id} style={{ background: i % 2 ? '#fafafa' : '#fff' }}>
+                      <td style={{ ...s.td, fontWeight: 400 }}>{e.id}</td>
+                      <td style={s.td}>{e.N_i_kN.toFixed(2)}</td>
+                      <td style={s.td}>{e.V_i_kN.toFixed(2)}</td>
+                      <td style={s.td}>{e.M_i_kNm.toFixed(2)}</td>
+                      <td style={s.td}>{e.N_j_kN.toFixed(2)}</td>
+                      <td style={s.td}>{e.V_j_kN.toFixed(2)}</td>
+                      <td style={s.td}>{e.M_j_kNm.toFixed(2)}</td>
+                      <td style={{ ...s.td, padding: '3px 6px' }}>
+                        <CreateCheckButton
+                          elemId={e.id}
+                          elemL={e.L_m}
+                          blockId={blockId}
+                          onAddBlock={onAddBlock}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 
@@ -532,7 +612,7 @@ function ResultPanel({ figs, summary }) {
 
 // ── Main block ────────────────────────────────────────────────────────────────
 
-export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
+export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onAddBlock }) {
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
@@ -834,7 +914,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
       )}
 
       {d._summary && d._figs_b64 && (
-        <ResultPanel figs={d._figs_b64} summary={d._summary} />
+        <ResultPanel figs={d._figs_b64} summary={d._summary} onAddBlock={onAddBlock} blockId={block.id} />
       )}
 
     </div>
