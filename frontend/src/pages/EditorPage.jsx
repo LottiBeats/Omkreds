@@ -607,9 +607,9 @@ function makeFullPortalFrameWorkflowTemplate() {
         { id: 4, x: 6, y: 0 },   // right base
       ],
       elements: [
-        { id: 1, ni: 1, nj: 2, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1, Iz_cm4: 3892 },  // IPE 240 left col
-        { id: 2, ni: 2, nj: 3, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 53.8, Iz_cm4: 8356 },  // IPE 300 rafter
-        { id: 3, ni: 4, nj: 3, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1, Iz_cm4: 3892 },  // IPE 240 right col
+        { id: 1, ni: 1, nj: 2, type: 'beam', release: 'none', member_id: 1, E_GPa: 210, A_cm2: 39.1, Iz_cm4: 3892 },  // IPE 240 venstre søjle
+        { id: 2, ni: 2, nj: 3, type: 'beam', release: 'none', member_id: 2, E_GPa: 210, A_cm2: 53.8, Iz_cm4: 8356 },  // IPE 300 bjælke
+        { id: 3, ni: 4, nj: 3, type: 'beam', release: 'none', member_id: 3, E_GPa: 210, A_cm2: 39.1, Iz_cm4: 3892 },  // IPE 240 højre søjle
       ],
       supports: [
         { node_id: 1, ux: true, uy: true, rz: true },
@@ -737,16 +737,16 @@ function makeGeneralFrameFemTemplate() {
           { id: 4, x: 6, y: 0 },
         ],
         elements: [
-          { id: 1, ni: 1, nj: 2, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1,  Iz_cm4: 3892  },
-          { id: 2, ni: 2, nj: 3, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 53.8,  Iz_cm4: 8356  },
-          { id: 3, ni: 4, nj: 3, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1,  Iz_cm4: 3892  },
+          { id: 1, ni: 1, nj: 2, type: 'beam', release: 'none', member_id: 1, E_GPa: 210, A_cm2: 39.1,  Iz_cm4: 3892  },  // venstre søjle
+          { id: 2, ni: 2, nj: 3, type: 'beam', release: 'none', member_id: 2, E_GPa: 210, A_cm2: 53.8,  Iz_cm4: 8356  },  // bjælke
+          { id: 3, ni: 4, nj: 3, type: 'beam', release: 'none', member_id: 3, E_GPa: 210, A_cm2: 39.1,  Iz_cm4: 3892  },  // højre søjle
         ],
         supports: [
           { node_id: 1, ux: true, uy: true, rz: true },
           { node_id: 4, ux: true, uy: true, rz: true },
         ],
         loads: [
-          { type: 'udl',   elem_id: 2, wy_kNm: 20, wx_kNm: 0 },
+          { type: 'udl',   elem_ids: [2], wy_kNm: 20, wx_kNm: 0 },
           { type: 'nodal', node_id: 2, Fx_kN: 10, Fy_kN: 0, Mz_kNm: 0 },
         ],
         _figs_b64: null, _summary: null, _result: null,
