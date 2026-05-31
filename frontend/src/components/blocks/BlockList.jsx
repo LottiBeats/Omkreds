@@ -798,12 +798,13 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
         />
 
         {blocks.map((block, index) => {
-          const Comp        = TYPE_MAP[block.type]?.component
-          const isSelected  = selectedId === block.id
-          const isMinimised = minimised.has(block.id)
-          const showEditor  = isSelected && !isMinimised && !!Comp
-          const isDragging  = dragIdx === index
-          const isTarget    = dropIdx === index && dragIdx !== index
+          const Comp            = TYPE_MAP[block.type]?.component
+          const isSelected      = selectedId === block.id
+          const isMinimised     = minimised.has(block.id)
+          const showEditor      = isSelected && !isMinimised && !!Comp
+          const isInlineEditable = ['text', 'heading'].includes(block.type)
+          const isDragging      = dragIdx === index
+          const isTarget        = dropIdx === index && dragIdx !== index
 
           return (
             <React.Fragment key={block.id}>
@@ -850,24 +851,37 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
                 {/* Content */}
                 <div style={s.blockBody}>
-                  {/* Preview is always shown */}
-                  <BlockPreview block={block} />
-
-                  {/* Editor — only when selected AND not minimised */}
-                  {showEditor && (
-                    <div
-                      style={s.editor}
-                      onClick={e => e.stopPropagation()}
-                    >
+                  {isInlineEditable ? (
+                    /* Text + heading: always render editor inline as the document content */
+                    <div onClick={e => e.stopPropagation()}>
                       <Comp
                         block={block}
                         onChange={b => updateBlock(index, b)}
-                        onOpenTemplateEditor={onOpenTemplateEditor}
-                        blocks={blocks}
-                        onAddBlock={(type, data) => addBlockAfter(block.id, type, data)}
-                        onAddBlocks={(arr) => addBlocksAfter(block.id, arr)}
+                        isSelected={isSelected}
                       />
                     </div>
+                  ) : (
+                    <>
+                      {/* Preview is always shown for non-inline blocks */}
+                      <BlockPreview block={block} />
+
+                      {/* Editor — only when selected AND not minimised */}
+                      {showEditor && (
+                        <div
+                          style={s.editor}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <Comp
+                            block={block}
+                            onChange={b => updateBlock(index, b)}
+                            onOpenTemplateEditor={onOpenTemplateEditor}
+                            blocks={blocks}
+                            onAddBlock={(type, data) => addBlockAfter(block.id, type, data)}
+                            onAddBlocks={(arr) => addBlocksAfter(block.id, arr)}
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
