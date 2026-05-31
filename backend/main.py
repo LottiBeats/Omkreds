@@ -1824,6 +1824,7 @@ class FrameLoadIn(BaseModel):
     load_type:  str         # 'udl' | 'nodal'
     # UDL
     elem_id:    int | None  = None
+    member_id:  int | None  = None   # member group → expanded to elem_ids by frontend
     value_kNm:  float       = 0.0
     direction:  str         = 'vertical'   # 'vertical' | 'projected' | 'horizontal'
     # Nodal
@@ -1895,19 +1896,23 @@ class GenFrameSupportIn(BaseModel):
     rz:      bool = False
 
 class GenFrameLoadIn(BaseModel):
-    type:     str         # "nodal" | "udl"
-    node_id:  int | None = None
-    elem_id:  int | None = None
-    Fx_kN:    float = 0.0
-    Fy_kN:    float = 0.0
-    Mz_kNm:   float = 0.0
-    wy_kNm:   float = 0.0   # positive = downward
-    wx_kNm:   float = 0.0
+    type:       str         # "nodal" | "udl"
+    node_id:    int | None = None
+    elem_id:    int | None = None
+    Fx_kN:      float = 0.0
+    Fy_kN:      float = 0.0
+    Mz_kNm:     float = 0.0
+    wy_kNm:     float = 0.0   # legacy: positive = downward, local y
+    wx_kNm:     float = 0.0
+    direction:  str | None = None   # 'vertical' | 'projected' | 'horizontal' | 'perpendicular'
+    value_kNm:  float = 0.0         # magnitude for direction-based loads
+    target:     str | None = None   # 'elem' | 'member' (expanded client-side before sending)
 
 class FrameComboLoadIn(BaseModel):
     """One load inside a combination (from Frame Load Cases block)."""
     load_type:  str
     elem_id:    int | None = None
+    member_id:  int | None = None   # preserved for completeness (expanded client-side)
     value_kNm:  float      = 0.0
     direction:  str        = 'vertical'
     node_id:    int | None = None
