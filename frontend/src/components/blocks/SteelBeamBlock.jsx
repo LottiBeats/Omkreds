@@ -324,11 +324,11 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
 
       <Field label="LTB length (m)" hint="Between lateral restraints — runs cl. 6.3.2.2">
         <input style={{ ...inp, background: (d.ltb_restrained ?? false) ? '#f5f5f5' : undefined }}
-          inputMode="decimal"
+          type="number" step="any" min="0"
           placeholder="leave blank = full span"
           value={d.ltb_length_m ?? ''}
           disabled={d.ltb_restrained ?? false}
-          onChange={e => update({ ltb_length_m: e.target.value ? parseFloat(e.target.value) : null })} />
+          onChange={e => update({ ltb_length_m: e.target.value !== '' ? parseFloat(e.target.value) : null })} />
       </Field>
 
       <Field label="Y-axis buckling restrained">
