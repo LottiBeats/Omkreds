@@ -343,9 +343,23 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
                          float(ld.get('Fy_kN',  0.0)),
                          float(ld.get('Mz_kNm', 0.0)))
             elif ld['type'] == 'udl':
-                # wy_kNm positive = downward in UI → negative in OpenSeesPy local y
-                wy_ops = -float(ld.get('wy_kNm', 0.0))
-                wx_ops =  float(ld.get('wx_kNm', 0.0))
+                direction = ld.get('direction')
+                if direction is not None:
+                    # New-style load: project from global direction to local element axes
+                    proj = _project_load(
+                        {'load_type': 'udl', 'elem_id': ld['elem_id'],
+                         'direction': direction,
+                         'value_kNm': float(ld.get('value_kNm', 0.0))},
+                        elements, dict_nodes,
+                    )
+                    if proj is None:
+                        continue
+                    wy_ops = -float(proj['wy_kNm'])
+                    wx_ops =  float(proj['wx_kNm'])
+                else:
+                    # Legacy: direct local axes (wy positive = downward in UI)
+                    wy_ops = -float(ld.get('wy_kNm', 0.0))
+                    wx_ops =  float(ld.get('wx_kNm', 0.0))
                 ops.eleLoad('-ele', ld['elem_id'], '-type', '-beamUniform', wy_ops, wx_ops)
 
     # Analysis
@@ -673,26 +687,44 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
         el = next((e for e in elements if e['id'] == eid), None)
         if not el: continue
         xi, yi, xj, yj, L, ca, sa = elem_geom(el)
-        wy = float(ld.get('wy_kNm', 0) or 0)
+        direction = ld.get('direction')
+        value     = float(ld.get('value_kNm', 0) or 0)
+        wy_raw    = float(ld.get('wy_kNm',    0) or 0)
         if ld.get('type') == 'combo_udl':
-            wy = 1.0   # placeholder — show as symbolic if not yet resolved
-        if abs(wy) < 1e-10 and ld.get('type') != 'combo_udl': continue
-        sign = -1 if wy >= 0 else 1   # positive wy = downward
+            value = wy_raw = 1.0   # placeholder
+        # Choose arrow direction based on load type
+        if direction == 'vertical' or direction == 'projected':
+            # Arrow straight down (global -y)
+            draw_wy = value; ox_unit = 0.0; oy_unit = -1.0
+        elif direction == 'horizontal':
+            # Arrow in global +x (or -x if negative)
+            draw_wy = value; ox_unit = math.copysign(1.0, value) if value else 1.0; oy_unit = 0.0
+            draw_wy = abs(value)
+        else:
+            # Legacy perpendicular-to-element (local wy)
+            draw_wy = wy_raw if direction is None else value
+            ox_unit = -sa; oy_unit = ca
+        if abs(draw_wy) < 1e-10 and ld.get('type') != 'combo_udl': continue
+        if direction in ('vertical', 'projected'):
+            sign = 1   # downward arrow tail above point
+        elif direction == 'horizontal':
+            sign = 1
+        else:
+            sign = -1 if wy_raw >= 0 else 1
         n_arr = max(4, int(L / (ref_size * 0.12)) + 1)
-        # Draw arrows perpendicular to element
         for k in range(n_arr + 1):
             t  = k / n_arr
             px = xi + t*(xj - xi); py = yi + t*(yj - yi)
-            ox = -sa * arr * sign; oy = ca * arr * sign
+            ox = ox_unit * arr * sign; oy = oy_unit * arr * sign
             ax.annotate('', xy=(px, py), xytext=(px + ox, py + oy),
                         arrowprops=dict(arrowstyle='->', color=C_LOAD, lw=1.0,
                                         mutation_scale=8), zorder=6)
         # Connecting line at tips
-        tip_xs = [xi - sa*arr*sign + k/n_arr*(xj-xi) for k in range(n_arr+1)]
-        tip_ys = [yi + ca*arr*sign + k/n_arr*(yj-yi) for k in range(n_arr+1)]
+        tip_xs = [xi + ox_unit*arr*sign + k/n_arr*(xj-xi) for k in range(n_arr+1)]
+        tip_ys = [yi + oy_unit*arr*sign + k/n_arr*(yj-yi) for k in range(n_arr+1)]
         ax.plot(tip_xs, tip_ys, color=C_LOAD, lw=1.2, zorder=5)
         # Label
-        lbl = f'{abs(wy):.1f} kN/m' if ld.get('type') != 'combo_udl' else 'w_Ed [combo]'
+        lbl = f'{abs(draw_wy):.1f} kN/m' if ld.get('type') != 'combo_udl' else 'w_Ed [combo]'
         ax.text((xi+xj)/2 - sa*arr*sign*1.6, (yi+yj)/2 + ca*arr*sign*1.6,
                 lbl, fontsize=7.5, color=C_LOAD, ha='center', va='center',
                 bbox=dict(fc='white', ec='none', pad=1), zorder=7)

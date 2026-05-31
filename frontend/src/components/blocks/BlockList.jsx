@@ -633,6 +633,22 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
   }
 
+  function addBlocksAfter(blockId, newBlocks) {
+    const idx = blocks.findIndex(b => b.id === blockId)
+    const insertAt = idx >= 0 ? idx + 1 : blocks.length
+    const created = newBlocks.map((b, i) => ({
+      id: Date.now() + i + 1,
+      type: b.type,
+      data: { ...(TYPE_MAP[b.type]?.default ?? {}), ...b.data },
+    }))
+    const n = [...blocks]; n.splice(insertAt, 0, ...created); onChange(n)
+    setMinimised(prev => {
+      const s = new Set(prev)
+      created.forEach(b => s.delete(b.id))
+      return s
+    })
+  }
+
   function deleteBlock(i, e) {
     e.stopPropagation()
     if (!window.confirm('Delete this block?')) return
@@ -849,6 +865,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
                         onOpenTemplateEditor={onOpenTemplateEditor}
                         blocks={blocks}
                         onAddBlock={(type, data) => addBlockAfter(block.id, type, data)}
+                        onAddBlocks={(arr) => addBlocksAfter(block.id, arr)}
                       />
                     </div>
                   )}

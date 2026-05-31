@@ -165,12 +165,23 @@ function SupportRow({ sup, onChange, onRemove }) {
   )
 }
 
+const UDL_DIRECTIONS = [
+  { value: 'vertical',     label: '↓ Vertical (gravity / snow)' },
+  { value: 'projected',    label: '❄ Snow (horizontal projection)' },
+  { value: 'horizontal',   label: '→ Horizontal (wind on wall)' },
+  { value: 'perpendicular',label: '⊥ Perpendicular (wind on surface)' },
+]
+
 function LoadRow({ load, onChange, onRemove, comboBlocks }) {
   const lt = load.type ?? 'nodal'
   const selCombo = lt === 'combo_udl'
     ? (comboBlocks.find(b => b.data.label === load.combo_label) ?? comboBlocks[0])
     : null
   const comboW = selCombo?.data?._exports?.E_d_uls
+
+  // UDL sub-fields
+  const udlTarget    = load.target    ?? 'elem'   // 'elem' | 'member'
+  const udlDirection = load.direction ?? 'vertical'
 
   return (
     <div style={s.listRow}>
@@ -193,10 +204,29 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
         </>}
 
         {lt === 'udl' && <>
-          <NumField label="Elem"      val={load.elem_id ?? 1} set={v => onChange({ ...load, elem_id: Math.round(v) })} width={50} />
-          <NumField label="wy (kN/m)" val={load.wy_kNm ?? 10} set={v => onChange({ ...load, wy_kNm: v })} />
-          <NumField label="wx (kN/m)" val={load.wx_kNm ?? 0}  set={v => onChange({ ...load, wx_kNm: v })} />
-          <span style={s.hint}>wy +ve=down</span>
+          {/* Target: element or member group */}
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>Target</label>
+            <select style={{ ...s.smallInput, width: 80 }} value={udlTarget}
+              onChange={e => onChange({ ...load, target: e.target.value })}>
+              <option value="elem">Element</option>
+              <option value="member">Member</option>
+            </select>
+          </div>
+          {udlTarget === 'member'
+            ? <NumField label="Group" val={load.member_id ?? 1} set={v => onChange({ ...load, member_id: Math.round(v) })} width={52} />
+            : <NumField label="Elem"  val={load.elem_id  ?? 1} set={v => onChange({ ...load, elem_id:   Math.round(v) })} width={52} />
+          }
+          {/* Direction */}
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>Direction</label>
+            <select style={{ ...s.smallInput, width: 188 }} value={udlDirection}
+              onChange={e => onChange({ ...load, direction: e.target.value })}>
+              {UDL_DIRECTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+            </select>
+          </div>
+          <NumField label="w (kN/m)" val={load.value_kNm ?? load.wy_kNm ?? 10}
+            set={v => onChange({ ...load, value_kNm: v })} />
         </>}
 
         {lt === 'combo_udl' && <>
@@ -370,11 +400,68 @@ function CreateCheckButton({ elemId, elemL, blockId, onAddBlock }) {
   )
 }
 
-function ResultPanel({ figs, summary, onAddBlock, blockId }) {
+// Check type heuristic based on element orientation
+function guessCheckType(elemId, elements) {
+  const el = elements?.find(e => e.id === elemId)
+  if (!el) return 'steel_beam'
+  // Need node positions — not available here, default to steel_beam
+  // In practice: columns have member_id and near-vertical geometry, beams horizontal
+  return 'steel_beam'
+}
+
+function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, elements }) {
   const [open,      setOpen]      = useState(true)
   const [tab,       setTab]       = useState('Figures')
   const [figIdx,    setFigIdx]    = useState(0)
   const [comboIdx,  setComboIdx]  = useState(null)  // null = static model
+
+  function generateA2() {
+    if (!onAddBlocks) return
+    const heading = title ?? '2D Frame FEM'
+    const memberExports = summary?._exports?.elements ?? []
+    // Prefer member-level entries (id >= 1000); fall back to element-level
+    const entries = memberExports.filter(e => e.id >= 1000).length > 0
+      ? memberExports.filter(e => e.id >= 1000)
+      : memberExports
+
+    const newBlocks = []
+
+    // Heading
+    newBlocks.push({ type: 'heading', data: { level: 2, text: `A2 — ${heading}` } })
+
+    // Static model figure
+    if (figs?.[0]) {
+      newBlocks.push({ type: 'image', data: {
+        image_b64: `data:image/png;base64,${figs[0]}`,
+        caption: 'Fig. 1 — Static model and loading', width_pct: 100,
+      }})
+    }
+    // Bending moment diagram (index 2 = BMD in standard order)
+    const bmdIdx = figs?.length >= 3 ? 2 : (figs?.length >= 2 ? 1 : -1)
+    if (bmdIdx >= 0 && figs?.[bmdIdx]) {
+      newBlocks.push({ type: 'image', data: {
+        image_b64: `data:image/png;base64,${figs[bmdIdx]}`,
+        caption: 'Fig. 2 — Bending moment diagram', width_pct: 100,
+      }})
+    }
+
+    if (entries.length > 0) {
+      newBlocks.push({ type: 'heading', data: { level: 3, text: 'Member checks' } })
+      entries.forEach((entry, i) => {
+        newBlocks.push({ type: 'steel_beam', data: {
+          title:        entry.label ?? `Element ${entry.id}`,
+          label:        `M${i + 1}`,
+          load_source:  'fem',
+          fem_block_id: blockId,
+          fem_elem_id:  entry.id,
+          fem_end:      'max',
+          span_m:       parseFloat((entry.L_m ?? 1).toFixed(2)),
+        }})
+      })
+    }
+
+    onAddBlocks(newBlocks)
+  }
 
   return (
     <div style={s.resultPanel}>
@@ -388,6 +475,14 @@ function ResultPanel({ figs, summary, onAddBlock, blockId }) {
           M_max = {summary.max_moment_kNm.toFixed(2)} kNm
         </span>
         <span style={{ flex: 1 }} />
+        {onAddBlocks && (
+          <button
+            onClick={e => { e.stopPropagation(); generateA2() }}
+            style={{ fontSize: 11, padding: '3px 10px', background: '#1e3a5f', color: '#fff',
+                     border: 'none', cursor: 'pointer', borderRadius: 2, marginRight: 8 }}>
+            ✦ Generate A2
+          </button>
+        )}
         <span style={s.summaryChevron}>{open ? 'Hide ▲' : 'Show ▼'}</span>
       </button>
 
@@ -612,7 +707,7 @@ function ResultPanel({ figs, summary, onAddBlock, blockId }) {
 
 // ── Main block ────────────────────────────────────────────────────────────────
 
-export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onAddBlock }) {
+export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onAddBlock, onAddBlocks }) {
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
@@ -682,7 +777,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   function updateLoad(i, v)  { const a = [...loads]; a[i] = v; update({ loads: a }) }
   function addLoad(type)      { update({ loads: [...loads,
     type === 'udl'
-      ? { type: 'udl',       elem_id: elements[0]?.id ?? 1, wy_kNm: 10, wx_kNm: 0 }
+      ? { type: 'udl', target: 'elem', elem_id: elements[0]?.id ?? 1, direction: 'vertical', value_kNm: 10 }
       : type === 'combo_udl'
       ? { type: 'combo_udl', elem_id: elements[0]?.id ?? 1, combo_label: comboBlocks[0]?.data?.label ?? '' }
       : { type: 'nodal',     node_id: nodes[0]?.id    ?? 1, Fx_kN: 0, Fy_kN: 0, Mz_kNm: 0 }
@@ -702,13 +797,22 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           loads: expandMemberLoads(combo.loads, elements),
         }))
       } else {
-        // Simple mode — resolve combo_udl loads
-        resolvedLoads = loads.map(ld => {
-          if (ld.type !== 'combo_udl') return ld
-          const cb = comboBlocks.find(b => b.data.label === ld.combo_label) ?? comboBlocks[0]
-          const w  = cb?.data?._exports?.E_d_uls ?? 0
-          return { type: 'udl', elem_id: ld.elem_id ?? 1, wy_kNm: w, wx_kNm: 0 }
+        // Simple mode — resolve combo_udl, expand member UDL to per-element loads
+        const resolved = loads.flatMap(ld => {
+          if (ld.type === 'combo_udl') {
+            const cb = comboBlocks.find(b => b.data.label === ld.combo_label) ?? comboBlocks[0]
+            const w  = cb?.data?._exports?.E_d_uls ?? 0
+            return [{ type: 'udl', elem_id: ld.elem_id ?? 1, wy_kNm: w, wx_kNm: 0 }]
+          }
+          if (ld.type === 'udl' && ld.target === 'member' && ld.member_id != null) {
+            // Expand member group → one load per element in the group
+            const memberElems = elements.filter(e => e.member_id === ld.member_id)
+            if (memberElems.length === 0) return [ld]
+            return memberElems.map(e => ({ ...ld, target: 'elem', elem_id: e.id, member_id: undefined }))
+          }
+          return [ld]
         })
+        resolvedLoads = resolved
       }
 
       const res = await calcGeneralFrameFem({
@@ -914,7 +1018,15 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       )}
 
       {d._summary && d._figs_b64 && (
-        <ResultPanel figs={d._figs_b64} summary={d._summary} onAddBlock={onAddBlock} blockId={block.id} />
+        <ResultPanel
+          figs={d._figs_b64}
+          summary={{ ...d._summary, _exports: d._exports }}
+          onAddBlock={onAddBlock}
+          onAddBlocks={onAddBlocks}
+          blockId={block.id}
+          title={d.title}
+          elements={elements}
+        />
       )}
 
     </div>
