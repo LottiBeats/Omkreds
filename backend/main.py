@@ -1972,7 +1972,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
     import traceback
     try:
         from general_frame_fem import (solve, solve_combinations,
-                                       make_figures, summarise, plot_model)
+                                       make_figures, summarise, plot_model,
+                                       plot_buckling_modes, compute_buckling_lengths)
         from calc_core import S, T, TBL
         import math
 
@@ -2009,15 +2010,24 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                              all_results[0])
             best_figs = next((c['figs'] for c in combo_figs if c['name'] == best_combo_name),
                               combo_figs[0]['figs'])
+
+            # Buckling lengths and mode shapes (from governing combo)
+            buck_lengths   = compute_buckling_lengths(nodes, elements, supports,
+                                                      best_res['ele_forces'])
+            buck_mode_figs = plot_buckling_modes(data.title, nodes, elements,
+                                                 best_res.get('eigen_modes', []), ref_size)
+
             figs_b64 = [model_fig] + best_figs
 
             # Build envelope summary for frontend
             summary = summarise(nodes, elements,
                                 best_res['node_disps'], best_res['node_reactions'],
                                 best_res['ele_forces'], supports, [])
-            summary['envelope']      = envelope
-            summary['combinations']  = [r['name'] for r in all_results]
-            summary['combo_figs']    = combo_figs   # [{name, figs:[defo,M,V,N]}]
+            summary['envelope']          = envelope
+            summary['combinations']      = [r['name'] for r in all_results]
+            summary['combo_figs']        = combo_figs   # [{name, figs:[defo,M,V,N]}]
+            summary['buckling_lengths']  = buck_lengths
+            summary['buckling_mode_figs']= buck_mode_figs
 
             result_blocks = [S(data.title), T(f'{len(combos)} load combinations analysed')]
             result_blocks.append(TBL(
@@ -2032,6 +2042,10 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         # ── Simple mode (flat loads) ──────────────────────────────────────────
         else:
             res = solve(nodes, elements, supports, loads, equal_dofs)
+            buck_lengths   = compute_buckling_lengths(nodes, elements, supports,
+                                                      res['ele_forces'])
+            buck_mode_figs = plot_buckling_modes(data.title, nodes, elements,
+                                                 res.get('eigen_modes', []), ref_size)
             figs_b64 = [model_fig] + make_figures(
                 data.title, nodes, elements, supports, loads,
                 res['ele_forces'], res['node_disps'], ref_size,
@@ -2039,6 +2053,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             summary = summarise(nodes, elements,
                                 res['node_disps'], res['node_reactions'],
                                 res['ele_forces'], supports, loads)
+            summary['buckling_lengths']   = buck_lengths
+            summary['buckling_mode_figs'] = buck_mode_figs
             result_blocks = [
                 S(data.title),
                 T(f"{len(nodes)} nodes · {len(elements)} elements"),

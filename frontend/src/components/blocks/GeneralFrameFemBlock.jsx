@@ -110,10 +110,37 @@ function ElemRow({ elem, onChange, onRemove }) {
         {(elem.type ?? 'beam') === 'beam' && (
           <NumField label="Iz (cm⁴)" val={elem.Iz_cm4 ?? 3892} set={v => { setPreset('Custom'); onChange({ ...elem, Iz_cm4: v }) }} width={88} />
         )}
+        <NumField label="Group" val={elem.member_id ?? 0}
+          set={v => onChange({ ...elem, member_id: v > 0 ? Math.round(v) : undefined })}
+          width={52} />
       </div>
       <button onClick={onRemove} style={s.removeBtn}>✕</button>
     </div>
   )
+}
+
+// ── Member load expansion ─────────────────────────────────────────────────────
+// Loads that target a member_id are expanded to one load per sub-element.
+function expandMemberLoads(loads, elements) {
+  const result = []
+  for (const ld of loads) {
+    if (ld.load_type === 'udl' && ld.member_id != null) {
+      // member_id → expand to all elements belonging to that member
+      const memberElems = elements.filter(e => e.member_id === ld.member_id)
+      if (memberElems.length === 0) { result.push(ld); continue }
+      for (const el of memberElems) {
+        result.push({ ...ld, elem_id: el.id, member_id: undefined })
+      }
+    } else if (ld.load_type === 'udl' && ld.elem_ids != null) {
+      // elem_ids array → one load per element
+      for (const eid of ld.elem_ids) {
+        result.push({ ...ld, elem_id: eid, elem_ids: undefined })
+      }
+    } else {
+      result.push(ld)
+    }
+  }
+  return result
 }
 
 function SupportRow({ sup, onChange, onRemove }) {
@@ -241,7 +268,7 @@ function EqualDOFRow({ eq, onChange, onRemove }) {
 
 // ── Result panel ──────────────────────────────────────────────────────────────
 
-const TABS = ['Figures', 'Elements', 'Nodes', 'Loads', 'Reactions']
+const TABS = ['Figures', 'Buckling', 'Elements', 'Nodes', 'Loads', 'Reactions']
 const FIG_LABELS       = ['Static model', 'Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
 const COMBO_FIG_LABELS = ['Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
 
@@ -259,6 +286,29 @@ function Tbl({ headers, rows, zebra = true }) {
         ))}
       </tbody>
     </table>
+  )
+}
+
+function BucklingModeViewer({ figs }) {
+  const [idx, setIdx] = useState(0)
+  const labels = figs.map((_, i) => `Mode ${i + 1}`)
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+        {labels.map((lbl, i) => (
+          <button key={i}
+            style={{ ...s.tabBtn, ...(idx === i ? s.tabBtnActive : {}) }}
+            onClick={() => setIdx(i)}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+      {figs[idx] && (
+        <img src={`data:image/png;base64,${figs[idx]}`}
+          alt={labels[idx]}
+          style={{ width: '100%', display: 'block' }} />
+      )}
+    </div>
   )
 }
 
@@ -347,6 +397,54 @@ function ResultPanel({ figs, summary }) {
                   <img src={`data:image/png;base64,${activeFigs[idx]}`}
                     alt={labels[idx]}
                     style={{ width: '100%', display: 'block' }} />
+                )}
+              </div>
+            )
+          })()}
+
+          {/* ── Buckling ── */}
+          {tab === 'Buckling' && (() => {
+            const modeFigs    = d._buckling_figs    ?? summary?.buckling_mode_figs ?? []
+            const buckLengths = d._buckling_lengths ?? summary?.buckling_lengths   ?? {}
+            const buckRows   = Object.entries(buckLengths)
+            return (
+              <div>
+                {/* Mode shape figures */}
+                {modeFigs.length > 0 ? (
+                  <BucklingModeViewer figs={modeFigs} />
+                ) : (
+                  <div style={{ ...s.hint, padding: '8px 0' }}>
+                    No mode shape data — run the analysis to generate buckling modes.
+                  </div>
+                )}
+
+                {/* Buckling length table */}
+                {buckRows.length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <div style={s.detailLabel}>
+                      Effective buckling lengths — Wood's stiffness-distribution method (EN 1993-1-1 Annex B)
+                    </div>
+                    <div style={{ ...s.hint, marginBottom: 6 }}>
+                      η = relative rotational stiffness at each end (0 = fixed, 1 = pinned).
+                      Non-sway: k ∈ [0.5, 1.0] · Sway: k ≥ 1.0.
+                      Select the applicable case for the actual frame bracing condition.
+                    </div>
+                    <Tbl
+                      headers={['Elem', 'L (m)', 'N_Ed (kN)', 'η_i', 'η_j',
+                                'k (non-sway)', 'L_cr,ns (m)', 'k (sway)', 'L_cr,sw (m)']}
+                      rows={buckRows.map(([eid, v]) => [
+                        eid,
+                        v.L_m.toFixed(3),
+                        v.N_Ed_kN.toFixed(1),
+                        v.eta_i.toFixed(3),
+                        v.eta_j.toFixed(3),
+                        v.k_ns.toFixed(3),
+                        v.L_cr_ns_m.toFixed(3),
+                        v.k_sw.toFixed(3),
+                        v.L_cr_sw_m.toFixed(3),
+                      ])}
+                    />
+                  </div>
                 )}
               </div>
             )
@@ -518,8 +616,11 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
       let combinations  = []
 
       if (loadMode === 'load_cases') {
-        // Combination mode — pass all combos to backend
-        combinations = loadCaseCombos
+        // Combination mode — expand any member_id loads to constituent elem_ids, then pass to backend
+        combinations = loadCaseCombos.map(combo => ({
+          ...combo,
+          loads: expandMemberLoads(combo.loads, elements),
+        }))
       } else {
         // Simple mode — resolve combo_udl loads
         resolvedLoads = loads.map(ld => {
@@ -540,23 +641,51 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [] }) {
 
       // Build _exports so capacity check blocks can read element forces
       const eleTable = res._summary?.ele_force_table ?? []
+
+      // Member-level entries: worst-case forces across all sub-elements (id = 1000 + member_id)
+      const memberIds = [...new Set(elements.filter(e => e.member_id != null).map(e => e.member_id))]
+      const memberEntries = memberIds.map(mid => {
+        const subElems = eleTable.filter(e => {
+          const def = elements.find(el => el.id === e.id)
+          return def?.member_id === mid
+        })
+        if (subElems.length === 0) return null
+        const firstE = subElems[0]; const lastE = subElems[subElems.length - 1]
+        const totalL = subElems.reduce((s, e) => s + e.L_m, 0)
+        return {
+          id:        1000 + mid,
+          member_id: mid,
+          label:     `Member ${mid}  (Elem ${subElems.map(e => e.id).join('+')}  ${firstE.ni}→${lastE.nj}  L=${totalL.toFixed(2)}m)`,
+          M_max_kNm: Math.max(...subElems.map(e => Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)))),
+          V_max_kN:  Math.max(...subElems.map(e => Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)))),
+          N_max_kN:  Math.max(...subElems.map(e => Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)))),
+          M_i_kNm: firstE.M_i_kNm, V_i_kN: firstE.V_i_kN, N_i_kN: firstE.N_i_kN,
+          M_j_kNm: lastE.M_j_kNm,  V_j_kN: lastE.V_j_kN,  N_j_kN: lastE.N_j_kN,
+        }
+      }).filter(Boolean)
+
       const exports_ = {
-        elements: eleTable.map(e => ({
-          id:        e.id,
-          label:     `Elem ${e.id}  (${e.ni}→${e.nj}, L=${e.L_m}m)`,
-          M_max_kNm: Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)),
-          V_max_kN:  Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)),
-          N_max_kN:  Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)),
-          M_i_kNm: e.M_i_kNm, V_i_kN: e.V_i_kN, N_i_kN: e.N_i_kN,
-          M_j_kNm: e.M_j_kNm, V_j_kN: e.V_j_kN, N_j_kN: e.N_j_kN,
-        })),
+        elements: [
+          ...memberEntries,
+          ...eleTable.map(e => ({
+            id:        e.id,
+            label:     `Elem ${e.id}  (${e.ni}→${e.nj}, L=${e.L_m}m)`,
+            M_max_kNm: Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)),
+            V_max_kN:  Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)),
+            N_max_kN:  Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)),
+            M_i_kNm: e.M_i_kNm, V_i_kN: e.V_i_kN, N_i_kN: e.N_i_kN,
+            M_j_kNm: e.M_j_kNm, V_j_kN: e.V_j_kN, N_j_kN: e.N_j_kN,
+          })),
+        ],
       }
 
       update({
-        _figs_b64: res._figs_b64,
-        _summary:  res._summary,
-        _result:   res._result,
-        _exports:  exports_,
+        _figs_b64:        res._figs_b64,
+        _summary:         res._summary,
+        _result:          res._result,
+        _exports:         exports_,
+        _buckling_figs:   res._summary?.buckling_mode_figs ?? [],
+        _buckling_lengths:res._summary?.buckling_lengths   ?? {},
       })
     } catch (err) {
       setError(err.message)

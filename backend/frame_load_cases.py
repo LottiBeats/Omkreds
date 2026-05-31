@@ -165,8 +165,15 @@ def combinations_to_calc_blocks(cases, combinations, consequence_class, method):
                     'projected':  'projekteret (sne)',
                     'horizontal': 'horisontal',
                 }.get(ld.get('direction', 'vertical'), ld.get('direction'))
+                if ld.get('member_id') is not None:
+                    target = f"Member {ld['member_id']}"
+                elif ld.get('elem_ids'):
+                    ids_str = ', '.join(str(i) for i in ld['elem_ids'])
+                    target = f"Elements {ids_str}"
+                else:
+                    target = f"Element {ld.get('elem_id')}"
                 load_lines.append(
-                    f"Element {ld.get('elem_id')}: "
+                    f"{target}: "
                     f"{ld.get('value_kNm', 0):.2f} kN/m  ({dir_lbl})"
                 )
             else:

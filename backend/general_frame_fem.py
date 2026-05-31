@@ -53,6 +53,188 @@ import base64
 # Solver
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Buckling lengths — Wood's stiffness-distribution method (EN 1993-1-1 Annex B)
+# ---------------------------------------------------------------------------
+
+def compute_buckling_lengths(nodes, elements, supports, ele_forces):
+    """
+    Estimate effective buckling lengths per beam element using Wood's simplified
+    stiffness-distribution formulas (equivalent to EN 1993-1-1 Annex B).
+
+    Returns
+    -------
+    dict  { elem_id: {L_m, eta_i, eta_j,
+                      k_ns, L_cr_ns_m,   # non-sway
+                      k_sw, L_cr_sw_m,   # sway
+                      N_Ed_kN} }
+    Only beam elements are included.
+    """
+    from collections import defaultdict
+
+    dict_nodes = {n['id']: n for n in nodes}
+
+    # Support condition → rotational fixity
+    fixed_rot = {s['node_id'] for s in supports if s.get('rz', False)}
+    pin_sup   = {s['node_id'] for s in supports
+                 if s.get('ux') and s.get('uy') and not s.get('rz')}
+
+    # EI/L (kN·m) per beam element
+    ei_l = {}
+    for el in elements:
+        if el.get('type', 'beam') != 'beam':
+            continue
+        ni = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
+        L  = math.hypot(nj['x'] - ni['x'], nj['y'] - ni['y'])
+        E  = float(el.get('E_GPa', 210)) * 1e6     # kN/m²
+        Iz = float(el.get('Iz_cm4', 5000)) * 1e-8   # m⁴
+        ei_l[el['id']] = (E * Iz / L) if L > 1e-9 else 0.0
+
+    # Sum of EI/L at each node (all connected beam elements)
+    node_sum = defaultdict(float)
+    for el in elements:
+        if el.get('type', 'beam') != 'beam':
+            continue
+        for nid in (el['ni'], el['nj']):
+            node_sum[nid] += ei_l.get(el['id'], 0.0)
+
+    results = {}
+    for el in elements:
+        if el.get('type', 'beam') != 'beam':
+            continue
+        eid = el['id']
+        ni  = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
+        L   = math.hypot(nj['x'] - ni['x'], nj['y'] - ni['y'])
+        f   = ele_forces.get(eid, [0.0]*6)
+        N   = (f[0] + f[3]) / 2.0   # average axial force (kN)
+        K_e = ei_l.get(eid, 0.0)
+
+        def _eta(nid):
+            if nid in fixed_rot:
+                return 0.0   # fixed support → full rotational restraint
+            if nid in pin_sup:
+                return 1.0   # pin support → no rotational restraint
+            total = node_sum.get(nid, K_e)
+            return (K_e / total) if total > 1e-12 else 1.0
+
+        e1, e2 = _eta(el['ni']), _eta(el['nj'])
+
+        # Wood's non-sway formula (k ∈ [0.5, 1.0])
+        d_ns = 2 - 0.364*(e1+e2) - 0.247*e1*e2
+        k_ns = max(0.5, (1 + 0.145*(e1+e2) - 0.265*e1*e2) / d_ns) if abs(d_ns) > 1e-9 else 1.0
+
+        # Wood's sway formula (k ≥ 1.0)
+        d_sw = 1 - 0.8*(e1+e2) + 0.6*e1*e2
+        if abs(d_sw) < 1e-6:
+            k_sw = 5.0
+        else:
+            k_sw = max(1.0, math.sqrt(max((1 - 0.2*(e1+e2) - 0.12*e1*e2) / d_sw, 0.0)))
+
+        results[eid] = {
+            'L_m':       round(L,       3),
+            'eta_i':     round(e1,      3),
+            'eta_j':     round(e2,      3),
+            'k_ns':      round(k_ns,    3),
+            'L_cr_ns_m': round(k_ns*L,  3),
+            'k_sw':      round(k_sw,    3),
+            'L_cr_sw_m': round(k_sw*L,  3),
+            'N_Ed_kN':   round(N,       3),
+        }
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Buckling mode shape figures
+# ---------------------------------------------------------------------------
+
+def plot_buckling_modes(title, nodes, elements, eigen_modes, ref_size):
+    """
+    Plot buckled mode shapes returned by solve() (eigen_modes list).
+    Returns a list of base64 PNG strings — one per mode.
+    """
+    if not eigen_modes:
+        return []
+
+    dict_nodes = {n['id']: n for n in nodes}
+    sz = ref_size * 0.055
+
+    C_UNDEFO = '#AEAEB2'
+    C_MODE   = '#E74825'
+
+    figs_out = []
+    for md in eigen_modes:
+        mode_num = md['mode']
+        omega    = md['omega']
+        vecs     = md['vectors']
+
+        # Scale eigenvectors so max displacement ≈ 15 % of structure size
+        max_d = max((math.hypot(v[0], v[1]) for v in vecs.values()), default=1.0)
+        scale = (ref_size * 0.15) / max_d if max_d > 1e-10 else 1.0
+
+        fig, ax = plt.subplots(figsize=(13, 7))
+        fig.patch.set_facecolor('white')
+        ax.set_facecolor('white')
+
+        # Undeformed (dashed grey)
+        for el in elements:
+            ni = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
+            ax.plot([ni['x'], nj['x']], [ni['y'], nj['y']],
+                    color=C_UNDEFO, lw=1.5, ls='--', zorder=2)
+
+        # Buckled shape
+        for el in elements:
+            ni = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
+            vi = vecs.get(ni['id'], [0.0, 0.0])
+            vj = vecs.get(nj['id'], [0.0, 0.0])
+            xi_d = ni['x'] + scale*vi[0]; yi_d = ni['y'] + scale*vi[1]
+            xj_d = nj['x'] + scale*vj[0]; yj_d = nj['y'] + scale*vj[1]
+            lw  = 2.5 if el.get('type', 'beam') == 'beam' else 1.8
+            ls  = '-' if el.get('type', 'beam') == 'beam' else '--'
+            ax.plot([xi_d, xj_d], [yi_d, yj_d],
+                    color=C_MODE, lw=lw, ls=ls, zorder=3)
+
+        # Node dots on buckled shape
+        for n in nodes:
+            v  = vecs.get(n['id'], [0.0, 0.0])
+            xd = n['x'] + scale*v[0]; yd = n['y'] + scale*v[1]
+            ax.plot(xd, yd, 'o', color=C_MODE, ms=4.5,
+                    markerfacecolor='white', markeredgewidth=1.5, zorder=4)
+
+        ax.set_aspect('equal')
+        ax.set_title(f'Mode {mode_num}  —  ω = {omega:.3f} rad/s',
+                     fontsize=12, fontweight='bold', color='#1C1C1E', pad=10)
+        ax.set_xlabel('x  [m]', fontsize=9, color='#555', labelpad=5)
+        ax.set_ylabel('y  [m]', fontsize=9, color='#555', labelpad=5)
+        ax.tick_params(colors='#888', labelsize=8)
+        ax.grid(True, ls=':', lw=0.5, color='#E5E5EA', zorder=0)
+        for sp in ax.spines.values():
+            sp.set_color('#E5E5EA'); sp.set_linewidth(0.8)
+
+        ax.autoscale()
+        xl, yl = ax.get_xlim(), ax.get_ylim()
+        pw = max((xl[1]-xl[0])*0.2, sz*3)
+        ph = max((yl[1]-yl[0])*0.2, sz*3)
+        ax.set_xlim(xl[0]-pw, xl[1]+pw)
+        ax.set_ylim(yl[0]-ph, yl[1]+ph)
+
+        handles = [
+            plt.Line2D([0],[0], color=C_UNDEFO, lw=1.5, ls='--', label='Undeformed'),
+            plt.Line2D([0],[0], color=C_MODE,   lw=2.5, label=f'Mode {mode_num} shape'),
+        ]
+        ax.legend(handles=handles, fontsize=8, frameon=False, loc='upper right')
+        fig.suptitle(title, fontsize=10, color='#6E6E73', y=0.98, style='italic')
+        fig.tight_layout(rect=[0, 0, 1, 0.96])
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight',
+                    facecolor='white', edgecolor='none')
+        buf.seek(0)
+        plt.close(fig)
+        figs_out.append(base64.b64encode(buf.read()).decode())
+
+    return figs_out
+
+
 def solve(nodes, elements, supports, loads, equal_dofs=None):
     """
     Build and solve a 2D linear elastic frame/truss model.
@@ -192,10 +374,38 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
             f = ops.eleForce(el['id'])
             ele_forces[el['id']] = [f[0], 0, 0, f[1] if len(f) > 1 else -f[0], 0, 0]
 
+    # ── Eigenvalue analysis — mode shapes ────────────────────────────────────
+    # Assign unit masses so ops.eigen() has a mass matrix to work with.
+    # The resulting mode shapes (eigenvectors) approximate the buckled
+    # configurations of the loaded frame; eigenvalues ω are natural frequencies.
+    eigen_modes = []
+    try:
+        n_req = min(3, max(1, len(nodes)))
+        for n in nodes:
+            ops.mass(n['id'], 1.0, 1.0, 1e-6)
+        lambdas = ops.eigen(n_req)
+        for k in range(1, len(lambdas) + 1):
+            vecs = {}
+            for n in nodes:
+                nid = n['id']
+                vecs[nid] = [
+                    ops.nodeEigenvector(nid, k, 1),
+                    ops.nodeEigenvector(nid, k, 2),
+                ]
+            eigen_modes.append({
+                'mode':   k,
+                'omega':  round(math.sqrt(max(lambdas[k-1], 0.0)), 4),
+                'lambda': round(lambdas[k-1], 4),
+                'vectors': vecs,
+            })
+    except Exception:
+        eigen_modes = []
+
     return {
         'node_disps':     node_disps,
         'node_reactions': node_reactions,
         'ele_forces':     ele_forces,
+        'eigen_modes':    eigen_modes,
     }
 
 
@@ -293,6 +503,7 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None)
             'node_disps':      result['node_disps'],
             'node_reactions':  result['node_reactions'],
             'ele_forces':      result['ele_forces'],
+            'eigen_modes':     result.get('eigen_modes', []),
         })
 
     # Envelope — worst-case M, V, N per element across all combinations
@@ -378,8 +589,31 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
             circ = plt.Circle((cx, cy), r_circ, fc='white', ec=C_RELEASE, lw=1.5, zorder=6)
             ax.add_patch(circ)
 
+    # ── Interior member nodes (suppress dots/labels) ──────────────────────────
+    # A node is interior if it connects exactly two elements of the same member
+    # and is not a support.
+    interior_nodes: set = set()
+    if any(el.get('member_id') is not None for el in elements):
+        from collections import defaultdict
+        _node_mids   = defaultdict(set)   # node → {member_ids of connected elements}
+        _node_n_elem = defaultdict(int)   # node → number of connected elements
+        for el in elements:
+            mid = el.get('member_id')
+            _node_mids[el['ni']].add(mid)
+            _node_mids[el['nj']].add(mid)
+            _node_n_elem[el['ni']] += 1
+            _node_n_elem[el['nj']] += 1
+        _sup_nodes = {s['node_id'] for s in supports}
+        for _nid, _mids in _node_mids.items():
+            if (len(_mids) == 1 and None not in _mids
+                    and _node_n_elem[_nid] == 2
+                    and _nid not in _sup_nodes):
+                interior_nodes.add(_nid)
+
     # ── Nodes ─────────────────────────────────────────────────────────────────
     for n in nodes:
+        if n['id'] in interior_nodes:
+            continue   # mid-member connection — no dot or label
         ax.plot(n['x'], n['y'], 'o', color=C_NODE, ms=5,
                 markerfacecolor='white', markeredgewidth=1.8, zorder=7)
         ax.text(n['x'] + sz*0.35, n['y'] + sz*0.35,

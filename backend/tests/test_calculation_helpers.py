@@ -16,8 +16,9 @@ def test_flexural_buckling_curve_for_hot_rolled_ipe_like_section():
     assert buckling_curve_hot_rolled(300, 150, 10.7) == ("a", "b")
 
 
-def test_steel_column_rejects_unrestrained_beam_column_shortcut():
-    with pytest.raises(ValueError, match="does not calculate lateral-torsional buckling"):
+def test_steel_column_requires_torsion_props_for_ltb():
+    """LTB is now supported; omitting I_T / I_w when ltb_restrained=False raises ValueError."""
+    with pytest.raises(ValueError, match="I_T_cm4 and I_w_cm6 must be provided"):
         steel_column_check(
             "C1",
             "IPE 300",
@@ -33,6 +34,7 @@ def test_steel_column_rejects_unrestrained_beam_column_shortcut():
             7.1,
             M_y_Ed_kNm=10.0,
             ltb_restrained=False,
+            # I_T_cm4 and I_w_cm6 intentionally omitted → should raise
         )
 
 

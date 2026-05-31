@@ -288,6 +288,38 @@ def steel_beam_ipe(
             "Enter h (mm) and t_w (mm) in the block to enable the shear check."
         ))
 
+    # ── Shear buckling check — EN 1993-1-1 cl. 6.2.6(6) / Exp. 6.22 ────────────
+    blocks.append(S("Shear buckling check — EN 1993-1-1 cl. 6.2.6(6)"))
+    if h is not None and t_f is not None and t_w is not None:
+        f_y_mpa_sb = float(f_y / MPa)
+        eps_sb     = (235.0 / f_y_mpa_sb) ** 0.5
+        eta_sb     = 1.0
+        h_w_sb     = h - 2 * t_f
+        ratio_sb   = float(h_w_sb / t_w)
+        limit_sb   = 72 * eps_sb / eta_sb
+        blocks.extend([
+            CALC_ROW("h_w",        "= h − 2·t_f",           str(h_w_sb)),
+            CALC_ROW("h_w / t_w",  "",                        f"{ratio_sb:.2f}"),
+            CALC_ROW("72·ε / η",   f"ε = {eps_sb:.3f}, η = {eta_sb:.1f}", f"{limit_sb:.2f}"),
+        ])
+        if ratio_sb < limit_sb:
+            blocks.append(N(
+                f"h_w/t_w = {ratio_sb:.2f} < 72ε/η = {limit_sb:.2f} — "
+                "web is NOT susceptible to shear buckling. "
+                "No additional check per EN 1993-1-5 required."
+            ))
+        else:
+            blocks.append(N(
+                f"⚠  h_w/t_w = {ratio_sb:.2f} ≥ 72ε/η = {limit_sb:.2f} — "
+                "web IS susceptible to shear buckling. "
+                "Shear buckling resistance must be verified per EN 1993-1-5 §5. "
+                "This module does not cover EN 1993-1-5 — use the Plate Girder module."
+            ))
+    else:
+        blocks.append(N(
+            "Shear buckling check skipped — h, t_f or t_w not provided."
+        ))
+
     # ── Combined bending and shear — EN 1993-1-1 cl. 6.2.8 ───────────────────
     blocks.append(S("Combined bending and shear — EN 1993-1-1 cl. 6.2.8"))
 

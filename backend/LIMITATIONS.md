@@ -30,16 +30,20 @@ calculation module. It is intended for the engineer reviewing the output.
 ## Steel Column (`steel_column.py`)  EN 1993-1-1
 
 **Scope**
-- Prismatic columns under pure axial compression.
-- Standard hot-rolled I, H, and hollow sections.
+- Prismatic columns and beam-columns under axial compression + biaxial bending.
+- Standard hot-rolled I/H sections.
+- Cross-section classification (Class 1–3), §6.2.1(7) combined cross-section check,
+  flexural buckling §6.3.1, LTB §6.3.2.2, and combined buckling §6.3.3 (Annex B).
 
 **Assumptions**
-- Effective length factors k_y, k_z input by the engineer — the module does not
-  compute them from frame analysis.
-- No combined bending + axial: use the Beam-Column module for that.
+- Effective length factors k_y, k_z input by the engineer.
+- Annex B Method 2 (not Annex A — more conservative but much simpler).
+- For LTB: two-term M_cr formula (no load-height or monosymmetry correction).
+  C₁ can be supplied for non-uniform moment; default C₁ = 1.0 is conservative.
 
 **Not covered**
-- Class 4 cross-sections.
+- Class 4 cross-sections (effective section per EN 1993-1-5).
+- Annex A (Method 1) interaction factors.
 - Columns with intermediate restraints at non-standard positions.
 
 ---

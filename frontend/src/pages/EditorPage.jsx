@@ -823,18 +823,14 @@ function makeTimberRoofTemplate() {
       cases: [
         // G — permanent: tagbeklædning + egenlast, givet pr. m vandret projektion
         { id: 'G', type: 'permanent', loads: [
-          { load_type: 'udl', elem_id: 1, value_kNm: 0.50, direction: 'projected' },
-          { load_type: 'udl', elem_id: 2, value_kNm: 0.50, direction: 'projected' },
-          { load_type: 'udl', elem_id: 3, value_kNm: 0.50, direction: 'projected' },
-          { load_type: 'udl', elem_id: 4, value_kNm: 0.50, direction: 'projected' },
+          { load_type: 'udl', member_id: 1, value_kNm: 0.50, direction: 'projected' },
+          { load_type: 'udl', member_id: 2, value_kNm: 0.50, direction: 'projected' },
         ]},
         // S — sne: karakteristisk snebelastning (DK zone 1: s_k = 1.0 kN/m²)
         // Belastning pr. spær á 1,0 m afstand → 1.0 kN/m på vandret projektion
         { id: 'S', type: 'snow', loads: [
-          { load_type: 'udl', elem_id: 1, value_kNm: 1.00, direction: 'projected' },
-          { load_type: 'udl', elem_id: 2, value_kNm: 1.00, direction: 'projected' },
-          { load_type: 'udl', elem_id: 3, value_kNm: 1.00, direction: 'projected' },
-          { load_type: 'udl', elem_id: 4, value_kNm: 1.00, direction: 'projected' },
+          { load_type: 'udl', member_id: 1, value_kNm: 1.00, direction: 'projected' },
+          { load_type: 'udl', member_id: 2, value_kNm: 1.00, direction: 'projected' },
         ]},
         // W — vind: forenklet som vandret kræft i knude (rygnings) · EN 1991-1-4
         { id: 'W', type: 'wind', loads: [
@@ -859,14 +855,14 @@ function makeTimberRoofTemplate() {
         { id: 6, x: 3.0, y: 2.0 },   // rygningsknude — højre spær (samme position, fri rotation)
       ],
       elements: [
-        // Spær 45×145 C24
-        { id: 1, ni: 1, nj: 3, type: 'beam', release: 'none',
+        // Spær 45×145 C24  — member_id groups sub-elements into one physical member
+        { id: 1, ni: 1, nj: 3, type: 'beam', release: 'none', member_id: 1,
           E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // venstre nedre spær
-        { id: 2, ni: 3, nj: 5, type: 'beam', release: 'none',
+        { id: 2, ni: 3, nj: 5, type: 'beam', release: 'none', member_id: 1,
           E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // venstre øvre spær → knude 5
-        { id: 3, ni: 6, nj: 4, type: 'beam', release: 'none',
+        { id: 3, ni: 6, nj: 4, type: 'beam', release: 'none', member_id: 2,
           E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // højre øvre spær ← knude 6
-        { id: 4, ni: 4, nj: 2, type: 'beam', release: 'none',
+        { id: 4, ni: 4, nj: 2, type: 'beam', release: 'none', member_id: 2,
           E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // højre nedre spær
         // Hanebånd 45×95 C24 — leddet begge ender → kun aksial
         { id: 5, ni: 3, nj: 4, type: 'beam', release: 'both',

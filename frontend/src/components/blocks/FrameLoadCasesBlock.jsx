@@ -8,7 +8,7 @@
  * Exports _exports.combinations so the General Frame FEM block can consume
  * them directly, running the FEM once per combination and enveloping results.
  */
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { calcFrameLoadCases } from '../../api/client.js'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
@@ -51,8 +51,30 @@ function typeColor(type) {
 
 // ── Load row inside a case ─────────────────────────────────────────────────────
 
+// Parse "1, 2, 3" → [1, 2, 3]; invalid entries silently dropped.
+function parseIds(str) {
+  return str.split(',').map(s => parseInt(s.trim(), 10)).filter(n => Number.isInteger(n) && n > 0)
+}
+// Canonical string for a load's element IDs (normalises legacy elem_id).
+function elemIdsStr(load) {
+  const ids = load.elem_ids ?? (load.elem_id != null ? [load.elem_id] : [1])
+  return ids.join(', ')
+}
+
 function LoadRow({ load, onChange, onRemove }) {
   const lt = load.load_type ?? 'udl'
+
+  // Local text state for the elem IDs field — allows typing "1, 2" without
+  // the parent immediately overwriting with partial parses.
+  const [idsText, setIdsText] = useState(() => elemIdsStr(load))
+  useEffect(() => { setIdsText(elemIdsStr(load)) }, [load.elem_ids, load.elem_id])
+
+  function commitIds(str) {
+    const ids = parseIds(str)
+    if (ids.length > 0) onChange({ ...load, elem_ids: ids, elem_id: undefined })
+    else setIdsText(elemIdsStr(load))   // revert if nothing valid was typed
+  }
+
   return (
     <div style={s.loadRow}>
       <div style={s.loadRowInner}>
@@ -66,8 +88,39 @@ function LoadRow({ load, onChange, onRemove }) {
         </div>
 
         {lt === 'udl' && <>
-          <NumField label="Elem" val={load.elem_id ?? 1}
-            set={v => onChange({ ...load, elem_id: Math.round(v) })} width={48} />
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>Target</label>
+            <select style={{ ...s.smallInput, width: 72 }}
+              value={load.member_id != null ? 'member' : 'elem'}
+              onChange={e => {
+                if (e.target.value === 'member') {
+                  const firstId = (load.elem_ids ?? [load.elem_id ?? 1])[0]
+                  onChange({ ...load, member_id: firstId, elem_ids: undefined, elem_id: undefined })
+                } else {
+                  const ids = load.member_id != null ? [load.member_id] : [1]
+                  onChange({ ...load, elem_ids: ids, member_id: undefined, elem_id: undefined })
+                }
+              }}>
+              <option value="elem">Elem</option>
+              <option value="member">Member</option>
+            </select>
+          </div>
+          {load.member_id != null
+            ? <NumField label="ID" val={load.member_id ?? 1}
+                set={v => onChange({ ...load, member_id: Math.round(v) })} width={48} />
+            : <div style={s.fieldWrap}>
+                <label style={s.miniLabel}>IDs</label>
+                <input
+                  type="text"
+                  style={{ ...s.smallInput, width: 80 }}
+                  value={idsText}
+                  placeholder="1, 2, 3"
+                  onChange={e => setIdsText(e.target.value)}
+                  onBlur={e => commitIds(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && commitIds(e.target.value)}
+                />
+              </div>
+          }
           <NumField label="kN/m" val={load.value_kNm ?? 5}
             set={v => onChange({ ...load, value_kNm: v })} />
           <div style={s.fieldWrap}>
@@ -109,7 +162,7 @@ function CaseCard({ case_, onChange, onRemove }) {
   function addLoad(lt) {
     const loads = [...(case_.loads ?? []),
       lt === 'udl'
-        ? { load_type: 'udl',   elem_id: 1, value_kNm: 5, direction: 'vertical' }
+        ? { load_type: 'udl',   elem_ids: [1], value_kNm: 5, direction: 'vertical' }
         : { load_type: 'nodal', node_id: 1, Fx_kN: 0, Fy_kN: 0 }
     ]
     onChange({ ...case_, loads })
