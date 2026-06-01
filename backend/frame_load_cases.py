@@ -4,36 +4,37 @@ frame_load_cases.py
 EN 1990 load case manager for 2D frame analysis.
 
 Named load cases (G, S, W, Q) are combined into ULS design combinations
-per EN 1990 eq. 6.10 or 6.10a/b (Danish NA, K_FI per consequence class).
+per DS/EN 1990 DK NA:2024, Table A1.2(B+C) — STR/GEO limit state.
 
-Load directions
----------------
-'vertical'   : global Y downward (gravity — self-weight, imposed)
-'projected'  : vertical per unit horizontal projection (snow on slopes)
-'horizontal' : global X (wind pressure / suction)
+Danish NA formulation (Table A1.2(B+C), combinations 1 & 2, CC2):
+  6.10a : 1.2·K_FI·G                             (permanent loads only)
+  6.10b : 1.0·K_FI·G + 1.5·K_FI·Q_lead
+          + Σ(1.5·ψ₀·K_FI·Q_companion)           (each variable as lead)
 
-The actual local-element force components are computed in the FEM solver
-where element geometry is known.
+ψ₀ factors — DS/EN 1990 DK NA:2024 Table A1.1:
+  Snow  (ellers)                   : ψ₀ = 0.3
+  Snow  (when wind leads)          : ψ₀ = 0.0   (explicitly zero per DK NA)
+  Wind  (ellers)                   : ψ₀ = 0.3
+  Imposed Cat A/B (ellers)         : ψ₀ = 0.7
 
-EN 1990 constants (Danish NA)
-------------------------------
-γ_G  = 1.35 (unfavourable), 1.00 (favourable)
-γ_Q  = 1.50
-ξ    = 0.89
-ψ₀   : snow 0.5 · wind 0.6 · imposed (A/B) 0.7
-K_FI : CC1 0.9 · CC2 1.0 · CC3 1.1
+K_FI per consequence class (Annex B):
+  CC1 → 0.9  |  CC2 → 1.0  |  CC3 → 1.1
 """
 
 _KFI = {'CC1': 0.9, 'CC2': 1.0, 'CC3': 1.1}
-_XI  = 0.89
 
-# DS/EN 1990 DK NA:2024 Table A1.1  — ψ₀ factors (Danish National Annex)
+# DS/EN 1990 DK NA:2024 Table A1.1 — ψ₀ "ellers" (default) values
 _PSI0 = {
     'permanent': None,
-    'snow':      0.5,   # DK zone 1-3;  use 0.7 for zone 4 (Bornholm) if needed
-    'wind':      0.3,   # DK NA overrides EN 1990 base value (0.6) to 0.3
-    'imposed':   0.7,   # Category A/B — office/domestic
+    'snow':      0.3,   # Table A1.1: "ellers" — 0.3
+    'wind':      0.3,   # Table A1.1: "ellers" — 0.3
+    'imposed':   0.7,   # Category A/B
 }
+
+# DS/EN 1990 DK NA:2024 Table A1.2(B+C) — STR partial factors
+_GAMMA_G_A  = 1.2   # 6.10a: γ_G,sup (permanent-only combination)
+_GAMMA_G_B  = 1.0   # 6.10b: γ_G,sup (variable-dominated combination)
+_GAMMA_Q    = 1.5   # variable load factor
 
 # EN 1995-1-1 §2.2.3: governing duration = shortest-duration variable action in combo
 _TYPE_DURATION = {
@@ -46,15 +47,11 @@ _DURATION_RANK = {
     'permanent': 0, 'long': 1, 'medium': 2, 'short': 3, 'instant': 4,
 }
 
-_GAMMA_G = 1.35
-_GAMMA_Q = 1.50
-
-# Human-readable labels for each type
 TYPE_LABELS = {
     'permanent': 'G — Permanent',
-    'snow':      'S — Snow',
-    'wind':      'W — Wind',
-    'imposed':   'Q — Imposed',
+    'snow':      'S — Snelast',
+    'wind':      'W — Vindlast',
+    'imposed':   'Q — Nyttelast',
 }
 
 
@@ -70,28 +67,37 @@ def _scale_load(ld, factor):
     return s
 
 
+def _companion_psi0(lead_type, companion_type):
+    """
+    Return ψ₀ for a companion action given the leading action type.
+    Special rule per DK NA Table A1.1: snow ψ₀ = 0 when wind leads.
+    """
+    if lead_type == 'wind' and companion_type == 'snow':
+        return 0.0
+    return _PSI0.get(companion_type, 0.7)
+
+
 def generate_combinations(cases, method='6.10ab', consequence_class='CC2'):
     """
-    Generate EN 1990 ULS load combinations.
+    Generate ULS load combinations per DS/EN 1990 DK NA:2024.
 
     Parameters
     ----------
     cases : list of dicts
-        {id, type, loads: [{load_type, elem_id|node_id, value_kNm|Fx_kN/Fy_kN, direction}]}
-    method : '6.10' | '6.10ab'
+        {id, type, loads: [...]}
+    method : '6.10ab'  DS/EN 1990 DK NA:2024 Table A1.2(B+C) — recommended
+             '6.10'    Simplified (1.35G + 1.5Q) — conservative, not DK NA STR
     consequence_class : 'CC1' | 'CC2' | 'CC3'
 
     Returns
     -------
     list of combination dicts:
-        { name, factor_table: {case_id: factor}, loads: [scaled load dicts] }
+        {name, factor_table: {case_id: factor}, loads: [...], governing_duration}
     """
-    kfi = _KFI.get(consequence_class, 1.0)
-    g_cases  = [c for c in cases if c['type'] == 'permanent']
+    kfi       = _KFI.get(consequence_class, 1.0)
+    g_cases   = [c for c in cases if c['type'] == 'permanent']
     var_cases = [c for c in cases if c['type'] != 'permanent']
-
-    psi0 = {c['id']: _PSI0.get(c['type'], 0.7) for c in var_cases}
-    combos = []
+    combos    = []
 
     def _assemble(name, g_fac, var_factors):
         loads = []
@@ -107,58 +113,53 @@ def generate_combinations(cases, method='6.10ab', consequence_class='CC2'):
             if abs(f) > 1e-10:
                 for ld in c.get('loads', []):
                     loads.append(_scale_load(ld, f))
-                dur = _TYPE_DURATION.get(c['type'], 'medium')
-                active_durations.append(dur)
-        # Governing duration = shortest (highest rank) among active variable loads
-        if active_durations:
-            governing = max(active_durations, key=lambda d: _DURATION_RANK.get(d, 0))
-        else:
-            governing = 'permanent'
+                active_durations.append(_TYPE_DURATION.get(c['type'], 'medium'))
+        governing = (max(active_durations, key=lambda d: _DURATION_RANK.get(d, 0))
+                     if active_durations else 'permanent')
         combos.append({'name': name, 'factor_table': factor_table,
                        'loads': loads, 'governing_duration': governing})
 
-    # Permanent only (always included — governs for timber when k_mod = 0.60)
-    _assemble(f'{_GAMMA_G * kfi:.2f}G', _GAMMA_G * kfi, {})
-    if not var_cases:
-        return combos
+    if method == '6.10ab':
+        # ── DS/EN 1990 DK NA:2024 Table A1.2(B+C) ──────────────────────────
+        # 6.10a: permanent loads only, γ_G = 1.2·K_FI  (no variable actions)
+        g_fac_a = _GAMMA_G_A * kfi
+        _assemble(f'6.10a: {g_fac_a:.2f}G', g_fac_a, {})
 
-    if method == '6.10':
+        if var_cases:
+            # 6.10b: γ_G = 1.0·K_FI, each variable case as lead in turn
+            g_fac_b = _GAMMA_G_B * kfi
+            for i, lead in enumerate(var_cases):
+                vf = {}
+                parts = []
+                for j, c in enumerate(var_cases):
+                    if j == i:
+                        vf[c['id']] = _GAMMA_Q * kfi
+                        parts.append(f'1.5{c["id"]}')
+                    else:
+                        psi = _companion_psi0(lead['type'], c['type'])
+                        vf[c['id']] = round(_GAMMA_Q * psi * kfi, 5)
+                        if psi > 0:
+                            parts.append(f'{psi:.1f}×1.5{c["id"]}')
+                label = f'6.10b ({lead["id"]} led): {g_fac_b:.2f}G + {" + ".join(parts)}'
+                _assemble(label, g_fac_b, vf)
+
+    else:  # '6.10' — simplified, conservative (not DK NA STR)
+        # Permanent-only case
+        _assemble(f'1.35G', 1.35 * kfi, {})
+        # Each variable as lead with ψ₀ companions
         for i, lead in enumerate(var_cases):
-            vf = {
-                c['id']: (_GAMMA_Q * kfi if j == i
-                          else _GAMMA_Q * psi0[c['id']] * kfi)
-                for j, c in enumerate(var_cases)
-            }
-            parts = ' + '.join(
-                f'1.5{c["id"]}' if j == i
-                else f'{psi0[c["id"]]:.1f}×1.5{c["id"]}'
-                for j, c in enumerate(var_cases)
-            )
-            _assemble(f'1.35G + {parts}', _GAMMA_G * kfi, vf)
-
-    else:  # 6.10a/b
-        # Eq. 6.10a — all variables with ψ₀ (no leading)
-        vf_a = {c['id']: _GAMMA_Q * psi0[c['id']] * kfi for c in var_cases}
-        parts_a = ' + '.join(
-            f'{psi0[c["id"]]:.1f}×1.5{c["id"]}' for c in var_cases
-        )
-        _assemble(f'6.10a: 1.35G + {parts_a}', _GAMMA_G * kfi, vf_a)
-
-        # Eq. 6.10b — each variable as leading action in turn
-        g_fac_b = round(_XI * _GAMMA_G * kfi, 4)
-        for i, lead in enumerate(var_cases):
-            vf = {
-                c['id']: (_GAMMA_Q * kfi if j == i
-                          else _GAMMA_Q * psi0[c['id']] * kfi)
-                for j, c in enumerate(var_cases)
-            }
-            parts_b = ' + '.join(
-                f'1.5{c["id"]}' if j == i
-                else f'{psi0[c["id"]]:.1f}×1.5{c["id"]}'
-                for j, c in enumerate(var_cases)
-            )
-            _assemble(f'6.10b ({lead["id"]} led): {g_fac_b}G + {parts_b}',
-                      g_fac_b, vf)
+            vf = {}
+            parts = []
+            for j, c in enumerate(var_cases):
+                if j == i:
+                    vf[c['id']] = _GAMMA_Q * kfi
+                    parts.append(f'1.5{c["id"]}')
+                else:
+                    psi = _companion_psi0(lead['type'], c['type'])
+                    vf[c['id']] = round(_GAMMA_Q * psi * kfi, 5)
+                    if psi > 0:
+                        parts.append(f'{psi:.1f}×1.5{c["id"]}')
+            _assemble(f'1.35G + {" + ".join(parts)}', 1.35 * kfi, vf)
 
     return combos
 
@@ -166,46 +167,40 @@ def generate_combinations(cases, method='6.10ab', consequence_class='CC2'):
 def combinations_to_calc_blocks(cases, combinations, consequence_class, method):
     """Return calc_core blocks for PDF export."""
     try:
-        from calc_core import S, T, TBL, N
+        from calc_core import S, T, TBL
     except ImportError:
         return []
 
     blocks = [
-        S('Lastkombinationer (EN 1990)'),
+        S('Lastkombinationer (DS/EN 1990 DK NA:2024)'),
         T(f'Konsekvensklasse: {consequence_class}  ·  Metode: {method}'),
     ]
 
-    # Case overview
     for c in cases:
         lbl = TYPE_LABELS.get(c['type'], c['type'])
         load_lines = []
         for ld in c.get('loads', []):
             if ld.get('load_type') == 'udl':
                 dir_lbl = {
-                    'vertical':   'vertikal',
-                    'projected':  'projekteret (sne)',
-                    'horizontal': 'horisontal',
+                    'vertical':      'vertikal',
+                    'projected':     'projekteret (sne)',
+                    'horizontal':    'horisontal',
+                    'perpendicular': 'vinkelret på flade',
                 }.get(ld.get('direction', 'vertical'), ld.get('direction'))
                 if ld.get('member_id') is not None:
                     target = f"Member {ld['member_id']}"
                 elif ld.get('elem_ids'):
-                    ids_str = ', '.join(str(i) for i in ld['elem_ids'])
-                    target = f"Elements {ids_str}"
+                    target = f"Elements {', '.join(str(i) for i in ld['elem_ids'])}"
                 else:
                     target = f"Element {ld.get('elem_id')}"
-                load_lines.append(
-                    f"{target}: "
-                    f"{ld.get('value_kNm', 0):.2f} kN/m  ({dir_lbl})"
-                )
+                load_lines.append(f"{target}: {ld.get('value_kNm', 0):.2f} kN/m  ({dir_lbl})")
             else:
                 load_lines.append(
                     f"Knude {ld.get('node_id')}: "
-                    f"Fx={ld.get('Fx_kN',0):.2f} kN  "
-                    f"Fy={ld.get('Fy_kN',0):.2f} kN"
+                    f"Fx={ld.get('Fx_kN',0):.2f} kN  Fy={ld.get('Fy_kN',0):.2f} kN"
                 )
         blocks.append(T(f"{c['id']} — {lbl}:\n" + '\n'.join(load_lines)))
 
-    # Combination table
     case_ids = [c['id'] for c in cases]
     headers  = ['Kombination'] + [f'γ·{cid}' for cid in case_ids]
     rows = []

@@ -896,11 +896,11 @@ function makeTimberRoofTemplate() {
       'Belastningen appliceres vinkelret på spærfladen (direction = perpendicular).' } },
 
     // ── Load combinations ─────────────────────────────────────────────────
-    { id: ids.hCombos, type: 'heading', data: { level: 3, text: '1.4 Lastkombinationer — EN 1990 lign. 6.10 (CC2)' } },
+    { id: ids.hCombos, type: 'heading', data: { level: 3, text: '1.4 Lastkombinationer — DS/EN 1990 DK NA lign. 6.10a/b (CC2)' } },
     { id: ids.loadCases, type: 'frame_load_cases', data: {
-      title: 'Lastkombinationer — Hanebåndsramme',
+      title: 'Lastkombinationer — Hanebåndsramme (G+S+W)',
       consequence_class: 'CC2',
-      method: '6.10',
+      method: '6.10ab',
       cases: [
         // G — egenlast på vandret projektion
         { id: 'G', type: 'permanent', loads: [
@@ -927,9 +927,9 @@ function makeTimberRoofTemplate() {
     { id: ids.hTimberCombos, type: 'heading', data: { level: 3,
       text: '1.5 Lastkombinationer til trækontrol (G + S — vind udeladt)' } },
     { id: ids.timberCases, type: 'frame_load_cases', data: {
-      title: 'Lastkombinationer til træ — G + S (EN 1990 lign. 6.10, CC2)',
+      title: 'Lastkombinationer til træ — G + S (DS/EN 1990 DK NA lign. 6.10a/b, CC2)',
       consequence_class: 'CC2',
-      method: '6.10',
+      method: '6.10ab',
       cases: [
         { id: 'G', type: 'permanent', loads: [
           { load_type: 'udl', member_id: 1, value_kNm: 0.90, direction: 'projected' },
