@@ -522,31 +522,34 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None)
 
         result = solve(nodes, elements, supports, resolved, equal_dofs)
         all_results.append({
-            'name':            combo['name'],
-            'node_disps':      result['node_disps'],
-            'node_reactions':  result['node_reactions'],
-            'ele_forces':      result['ele_forces'],
-            'eigen_modes':     result.get('eigen_modes', []),
+            'name':               combo['name'],
+            'governing_duration': combo.get('governing_duration', 'short'),
+            'node_disps':         result['node_disps'],
+            'node_reactions':     result['node_reactions'],
+            'ele_forces':         result['ele_forces'],
+            'eigen_modes':        result.get('eigen_modes', []),
         })
 
     # Envelope — worst-case M, V, N per element across all combinations
     envelope = {}
     for el in elements:
         eid  = el['id']
-        best = {'M': 0.0, 'M_combo': '', 'V': 0.0, 'V_combo': '',
-                'N': 0.0, 'N_combo': ''}
+        best = {'M': 0.0, 'M_combo': '', 'M_duration': 'short',
+                'V': 0.0, 'V_combo': '', 'V_duration': 'short',
+                'N': 0.0, 'N_combo': '', 'N_duration': 'short'}
         for r in all_results:
             f = r['ele_forces'].get(eid, [0.0] * 6)
             M = max(abs(f[2]), abs(f[5]))
             V = max(abs(f[1]), abs(f[4]))
             N = max(abs(f[0]), abs(f[3]))
-            if M > best['M']: best['M'] = M; best['M_combo'] = r['name']
-            if V > best['V']: best['V'] = V; best['V_combo'] = r['name']
-            if N > best['N']: best['N'] = N; best['N_combo'] = r['name']
+            dur = r.get('governing_duration', 'short')
+            if M > best['M']: best['M'] = M; best['M_combo'] = r['name']; best['M_duration'] = dur
+            if V > best['V']: best['V'] = V; best['V_combo'] = r['name']; best['V_duration'] = dur
+            if N > best['N']: best['N'] = N; best['N_combo'] = r['name']; best['N_duration'] = dur
         envelope[eid] = {
-            'M_max_kNm': round(best['M'], 3), 'M_combo': best['M_combo'],
-            'V_max_kN':  round(best['V'], 3), 'V_combo': best['V_combo'],
-            'N_max_kN':  round(best['N'], 3), 'N_combo': best['N_combo'],
+            'M_max_kNm':   round(best['M'], 3), 'M_combo': best['M_combo'], 'M_duration': best['M_duration'],
+            'V_max_kN':    round(best['V'], 3), 'V_combo': best['V_combo'], 'V_duration': best['V_duration'],
+            'N_max_kN':    round(best['N'], 3), 'N_combo': best['N_combo'], 'N_duration': best['N_duration'],
         }
 
     return envelope, all_results

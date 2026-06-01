@@ -825,6 +825,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
       // Build _exports so capacity check blocks can read element forces
       const eleTable = res._summary?.ele_force_table ?? []
+      const envelope = res._summary?.envelope ?? {}
 
       // Member-level entries: worst-case forces across all sub-elements (id = 1000 + member_id)
       const memberIds = [...new Set(elements.filter(e => e.member_id != null).map(e => e.member_id))]
@@ -836,13 +837,20 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         if (subElems.length === 0) return null
         const firstE = subElems[0]; const lastE = subElems[subElems.length - 1]
         const totalL = subElems.reduce((s, e) => s + e.L_m, 0)
+        // M_duration: governing duration of the sub-element that has worst M
+        let bestM = 0, bestMDuration = 'short'
+        subElems.forEach(e => {
+          const m = Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm))
+          if (m > bestM) { bestM = m; bestMDuration = envelope[e.id]?.M_duration ?? 'short' }
+        })
         return {
-          id:        1000 + mid,
-          member_id: mid,
-          label:     `Member ${mid}  (Elem ${subElems.map(e => e.id).join('+')}  ${firstE.ni}→${lastE.nj}  L=${totalL.toFixed(2)}m)`,
-          M_max_kNm: Math.max(...subElems.map(e => Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)))),
-          V_max_kN:  Math.max(...subElems.map(e => Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)))),
-          N_max_kN:  Math.max(...subElems.map(e => Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)))),
+          id:         1000 + mid,
+          member_id:  mid,
+          label:      `Member ${mid}  (Elem ${subElems.map(e => e.id).join('+')}  ${firstE.ni}→${lastE.nj}  L=${totalL.toFixed(2)}m)`,
+          M_max_kNm:  Math.max(...subElems.map(e => Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)))),
+          V_max_kN:   Math.max(...subElems.map(e => Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)))),
+          N_max_kN:   Math.max(...subElems.map(e => Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)))),
+          M_duration: bestMDuration,
           M_i_kNm: firstE.M_i_kNm, V_i_kN: firstE.V_i_kN, N_i_kN: firstE.N_i_kN,
           M_j_kNm: lastE.M_j_kNm,  V_j_kN: lastE.V_j_kN,  N_j_kN: lastE.N_j_kN,
         }
@@ -852,11 +860,12 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         elements: [
           ...memberEntries,
           ...eleTable.map(e => ({
-            id:        e.id,
-            label:     `Elem ${e.id}  (${e.ni}→${e.nj}, L=${e.L_m}m)`,
-            M_max_kNm: Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)),
-            V_max_kN:  Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)),
-            N_max_kN:  Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)),
+            id:         e.id,
+            label:      `Elem ${e.id}  (${e.ni}→${e.nj}, L=${e.L_m}m)`,
+            M_max_kNm:  Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)),
+            V_max_kN:   Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)),
+            N_max_kN:   Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)),
+            M_duration: envelope[e.id]?.M_duration ?? 'short',
             M_i_kNm: e.M_i_kNm, V_i_kN: e.V_i_kN, N_i_kN: e.N_i_kN,
             M_j_kNm: e.M_j_kNm, V_j_kN: e.V_j_kN, N_j_kN: e.N_j_kN,
           })),

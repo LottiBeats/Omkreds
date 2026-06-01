@@ -1921,8 +1921,9 @@ class FrameComboLoadIn(BaseModel):
     Mz_kNm:     float      = 0.0
 
 class FrameComboIn(BaseModel):
-    name:  str
-    loads: list[FrameComboLoadIn] = []
+    name:               str
+    loads:              list[FrameComboLoadIn] = []
+    governing_duration: str = 'short'   # EN 1995-1-1 §2.2.3: shortest-duration variable load
 
 class GenFrameEqualDOFIn(BaseModel):
     r_node: int            # retained node

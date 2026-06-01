@@ -34,6 +34,17 @@ _PSI0 = {
     'imposed':   0.7,
 }
 
+# EN 1995-1-1 §2.2.3: governing duration = shortest-duration variable action in combo
+_TYPE_DURATION = {
+    'permanent': 'permanent',
+    'imposed':   'medium',
+    'snow':      'short',
+    'wind':      'instant',
+}
+_DURATION_RANK = {
+    'permanent': 0, 'long': 1, 'medium': 2, 'short': 3, 'instant': 4,
+}
+
 _GAMMA_G = 1.35
 _GAMMA_Q = 1.50
 
@@ -88,13 +99,22 @@ def generate_combinations(cases, method='6.10ab', consequence_class='CC2'):
             factor_table[c['id']] = round(g_fac, 4)
             for ld in c.get('loads', []):
                 loads.append(_scale_load(ld, g_fac))
+        active_durations = []
         for c in var_cases:
             f = var_factors.get(c['id'], 0.0)
             factor_table[c['id']] = round(f, 4)
             if abs(f) > 1e-10:
                 for ld in c.get('loads', []):
                     loads.append(_scale_load(ld, f))
-        combos.append({'name': name, 'factor_table': factor_table, 'loads': loads})
+                dur = _TYPE_DURATION.get(c['type'], 'medium')
+                active_durations.append(dur)
+        # Governing duration = shortest (highest rank) among active variable loads
+        if active_durations:
+            governing = max(active_durations, key=lambda d: _DURATION_RANK.get(d, 0))
+        else:
+            governing = 'permanent'
+        combos.append({'name': name, 'factor_table': factor_table,
+                       'loads': loads, 'governing_duration': governing})
 
     # Permanent only
     if not var_cases:

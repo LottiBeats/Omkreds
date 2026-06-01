@@ -116,6 +116,10 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         payload.fem_label       = isGenFem
           ? `${selFem?.data?.title ?? 'Frame FEM'} — ${selElem?.label ?? ''}`
           : selFem?.data?.title ?? 'Beam FEM'
+        // Auto-select k_mod load duration from the governing combination duration
+        if (selElem?.M_duration) {
+          payload.load_duration = selElem.M_duration
+        }
       }
 
       const blocks_result = await calcTimberBeam(payload)
@@ -259,16 +263,24 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         </Field>
       </>)}
 
-      {/* ── Load duration — direct, actions, or FEM ── */}
+      {/* ── Load duration ── */}
       {(source === 'direct' || source === 'actions' || source === 'fem') && (
         <Field label="Load duration"
-          hint={source === 'fem' || source === 'actions'
-            ? 'Set manually — not derivable from actions alone'
+          hint={source === 'fem' && selElem?.M_duration
+            ? `Auto from FEM: "${selElem.M_duration}" (governing combination)`
+            : source === 'fem' ? 'Set manually (run FEM first for auto-detection)'
             : undefined}>
-          <select style={s} value={d.load_duration ?? 'medium'}
-            onChange={e => update({ load_duration: e.target.value })}>
-            {LOAD_DURATIONS.map(dur => <option key={dur} value={dur}>{DURATION_LABEL[dur] ?? dur}</option>)}
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <select style={s} value={d.load_duration ?? 'medium'}
+              onChange={e => update({ load_duration: e.target.value })}>
+              {LOAD_DURATIONS.map(dur => <option key={dur} value={dur}>{DURATION_LABEL[dur] ?? dur}</option>)}
+            </select>
+            {source === 'fem' && selElem?.M_duration && (
+              <span style={{ fontSize: 10, color: '#27ae60', fontWeight: 700 }}>
+                → {selElem.M_duration}
+              </span>
+            )}
+          </div>
         </Field>
       )}
 
