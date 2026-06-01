@@ -2250,6 +2250,7 @@ class SnowLoadInput(BaseModel):
     roof_span_m:   float = 8.0
     eave_height_m: float = 3.0
     gamma_s:       float = 1.5
+    a_m:           float = 0.0   # rafter spacing — if > 0, show per-rafter load
 
 
 @protected.post("/calc/snow-load", tags=["Calculations"])
@@ -2269,8 +2270,89 @@ def calc_snow_load(data: SnowLoadInput):
             roof_span_m   = data.roof_span_m,
             eave_height_m = data.eave_height_m,
             gamma_s       = data.gamma_s,
+            a_m           = data.a_m,
         )
         return blocks
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+# ── Roof dead load (EN 1991-1-1) ─────────────────────────────────────────────
+
+class RoofLayerIn(BaseModel):
+    description: str   = ""
+    g_kNm2:      float = 0.0   # load per m² of roof surface [kN/m²]
+
+class RoofDeadLoadInput(BaseModel):
+    title:      str              = "Roof Dead Load"
+    label:      str              = "G1"
+    alpha_deg:  float            = 30.0   # roof pitch [°]
+    a_m:        float            = 1.0    # rafter spacing / tributary width [m]
+    layers:     list[RoofLayerIn] = []
+    b_mm:       float            = 45.0   # rafter width  [mm]
+    h_mm:       float            = 145.0  # rafter height [mm]
+    rho_kgm3:   float            = 380.0  # timber density [kg/m³]
+
+@protected.post("/calc/roof-dead-load", tags=["Calculations"])
+def calc_roof_dead_load(data: RoofDeadLoadInput):
+    """Roof permanent load: cladding layers + rafter self-weight → g_k per rafter [kN/m, horizontal]."""
+    try:
+        import math
+        from calc_core import S, T, N, TBL, CALC_ROW, MH
+
+        cos_a = math.cos(math.radians(data.alpha_deg))
+
+        # ── Cladding layers ───────────────────────────────────────────────────
+        g_tag = sum(l.g_kNm2 for l in data.layers)
+        # Convert kN/m² (roof surface) → kN/m (horizontal projection, per rafter)
+        g_cladding = g_tag / cos_a * data.a_m
+
+        # ── Rafter self-weight ────────────────────────────────────────────────
+        rho_kNm3    = data.rho_kgm3 * 9.81 / 1000           # kN/m³
+        g_rafter    = (data.b_mm/1000) * (data.h_mm/1000) * rho_kNm3 / cos_a  # kN/m horiz.
+
+        g_k = round(g_cladding + g_rafter, 3)
+
+        blocks = []
+        blocks.append(MH(
+            f"{data.label} — Roof Dead Load  (EN 1991-1-1)",
+            f"α = {data.alpha_deg:.1f}°  ·  cos α = {cos_a:.4f}  ·  a = {data.a_m:.2f} m",
+            "general",
+        ))
+
+        # Layer table
+        blocks.append(S("Tagopbygning — karakteristiske værdier per m² tagflade"))
+        headers = ["Lag", "g_k  [kN/m²]"]
+        rows    = [[l.description, f"{l.g_kNm2:.3f}"] for l in data.layers]
+        rows.append(["Total  g_tag", f"{g_tag:.3f}"])
+        blocks.append(TBL(headers, rows))
+
+        # Conversion to horizontal projection, per rafter
+        blocks.append(S("Omregning til vandret projektion per spær"))
+        blocks += [
+            CALC_ROW("cos α",      f"cos({data.alpha_deg:.1f}°)",                   f"{cos_a:.4f}"),
+            CALC_ROW("a",          "Spærafstand (tværafstand)",                      f"{data.a_m:.2f} m"),
+            CALC_ROW("g_tag,proj", "= g_tag / cos α × a",                           f"{g_cladding:.3f} kN/m"),
+        ]
+
+        # Rafter self-weight
+        blocks.append(S("Spær egenlast"))
+        blocks += [
+            CALC_ROW("b × h",      f"{data.b_mm:.0f} × {data.h_mm:.0f} mm",         f"{data.b_mm/1000*data.h_mm/1000*1e6:.0f} mm²"),
+            CALC_ROW("ρ",          "Rumvægt",                                        f"{data.rho_kgm3:.0f} kg/m³  =  {rho_kNm3:.4f} kN/m³"),
+            CALC_ROW("g_spær",     "= b · h · ρ / cos α  (vandret projektion)",     f"{g_rafter:.3f} kN/m"),
+        ]
+
+        # Total
+        blocks.append(S("Samlet egenlast per spær"))
+        blocks += [
+            CALC_ROW("g_k", "= g_tag,proj + g_spær", f"{g_k:.3f} kN/m  (vandret projektion)"),
+        ]
+
+        return {"_result": blocks}
 
     except HTTPException:
         raise

@@ -274,6 +274,12 @@ export const calcSnowLoad = (data) =>
   request('POST', '/calc/snow-load', data)
 
 /**
+ * Run a roof dead load calculation (cladding layers + rafter self-weight).
+ */
+export const calcRoofDeadLoad = (data) =>
+  request('POST', '/calc/roof-dead-load', data)
+
+/**
  * Run an EN 1997-1 Annex D spread footing bearing capacity check.
  */
 export const calcFoundation = (data) =>

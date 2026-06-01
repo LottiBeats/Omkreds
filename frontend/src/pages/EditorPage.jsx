@@ -770,8 +770,8 @@ function makeTimberRoofTemplate() {
     h1:           nid(),
     intro:        nid(),
     hLoads:       nid(),
-    hDead:        nid(),   txtDead:    nid(),
-    hSnow:        nid(),   snowBlock:  nid(),   txtSnow:  nid(),
+    hDead:        nid(),   deadBlock:  nid(),
+    hSnow:        nid(),   snowBlock:  nid(),
     hWind:        nid(),   windBlock:  nid(),   txtWind:  nid(),
     hCombos:      nid(),   loadCases:  nid(),
     hTimberCombos: nid(),  timberCases: nid(),
@@ -828,46 +828,40 @@ function makeTimberRoofTemplate() {
 
     // ── Dead load ─────────────────────────────────────────────────────────
     { id: ids.hDead, type: 'heading', data: { level: 3, text: '1.1 Egenlast (G)' } },
-    { id: ids.txtDead, type: 'text', data: { text:
-      'Tagopbygning (karakteristiske værdier per m² tagflade — hældning 33,7°):\n\n' +
-      '  Tegltagsten (monier):         0,55 kN/m²\n' +
-      '  Lægte + kontralägte (38 mm):  0,04 kN/m²\n' +
-      '  Undertag (vindspærrepap):     0,03 kN/m²\n' +
-      '  Krydsfinérsarking 12 mm:      0,07 kN/m²\n' +
-      '  Isolering 200 mm (glasuld):   0,04 kN/m²\n' +
-      '  Dampspærre:                   0,01 kN/m²\n' +
-      '  ─────────────────────────────────────────\n' +
-      '  Total pr. m² tagflade:  g_tag = 0,74 kN/m²\n\n' +
-      'Pr. spær ved a = 1,0 m tværafstand, omregnet til vandret projektion:\n' +
-      '  g_tag_proj = g_tag × (1/cos α) × a = 0,74 / 0,832 × 1,0 = 0,89 kN/m\n\n' +
-      'Spær egenlast (45×145 C24, ρ = 380 kg/m³):\n' +
-      '  g_spær = 0,045 × 0,145 × 3,8 / 0,832 = 0,030 kN/m (vandret projektion)\n\n' +
-      'Samlet egenlast:  g_k = 0,89 + 0,03 ≈ 0,90 kN/m (vandret projektion, pr. spær)' } },
+    { id: ids.deadBlock, type: 'roof_dead_load', data: {
+      title:     'Egenlast — tagopbygning + spær',
+      label:     'G1',
+      alpha_deg: 33.69,
+      a_m:       1.0,
+      layers: [
+        { description: 'Tegltagsten (monier)',        g_kNm2: 0.55 },
+        { description: 'Lægte + kontralägte (38 mm)', g_kNm2: 0.04 },
+        { description: 'Undertag (vindspærrepap)',     g_kNm2: 0.03 },
+        { description: 'Krydsfinérsarking 12 mm',     g_kNm2: 0.07 },
+        { description: 'Isolering 200 mm (glasuld)',   g_kNm2: 0.04 },
+        { description: 'Dampspærre',                  g_kNm2: 0.01 },
+      ],
+      b_mm: 45, h_mm: 145, rho_kgm3: 380,
+      _result: null,
+    }},
 
     // ── Snow load ─────────────────────────────────────────────────────────
     { id: ids.hSnow, type: 'heading', data: { level: 3, text: '1.2 Snelast (S) — DS/EN 1991-1-3 DK NA' } },
     { id: ids.snowBlock, type: 'snow_load', data: {
-      title:       'Snelast — saddeltag 33,7°',
-      label:       'SN1',
-      roof_type:   'pitched',
-      alpha_deg:   33.69,
-      s_k_kNm2:    0.9,
-      dk_zone:     '1',
-      C_e:         1.0,
-      C_t:         1.0,
-      roof_span_m: 6.0,
+      title:         'Snelast — saddeltag 33,7°',
+      label:         'SN1',
+      roof_type:     'pitched',
+      alpha_deg:     33.69,
+      s_k_kNm2:      0.9,
+      dk_zone:       '1',
+      C_e:           1.0,
+      C_t:           1.0,
+      roof_span_m:   6.0,
       eave_height_m: 0.0,
-      gamma_s:     1.5,
-      _result:     null,
+      gamma_s:       1.5,
+      a_m:           1.0,
+      _result:       null,
     }},
-    { id: ids.txtSnow, type: 'text', data: { text:
-      'Snezone DK zone 1:  s_k = 0,90 kN/m²  (Sjælland, Fyn og de fleste øer)\n' +
-      'Formfaktor (DS/EN 1991-1-3 §5.3.3):  α = 33,7°  →  30° < α ≤ 60°\n' +
-      '  μ₁ = 0,8 × (60 − 33,7) / 30 = 0,8 × 0,877 = 0,70\n\n' +
-      'Karakteristisk tagsnelast:\n' +
-      '  s = μ₁ × C_e × C_t × s_k = 0,70 × 1,0 × 1,0 × 0,90 = 0,63 kN/m²\n\n' +
-      'Pr. spær ved a = 1,0 m tværafstand (vandret projektion):\n' +
-      '  s_spær = 0,63 × 1,0 = 0,63 kN/m  (direction = projected, korrekt for sneformfaktor)' } },
 
     // ── Wind load ─────────────────────────────────────────────────────────
     { id: ids.hWind, type: 'heading', data: { level: 3, text: '1.3 Vindlast (W) — DS/EN 1991-1-4 DK NA' } },

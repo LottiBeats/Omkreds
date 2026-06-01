@@ -29,8 +29,9 @@ import FrameFemBlock          from './FrameFemBlock.jsx'
 import PortalFrameFemBlock    from './PortalFrameFemBlock.jsx'
 import GeneralFrameFemBlock  from './GeneralFrameFemBlock.jsx'
 import FrameLoadCasesBlock  from './FrameLoadCasesBlock.jsx'
-import WindLoadBlock     from './WindLoadBlock.jsx'
-import SnowLoadBlock     from './SnowLoadBlock.jsx'
+import WindLoadBlock       from './WindLoadBlock.jsx'
+import SnowLoadBlock       from './SnowLoadBlock.jsx'
+import RoofDeadLoadBlock   from './RoofDeadLoadBlock.jsx'
 import FoundationBlock     from './FoundationBlock.jsx'
 import LoadComboBlock      from './LoadComboBlock.jsx'
 import BeamColumnBlock     from './BeamColumnBlock.jsx'
@@ -164,7 +165,18 @@ const BLOCK_TYPES = [
     default: { title: 'Snow Load', label: 'SN1', roof_type: 'pitched',
                alpha_deg: 20.0, s_k_kNm2: 1.0, dk_zone: '1',
                C_e: 1.0, C_t: 1.0, roof_span_m: 8.0, eave_height_m: 3.0,
-               gamma_s: 1.5, _result: null } },
+               gamma_s: 1.5, a_m: 0.0, _result: null } },
+  { type: 'roof_dead_load', label: 'Roof dead load',  icon: 'RDL', color: '#0369a1', component: RoofDeadLoadBlock,
+    default: { title: 'Roof Dead Load', label: 'G1', alpha_deg: 30.0, a_m: 1.0,
+               layers: [
+                 { description: 'Tegltagsten (monier)',        g_kNm2: 0.55 },
+                 { description: 'Lægte + kontralägte (38 mm)', g_kNm2: 0.04 },
+                 { description: 'Undertag (vindspærrepap)',     g_kNm2: 0.03 },
+                 { description: 'Krydsfinérsarking 12 mm',     g_kNm2: 0.07 },
+                 { description: 'Isolering 200 mm (glasuld)',   g_kNm2: 0.04 },
+                 { description: 'Dampspærre',                  g_kNm2: 0.01 },
+               ],
+               b_mm: 45.0, h_mm: 145.0, rho_kgm3: 380.0, _result: null } },
   { type: 'foundation',    label: 'Foundation',        icon: 'FND', color: '#57534e', component: FoundationBlock,
     default: { title: 'Foundation Bearing Check', label: 'F1',
                B_m: 1.5, L_m: 2.0, D_m: 0.8,

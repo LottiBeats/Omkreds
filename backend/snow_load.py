@@ -29,6 +29,7 @@ def snow_load(
     roof_span_m:    float = 8.0,             # horizontal span of roof [m]
     eave_height_m:  float = 3.0,            # height at eaves [m]
     gamma_s:        float = 1.5,             # snow partial factor (EC1-1-3 DK NA)
+    a_m:            float = 0.0,             # rafter spacing [m] — if > 0, show per-rafter load
 ):
     """
     Returns a list of calc_core blocks for the snow load calculation.
@@ -116,5 +117,13 @@ def snow_load(
     if mu1 == 0.0:
         blocks.append(N("Pitch > 60° — no snow accumulation assumed (μ₁ = 0). "
                         "Check local drifting provisions if adjacent to taller structure."))
+
+    if a_m > 0:
+        s_kNm = s * a_m
+        blocks.append(S("Per-rafter load  (horizontal projection)"))
+        blocks += [
+            CALC_ROW("a",        "Rafter spacing",                     f"{a_m:.2f} m"),
+            CALC_ROW("s_rafter", "= s · a  (projected, per rafter)",   f"{s_kNm:.3f} kN/m"),
+        ]
 
     return blocks

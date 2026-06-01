@@ -52,6 +52,7 @@ export default function SnowLoadBlock({ block, onChange }) {
         roof_span_m:   d.roof_span_m   ?? 8.0,
         eave_height_m: d.eave_height_m ?? 3.0,
         gamma_s:       d.gamma_s       ?? 1.5,
+        a_m:           d.a_m           ?? 0.0,
       })
       update({ _result: blocks })
     } catch (err) {
@@ -118,6 +119,10 @@ export default function SnowLoadBlock({ block, onChange }) {
       <Field label="γ_s" hint="Snow partial factor">
         <NumericInput style={s.input} value={d.gamma_s ?? 1.5}
           onChange={v => update({ gamma_s: v })} />
+      </Field>
+      <Field label="a (m)" hint="Rafter spacing — shows per-rafter kN/m if > 0">
+        <NumericInput style={s.input} value={d.a_m ?? 0.0}
+          onChange={v => update({ a_m: v })} />
       </Field>
     </CalcBlockShell>
   )
