@@ -775,13 +775,11 @@ function makeTimberRoofTemplate() {
     hWind:        nid(),   windBlock:  nid(),   txtWind:  nid(),
     hCombos:      nid(),   loadCases:  nid(),
     hFem:         nid(),   fem:        nid(),
-    hChecks:      nid(),
-    hSpærNedre:   nid(),   chkS1:      nid(),
-    hSpærØvre:    nid(),   chkS2:      nid(),
-    hSpærHøjreN:  nid(),   chkS3:      nid(),
-    hSpærHøjreØ:  nid(),   chkS4:      nid(),
-    hHane:        nid(),   chkHane:    nid(),
-    hConclusion:  nid(),   conclusion: nid(),
+    hChecks:        nid(),
+    hSpærVenstre:   nid(),   txtSpærNote: nid(),   chkSpærV: nid(),
+    hSpærHøjre:     nid(),                          chkSpærH: nid(),
+    hHane:          nid(),   chkHane:    nid(),
+    hConclusion:    nid(),   conclusion: nid(),
   }
 
   // ── Section properties ──────────────────────────────────────────────────
@@ -965,50 +963,36 @@ function makeTimberRoofTemplate() {
     { id: ids.hChecks, type: 'heading', data: { level: 2,
       text: '3. Kapacitetskontrol (DS/EN 1995-1-1)' } },
 
-    // ── Nedre venstre spær (elem 1) ───────────────────────────────────────
-    { id: ids.hSpærNedre, type: 'heading', data: { level: 3,
-      text: 'Nedre spær venstre — 45×145 C24 (elem 1, L = 2,16 m)' } },
-    { id: ids.chkS1, type: 'timber_beam', data: {
-      title: 'Nedre spær venstre — 45×145 C24', label: 'S1',
+    // ── Venstre spær — member 1 (elem 1 + 2, samlet) ─────────────────────
+    { id: ids.hSpærVenstre, type: 'heading', data: { level: 3,
+      text: 'Venstre spær — 45×145 C24 (member 1: elem 1+2, L_total = 3,61 m)' } },
+    { id: ids.txtSpærNote, type: 'text', data: { text:
+      'Spæret er i FEM-modellen opdelt i to elementer ved hanebåndssamlingen (node 3):\n' +
+      '  Nedre del: elem 1 — L₁ = 2,163 m  (murplade → hanebåndssamling)\n' +
+      '  Øvre del:  elem 2 — L₂ = 1,442 m  (hanebåndssamling → rygning)\n\n' +
+      'Checket anvender member-niveau snitkræfter (id = 1001) — worst-case M/V/N\n' +
+      'på tværs af begge elementer i memberen.\n\n' +
+      'Effektiv knæklængde for sideudknækning (LTB):\n' +
+      '  Lateral afstivning ved: murplade (node 1), hanebåndssamling (node 3) og rygning (node 5)\n' +
+      '  Længste uafstivede del: L_ef = L₁ = 2,163 m (nedre del — dimensionerende for LTB)\n' +
+      '  "span_m" er sat til 2,163 m da denne er bestemmende for sideudknækning.' } },
+    { id: ids.chkSpærV, type: 'timber_beam', data: {
+      title: 'Venstre spær 45×145 C24 — member 1 (worst-case M/V/N)', label: 'S1',
       span_m: 2.163, b_mm: 45, h_mm: 145,
       timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
-      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 1, fem_end: 'max',
+      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 1001, fem_end: 'max',
       compression_edge_restrained: false, torsional_restraint_at_supports: true,
       _result: null,
     }},
 
-    // ── Øvre venstre spær (elem 2) ────────────────────────────────────────
-    { id: ids.hSpærØvre, type: 'heading', data: { level: 3,
-      text: 'Øvre spær venstre — 45×145 C24 (elem 2, L = 1,44 m)' } },
-    { id: ids.chkS2, type: 'timber_beam', data: {
-      title: 'Øvre spær venstre — 45×145 C24', label: 'S2',
-      span_m: 1.442, b_mm: 45, h_mm: 145,
-      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
-      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 2, fem_end: 'max',
-      compression_edge_restrained: false, torsional_restraint_at_supports: true,
-      _result: null,
-    }},
-
-    // ── Øvre højre spær (elem 3) ──────────────────────────────────────────
-    { id: ids.hSpærHøjreØ, type: 'heading', data: { level: 3,
-      text: 'Øvre spær højre — 45×145 C24 (elem 3, L = 1,44 m)' } },
-    { id: ids.chkS3, type: 'timber_beam', data: {
-      title: 'Øvre spær højre — 45×145 C24', label: 'S3',
-      span_m: 1.442, b_mm: 45, h_mm: 145,
-      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
-      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 3, fem_end: 'max',
-      compression_edge_restrained: false, torsional_restraint_at_supports: true,
-      _result: null,
-    }},
-
-    // ── Nedre højre spær (elem 4) ─────────────────────────────────────────
-    { id: ids.hSpærHøjreN, type: 'heading', data: { level: 3,
-      text: 'Nedre spær højre — 45×145 C24 (elem 4, L = 2,16 m)' } },
-    { id: ids.chkS4, type: 'timber_beam', data: {
-      title: 'Nedre spær højre — 45×145 C24', label: 'S4',
+    // ── Højre spær — member 2 (elem 3 + 4, samlet) ───────────────────────
+    { id: ids.hSpærHøjre, type: 'heading', data: { level: 3,
+      text: 'Højre spær — 45×145 C24 (member 2: elem 3+4, L_total = 3,61 m)' } },
+    { id: ids.chkSpærH, type: 'timber_beam', data: {
+      title: 'Højre spær 45×145 C24 — member 2 (worst-case M/V/N)', label: 'S2',
       span_m: 2.163, b_mm: 45, h_mm: 145,
       timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
-      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 4, fem_end: 'max',
+      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 1002, fem_end: 'max',
       compression_edge_restrained: false, torsional_restraint_at_supports: true,
       _result: null,
     }},
@@ -1046,16 +1030,14 @@ function makeTimberRoofTemplate() {
       'FEM-analyse (kør "General Frame FEM" blokken):\n' +
       '  Alle kombinationer enveloperet · Snitkræfter M/V/N pr. element\n\n' +
       'Kapacitetskontrol:\n' +
-      '  S1 — Nedre spær venstre (elem 1, L=2,16 m):  η = … %   ✓/✗\n' +
-      '  S2 — Øvre spær venstre  (elem 2, L=1,44 m):  η = … %   ✓/✗\n' +
-      '  S3 — Øvre spær højre    (elem 3, L=1,44 m):  η = … %   ✓/✗\n' +
-      '  S4 — Nedre spær højre   (elem 4, L=2,16 m):  η = … %   ✓/✗\n' +
+      '  S1 — Venstre spær (member 1, L_ef=2,16 m, worst-case M/V/N):  η = … %   ✓/✗\n' +
+      '  S2 — Højre spær   (member 2, L_ef=2,16 m, worst-case M/V/N):  η = … %   ✓/✗\n' +
       '  H1 — Hanebånd (elem 5, L=2,40 m): N_Ed = … kN  ≤  N_Rd = 41,4 kN   ✓/✗\n\n' +
       'Bemærkninger:\n' +
-      '  • Spær kontrolleres for bøjning, forskydning og sideudknækning (LTB)\n' +
-      '  • Hanebåndet kontrolleres for aksial træk iht. EN 1995-1-1 §6.1.2\n' +
-      '  • Vindlasten er beregnet for vind fra venstre — højre vind giver tilsvarende ved symmetri\n' +
-      '  • Samlinger er ikke kontrolleret i denne beregning' } },
+      '  • Hvert spær udgøres af 2 FEM-elementer (nedre + øvre) — checket bruger member-niveau worst-case\n' +
+      '  • Effektiv LTB-længde = 2,163 m (nedre del — bestemmende afstivningsafstand)\n' +
+      '  • Vindlast beregnet for vind fra venstre (W+/W−) — symmetrisk ved modsat vind\n' +
+      '  • Samlinger (murplade, hanebåndssamling, rygningstappe) er ikke kontrolleret' } },
   ]
 }
 
