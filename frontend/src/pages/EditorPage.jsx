@@ -902,10 +902,12 @@ function makeTimberRoofTemplate() {
       consequence_class: 'CC2',
       method: '6.10ab',
       cases: [
-        // G — egenlast på vandret projektion
+        // G — egenlast: spær (vandret projektion) + hanebånd egenvægt (lodret)
+        // g_hane = 0.045 × 0.095 × 380 × 9.81/1000 = 0.016 kN/m (vertikal, elem 5)
         { id: 'G', type: 'permanent', loads: [
           { load_type: 'udl', member_id: 1, value_kNm: 0.90, direction: 'projected' },
           { load_type: 'udl', member_id: 2, value_kNm: 0.90, direction: 'projected' },
+          { load_type: 'udl', elem_id: 5,   value_kNm: 0.016, direction: 'vertical' },
         ]},
         // S — snelast på vandret projektion (μ₁ = 0.70, s_k = 0.90 kN/m²)
         { id: 'S', type: 'snow', loads: [
@@ -932,8 +934,9 @@ function makeTimberRoofTemplate() {
       method: '6.10ab',
       cases: [
         { id: 'G', type: 'permanent', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm: 0.90, direction: 'projected' },
-          { load_type: 'udl', member_id: 2, value_kNm: 0.90, direction: 'projected' },
+          { load_type: 'udl', member_id: 1, value_kNm: 0.90,  direction: 'projected' },
+          { load_type: 'udl', member_id: 2, value_kNm: 0.90,  direction: 'projected' },
+          { load_type: 'udl', elem_id: 5,   value_kNm: 0.016, direction: 'vertical' },
         ]},
         { id: 'S', type: 'snow', loads: [
           { load_type: 'udl', member_id: 1, value_kNm: 0.63, direction: 'projected' },
