@@ -759,200 +759,303 @@ function makeGeneralFrameFemTemplate() {
 }
 
 // ── A2: Timber collar-beam roof (hanebåndsramme) ─────────────────────────────
-// Symmetric saddle roof · 6 m span · 2 m rise (34°) · hanebånd at h=1.2 m
-// 45×145 C24 rafters · 45×95 C24 hanebånd · pin supports
-// Frame Load Cases → FEM envelope → timber beam checks
+// Symmetric saddle roof · 6 m span · 2 m rise (α = 33.7°) · hanebånd at 1.2 m
+// Full documentation: EN 1991-1-3/4 loads · FEM envelope · EN 1995-1-1 checks
 function makeTimberRoofTemplate() {
   const base = Date.now()
   let n = 0
   const nid = () => base + n++
 
   const ids = {
-    h1:          nid(),
-    intro:       nid(),
-    hLoads:      nid(),
-    loadCases:   nid(),   // frame_load_cases — generates EN 1990 combos
-    hFem:        nid(),
-    fem:         nid(),   // general_frame_fem — runs all combos, envelopes
-    hChecks:     nid(),
-    hRafterLow:  nid(),
-    chkRafterLow:nid(),   // timber_beam: lower rafter (elem 1)
-    hRafterUp:   nid(),
-    chkRafterUp: nid(),   // timber_beam: upper rafter (elem 2)
-    hHane:       nid(),
-    txtHane:     nid(),
-    hConclusion: nid(),
-    conclusion:  nid(),
+    h1:           nid(),
+    intro:        nid(),
+    hLoads:       nid(),
+    hDead:        nid(),   txtDead:    nid(),
+    hSnow:        nid(),   snowBlock:  nid(),   txtSnow:  nid(),
+    hWind:        nid(),   windBlock:  nid(),   txtWind:  nid(),
+    hCombos:      nid(),   loadCases:  nid(),
+    hFem:         nid(),   fem:        nid(),
+    hChecks:      nid(),
+    hSpærNedre:   nid(),   chkS1:      nid(),
+    hSpærØvre:    nid(),   chkS2:      nid(),
+    hSpærHøjreN:  nid(),   chkS3:      nid(),
+    hSpærHøjreØ:  nid(),   chkS4:      nid(),
+    hHane:        nid(),   chkHane:    nid(),
+    hConclusion:  nid(),   conclusion: nid(),
   }
 
-  // Section properties
-  // 45×145 C24 rafter:  A = 65.25 cm²  Iz = 1143 cm⁴  E = 11 GPa
-  // 45×95  C24 hanebånd: A = 42.75 cm²  Iz =  322 cm⁴  E = 11 GPa
-  const RAF_A = 65.25; const RAF_I = 1143
-  const HAN_A = 42.75; const HAN_I = 322
+  // ── Section properties ──────────────────────────────────────────────────
+  // 45×145 C24  A = 65.25 cm²  Iz = 1143 cm⁴  E₀,mean = 11 GPa
+  // 45×95  C24  A = 42.75 cm²  Iz =  322 cm⁴  E₀,mean = 11 GPa
+  const RAF_A = 65.25, RAF_I = 1143
+  const HAN_A = 42.75, HAN_I = 322
 
-  // Element lengths (for span input in timber check)
-  // Elem 1: node1(0,0)→node3(1.8,1.2)  L=sqrt(1.8²+1.2²)=2.16 m
-  // Elem 2: node3(1.8,1.2)→node5(3,2)  L=sqrt(1.2²+0.8²)=1.44 m
+  // ── Geometry ────────────────────────────────────────────────────────────
+  // α = arctan(2/3) = 33.69°  cos α = 0.832  sin α = 0.555
+  // Elem 1: (0,0)→(1.8,1.2)  L = √(1.8²+1.2²) = 2.163 m  (nedre venstre)
+  // Elem 2: (1.8,1.2)→(3,2)  L = √(1.2²+0.8²) = 1.442 m  (øvre venstre)
+  // Elem 3: (3,2)→(4.2,1.2)  L = 1.442 m                  (øvre højre)
+  // Elem 4: (4.2,1.2)→(6,0)  L = 2.163 m                  (nedre højre)
+  // Elem 5: (1.8,1.2)→(4.2,1.2) L = 2.400 m               (hanebånd)
+
+  // ── Loads (derived below) ────────────────────────────────────────────────
+  // g_k = 0.90 kN/m  (pr. spær, vandret projektion)
+  // s   = 0.63 kN/m  (pr. spær, vandret projektion, μ₁ = 0.70, s_k = 0.90 kN/m²)
+  // W+  = +0.31 kN/m ⊥  (vindtryk på venstre spær,  c_net = +0.47)
+  // W−  = −0.20 kN/m ⊥  (vindsug  på højre spær,    c_net = −0.30)
 
   return [
-    // ── Title ──────────────────────────────────────────────────────────────
+
+    // ═══════════════════════════════════════════════════════════════════════
     { id: ids.h1, type: 'heading', data: { level: 1,
-      text: 'Tagkonstruktion — Hanebåndsramme 6,0 m' } },
+      text: 'A2 — Tagkonstruktion: Hanebåndsramme 6,0 m' } },
 
     { id: ids.intro, type: 'text', data: { text:
-      'Statisk system: Symmetrisk hanebåndsramme · Saddeltag\n' +
-      'Spænd:         L = 6,0 m · Tværafstand: a = 1,0 m\n' +
-      'Rejsning:      h = 2,0 m  (hældning α ≈ 33,7°)\n' +
-      'Hanebånd:      placeret ved h = 1,2 m over murplade (60% af rejsning)\n' +
-      'Profiler:      Spær 45×145 C24 · Hanebånd 45×95 C24\n' +
-      'Materiale:     Konstruktionstræ C24 · Serviceklasse 2\n\n' +
+      'Statisk system:  Symmetrisk hanebåndsramme (saddeltag)\n' +
+      'Spænd:           L = 6,0 m   ·   Tværafstand: a = 1,0 m\n' +
+      'Rejsning:        h = 2,0 m   →   Taghældning: α = arctan(2/3) = 33,7°\n' +
+      'Hanebånd:        h_h = 1,2 m over murplade (60 % af rejsning)\n' +
+      'Profiler:        Spær 45×145 C24   ·   Hanebånd 45×95 C24\n' +
+      'Serviceklasse:   SK2 — ventileret konstruktion, udsat for vejr (DS/EN 1995-1-1)\n' +
+      'Konsekvensklasse: CC2   KFI = 1,0\n\n' +
       'Beregningsgang:\n' +
-      '  1. Lastkombinationer (EN 1990 lign. 6.10a/b, CC2)\n' +
-      '  2. FEM-analyse — alle kombinationer køres, resultater enveloperes\n' +
-      '  3. Kapacitetskontrol — spær og hanebånd (EN 1995-1-1)' } },
+      '  1. Lastgrundlag — egenlast, snelast (EN 1991-1-3 DK NA), vindlast (EN 1991-1-4 DK NA)\n' +
+      '  2. Lastkombinationer — EN 1990 lign. 6.10a/b (CC2)\n' +
+      '  3. FEM-analyse — alle kombinationer enveloperes\n' +
+      '  4. Kapacitetskontrol — alle spær + hanebånd (EN 1995-1-1)' } },
 
-    // ── Load cases ─────────────────────────────────────────────────────────
-    { id: ids.hLoads, type: 'heading', data: { level: 2,
-      text: '1. Lastkombinationer' } },
+    // ═══════════════════════════════════════════════════════════════════════
+    { id: ids.hLoads, type: 'heading', data: { level: 2, text: '1. Lastgrundlag' } },
 
+    // ── Dead load ─────────────────────────────────────────────────────────
+    { id: ids.hDead, type: 'heading', data: { level: 3, text: '1.1 Egenlast (G)' } },
+    { id: ids.txtDead, type: 'text', data: { text:
+      'Tagopbygning (karakteristiske værdier per m² tagflade — hældning 33,7°):\n\n' +
+      '  Tegltagsten (monier):         0,55 kN/m²\n' +
+      '  Lægte + kontralägte (38 mm):  0,04 kN/m²\n' +
+      '  Undertag (vindspærrepap):     0,03 kN/m²\n' +
+      '  Krydsfinérsarking 12 mm:      0,07 kN/m²\n' +
+      '  Isolering 200 mm (glasuld):   0,04 kN/m²\n' +
+      '  Dampspærre:                   0,01 kN/m²\n' +
+      '  ─────────────────────────────────────────\n' +
+      '  Total pr. m² tagflade:  g_tag = 0,74 kN/m²\n\n' +
+      'Pr. spær ved a = 1,0 m tværafstand, omregnet til vandret projektion:\n' +
+      '  g_tag_proj = g_tag × (1/cos α) × a = 0,74 / 0,832 × 1,0 = 0,89 kN/m\n\n' +
+      'Spær egenlast (45×145 C24, ρ = 380 kg/m³):\n' +
+      '  g_spær = 0,045 × 0,145 × 3,8 / 0,832 = 0,030 kN/m (vandret projektion)\n\n' +
+      'Samlet egenlast:  g_k = 0,89 + 0,03 ≈ 0,90 kN/m (vandret projektion, pr. spær)' } },
+
+    // ── Snow load ─────────────────────────────────────────────────────────
+    { id: ids.hSnow, type: 'heading', data: { level: 3, text: '1.2 Snelast (S) — DS/EN 1991-1-3 DK NA' } },
+    { id: ids.snowBlock, type: 'snow_load', data: {
+      title:       'Snelast — saddeltag 33,7°',
+      label:       'SN1',
+      roof_type:   'pitched',
+      alpha_deg:   33.69,
+      s_k_kNm2:    0.9,
+      dk_zone:     '1',
+      C_e:         1.0,
+      C_t:         1.0,
+      roof_span_m: 6.0,
+      eave_height_m: 0.0,
+      gamma_s:     1.5,
+      _result:     null,
+    }},
+    { id: ids.txtSnow, type: 'text', data: { text:
+      'Snezone DK zone 1:  s_k = 0,90 kN/m²  (Sjælland, Fyn og de fleste øer)\n' +
+      'Formfaktor (DS/EN 1991-1-3 §5.3.3):  α = 33,7°  →  30° < α ≤ 60°\n' +
+      '  μ₁ = 0,8 × (60 − 33,7) / 30 = 0,8 × 0,877 = 0,70\n\n' +
+      'Karakteristisk tagsnelast:\n' +
+      '  s = μ₁ × C_e × C_t × s_k = 0,70 × 1,0 × 1,0 × 0,90 = 0,63 kN/m²\n\n' +
+      'Pr. spær ved a = 1,0 m tværafstand (vandret projektion):\n' +
+      '  s_spær = 0,63 × 1,0 = 0,63 kN/m  (direction = projected, korrekt for sneformfaktor)' } },
+
+    // ── Wind load ─────────────────────────────────────────────────────────
+    { id: ids.hWind, type: 'heading', data: { level: 3, text: '1.3 Vindlast (W) — DS/EN 1991-1-4 DK NA' } },
+    { id: ids.windBlock, type: 'wind_load', data: {
+      title:          'Vindlast — referencetryk',
+      label:          'W1',
+      terrain_category: 'II',
+      v_b0_ms:        24.0,
+      z_ref_m:        5.0,
+      h_m:            5.0,
+      b_m:            6.0,
+      d_m:            8.0,
+      c_dir:          1.0,
+      c_season:       1.0,
+      c_pe_windward:  0.27,
+      c_pe_leeward:   -0.50,
+      c_pi:           0.20,
+      rho_air:        1.25,
+      _result:        null,
+    }},
+    { id: ids.txtWind, type: 'text', data: { text:
+      'Terrænkategori II · Vindzone 2 · v_b,0 = 24 m/s · z_ref = 5,0 m\n\n' +
+      'Beregnet peakhastighedstryk: q_p ≈ 0,65 kN/m²  (fra vindlastblok ovenfor)\n\n' +
+      'Formfaktorer for saddeltag α = 33,7° (DS/EN 1991-1-4 Tabel 7.4a, θ = 0°):\n' +
+      '  Vindsiden (zone H):   c_pe = +0,27  (interpoleret 30°→45°: 0,20→0,50)\n' +
+      '  Læsiden  (zone I):    c_pe = −0,50\n' +
+      '  Indvendig overtryk:   c_pi = +0,20  (mest ugunstig for netto vindtryk)\n\n' +
+      'Netto vindtryk pr. spær a = 1,0 m (vinkelret på tagflade):\n' +
+      '  Vindside (venstre):  w₊ = (c_pe + c_pi) × q_p × a = (0,27 + 0,20) × 0,65 × 1,0 = +0,31 kN/m\n' +
+      '  Læside  (højre):     w₋ = (c_pe + c_pi) × q_p × a = (−0,50 + 0,20) × 0,65 × 1,0 = −0,20 kN/m\n\n' +
+      'Fortegn: positiv w = tryk MOD overfladen · negativ w = sug FRA overfladen\n' +
+      'Belastningen appliceres vinkelret på spærfladen (direction = perpendicular).' } },
+
+    // ── Load combinations ─────────────────────────────────────────────────
+    { id: ids.hCombos, type: 'heading', data: { level: 3, text: '1.4 Lastkombinationer — EN 1990 lign. 6.10a/b (CC2)' } },
     { id: ids.loadCases, type: 'frame_load_cases', data: {
       title: 'Lastkombinationer — Hanebåndsramme',
       consequence_class: 'CC2',
       method: '6.10ab',
       cases: [
-        // G — permanent: tagbeklædning + egenlast, givet pr. m vandret projektion
+        // G — egenlast på vandret projektion
         { id: 'G', type: 'permanent', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm: 0.50, direction: 'projected' },
-          { load_type: 'udl', member_id: 2, value_kNm: 0.50, direction: 'projected' },
+          { load_type: 'udl', member_id: 1, value_kNm: 0.90, direction: 'projected' },
+          { load_type: 'udl', member_id: 2, value_kNm: 0.90, direction: 'projected' },
         ]},
-        // S — sne: karakteristisk snebelastning (DK zone 1: s_k = 1.0 kN/m²)
-        // Belastning pr. spær á 1,0 m afstand → 1.0 kN/m på vandret projektion
+        // S — snelast på vandret projektion (μ₁ = 0.70, s_k = 0.90 kN/m²)
         { id: 'S', type: 'snow', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm: 1.00, direction: 'projected' },
-          { load_type: 'udl', member_id: 2, value_kNm: 1.00, direction: 'projected' },
+          { load_type: 'udl', member_id: 1, value_kNm: 0.63, direction: 'projected' },
+          { load_type: 'udl', member_id: 2, value_kNm: 0.63, direction: 'projected' },
         ]},
-        // W — vind: forenklet som vandret kræft i knude (rygnings) · EN 1991-1-4
+        // W — vind fra venstre, vinkelret på tagflade
+        // Vindside (venstre spær, member 1): tryk +0.31 kN/m
+        // Læside  (højre  spær, member 2): sug  −0.20 kN/m
         { id: 'W', type: 'wind', loads: [
-          { load_type: 'nodal', node_id: 5, Fx_kN: 3.0, Fy_kN: 0 },
+          { load_type: 'udl', member_id: 1, value_kNm:  0.31, direction: 'perpendicular' },
+          { load_type: 'udl', member_id: 2, value_kNm: -0.20, direction: 'perpendicular' },
         ]},
       ],
       _exports: null, _result: null,
     }},
 
-    // ── FEM ────────────────────────────────────────────────────────────────
-    { id: ids.hFem, type: 'heading', data: { level: 2,
-      text: '2. FEM-analyse' } },
+    // ═══════════════════════════════════════════════════════════════════════
+    { id: ids.hFem, type: 'heading', data: { level: 2, text: '2. FEM-analyse' } },
 
     { id: ids.fem, type: 'general_frame_fem', data: {
-      title: 'Hanebåndsramme — FEM',
+      title: 'Hanebåndsramme — FEM (OpenSeesPy)',
       nodes: [
-        { id: 1, x: 0.0, y: 0.0 },   // venstre murplade
-        { id: 2, x: 6.0, y: 0.0 },   // højre murplade
-        { id: 3, x: 1.8, y: 1.2 },   // venstre hanebåndssamling
-        { id: 4, x: 4.2, y: 1.2 },   // højre hanebåndssamling
-        { id: 5, x: 3.0, y: 2.0 },   // rygningsknude — venstre spær
-        { id: 6, x: 3.0, y: 2.0 },   // rygningsknude — højre spær (samme position, fri rotation)
+        { id: 1, x: 0.0, y: 0.0 },
+        { id: 2, x: 6.0, y: 0.0 },
+        { id: 3, x: 1.8, y: 1.2 },
+        { id: 4, x: 4.2, y: 1.2 },
+        { id: 5, x: 3.0, y: 2.0 },
+        { id: 6, x: 3.0, y: 2.0 },
       ],
       elements: [
-        // Spær 45×145 C24  — member_id groups sub-elements into one physical member
-        { id: 1, ni: 1, nj: 3, type: 'beam', release: 'none', member_id: 1,
-          E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // venstre nedre spær
-        { id: 2, ni: 3, nj: 5, type: 'beam', release: 'none', member_id: 1,
-          E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // venstre øvre spær → knude 5
-        { id: 3, ni: 6, nj: 4, type: 'beam', release: 'none', member_id: 2,
-          E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // højre øvre spær ← knude 6
-        { id: 4, ni: 4, nj: 2, type: 'beam', release: 'none', member_id: 2,
-          E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },   // højre nedre spær
-        // Hanebånd 45×95 C24 — leddet begge ender → kun aksial
-        { id: 5, ni: 3, nj: 4, type: 'beam', release: 'both',
-          E_GPa: 11, A_cm2: HAN_A, Iz_cm4: HAN_I },
+        { id: 1, ni: 1, nj: 3, type: 'beam', release: 'none', member_id: 1, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
+        { id: 2, ni: 3, nj: 5, type: 'beam', release: 'none', member_id: 1, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
+        { id: 3, ni: 6, nj: 4, type: 'beam', release: 'none', member_id: 2, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
+        { id: 4, ni: 4, nj: 2, type: 'beam', release: 'none', member_id: 2, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
+        { id: 5, ni: 3, nj: 4, type: 'beam', release: 'both',               E_GPa: 11, A_cm2: HAN_A, Iz_cm4: HAN_I },
       ],
-      // Rygningstappe: knude 5 og 6 er samplacerede men har uafhængige rotationer (taphængsel)
       equal_dofs: [{ r_node: 5, c_node: 6, dofs: [1, 2] }],
       supports: [
-        { node_id: 1, ux: true,  uy: true,  rz: false },   // tap (venstre)
-        { node_id: 2, ux: false, uy: true,  rz: false },   // rolle (højre)
+        { node_id: 1, ux: true,  uy: true,  rz: false },
+        { node_id: 2, ux: false, uy: true,  rz: false },
       ],
-      loads:            [],
-      load_mode:        'load_cases',
+      loads: [],
+      load_mode: 'load_cases',
       load_cases_block_id: ids.loadCases,
       _figs_b64: null, _summary: null, _result: null, _exports: null,
     }},
 
-    // ── Capacity checks ────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
     { id: ids.hChecks, type: 'heading', data: { level: 2,
-      text: '3. Kapacitetskontrol (EN 1995-1-1)' } },
+      text: '3. Kapacitetskontrol (DS/EN 1995-1-1)' } },
 
-    // Lower rafter
-    { id: ids.hRafterLow, type: 'heading', data: { level: 3,
-      text: 'Nedre spær — 45×145 C24 (element 1, L = 2,16 m)' } },
-    { id: ids.chkRafterLow, type: 'timber_beam', data: {
-      title:            'Nedre spær 45×145 C24',
-      label:            'S1',
-      span_m:           2.16,
-      b_mm:             45,
-      h_mm:             145,
-      g_k_kNm:          0.50,
-      q_k_kNm:          1.00,
-      load_source:      'fem',
-      fem_block_id:     ids.fem,
-      fem_elem_id:      1,
-      fem_end:          'max',
-      timber_grade:     'C24',
-      service_class:    2,
-      load_duration:    'short',
-      gamma_M:          1.3,
-      compression_edge_restrained:     true,
-      torsional_restraint_at_supports: true,
+    // ── Nedre venstre spær (elem 1) ───────────────────────────────────────
+    { id: ids.hSpærNedre, type: 'heading', data: { level: 3,
+      text: 'Nedre spær venstre — 45×145 C24 (elem 1, L = 2,16 m)' } },
+    { id: ids.chkS1, type: 'timber_beam', data: {
+      title: 'Nedre spær venstre — 45×145 C24', label: 'S1',
+      span_m: 2.163, b_mm: 45, h_mm: 145,
+      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
+      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 1, fem_end: 'max',
+      compression_edge_restrained: false, torsional_restraint_at_supports: true,
       _result: null,
     }},
 
-    // Upper rafter
-    { id: ids.hRafterUp, type: 'heading', data: { level: 3,
-      text: 'Øvre spær — 45×145 C24 (element 2, L = 1,44 m)' } },
-    { id: ids.chkRafterUp, type: 'timber_beam', data: {
-      title:            'Øvre spær 45×145 C24',
-      label:            'S2',
-      span_m:           1.44,
-      b_mm:             45,
-      h_mm:             145,
-      g_k_kNm:          0.50,
-      q_k_kNm:          1.00,
-      load_source:      'fem',
-      fem_block_id:     ids.fem,
-      fem_elem_id:      2,
-      fem_end:          'max',
-      timber_grade:     'C24',
-      service_class:    2,
-      load_duration:    'short',
-      gamma_M:          1.3,
-      compression_edge_restrained:     true,
-      torsional_restraint_at_supports: true,
+    // ── Øvre venstre spær (elem 2) ────────────────────────────────────────
+    { id: ids.hSpærØvre, type: 'heading', data: { level: 3,
+      text: 'Øvre spær venstre — 45×145 C24 (elem 2, L = 1,44 m)' } },
+    { id: ids.chkS2, type: 'timber_beam', data: {
+      title: 'Øvre spær venstre — 45×145 C24', label: 'S2',
+      span_m: 1.442, b_mm: 45, h_mm: 145,
+      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
+      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 2, fem_end: 'max',
+      compression_edge_restrained: false, torsional_restraint_at_supports: true,
       _result: null,
     }},
 
-    // Hanebånd — axial tension note
+    // ── Øvre højre spær (elem 3) ──────────────────────────────────────────
+    { id: ids.hSpærHøjreØ, type: 'heading', data: { level: 3,
+      text: 'Øvre spær højre — 45×145 C24 (elem 3, L = 1,44 m)' } },
+    { id: ids.chkS3, type: 'timber_beam', data: {
+      title: 'Øvre spær højre — 45×145 C24', label: 'S3',
+      span_m: 1.442, b_mm: 45, h_mm: 145,
+      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
+      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 3, fem_end: 'max',
+      compression_edge_restrained: false, torsional_restraint_at_supports: true,
+      _result: null,
+    }},
+
+    // ── Nedre højre spær (elem 4) ─────────────────────────────────────────
+    { id: ids.hSpærHøjreN, type: 'heading', data: { level: 3,
+      text: 'Nedre spær højre — 45×145 C24 (elem 4, L = 2,16 m)' } },
+    { id: ids.chkS4, type: 'timber_beam', data: {
+      title: 'Nedre spær højre — 45×145 C24', label: 'S4',
+      span_m: 2.163, b_mm: 45, h_mm: 145,
+      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
+      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 4, fem_end: 'max',
+      compression_edge_restrained: false, torsional_restraint_at_supports: true,
+      _result: null,
+    }},
+
+    // ── Hanebånd — trækcheck (elem 5) ────────────────────────────────────
     { id: ids.hHane, type: 'heading', data: { level: 3,
-      text: 'Hanebånd — 45×95 C24 (element 5, trækcheck)' } },
-    { id: ids.txtHane, type: 'text', data: { text:
-      'Hanebåndet er modelleret med ledede endepunkter (release: both) og\n' +
-      'er udelukkende trukket under symmetrisk last.\n\n' +
-      'Trækkapacitet (SC2, kortvarig last):\n' +
-      '  k_mod = 0,90  ·  f_t,0,k = 14 MPa  ·  γ_M = 1,30\n' +
-      '  f_t,0,d = 0,90 × 14 / 1,30 = 9,69 MPa\n' +
-      '  A_netto = 45 × 95 = 4 275 mm²\n' +
-      '  N_Rd = 9,69 × 4 275 = 41,4 kN\n\n' +
-      'N_Ed [fra FEM, element 5, N_i eller N_j] ≤ N_Rd = 41,4 kN' } },
+      text: 'Hanebånd — 45×95 C24 (elem 5, L = 2,40 m) — Trækcheck EN 1995-1-1 §6.1.2' } },
+    { id: ids.chkHane, type: 'custom_calc', data: {
+      title: 'Hanebånd 45×95 C24 — Trækcheck',
+      items: [
+        { type: 'section', text: 'Materialeparametre — C24 (DS/EN 338)' },
+        { type: 'variable', symbol: 'f_{t,0,k}',  expression: '14',  unit: 'MPa', description: 'Karakteristisk trækstyrke C24' },
+        { type: 'variable', symbol: '\\gamma_M',   expression: '1.3', unit: '—',  description: 'Partialkoefficient træ (KK2)' },
+        { type: 'variable', symbol: 'k_{mod}',     expression: '0.9', unit: '—',  description: 'Modifikationsfaktor (SK2, kortvarig last — sne)' },
+        { type: 'formula',  symbol: 'f_{t,0,d}',   expression: 'k_mod * f_t0k / gamma_M', variables: { k_mod: 0.9, f_t0k: 14, gamma_M: 1.3 }, unit: 'MPa', description: 'Dimensionerende trækstyrke' },
+        { type: 'section', text: 'Tværsnit' },
+        { type: 'variable', symbol: 'b',   expression: '45',  unit: 'mm', description: 'Bredde' },
+        { type: 'variable', symbol: 'h',   expression: '95',  unit: 'mm', description: 'Højde' },
+        { type: 'formula',  symbol: 'A',   expression: 'b * h', variables: { b: 45, h: 95 }, unit: 'mm²', description: 'Nettoareal (ingen udsparinger antaget)' },
+        { type: 'section', text: 'Kapacitet' },
+        { type: 'formula',  symbol: 'N_{t,Rd}', expression: 'f_t0d * A / 1000', variables: { f_t0d: 0.9*14/1.3, A: 45*95 }, unit: 'kN', description: 'Dimensionerende trækkapacitet' },
+        { type: 'section', text: 'Påvirkning — aflæses fra FEM (element 5)' },
+        { type: 'variable', symbol: 'N_{Ed}', expression: '0', unit: 'kN', description: 'Dimensionerende trækraft — OPDATER fra FEM-resultat (element 5, N_i/N_j)' },
+        { type: 'check',    symbol: '\\eta_t', expression: 'N_Ed / N_t_Rd', variables: { N_Ed: 0, N_t_Rd: 0.9*14/1.3*45*95/1000 }, limit: 1.0, description: 'Udnyttelsesgrad trækcheck §6.1.2' },
+      ],
+      _result: null,
+    }},
 
-    // ── Conclusion ─────────────────────────────────────────────────────────
-    { id: ids.hConclusion, type: 'heading', data: { level: 2,
-      text: '4. Konklusion' } },
+    // ═══════════════════════════════════════════════════════════════════════
+    { id: ids.hConclusion, type: 'heading', data: { level: 2, text: '4. Konklusion' } },
     { id: ids.conclusion, type: 'text', data: { text:
-      '[Udfyld efter kørsel af alle blokke]\n\n' +
-      'Nedre spær 45×145 C24 (elem 1):  η = … %  ✓/✗\n' +
-      'Øvre spær  45×145 C24 (elem 2):  η = … %  ✓/✗\n' +
-      'Hanebånd   45×95 C24  (elem 5):  N_Ed = … kN  ≤  41,4 kN  ✓/✗' } },
+      '[Udfyld udnyttelsesgrader efter kørsel af alle blokke]\n\n' +
+      'Lastkombinationer (kør "Frame Load Cases" blokken):\n' +
+      '  Kombinationer genereret iht. EN 1990 lign. 6.10a/b · CC2 · KFI = 1,0\n\n' +
+      'FEM-analyse (kør "General Frame FEM" blokken):\n' +
+      '  Alle kombinationer enveloperet · Snitkræfter M/V/N pr. element\n\n' +
+      'Kapacitetskontrol:\n' +
+      '  S1 — Nedre spær venstre (elem 1, L=2,16 m):  η = … %   ✓/✗\n' +
+      '  S2 — Øvre spær venstre  (elem 2, L=1,44 m):  η = … %   ✓/✗\n' +
+      '  S3 — Øvre spær højre    (elem 3, L=1,44 m):  η = … %   ✓/✗\n' +
+      '  S4 — Nedre spær højre   (elem 4, L=2,16 m):  η = … %   ✓/✗\n' +
+      '  H1 — Hanebånd (elem 5, L=2,40 m): N_Ed = … kN  ≤  N_Rd = 41,4 kN   ✓/✗\n\n' +
+      'Bemærkninger:\n' +
+      '  • Spær kontrolleres for bøjning, forskydning og sideudknækning (LTB)\n' +
+      '  • Hanebåndet kontrolleres for aksial træk iht. EN 1995-1-1 §6.1.2\n' +
+      '  • Vindlasten er beregnet for vind fra venstre — højre vind giver tilsvarende ved symmetri\n' +
+      '  • Samlinger er ikke kontrolleret i denne beregning' } },
   ]
 }
 

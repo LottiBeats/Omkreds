@@ -478,6 +478,15 @@ def _project_load(ld, elements, dict_nodes):
         wy = -p * sa
         wx =  p * ca
 
+    elif direction == 'perpendicular':
+        # Load perpendicular to element surface.
+        # Positive p = pressing INTO surface from outside (e.g. wind pressure).
+        # Negative p = suction (pulling away from surface).
+        # solve() does: wy_ops = -wy_kNm, so returning wy = +p gives wy_ops = -p
+        # which is negative local y = pressing into surface. ✓
+        wy = p
+        wx = 0.0
+
     else:  # 'vertical' or default — global Y downward
         # local y: dot((0,-1), (-sa, ca))  = -ca  →  wy = -p·ca
         # local x: dot((0,-1), ( ca, sa))  = -sa  →  wx = -p·sa
