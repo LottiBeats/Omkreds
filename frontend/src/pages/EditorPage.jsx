@@ -774,6 +774,7 @@ function makeTimberRoofTemplate() {
     hSnow:        nid(),   snowBlock:  nid(),   txtSnow:  nid(),
     hWind:        nid(),   windBlock:  nid(),   txtWind:  nid(),
     hCombos:      nid(),   loadCases:  nid(),
+    hTimberCombos: nid(),  timberCases: nid(),
     hFem:         nid(),   fem:        nid(),
     hChecks:        nid(),
     hSpærVenstre:   nid(),   txtSpærNote: nid(),   chkSpærV: nid(),
@@ -928,6 +929,26 @@ function makeTimberRoofTemplate() {
       _exports: null, _result: null,
     }},
 
+    // ── Timber load combinations (G + S only — wind excluded) ────────────
+    { id: ids.hTimberCombos, type: 'heading', data: { level: 3,
+      text: '1.5 Lastkombinationer til trækontrol (G + S — vind udeladt)' } },
+    { id: ids.timberCases, type: 'frame_load_cases', data: {
+      title: 'Lastkombinationer til træ — G + S (EN 1990 lign. 6.10a/b, CC2)',
+      consequence_class: 'CC2',
+      method: '6.10ab',
+      cases: [
+        { id: 'G', type: 'permanent', loads: [
+          { load_type: 'udl', member_id: 1, value_kNm: 0.90, direction: 'projected' },
+          { load_type: 'udl', member_id: 2, value_kNm: 0.90, direction: 'projected' },
+        ]},
+        { id: 'S', type: 'snow', loads: [
+          { load_type: 'udl', member_id: 1, value_kNm: 0.63, direction: 'projected' },
+          { load_type: 'udl', member_id: 2, value_kNm: 0.63, direction: 'projected' },
+        ]},
+      ],
+      _exports: null, _result: null,
+    }},
+
     // ═══════════════════════════════════════════════════════════════════════
     { id: ids.hFem, type: 'heading', data: { level: 2, text: '2. FEM-analyse' } },
 
@@ -955,7 +976,7 @@ function makeTimberRoofTemplate() {
       ],
       loads: [],
       load_mode: 'load_cases',
-      load_cases_block_id: ids.loadCases,
+      load_cases_block_id: ids.timberCases,
       _figs_b64: null, _summary: null, _result: null, _exports: null,
     }},
 

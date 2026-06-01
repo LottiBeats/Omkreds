@@ -27,11 +27,12 @@ K_FI : CC1 0.9 · CC2 1.0 · CC3 1.1
 _KFI = {'CC1': 0.9, 'CC2': 1.0, 'CC3': 1.1}
 _XI  = 0.89
 
+# DS/EN 1990 DK NA:2024 Table A1.1  — ψ₀ factors (Danish National Annex)
 _PSI0 = {
     'permanent': None,
-    'snow':      0.5,
-    'wind':      0.6,
-    'imposed':   0.7,
+    'snow':      0.5,   # DK zone 1-3;  use 0.7 for zone 4 (Bornholm) if needed
+    'wind':      0.3,   # DK NA overrides EN 1990 base value (0.6) to 0.3
+    'imposed':   0.7,   # Category A/B — office/domestic
 }
 
 # EN 1995-1-1 §2.2.3: governing duration = shortest-duration variable action in combo
@@ -116,9 +117,9 @@ def generate_combinations(cases, method='6.10ab', consequence_class='CC2'):
         combos.append({'name': name, 'factor_table': factor_table,
                        'loads': loads, 'governing_duration': governing})
 
-    # Permanent only
+    # Permanent only (always included — governs for timber when k_mod = 0.60)
+    _assemble(f'{_GAMMA_G * kfi:.2f}G', _GAMMA_G * kfi, {})
     if not var_cases:
-        _assemble(f'{_GAMMA_G * kfi:.2f}G', _GAMMA_G * kfi, {})
         return combos
 
     if method == '6.10':

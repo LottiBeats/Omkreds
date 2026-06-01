@@ -1998,7 +1998,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
         # ── Combination mode ──────────────────────────────────────────────────
         if combos:
-            envelope, all_results = solve_combinations(nodes, elements, supports, combos, equal_dofs)
+            envelope, timber_envelope, all_results = solve_combinations(nodes, elements, supports, combos, equal_dofs)
 
             # Generate figures for every combination so the frontend can switch
             combo_figs = []
@@ -2030,6 +2030,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                                 best_res['node_disps'], best_res['node_reactions'],
                                 best_res['ele_forces'], supports, [])
             summary['envelope']          = envelope
+            summary['timber_envelope']   = timber_envelope   # {eid: {sc: {M_Ed, V_Ed, duration, combo}}}
             summary['combinations']      = [r['name'] for r in all_results]
             summary['combo_figs']        = combo_figs   # [{name, figs:[defo,M,V,N]}]
             summary['buckling_lengths']  = buck_lengths

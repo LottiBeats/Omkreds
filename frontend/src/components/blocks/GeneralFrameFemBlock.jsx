@@ -824,8 +824,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       })
 
       // Build _exports so capacity check blocks can read element forces
-      const eleTable = res._summary?.ele_force_table ?? []
-      const envelope = res._summary?.envelope ?? {}
+      const eleTable        = res._summary?.ele_force_table ?? []
+      const envelope        = res._summary?.envelope        ?? {}
+      const timberEnvelope  = res._summary?.timber_envelope ?? {}
 
       // Member-level entries: worst-case forces across all sub-elements (id = 1000 + member_id)
       const memberIds = [...new Set(elements.filter(e => e.member_id != null).map(e => e.member_id))]
@@ -837,20 +838,35 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         if (subElems.length === 0) return null
         const firstE = subElems[0]; const lastE = subElems[subElems.length - 1]
         const totalL = subElems.reduce((s, e) => s + e.L_m, 0)
-        // M_duration: governing duration of the sub-element that has worst M
-        let bestM = 0, bestMDuration = 'short'
+        // For timber: find sub-element with worst M/k_mod ratio (SC2 as representative)
+        // timber_envelope stores this per service class
+        let bestTimberSC2 = { M_Ed_kNm: 0, V_Ed_kN: 0, duration: 'short', combo: '' }
         subElems.forEach(e => {
-          const m = Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm))
-          if (m > bestM) { bestM = m; bestMDuration = envelope[e.id]?.M_duration ?? 'short' }
+          const te = timberEnvelope[e.id]?.[2]  // SC2
+          if (te && te.M_Ed_kNm > bestTimberSC2.M_Ed_kNm) bestTimberSC2 = te
         })
+        const memberTimber = subElems.reduce((acc, e) => {
+          ;[1, 2, 3].forEach(sc => {
+            const te = timberEnvelope[e.id]?.[sc]
+            if (!te) return
+            const prev = acc[sc]
+            if (!prev || te.M_Ed_kNm > prev.M_Ed_kNm) acc[sc] = te
+          })
+          return acc
+        }, {})
+
+        // M_duration: from M/k_mod governing (SC2), fallback to plain M envelope
+        const bestMDuration = bestTimberSC2.duration ?? envelope[subElems[0]?.id]?.M_duration ?? 'short'
+
         return {
-          id:         1000 + mid,
-          member_id:  mid,
-          label:      `Member ${mid}  (Elem ${subElems.map(e => e.id).join('+')}  ${firstE.ni}→${lastE.nj}  L=${totalL.toFixed(2)}m)`,
-          M_max_kNm:  Math.max(...subElems.map(e => Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)))),
-          V_max_kN:   Math.max(...subElems.map(e => Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)))),
-          N_max_kN:   Math.max(...subElems.map(e => Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)))),
-          M_duration: bestMDuration,
+          id:             1000 + mid,
+          member_id:      mid,
+          label:          `Member ${mid}  (Elem ${subElems.map(e => e.id).join('+')}  ${firstE.ni}→${lastE.nj}  L=${totalL.toFixed(2)}m)`,
+          M_max_kNm:      Math.max(...subElems.map(e => Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)))),
+          V_max_kN:       Math.max(...subElems.map(e => Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)))),
+          N_max_kN:       Math.max(...subElems.map(e => Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)))),
+          M_duration:     bestMDuration,
+          timber:         memberTimber,   // {1: {M_Ed_kNm, V_Ed_kN, duration, combo}, 2: ..., 3: ...}
           M_i_kNm: firstE.M_i_kNm, V_i_kN: firstE.V_i_kN, N_i_kN: firstE.N_i_kN,
           M_j_kNm: lastE.M_j_kNm,  V_j_kN: lastE.V_j_kN,  N_j_kN: lastE.N_j_kN,
         }
@@ -866,8 +882,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
             V_max_kN:   Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)),
             N_max_kN:   Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)),
             M_duration: envelope[e.id]?.M_duration ?? 'short',
+            timber:     timberEnvelope[e.id] ?? {},
             M_i_kNm: e.M_i_kNm, V_i_kN: e.V_i_kN, N_i_kN: e.N_i_kN,
-            M_j_kNm: e.M_j_kNm, V_j_kN: e.V_j_kN, N_j_kN: e.N_j_kN,
+            M_j_kNm: e.M_j_kNm, V_j_kN: e.V_j_kV, N_j_kN: e.N_j_kN,
           })),
         ],
       }

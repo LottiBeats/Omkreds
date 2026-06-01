@@ -507,8 +507,9 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None)
 
     Returns
     -------
-    envelope : dict  {elem_id: {M_max_kNm, M_combo, V_max_kN, V_combo, N_max_kN, N_combo}}
-    all_results : list of {name, node_disps, ele_forces, node_reactions}
+    envelope        : dict  {elem_id: {M_max_kNm, M_combo, M_duration, ...}}
+    timber_envelope : dict  {elem_id: {1: {M_Ed_kNm, V_Ed_kN, duration, combo}, 2: ..., 3: ...}}
+    all_results     : list of {name, governing_duration, node_disps, ele_forces, node_reactions}
     """
     dict_nodes = {n['id']: n for n in nodes}
     all_results = []
@@ -530,13 +531,25 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None)
             'eigen_modes':        result.get('eigen_modes', []),
         })
 
-    # Envelope — worst-case M, V, N per element across all combinations
-    envelope = {}
+    # k_mod per service class and load duration  (EN 1995-1-1 Table 3.1)
+    _KMOD = {
+        1: {'permanent': 0.60, 'long': 0.70, 'medium': 0.80, 'short': 0.90, 'instant': 1.10},
+        2: {'permanent': 0.60, 'long': 0.70, 'medium': 0.80, 'short': 0.90, 'instant': 1.10},
+        3: {'permanent': 0.50, 'long': 0.55, 'medium': 0.65, 'short': 0.70, 'instant': 0.90},
+    }
+
+    # Envelope — worst-case M, V, N per element across all combinations (for steel/RC)
+    # timber_envelope — combination governing max(M/k_mod) per service class (EN 1995-1-1 §2.2.3)
+    envelope         = {}
+    timber_envelope  = {}   # {sc: {eid: {M_Ed, V_Ed, duration, combo}}}
+
     for el in elements:
         eid  = el['id']
         best = {'M': 0.0, 'M_combo': '', 'M_duration': 'short',
                 'V': 0.0, 'V_combo': '', 'V_duration': 'short',
                 'N': 0.0, 'N_combo': '', 'N_duration': 'short'}
+        timber_best = {sc: {'ratio': 0.0, 'M_Ed': 0.0, 'V_Ed': 0.0, 'dur': 'short', 'combo': ''}
+                       for sc in (1, 2, 3)}
         for r in all_results:
             f = r['ele_forces'].get(eid, [0.0] * 6)
             M = max(abs(f[2]), abs(f[5]))
@@ -546,13 +559,29 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None)
             if M > best['M']: best['M'] = M; best['M_combo'] = r['name']; best['M_duration'] = dur
             if V > best['V']: best['V'] = V; best['V_combo'] = r['name']; best['V_duration'] = dur
             if N > best['N']: best['N'] = N; best['N_combo'] = r['name']; best['N_duration'] = dur
+            # Timber governing: max(M / k_mod) per service class
+            for sc in (1, 2, 3):
+                kmod = _KMOD[sc].get(dur, 0.9)
+                ratio = M / kmod if kmod > 0 else 0.0
+                if ratio > timber_best[sc]['ratio']:
+                    timber_best[sc] = {'ratio': ratio, 'M_Ed': M, 'V_Ed': V,
+                                       'dur': dur, 'combo': r['name']}
         envelope[eid] = {
             'M_max_kNm':   round(best['M'], 3), 'M_combo': best['M_combo'], 'M_duration': best['M_duration'],
             'V_max_kN':    round(best['V'], 3), 'V_combo': best['V_combo'], 'V_duration': best['V_duration'],
             'N_max_kN':    round(best['N'], 3), 'N_combo': best['N_combo'], 'N_duration': best['N_duration'],
         }
+        timber_envelope[eid] = {
+            sc: {
+                'M_Ed_kNm':  round(timber_best[sc]['M_Ed'], 3),
+                'V_Ed_kN':   round(timber_best[sc]['V_Ed'], 3),
+                'duration':  timber_best[sc]['dur'],
+                'combo':     timber_best[sc]['combo'],
+            }
+            for sc in (1, 2, 3)
+        }
 
-    return envelope, all_results
+    return envelope, timber_envelope, all_results
 
 
 def plot_model(title, nodes, elements, supports, loads, ref_size):
