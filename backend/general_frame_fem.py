@@ -496,7 +496,8 @@ def _project_load(ld, elements, dict_nodes):
     return {'type': 'udl', 'elem_id': eid, 'wy_kNm': wy, 'wx_kNm': wx}
 
 
-def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None):
+def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
+                       make_figs=False, ref_size=1.0):
     """
     Run the FEM once per load combination and return envelope results.
 
@@ -504,12 +505,18 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None)
     ----------
     combinations : list of dicts
         Each: { name: str, loads: [frame-load-case load dicts] }
+    make_figs : bool
+        If True, generate OpsVis figures immediately after each solve() call
+        (while the OpenSeesPy model still reflects that combination) and store
+        them in all_results[i]['figs'].  Must be True when per-combo diagrams
+        are needed — calling make_figures() after the loop produces wrong results
+        because opsvis reads from the live model which is always the last combo.
 
     Returns
     -------
     envelope        : dict  {elem_id: {M_max_kNm, M_combo, M_duration, ...}}
     timber_envelope : dict  {elem_id: {1: {M_Ed_kNm, V_Ed_kN, duration, combo}, 2: ..., 3: ...}}
-    all_results     : list of {name, governing_duration, node_disps, ele_forces, node_reactions}
+    all_results     : list of {name, governing_duration, node_disps, ele_forces, node_reactions[, figs]}
     """
     dict_nodes = {n['id']: n for n in nodes}
     all_results = []
@@ -522,14 +529,21 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None)
                 resolved.append(proj)
 
         result = solve(nodes, elements, supports, resolved, equal_dofs)
-        all_results.append({
+        entry = {
             'name':               combo['name'],
             'governing_duration': combo.get('governing_duration', 'short'),
             'node_disps':         result['node_disps'],
             'node_reactions':     result['node_reactions'],
             'ele_forces':         result['ele_forces'],
             'eigen_modes':        result.get('eigen_modes', []),
-        })
+        }
+        # Generate figures NOW, while the OpenSeesPy model reflects this combo
+        if make_figs and _OPSVIS_AVAILABLE:
+            entry['figs'] = make_figures(
+                combo['name'], nodes, elements, supports, [],
+                result['ele_forces'], result['node_disps'], ref_size,
+            )
+        all_results.append(entry)
 
     # k_mod per service class and load duration  (EN 1995-1-1 Table 3.1)
     _KMOD = {

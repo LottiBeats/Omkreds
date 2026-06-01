@@ -1998,16 +1998,15 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
         # ── Combination mode ──────────────────────────────────────────────────
         if combos:
-            envelope, timber_envelope, all_results = solve_combinations(nodes, elements, supports, combos, equal_dofs)
+            # make_figs=True: figures are generated per-combo while the OpenSeesPy
+            # model still reflects that combination (opsvis reads the live model).
+            envelope, timber_envelope, all_results = solve_combinations(
+                nodes, elements, supports, combos, equal_dofs,
+                make_figs=True, ref_size=ref_size,
+            )
 
-            # Generate figures for every combination so the frontend can switch
-            combo_figs = []
-            for r in all_results:
-                figs = make_figures(
-                    r['name'], nodes, elements, supports, [],
-                    r['ele_forces'], r['node_disps'], ref_size,
-                )
-                combo_figs.append({'name': r['name'], 'figs': figs})
+            combo_figs = [{'name': r['name'], 'figs': r.get('figs', [])}
+                          for r in all_results]
 
             # _figs_b64 = static model + governing combo (backward compat)
             best_combo_name = max(envelope.values(), key=lambda v: v['M_max_kNm'],
