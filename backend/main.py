@@ -156,15 +156,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Danish structural documentation categories (DS/EN 1990 DK NA)
+# Danish structural documentation categories (BR18 / DS 1140)
 DOC_DEFS = {
-    "A1": "Projektgrundlag",
+    "A1": "Konstruktionsgrundlag",
     "A2": "Statiske beregninger",
     "A3": "Konstruktionstegninger og modeller",
     "A4": "Konstruktionsaendringer",
-    "B1": "Statisk projekteringsrapport",
-    "B2": "Statisk kontrolrapport",
-    "B3": "Statisk tilsynsrapport",
+    "A5": "Konstruktion som udfoert",
+    "B1": "Statisk projektredegoerelse",
+    "B2": "Statisk kontrolplan",
+    "B3": "Statisk kontrolrapport",
 }
 
 VALID_VISIBILITIES = {"personal", "team"}

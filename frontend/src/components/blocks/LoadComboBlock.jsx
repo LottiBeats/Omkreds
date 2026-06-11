@@ -92,7 +92,7 @@ export default function LoadComboBlock({ block, onChange }) {
       running={running}
       error={error}
       result={d._result ?? null}
-      runLabel="▶  Calculate"
+      runLabel="▶  Beregn"
     >
       {/* Row 1: label, unit, method */}
       <Field label="Label">

@@ -5,20 +5,22 @@
  * (pass / fail counts) with a toggle to expand the full output.
  */
 import React, { useState, useEffect } from 'react'
-import CalcResultView from './CalcResultView.jsx'
+import CalcResultView, { maxUtilization, utilColor } from './CalcResultView.jsx'
 
 // Map common Python/backend error strings to user-friendly messages
 function friendlyError(msg) {
-  if (!msg) return 'An unknown error occurred.'
+  if (!msg) return 'Der opstod en ukendt fejl.'
   const m = msg.toLowerCase()
   if (m.includes('division by zero') || m.includes('zerodivisionerror'))
-    return 'Division by zero — check that depth, span, and cross-section dimensions are not zero.'
+    return 'Division med nul — kontrollér at højde, spændvidde og tværsnitsmål ikke er nul.'
   if (m.includes('not in catalog') || m.includes('section') && m.includes('not'))
-    return `Section not found in the catalog. ${msg}`
+    return `Profilet findes ikke i kataloget. ${msg}`
   if (m.includes('sqrt') && m.includes('negative') || m.includes('math domain'))
-    return 'Math error — the section is over-stressed. Increase depth or cross-section, then re-run.'
+    return 'Regnefejl — tværsnittet er overbelastet. Øg højden eller tværsnittet og kør igen.'
   if (m.includes('convergence') || m.includes('did not converge'))
-    return 'The calculation did not converge. Check that inputs are within realistic ranges.'
+    return 'Beregningen konvergerede ikke. Kontrollér at input ligger i realistiske intervaller.'
+  if (m.includes('failed to fetch') || m.includes('networkerror'))
+    return 'Ingen forbindelse til beregningsserveren. Kontrollér din internetforbindelse og prøv igen.'
   if (m.includes('422'))
     return msg.replace(/^\d+ ?:? ?/, '')   // strip leading HTTP status code
   // Fallback: strip Python type names and return clean message
@@ -46,7 +48,7 @@ export default function CalcBlockShell({
   error,
   result,
   children,
-  runLabel = '▶  Run check',
+  runLabel = '▶  Kør beregning',
   runDisabled = false,
 }) {
   // Collapse the result panel by default; auto-open when a new result arrives
@@ -57,16 +59,25 @@ export default function CalcBlockShell({
   }, [result])
 
   const summary = summarise(result)
+  const util    = maxUtilization(result)
+
+  // Ctrl/Cmd+Enter anywhere inside the block runs the calculation
+  function onKeyDown(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !running && !runDisabled) {
+      e.preventDefault()
+      onRun()
+    }
+  }
 
   return (
-    <div style={styles.wrapper}>
+    <div style={styles.wrapper} onKeyDown={onKeyDown}>
 
       {/* Section title */}
       <input
         type="text"
         value={title ?? ''}
         onChange={e => onTitleChange(e.target.value)}
-        placeholder="Section title"
+        placeholder="Afsnitstitel"
         style={styles.titleInput}
       />
 
@@ -81,13 +92,13 @@ export default function CalcBlockShell({
           style={{ ...styles.btn, ...styles.btnRun, ...(runDisabled ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
           onClick={onRun}
           disabled={running || runDisabled}
-          title={runDisabled ? 'Run the load combo block first' : undefined}
+          title={runDisabled ? 'Kør lastkombinations-blokken først' : 'Ctrl+Enter'}
         >
-          {running ? '⏳  Running…' : runLabel}
+          {running ? '⏳  Beregner…' : runLabel}
         </button>
         {result && (
           <button style={styles.btn} onClick={onClear} disabled={running}>
-            ✕  Clear
+            ✕  Ryd
           </button>
         )}
       </div>
@@ -124,8 +135,16 @@ export default function CalcBlockShell({
                 )}
               </span>
             )}
+            {util !== null && (
+              <span
+                title="Største udnyttelsesgrad"
+                style={{ ...styles.util, color: utilColor(util) }}
+              >
+                η = {util.toFixed(2)}
+              </span>
+            )}
             <span style={styles.summaryLabel}>
-              {resultOpen ? 'Hide results' : 'Show results'}
+              {resultOpen ? 'Skjul resultater' : 'Vis resultater'}
             </span>
             <span style={styles.summaryChevron}>{resultOpen ? '▲' : '▼'}</span>
           </button>
@@ -241,6 +260,11 @@ const styles = {
   badgeFail: {
     background: '#fdf3f2',
     color:      '#c0392b',
+  },
+  util: {
+    fontSize:   11,
+    fontWeight: 700,
+    fontFamily: 'var(--font-mono, monospace)',
   },
   summaryLabel: {
     fontSize: 11,

@@ -10,6 +10,7 @@
  * • ⠿ drag handle to reorder
  */
 import React, { useState, useRef, useEffect } from 'react'
+import { maxUtilization, utilColor } from '../CalcResultView.jsx'
 
 import HeadingBlock      from './HeadingBlock.jsx'
 import TableBlock        from './TableBlock.jsx'
@@ -273,6 +274,38 @@ const mkBadge = ok => ({
   color:      ok ? '#27ae60' : '#c0392b',
 })
 
+// ── Stale-result detection ────────────────────────────────────────────────────
+// A stored _result corresponds to the inputs the calc was run with.  When a
+// fresh result arrives, updateBlock() stamps a hash of those inputs on the
+// block (_input_hash).  If the inputs later change, the result is stale and
+// must not silently end up in an exported report.
+
+export function hashCalcInputs(data) {
+  const entries = Object.entries(data || {})
+    .filter(([k]) => !k.startsWith('_') && k !== 'title')
+    .sort(([a], [b]) => a.localeCompare(b))
+  const str = JSON.stringify(entries)
+  let h = 5381
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0
+  return String(h)
+}
+
+export function hasCalcResult(block) {
+  const d = block?.data || {}
+  return !!(d._result || d._summary || d._output_text)
+}
+
+export function isStaleResult(block) {
+  const d = block?.data || {}
+  if (!hasCalcResult(block) || !d._input_hash) return false
+  return d._input_hash !== hashCalcInputs(d)
+}
+
+const staleBadgeStyle = {
+  fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 2,
+  background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa',
+}
+
 // ── Block preview (rendered document content) ─────────────────────────────────
 
 function BlockPreview({ block }) {
@@ -403,7 +436,19 @@ function BlockPreview({ block }) {
             {d.title || TYPE_MAP[block.type]?.label || block.type}
           </span>
           {sub && <span style={{ fontSize: 12, color: '#aaa', fontFamily: 'monospace' }}>{sub}</span>}
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+          <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {isStaleResult(block) && <span style={staleBadgeStyle} title="Input er ændret siden sidste kørsel — kør beregningen igen">⟳ Forældet</span>}
+            {(() => {
+              const util = maxUtilization(d._result)
+              return util !== null && (
+                <span title="Største udnyttelsesgrad" style={{
+                  fontSize: 11, fontWeight: 700, fontFamily: 'monospace',
+                  color: utilColor(util),
+                }}>
+                  η = {util.toFixed(2)}
+                </span>
+              )
+            })()}
             {checks && checks.pass > 0 && <span style={mkBadge(true)}>✓ {checks.pass}</span>}
             {checks && checks.fail > 0 && <span style={mkBadge(false)}>✗ {checks.fail}</span>}
             {done  && <span style={mkBadge(true)}>✓ Done</span>}
@@ -598,7 +643,23 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
   // ── Mutations ──────────────────────────────────────────────────────────
 
-  function updateBlock(i, b) { const n = [...blocks]; n[i] = b; onChange(n) }
+  function updateBlock(i, b) {
+    const oldD = blocks[i]?.data || {}
+    const newD = b.data || {}
+    // Fresh result arrived → stamp the input hash it was computed from.
+    const gotNewResult =
+      (newD._result      && newD._result      !== oldD._result) ||
+      (newD._summary     && newD._summary     !== oldD._summary) ||
+      (newD._output_text && newD._output_text !== oldD._output_text)
+    if (gotNewResult) {
+      b = { ...b, data: { ...newD, _input_hash: hashCalcInputs(newD) } }
+    } else if (newD._input_hash && !newD._result && !newD._summary && !newD._output_text) {
+      // Result cleared → drop the hash so the block isn't flagged stale.
+      const { _input_hash, ...rest } = newD
+      b = { ...b, data: rest }
+    }
+    const n = [...blocks]; n[i] = b; onChange(n)
+  }
 
   function addBlock(type, atIndex) {
     const def = TYPE_MAP[type]; if (!def) return
@@ -883,6 +944,17 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
                           style={s.editor}
                           onClick={e => e.stopPropagation()}
                         >
+                          {isStaleResult(block) && (
+                            <div style={{
+                              background: '#fff7ed', border: '1px solid #fed7aa',
+                              color: '#c2410c', fontSize: 12, fontWeight: 600,
+                              padding: '7px 12px', marginBottom: 10,
+                              display: 'flex', alignItems: 'center', gap: 8,
+                            }}>
+                              <span>⟳</span>
+                              Input er ændret siden sidste kørsel — resultatet er forældet. Kør beregningen igen.
+                            </div>
+                          )}
                           <Comp
                             block={block}
                             onChange={b => updateBlock(index, b)}

@@ -84,9 +84,9 @@ function NavBar({ onNew }) {
         <img src="/logo.png" alt="Omkreds" style={{ height: 120, width: 'auto', marginTop: -30, marginBottom: -30 }} />
       </div>
 
-      {/* Links */}
+      {/* Links — marketing anchors only exist for signed-out visitors */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-        {[['Funktioner', 'features'], ['Sådan virker det', 'how-it-works'], ['Projekter', 'projects-section']].map(([label, id]) => (
+        {(user ? [] : [['Funktioner', 'features'], ['Sådan virker det', 'how-it-works'], ['Projekter', 'projects-section']]).map(([label, id]) => (
           <button key={id} onClick={() => scroll(id)} style={{
             background: 'none', border: 'none', fontFamily: SANS, fontSize: 13,
             color: MUTED, cursor: 'pointer', padding: 0, transition: 'color 0.2s',
@@ -443,7 +443,7 @@ function CtaSection({ onNew }) {
 // ── template library ─────────────────────────────────────────────────────────
 function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate }) {
   if (loading) return (
-    <div style={{ padding: '20px 0', color: MUTED, fontFamily: SANS, fontSize: 13 }}>Loading templates…</div>
+    <div style={{ padding: '20px 0', color: MUTED, fontFamily: SANS, fontSize: 13 }}>Indlæser skabeloner…</div>
   )
   if (templates.length === 0) return (
     <div style={{
@@ -452,11 +452,11 @@ function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate 
     }}>
       <div style={{ fontFamily: SANS, fontSize: 28, marginBottom: 12 }}>📋</div>
       <div style={{ fontFamily: SANS, fontSize: 14, fontWeight: 700, color: TEXT, marginBottom: 6 }}>
-        No templates yet
+        Ingen skabeloner endnu
       </div>
       <div style={{ fontFamily: SANS, fontSize: 13, color: MUTED, lineHeight: 1.7, maxWidth: 340, margin: '0 auto' }}>
-        Open a project and click <strong>Save as template</strong> to save its document structure
-        for reuse in future projects.
+        Åbn et projekt og klik på <strong>Gem som skabelon</strong> for at genbruge
+        dokumentstrukturen i fremtidige projekter.
       </div>
     </div>
   )
@@ -474,7 +474,7 @@ function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate 
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>📋</span>
             <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: TEXT, flex: 1, lineHeight: 1.3 }}>
-              {tmpl._template_name || tmpl.metadata?.project_name || 'Untitled template'}
+              {tmpl._template_name || tmpl.metadata?.project_name || 'Unavngiven skabelon'}
             </div>
           </div>
           {tmpl._template_description && (
@@ -487,7 +487,7 @@ function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate 
             {Object.entries(tmpl.documents || {})
               .filter(([, doc]) => (doc.blocks?.length || 0) + (doc.subdocs?.length || 0) > 0)
               .map(([id]) => id)
-              .join(' · ') || 'Empty template'}
+              .join(' · ') || 'Tom skabelon'}
           </div>
           <div style={{ borderTop: '1px solid ' + BORDER, paddingTop: 12, display: 'flex', gap: 8 }}>
             <button
@@ -498,13 +498,13 @@ function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate 
               }}
               onClick={() => onUseTemplate(tmpl)}
             >
-              Use template
+              Brug skabelon
             </button>
             <button
               style={{ background: 'none', border: '1px solid ' + BORDER, color: '#94a3b8', padding: '8px 14px', fontFamily: SANS, fontSize: 12, cursor: 'pointer' }}
               onClick={() => onDeleteTemplate(tmpl)}
             >
-              Delete
+              Slet
             </button>
           </div>
         </div>
@@ -545,11 +545,11 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <h2 style={{ fontFamily: SANS, fontSize: 22, fontWeight: 800, color: TEXT, letterSpacing: '-0.01em', margin: 0 }}>
-              {tab === 'projects' ? 'Your Projects' : 'Templates'}
+              {tab === 'projects' ? 'Dine projekter' : 'Skabeloner'}
             </h2>
             {/* Tab toggle */}
             <div style={{ display: 'flex', border: '1px solid ' + BORDER, background: WHITE, overflow: 'hidden' }}>
-              {[['projects', 'Projects'], ['templates', 'Templates']].map(([key, label]) => (
+              {[['projects', 'Projekter'], ['templates', 'Skabeloner']].map(([key, label]) => (
                 <button
                   key={key}
                   onClick={() => setTab(key)}
@@ -592,7 +592,7 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
               onMouseEnter={e => e.currentTarget.style.background = BRAND_DARK}
               onMouseLeave={e => e.currentTarget.style.background = BRAND}
             >
-              + New Project
+              + Nyt projekt
             </button>
           )}
         </div>
@@ -606,29 +606,29 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
         {/* ── Projects tab ── */}
         {tab === 'projects' && (
           loading ? (
-            <div style={{ padding: '40px 0', color: MUTED, fontFamily: SANS, fontSize: 13 }}>Loading…</div>
+            <div style={{ padding: '40px 0', color: MUTED, fontFamily: SANS, fontSize: 13 }}>Indlæser…</div>
           ) : projects.length === 0 ? (
             <div style={{ background: WHITE, border: '1px solid ' + BORDER, padding: '56px 32px', textAlign: 'center' }}>
               <div style={{ fontFamily: SANS, fontSize: 32, marginBottom: 16 }}>📐</div>
               <div style={{ fontFamily: SANS, fontSize: 16, fontWeight: 700, color: TEXT, marginBottom: 8 }}>
-                No projects yet
+                Ingen projekter endnu
               </div>
               <div style={{ fontFamily: SANS, fontSize: 13, color: MUTED, marginBottom: 24, maxWidth: 320, margin: '0 auto 24px' }}>
-                Create your first project and start generating Eurocode-compliant documentation.
+                Opret dit første projekt og kom i gang med den statiske dokumentation.
               </div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
                 <button
                   onClick={onNew}
                   style={{ background: BRAND, color: WHITE, border: 'none', padding: '10px 24px', fontFamily: SANS, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
                 >
-                  + New Project
+                  + Nyt projekt
                 </button>
                 {templates.length > 0 && (
                   <button
                     onClick={() => setTab('templates')}
                     style={{ background: 'transparent', color: MUTED, border: '1px solid ' + BORDER, padding: '10px 24px', fontFamily: SANS, fontSize: 13, cursor: 'pointer' }}
                   >
-                    Browse templates →
+                    Se skabeloner →
                   </button>
                 )}
               </div>
@@ -649,11 +649,11 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                     <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: TEXT, flex: 1, marginRight: 8, lineHeight: 1.3 }}>
-                      {project.metadata.project_name || 'Untitled project'}
+                      {project.metadata.project_name || 'Unavngivet projekt'}
                     </div>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
                       {project.visibility === 'personal' && (
-                        <span title="Personal — only visible to you" style={{
+                        <span title="Privat — kun synlig for dig" style={{
                           fontFamily: SANS, fontSize: 10, fontWeight: 700, color: '#4b5563',
                           background: '#f3f4f6', border: '1px solid #d1d5db',
                           padding: '2px 6px', whiteSpace: 'nowrap',
@@ -681,7 +681,7 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
                       style={{ flex: 1, background: BRAND, color: WHITE, border: 'none', padding: '8px 0', fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', cursor: 'pointer' }}
                       onClick={(e) => { e.stopPropagation(); onOpen(project.id) }}
                     >
-                      Open
+                      Åbn
                     </button>
                     <button
                       style={{ background: 'none', border: '1px solid ' + BORDER, color: '#94a3b8', padding: '8px 14px', fontFamily: SANS, fontSize: 12, cursor: 'pointer' }}
@@ -747,14 +747,14 @@ export default function ProjectsPage() {
 
   const onDelete = async (project, e) => {
     e.stopPropagation()
-    if (!window.confirm(`Delete "${project.metadata.project_name}"?`)) return
+    if (!window.confirm(`Slet "${project.metadata.project_name}"?`)) return
     try { await deleteProject(project.id); setProjects(projects.filter(p => p.id !== project.id)) }
     catch (e) { setError(e.message) }
   }
 
   const onDeleteTemplate = async (tmpl) => {
-    const name = tmpl._template_name || tmpl.metadata?.project_name || 'this template'
-    if (!window.confirm(`Delete template "${name}"?`)) return
+    const name = tmpl._template_name || tmpl.metadata?.project_name || 'denne skabelon'
+    if (!window.confirm(`Slet skabelonen "${name}"?`)) return
     try {
       await deleteProject(tmpl.id)
       setTemplates(templates.filter(t => t.id !== tmpl.id))
@@ -775,24 +775,40 @@ export default function ProjectsPage() {
     setShowModal(true)
   }
 
+  const projectsSection = (
+    <ProjectsSection
+      projects={projects} loading={loading} error={error}
+      templates={templates} templatesLoading={templatesLoading}
+      onOpen={(id) => navigate(`/projects/${id}`)}
+      onDelete={onDelete}
+      onNew={openModal}
+      onUseTemplate={useTemplate}
+      onDeleteTemplate={onDeleteTemplate}
+      isSignedIn={isSignedIn}
+    />
+  )
+
+  // Avoid flashing the marketing page while Clerk determines auth state
+  if (!isLoaded) return <div style={{ background: WHITE, minHeight: '100vh' }} />
+
   return (
     <div style={{ background: WHITE, minHeight: '100vh' }}>
       <NavBar onNew={openModal} />
-      <HeroSection onNew={openModal} />
-      <StatsSection />
-      <FeaturesSection />
-      <HowItWorksSection />
-      <CtaSection onNew={openModal} />
-      <ProjectsSection
-        projects={projects} loading={loading} error={error}
-        templates={templates} templatesLoading={templatesLoading}
-        onOpen={(id) => navigate(`/projects/${id}`)}
-        onDelete={onDelete}
-        onNew={openModal}
-        onUseTemplate={useTemplate}
-        onDeleteTemplate={onDeleteTemplate}
-        isSignedIn={isSignedIn}
-      />
+      {isSignedIn ? (
+        // Daily users land straight on their dashboard — no marketing scroll
+        <div style={{ paddingTop: 60, minHeight: '100vh' }}>
+          {projectsSection}
+        </div>
+      ) : (
+        <>
+          <HeroSection onNew={openModal} />
+          <StatsSection />
+          <FeaturesSection />
+          <HowItWorksSection />
+          <CtaSection onNew={openModal} />
+          {projectsSection}
+        </>
+      )}
       {showModal && (
         <CreateProjectModal
           onCreated={onCreated}

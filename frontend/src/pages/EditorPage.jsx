@@ -8,18 +8,20 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getProject, saveProject, generatePdf, generatePdfZip, generateWord, getCalcTemplates, saveProjectAsTemplate } from '../api/client.js'
-import BlockList            from '../components/blocks/BlockList.jsx'
+import BlockList, { isStaleResult, hasCalcResult } from '../components/blocks/BlockList.jsx'
 import MetadataPanel        from '../components/MetadataPanel.jsx'
 import TemplateEditorModal  from '../components/TemplateEditorModal.jsx'
 
+// Official BR18 / DS 1140 document names
 const DOC_DEFS = {
-  A1: 'Projektgrundlag',
+  A1: 'Konstruktionsgrundlag',
   A2: 'Statiske beregninger',
   A3: 'Konstruktionstegninger og modeller',
   A4: 'Konstruktionsændringer',
-  B1: 'Statisk projekteringsrapport',
-  B2: 'Statisk kontrolrapport',
-  B3: 'Statisk tilsynsrapport',
+  A5: 'Konstruktion som udført',
+  B1: 'Statisk projektredegørelse',
+  B2: 'Statisk kontrolplan',
+  B3: 'Statisk kontrolrapport',
 }
 
 // ── Document templates ────────────────────────────────────────────────────────
@@ -27,7 +29,7 @@ const DOC_DEFS = {
 function makeA1Template() {
   let id = Date.now()
   return [
-    { id: id++, type: 'heading', data: { level: 1, text: 'A1 Projektgrundlag' } },
+    { id: id++, type: 'heading', data: { level: 1, text: 'A1 Konstruktionsgrundlag' } },
 
     // ─────────────────────────────────────────────────────────────────────────
     // 1. KONSTRUKTIONSAFSNIT
@@ -146,7 +148,7 @@ function makeA1Template() {
         ['KK4', 'Saerlig', 'Saerlig kontrol — aftales individuelt med bygningsmyndighed', 'Saerlig kontrol — aftales individuelt', 'Individuel aftale med bygningsmyndighed'],
       ]
     }},
-    { id: id++, type: 'text', data: { text: 'Naermere om KK2-kontrolkrav (DS 1140:2014 Tabel B4b, Note 2):\n- Projektgrundlag A1: Krav om uafhaengig kontrol (anden person end den der har udarbejdet den paagaeldende del).\n- Statiske beregninger A2 og tegninger A3: Kontrolleres af person der ikke har udfort netop den paagaeldende delberegning eller tegning — internt firma er tilstraekkeligt.\n- Kontrollen dokumenteres i B2 (kontrolplan) og B3 (kontrolrapport).' } },
+    { id: id++, type: 'text', data: { text: 'Naermere om KK2-kontrolkrav (DS 1140:2014 Tabel B4b, Note 2):\n- Konstruktionsgrundlag A1: Krav om uafhaengig kontrol (anden person end den der har udarbejdet den paagaeldende del).\n- Statiske beregninger A2 og tegninger A3: Kontrolleres af person der ikke har udfort netop den paagaeldende delberegning eller tegning — internt firma er tilstraekkeligt.\n- Kontrollen dokumenteres i B2 (kontrolplan) og B3 (kontrolrapport).' } },
 
     // ── 2.3 Sikkerhed ────────────────────────────────────────────────────────
     { id: id++, type: 'heading', data: { level: 3, text: '2.3 Sikkerhed' } },
@@ -454,10 +456,10 @@ function makeA1Template() {
       has_header: true,
       rows: [
         ['Dok. nr.', 'Titel', 'Udstedt af', 'Dato / Rev.'],
-        ['A1', 'Projektgrundlag (dette dokument)', '', ''],
+        ['A1', 'Konstruktionsgrundlag (dette dokument)', '', ''],
         ['A2', 'Statiske beregninger', '', ''],
         ['A3', 'Konstruktionstegninger', '', ''],
-        ['B1', 'Statisk projekteringsrapport', '', ''],
+        ['B1', 'Statisk projektredegørelse', '', ''],
         ['B2', 'Statisk kontrolplan', '', ''],
         ['B3', 'Statisk kontrolrapport', '', ''],
         ['GEO-01', 'Geoteknisk rapport', '', ''],
@@ -476,7 +478,7 @@ function makeA1Template() {
 function makeB1Template() {
   let id = Date.now()
   return [
-    { id: id++, type: 'heading', data: { level: 1, text: 'Statisk projekteringsrapport' } },
+    { id: id++, type: 'heading', data: { level: 1, text: 'Statisk projektredegørelse' } },
 
     { id: id++, type: 'heading', data: { level: 2, text: 'Projekt- og konstruktionstype' } },
     { id: id++, type: 'text',    data: { text: 'Projektets betegnelse: …\nBygherre: …\nAdresse/matrikel: …\nKonstruktionstype: Nybyggeri / Ombygning / Tilbygning\nAnvendelse: Beboelse / Erhverv / Industri / Offentlig' } },
@@ -494,7 +496,7 @@ function makeB1Template() {
     { id: id++, type: 'text',    data: { text: 'Konsekvensklasse (DS/EN 1990 + DS 1140): CC… (KK1 / KK2 / KK3 / KK4)\nSikkerhedsklasse (DS 409): SK…\nKontrolklasse: Normal / Udvidet / Særlig\n\nBegrundelse for klassevalg:\n…' } },
 
     { id: id++, type: 'heading', data: { level: 2, text: 'Projektmaterialets omfang' } },
-    { id: id++, type: 'text',    data: { text: 'Det statiske projektmateriale består af:\n• A1: Projektgrundlag\n• A2: Statiske beregninger\n• A3: Konstruktionstegninger og modeller\n• B2: Statisk kontrolplan\n• B3: Statisk kontrolrapport' } },
+    { id: id++, type: 'text',    data: { text: 'Det statiske projektmateriale består af:\n• A1: Konstruktionsgrundlag\n• A2: Statiske beregninger\n• A3: Konstruktionstegninger og modeller\n• A4: Konstruktionsændringer\n• A5: Konstruktion som udført\n• B2: Statisk kontrolplan\n• B3: Statisk kontrolrapport' } },
 
     { id: id++, type: 'heading', data: { level: 2, text: 'Særlige konstruktive forhold og forudsætninger' } },
     { id: id++, type: 'text',    data: { text: 'Angiv eventuelle særlige forudsætninger, begrænsninger eller opmærksomhedspunkter:\n…' } },
@@ -1183,6 +1185,24 @@ function makeA4Template() {
   ]
 }
 
+function makeA5Template() {
+  let id = Date.now()
+  return [
+    { id: id++, type: 'heading', data: { level: 1, text: 'Konstruktion som udført' } },
+
+    { id: id++, type: 'text',    data: { text: 'Dette afsnit dokumenterer, at den udførte konstruktion er i overensstemmelse med det statiske projektmateriale (A1–A4), samt eventuelle afvigelser konstateret under udførelsen.' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Grundlag' } },
+    { id: id++, type: 'text',    data: { text: 'Som udført-dokumentationen er baseret på:\n• Konstruktionstegninger rev. … (A3)\n• Ændringslog (A4)\n• Udførelseskontrol (B3)\n• Tilsynsnotater: …' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Afvigelser fra projektmaterialet' } },
+    { id: id++, type: 'text',    data: { text: 'Nr. | Lokalitet         | Afvigelse                        | Statisk vurdering      | Reference\n----|-------------------|----------------------------------|------------------------|----------\n1   | …                 | …                                | Uden betydning / Æ-nr… | A4\n2   | …                 | …                                | …                      | …\n\nHvis ingen afvigelser: "Der er ikke konstateret afvigelser fra det statiske projektmateriale."' } },
+
+    { id: id++, type: 'heading', data: { level: 2, text: 'Erklæring' } },
+    { id: id++, type: 'text',    data: { text: 'Det erklæres hermed, at konstruktionen er udført i overensstemmelse med det statiske projektmateriale med de ovenfor anførte afvigelser, og at tegningsmaterialet er ajourført som udført.\n\nProjekterende:  ________________  Dato: ________\n\nUdførende:      ________________  Dato: ________' } },
+  ]
+}
+
 function makeB2Template() {
   let id = Date.now()
   return [
@@ -1273,7 +1293,7 @@ function makeB3Template() {
 }
 
 const DOC_GROUPS = [
-  { label: 'Konstruktionsdokumentation', docs: ['A1', 'A2', 'A3', 'A4'] },
+  { label: 'Konstruktionsdokumentation', docs: ['A1', 'A2', 'A3', 'A4', 'A5'] },
   { label: 'Projektdokumentation',       docs: ['B1', 'B2', 'B3'] },
 ]
 
@@ -1284,7 +1304,7 @@ const DOC_GROUPS = [
 const DOC_TEMPLATES = {
   A1: [
     {
-      label:       'Projektgrundlag',
+      label:       'Konstruktionsgrundlag',
       description: 'Projektbeskrivelse · Normer · CC-klasse · Laster · Materialer · Geoteknik',
       make:        makeA1Template,
     },
@@ -1330,9 +1350,16 @@ const DOC_TEMPLATES = {
       make:        makeA4Template,
     },
   ],
+  A5: [
+    {
+      label:       'Konstruktion som udført',
+      description: 'Grundlag · Afvigelsesliste · Som udført-erklæring med underskrifter',
+      make:        makeA5Template,
+    },
+  ],
   B1: [
     {
-      label:       'Statisk projekteringsrapport',
+      label:       'Statisk projektredegørelse',
       description: 'Konstruktivt system · Fundering · Stabilisering · Konsekvensklasse · Projektomfang',
       make:        makeB1Template,
     },
@@ -1686,7 +1713,13 @@ export default function EditorPage() {
     try {
       setLoading(true)
       const data = await getProject(projectId)
-      setProject(data)
+      // Older projects may predate newer document categories (e.g. A5) —
+      // fill in any missing ones so the sidebar always shows the full set.
+      const docs = { ...(data.documents || {}) }
+      for (const [docId, title] of Object.entries(DOC_DEFS)) {
+        if (!docs[docId]) docs[docId] = { title, blocks: [], subdocs: [] }
+      }
+      setProject({ ...data, documents: docs })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -1888,7 +1921,7 @@ export default function EditorPage() {
     const doc  = project.documents[docId]
     const sd   = doc.subdocs?.[idx]
     if (!sd) return
-    if (!window.confirm(`Delete sub-document "${sd.name}"? This cannot be undone.`)) return
+    if (!window.confirm(`Slet underdokument "${sd.name}"? Dette kan ikke fortrydes.`)) return
     const newSubdocs = (doc.subdocs ?? []).filter((_, i) => i !== idx)
     const updated = {
       ...project,
@@ -2015,15 +2048,67 @@ export default function EditorPage() {
     }
   }
 
+  /**
+   * Calc health for one document (incl. sub-documents):
+   * how many calc blocks have failing checks, and how many are stale.
+   * Drives the status dots in the sidebar and the export warning.
+   */
+  function docCalcStatus(doc) {
+    const all = [
+      ...(doc?.blocks ?? []),
+      ...(doc?.subdocs ?? []).flatMap(sd => sd.blocks ?? []),
+    ]
+    let stale = 0, fail = 0
+    for (const b of all) {
+      const d = b?.data || {}
+      if (!('_result' in d)) continue
+      if (isStaleResult(b)) stale++
+      if (Array.isArray(d._result) &&
+          d._result.some(r => r?.type === 'check' && r.passes === false)) fail++
+    }
+    return { stale, fail }
+  }
+
+  /**
+   * Documentation-integrity gate before export: warn if any calc block in the
+   * document (incl. sub-documents) has stale results (inputs changed since the
+   * last run) or has never been run.  Returns true to proceed.
+   */
+  function confirmExportIntegrity() {
+    if (!activeDoc || !project) return true
+    const doc = project.documents[activeDoc]
+    const all = [
+      ...(doc?.blocks ?? []),
+      ...(doc?.subdocs ?? []).flatMap(sd => sd.blocks ?? []),
+    ]
+    let stale = 0, unrun = 0
+    for (const b of all) {
+      const d = b?.data || {}
+      if (!('_result' in d)) continue          // not a calc block
+      if (isStaleResult(b)) stale++
+      else if (!hasCalcResult(b)) unrun++
+    }
+    if (!stale && !unrun) return true
+    const lines = []
+    if (stale) lines.push(`• ${stale} beregning${stale > 1 ? 'er' : ''} har ændrede input siden sidste kørsel (forældet resultat)`)
+    if (unrun) lines.push(`• ${unrun} beregning${unrun > 1 ? 'er' : ''} er ikke kørt endnu`)
+    return window.confirm(
+      `Advarsel — ${activeDoc} indeholder beregninger, der ikke er opdaterede:\n\n` +
+      lines.join('\n') +
+      '\n\nRapporten kan vise resultater, der ikke svarer til de angivne input.\nEksportér alligevel?'
+    )
+  }
+
   async function handleGeneratePdf() {
     if (!activeDoc) return
+    if (!confirmExportIntegrity()) return
     setPdfGenerating(true)
     setError(null)
     try {
       const saved = await _flushSave()
       if (!saved) {
-        setError('Note: latest changes could not be saved (project may be too large). ' +
-                 'Generating PDF from last saved version.')
+        setError('Bemærk: de seneste ændringer kunne ikke gemmes (projektet er muligvis for stort). ' +
+                 'PDF genereres fra den senest gemte version.')
       }
       const blob     = await generatePdf(projectId, activeDoc)
       const url      = URL.createObjectURL(blob)
@@ -2034,7 +2119,7 @@ export default function EditorPage() {
       URL.revokeObjectURL(url)
       if (saved) setError(null)
     } catch (err) {
-      setError(`PDF generation failed: ${err.message}`)
+      setError(`PDF-generering fejlede: ${err.message}`)
     } finally {
       setPdfGenerating(false)
     }
@@ -2042,13 +2127,14 @@ export default function EditorPage() {
 
   async function handleGeneratePdfZip() {
     if (!activeDoc) return
+    if (!confirmExportIntegrity()) return
     setPdfZipGenerating(true)
     setError(null)
     try {
       const saved = await _flushSave()
       if (!saved) {
-        setError('Note: latest changes could not be saved (project may be too large). ' +
-                 'Generating PDFs from last saved version.')
+        setError('Bemærk: de seneste ændringer kunne ikke gemmes (projektet er muligvis for stort). ' +
+                 'PDF’erne genereres fra den senest gemte version.')
       }
       const blob   = await generatePdfZip(projectId, activeDoc)
       const url    = URL.createObjectURL(blob)
@@ -2059,7 +2145,7 @@ export default function EditorPage() {
       URL.revokeObjectURL(url)
       if (saved) setError(null)
     } catch (err) {
-      setError(`PDF generation failed: ${err.message}`)
+      setError(`PDF-generering fejlede: ${err.message}`)
     } finally {
       setPdfZipGenerating(false)
     }
@@ -2067,13 +2153,14 @@ export default function EditorPage() {
 
   async function handleGenerateWord() {
     if (!activeDoc) return
+    if (!confirmExportIntegrity()) return
     setWordGenerating(true)
     setError(null)
     try {
       const saved = await _flushSave()
       if (!saved) {
         setError('Note: latest changes could not be saved (project may be too large). ' +
-                 'Generating Word export from last saved version.')
+                 'Word-eksporten genereres fra den senest gemte version.')
       }
       const blob   = await generateWord(projectId, activeDoc)
       const url    = URL.createObjectURL(blob)
@@ -2084,7 +2171,7 @@ export default function EditorPage() {
       URL.revokeObjectURL(url)
       if (saved) setError(null)
     } catch (err) {
-      setError(`Word export failed: ${err.message}`)
+      setError(`Word-eksport fejlede: ${err.message}`)
     } finally {
       setWordGenerating(false)
     }
@@ -2097,15 +2184,15 @@ export default function EditorPage() {
     try {
       const saved = await _flushSave()
       if (!saved) {
-        setError('Note: latest changes could not be saved (project may be too large). ' +
-                 'Showing PDF from last saved version.')
+        setError('Bemærk: de seneste ændringer kunne ikke gemmes (projektet er muligvis for stort). ' +
+                 'Forhåndsvisningen viser den senest gemte version.')
       }
       const blob = await generatePdf(projectId, activeDoc)
       if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl)
       setPdfPreviewUrl(URL.createObjectURL(blob))
       if (saved) setError(null)
     } catch (err) {
-      setError(`PDF preview failed: ${err.message}`)
+      setError(`PDF-forhåndsvisning fejlede: ${err.message}`)
     } finally {
       setPdfGenerating(false)
     }
@@ -2120,7 +2207,7 @@ export default function EditorPage() {
     setTplOpen(false)
     const existing = _currentBlocks()
     if (existing.length > 0) {
-      if (!window.confirm(`Apply template "${tpl.label}"? This will replace the existing content.`)) return
+      if (!window.confirm(`Anvend skabelonen "${tpl.label}"? Dette erstatter det eksisterende indhold.`)) return
     }
     updateBlocks(tpl.make())
   }
@@ -2139,17 +2226,17 @@ export default function EditorPage() {
       setTplNamePrompt(false)
       setTplNameInput('')
       // Small confirmation without a blocking dialog
-      setError('✓ Saved as template "' + tplNameInput.trim() + '". Find it on the home page → Templates.')
+      setError('✓ Gemt som skabelon "' + tplNameInput.trim() + '". Find den på forsiden → Skabeloner.')
       setTimeout(() => setError(null), 4000)
     } catch (err) {
-      setError('Could not save template: ' + err.message)
+      setError('Skabelonen kunne ikke gemmes: ' + err.message)
     } finally {
       setSavingTemplate(false)
     }
   }
 
-  if (loading) return <div style={{ padding: 40 }}>Loading…</div>
-  if (!project) return <div style={{ padding: 40 }}>Project not found.</div>
+  if (loading) return <div style={{ padding: 40 }}>Indlæser…</div>
+  if (!project) return <div style={{ padding: 40 }}>Projektet blev ikke fundet.</div>
 
   const currentDoc    = activeDoc ? project.documents[activeDoc] : null
   const currentBlocks = activeDoc
@@ -2160,9 +2247,9 @@ export default function EditorPage() {
 
   // Toolbar title
   const toolbarTitle = !activeDoc
-    ? 'Project Information'
+    ? 'Projektinformation'
     : activeSubdoc !== null
-      ? `${activeDoc}.${activeSubdoc + 1} — ${currentDoc?.subdocs?.[activeSubdoc]?.name || 'Sub-document'}`
+      ? `${activeDoc}.${activeSubdoc + 1} — ${currentDoc?.subdocs?.[activeSubdoc]?.name || 'Underdokument'}`
       : `${activeDoc} — ${DOC_DEFS[activeDoc]}`
 
   return (
@@ -2186,7 +2273,7 @@ export default function EditorPage() {
             onMouseEnter={e => e.currentTarget.style.color = '#475569'}
             onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
           >
-            ← All projects
+            ← Alle projekter
           </button>
           <div style={styles.projectName}>
             {project.metadata.project_name}
@@ -2208,6 +2295,7 @@ export default function EditorPage() {
                 const subdocs = doc?.subdocs ?? []
                 const blocks  = doc?.blocks  ?? []
                 const isParentActive = activeDoc === docId && activeSubdoc === null
+                const calcStatus = docCalcStatus(doc)
                 return (
                   <React.Fragment key={docId}>
 
@@ -2218,12 +2306,26 @@ export default function EditorPage() {
                     >
                       <span style={styles.docId}>{docId}</span>
                       {DOC_DEFS[docId]}
-                      {subdocs.length > 0
-                        ? <span style={{ fontSize: 10, color: '#aaa', marginLeft: 'auto' }}>{subdocs.length} sub</span>
-                        : blocks.length > 0
-                          ? <span style={{ fontSize: 10, color: '#aaa', marginLeft: 6 }}>({blocks.length})</span>
-                          : null
-                      }
+                      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        {calcStatus.fail > 0 && (
+                          <span
+                            title={`${calcStatus.fail} beregning${calcStatus.fail > 1 ? 'er' : ''} med fejlede eftervisninger`}
+                            style={{ width: 7, height: 7, borderRadius: '50%', background: '#dc2626', flexShrink: 0 }}
+                          />
+                        )}
+                        {calcStatus.stale > 0 && (
+                          <span
+                            title={`${calcStatus.stale} beregning${calcStatus.stale > 1 ? 'er' : ''} med forældede resultater`}
+                            style={{ width: 7, height: 7, borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }}
+                          />
+                        )}
+                        {subdocs.length > 0
+                          ? <span style={{ fontSize: 10, color: '#aaa' }}>{subdocs.length} sub</span>
+                          : blocks.length > 0
+                            ? <span style={{ fontSize: 10, color: '#aaa' }}>({blocks.length})</span>
+                            : null
+                        }
+                      </span>
                     </button>
 
                     {/* Sub-documents */}
@@ -2240,11 +2342,11 @@ export default function EditorPage() {
                         >
                           <span style={{ ...styles.docId, fontSize: 9 }}>{docId}.{si + 1}</span>
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {sd.name || `Sub-document ${si + 1}`}
+                            {sd.name || `Underdokument ${si + 1}`}
                           </span>
                         </button>
                         <button
-                          title="Delete sub-document"
+                          title="Slet underdokument"
                           onClick={() => deleteSubdoc(docId, si)}
                           style={{
                             flexShrink: 0, background: 'none', border: 'none',
@@ -2294,7 +2396,7 @@ export default function EditorPage() {
                         onMouseEnter={e => e.currentTarget.style.color = BRAND}
                         onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
                       >
-                        + Add sub-document
+                        + Tilføj underdokument
                       </button>
                     )}
 
@@ -2311,7 +2413,7 @@ export default function EditorPage() {
             style={styles.metaBtn(activeDoc === null)}
             onClick={() => setActiveDoc(null)}
           >
-            ⚙ Project info
+            ⚙ Projektinformation
           </button>
 
           {/* ── Save as template ── */}
@@ -2324,7 +2426,7 @@ export default function EditorPage() {
                   if (e.key === 'Enter') handleSaveAsTemplate()
                   if (e.key === 'Escape') { setTplNamePrompt(false); setTplNameInput('') }
                 }}
-                placeholder="Template name…"
+                placeholder="Skabelonnavn…"
                 autoFocus
                 style={{
                   fontSize: 11, padding: '5px 7px', fontFamily: 'inherit',
@@ -2341,7 +2443,7 @@ export default function EditorPage() {
                     fontFamily: 'inherit', opacity: savingTemplate || !tplNameInput.trim() ? 0.5 : 1,
                   }}
                 >
-                  {savingTemplate ? 'Saving…' : 'Save'}
+                  {savingTemplate ? 'Gemmer…' : 'Gem'}
                 </button>
                 <button
                   onClick={() => { setTplNamePrompt(false); setTplNameInput('') }}
@@ -2360,7 +2462,7 @@ export default function EditorPage() {
                 setTplNamePrompt(true)
               }}
             >
-              📋 Save as template
+              📋 Gem som skabelon
             </button>
           )}
         </div>
@@ -2377,24 +2479,24 @@ export default function EditorPage() {
             <button
               style={{ ...styles.tplBtn, marginRight: 4, color: BRAND, borderColor: '#c7d2fe' }}
               onClick={() => setActiveSubdoc(null)}
-              title={`Back to ${activeDoc}`}
+              title={`Tilbage til ${activeDoc}`}
             >
               ← {activeDoc}
             </button>
           )}
           <span style={styles.docTitle}>{toolbarTitle}</span>
-          {saving && <span style={styles.saving}>Saving…</span>}
+          {saving && <span style={styles.saving}>Gemmer…</span>}
 
           {/* Undo / Redo */}
           {activeDoc && (
             <span style={{ display: 'flex', gap: 2 }}>
               <button
                 style={{ ...styles.tplBtn, padding: '6px 10px', opacity: canUndo ? 1 : 0.35 }}
-                onClick={handleUndo} disabled={!canUndo} title="Undo  (Ctrl+Z)"
+                onClick={handleUndo} disabled={!canUndo} title="Fortryd  (Ctrl+Z)"
               >↩</button>
               <button
                 style={{ ...styles.tplBtn, padding: '6px 10px', opacity: canRedo ? 1 : 0.35 }}
-                onClick={handleRedo} disabled={!canRedo} title="Redo  (Ctrl+Y)"
+                onClick={handleRedo} disabled={!canRedo} title="Annullér fortryd  (Ctrl+Y)"
               >↪</button>
             </span>
           )}
@@ -2402,7 +2504,7 @@ export default function EditorPage() {
           {/* Clipboard paste indicator */}
           {clipboard && activeDoc && (
             <span style={{ fontSize: 11, color: '#4a90d9' }}>
-              📋 {clipboard.type} copied
+              📋 {clipboard.type} kopieret
             </span>
           )}
 
@@ -2413,7 +2515,7 @@ export default function EditorPage() {
                 style={styles.tplBtn}
                 onClick={() => setTplOpen(o => !o)}
               >
-                📋 Template ▾
+                📋 Skabelon ▾
               </button>
 
               {tplOpen && (
@@ -2433,7 +2535,7 @@ export default function EditorPage() {
                     ))
                   ) : (
                     <div style={styles.tplEmpty}>
-                      No templates for {activeDoc}
+                      Ingen skabeloner til {activeDoc}
                     </div>
                   )}
                 </div>
@@ -2449,9 +2551,9 @@ export default function EditorPage() {
                 disabled={pdfGenerating}
                 onMouseEnter={e => { if (!pdfGenerating) e.currentTarget.style.background = '#2d3748' }}
                 onMouseLeave={e => { if (!pdfGenerating) e.currentTarget.style.background = '#4a5568' }}
-                title="Preview PDF in browser"
+                title="Forhåndsvis PDF i browseren"
               >
-                {pdfGenerating ? '⏳' : '👁 Preview'}
+                {pdfGenerating ? '⏳' : '👁 Forhåndsvisning'}
               </button>
               <button
                 style={{ ...styles.pdfBtn, opacity: pdfGenerating ? 0.6 : 1 }}
@@ -2459,9 +2561,9 @@ export default function EditorPage() {
                 disabled={pdfGenerating}
                 onMouseEnter={e => { if (!pdfGenerating) e.currentTarget.style.background = BRAND_LT }}
                 onMouseLeave={e => { if (!pdfGenerating) e.currentTarget.style.background = BRAND }}
-                title="Export all sub-documents combined into one PDF"
+                title="Eksportér alle underdokumenter samlet i én PDF"
               >
-                ↓ Export PDF
+                ↓ Eksportér PDF
               </button>
               {/* Separate PDFs button — only when the document has sub-documents */}
               {(project?.documents?.[activeDoc]?.subdocs?.length > 0) && (
@@ -2471,9 +2573,9 @@ export default function EditorPage() {
                   disabled={pdfZipGenerating}
                   onMouseEnter={e => { if (!pdfZipGenerating) e.currentTarget.style.background = '#4c2d72' }}
                   onMouseLeave={e => { if (!pdfZipGenerating) e.currentTarget.style.background = '#6d4c9e' }}
-                  title="Download each sub-document as a separate PDF (ZIP archive)"
+                  title="Download hvert underdokument som separat PDF (ZIP-arkiv)"
                 >
-                  {pdfZipGenerating ? '⏳' : '↓ Separate PDFs'}
+                  {pdfZipGenerating ? '⏳' : '↓ Separate PDF’er'}
                 </button>
               )}
               <button
@@ -2482,9 +2584,9 @@ export default function EditorPage() {
                 disabled={wordGenerating}
                 onMouseEnter={e => { if (!wordGenerating) e.currentTarget.style.background = '#1b4332' }}
                 onMouseLeave={e => { if (!wordGenerating) e.currentTarget.style.background = '#2d6a4f' }}
-                title="Export as Word document (.docx)"
+                title="Eksportér som Word-dokument (.docx)"
               >
-                {wordGenerating ? '⏳' : '↓ Export Word'}
+                {wordGenerating ? '⏳' : '↓ Eksportér Word'}
               </button>
             </div>
           )}
@@ -2539,7 +2641,7 @@ export default function EditorPage() {
           {/* Header */}
           <div style={styles.pdfModalHeader}>
             <span style={{ fontWeight: 700, fontSize: 13 }}>
-              PDF Preview — {activeDoc}
+              PDF-forhåndsvisning — {activeDoc}
             </span>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button

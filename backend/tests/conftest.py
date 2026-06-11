@@ -16,6 +16,17 @@ from fastapi.testclient import TestClient
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from main import app
+from auth import get_current_user
+
+# ── Auth bypass for tests ─────────────────────────────────────────────────────
+# The API routes are protected by Clerk JWT verification.  Tests exercise the
+# calculation logic, not the auth layer, so we override the dependency with a
+# fixed fake user.  (auth.py itself is untouched.)
+app.dependency_overrides[get_current_user] = lambda: {
+    "id":    "test-user",
+    "email": "test@example.com",
+    "name":  "Test User",
+}
 
 
 @pytest.fixture(scope="session")

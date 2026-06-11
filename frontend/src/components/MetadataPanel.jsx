@@ -45,37 +45,37 @@ function compressImage(file, maxDim = 1920, quality = 0.85) {
 
 const SECTIONS = [
   {
-    title: 'Project',
-    hint: 'Appears on the cover page and page header',
+    title: 'Projekt',
+    hint: 'Vises på forsiden og i sidehovedet',
     fields: [
-      { key: 'project_name', label: 'Project name',      required: true },
-      { key: 'project_ref',  label: 'Project reference', hint: 'e.g. 2024-042' },
-      { key: 'client',       label: 'Client' },
-      { key: 'address',      label: 'Site address / location' },
-      { key: 'standard',     label: 'Standard',          hint: 'e.g. DS/EN 1993-1-1' },
+      { key: 'project_name', label: 'Projektnavn',        required: true },
+      { key: 'project_ref',  label: 'Projektreference',   hint: 'fx 2024-042' },
+      { key: 'client',       label: 'Bygherre' },
+      { key: 'address',      label: 'Adresse / lokalitet' },
+      { key: 'standard',     label: 'Norm',               hint: 'fx DS/EN 1993-1-1' },
     ],
   },
   {
-    title: 'Signatures',
-    hint: 'Shown in the revision table and page header',
+    title: 'Underskrifter',
+    hint: 'Vises i revisionstabellen og sidehovedet',
     fields: [
-      { key: 'engineer',      label: 'Calculated by' },
-      { key: 'checker',       label: 'Checked by' },
-      { key: 'approver',      label: 'Approved by' },
-      { key: 'date',          label: 'Date',             hint: 'e.g. 2025-05-24' },
-      { key: 'revision',      label: 'Revision',         hint: 'e.g. A, B, 01' },
-      { key: 'revision_desc', label: 'Revision description', hint: 'e.g. Initial issue' },
+      { key: 'engineer',      label: 'Udarbejdet af' },
+      { key: 'checker',       label: 'Kontrolleret af' },
+      { key: 'approver',      label: 'Godkendt af' },
+      { key: 'date',          label: 'Dato',               hint: 'fx 2026-06-11' },
+      { key: 'revision',      label: 'Revision',           hint: 'fx A, B, 01' },
+      { key: 'revision_desc', label: 'Revisionsbeskrivelse', hint: 'fx Første udgave' },
     ],
   },
   {
-    title: 'Firm',
-    hint: 'Appears in the PDF footer on every page',
+    title: 'Firma',
+    hint: 'Vises i PDF-sidefoden på alle sider',
     fields: [
-      { key: 'firm_name',    label: 'Firm name',    hint: 'Also used when no logo is uploaded' },
-      { key: 'firm_address', label: 'Firm address' },
-      { key: 'phone',        label: 'Phone',        hint: 'e.g. +45 12 34 56 78' },
-      { key: 'email',        label: 'Email' },
-      { key: 'cvr',          label: 'CVR no.',      hint: 'Danish company registration' },
+      { key: 'firm_name',    label: 'Firmanavn',     hint: 'Bruges også når der ikke er uploadet logo' },
+      { key: 'firm_address', label: 'Firmaadresse' },
+      { key: 'phone',        label: 'Telefon',       hint: 'fx +45 12 34 56 78' },
+      { key: 'email',        label: 'E-mail' },
+      { key: 'cvr',          label: 'CVR-nr.' },
     ],
   },
 ]
@@ -127,9 +127,9 @@ export default function MetadataPanel({ project, onSave }) {
   return (
     <div style={s.wrapper}>
       <div style={s.header}>
-        <div style={s.title}>Project Information</div>
+        <div style={s.title}>Projektinformation</div>
         <div style={s.subtitle}>
-          This data populates the cover page, page header, and every PDF footer.
+          Disse oplysninger bruges på forsiden, i sidehovedet og i PDF-sidefoden.
         </div>
       </div>
 
@@ -161,16 +161,16 @@ export default function MetadataPanel({ project, onSave }) {
 
       {/* ── Cover image ─────────────────────────────────────────────────────── */}
       <div style={s.section}>
-        <div style={s.sectionTitle}>Cover Image</div>
+        <div style={s.sectionTitle}>Forsidebillede</div>
         <div style={s.sectionHint}>
-          Appears on the front page of every PDF export for this project.
-          JPG or PNG recommended. Landscape photos work best.
+          Vises på forsiden af alle PDF-eksporter for dette projekt.
+          JPG eller PNG anbefales. Liggende billeder fungerer bedst.
         </div>
 
         {compressing ? (
           <div style={{ ...s.dropZone, cursor: 'default', borderColor: '#d1d5db' }}>
             <div style={s.dropIcon}>⏳</div>
-            <div style={s.dropLabel}>Compressing…</div>
+            <div style={s.dropLabel}>Komprimerer…</div>
           </div>
         ) : meta.cover_image_b64 ? (
           /* ── Preview state ── */
@@ -185,13 +185,13 @@ export default function MetadataPanel({ project, onSave }) {
                 style={s.imgChangeBtn}
                 onClick={() => fileInputRef.current?.click()}
               >
-                Change image
+                Skift billede
               </button>
               <button
                 style={{ ...s.imgChangeBtn, background: 'rgba(185,28,28,0.85)' }}
                 onClick={clearCoverImage}
               >
-                Remove
+                Fjern
               </button>
             </div>
           </div>
@@ -209,8 +209,8 @@ export default function MetadataPanel({ project, onSave }) {
             onDrop={handleCoverImageDrop}
           >
             <div style={s.dropIcon}>🖼</div>
-            <div style={s.dropLabel}>Click or drag an image here</div>
-            <div style={s.dropSub}>JPG, PNG, WebP — auto-compressed to JPEG</div>
+            <div style={s.dropLabel}>Klik eller træk et billede hertil</div>
+            <div style={s.dropSub}>JPG, PNG, WebP — komprimeres automatisk til JPEG</div>
           </div>
         )}
 
@@ -225,7 +225,7 @@ export default function MetadataPanel({ project, onSave }) {
 
       {/* PDF header preview */}
       <div style={s.previewWrap}>
-        <div style={s.previewLabel}>PDF header preview</div>
+        <div style={s.previewLabel}>Forhåndsvisning af PDF-sidehoved</div>
         <div style={s.preview}>
           {/* Mock header table */}
           <div style={s.previewHeader}>

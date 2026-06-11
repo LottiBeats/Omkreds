@@ -148,7 +148,9 @@ class CheckContext:
         ratio  = round(ratio, 3)
         passes = ratio <= 1.0
         status = f"{ratio:.3f} < 1.0   OK" if passes else f"{ratio:.3f} > 1.0   FAIL"
-        return {"type": "check", "label": label, "passes": passes, "value": status}
+        # "ratio" lets the frontend show the governing utilisation at a glance
+        return {"type": "check", "label": label, "passes": passes,
+                "value": status, "ratio": ratio}
 
     def check_bool(self, label, passes, ok_text="OK", fail_text="FAIL"):
         return {
