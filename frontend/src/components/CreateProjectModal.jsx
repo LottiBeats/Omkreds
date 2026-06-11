@@ -66,7 +66,7 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
 
         <div style={styles.header}>
           <div style={styles.title}>
-            {isFromTemplate ? 'New project from template' : 'New project'}
+            {isFromTemplate ? 'Nyt projekt fra skabelon' : 'Nyt projekt'}
           </div>
           <button style={styles.closeBtn} onClick={onCancel}>✕</button>
         </div>
@@ -76,9 +76,9 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
           <div style={styles.templateBadge}>
             <span style={styles.templateBadgeIcon}>📋</span>
             <div>
-              <div style={styles.templateBadgeName}>{templateName || 'Template'}</div>
+              <div style={styles.templateBadgeName}>{templateName || 'Skabelon'}</div>
               <div style={styles.templateBadgeHint}>
-                Document structure will be copied — fill in your project details below
+                Dokumentstrukturen kopieres — udfyld projektoplysningerne nedenfor
               </div>
             </div>
           </div>
@@ -89,14 +89,14 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
 
             <div style={styles.field}>
               <label style={styles.label}>
-                Project name <span style={styles.required}>*</span>
+                Projektnavn <span style={styles.required}>*</span>
               </label>
               <input
                 ref={firstInputRef}
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="e.g. Rooftop extension, Kongens Nytorv"
+                placeholder="fx Tagudvidelse, Kongens Nytorv"
                 style={styles.input}
                 required
               />
@@ -104,27 +104,27 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
 
             <div style={styles.field}>
               <label style={styles.label}>
-                Project reference
-                <span style={styles.optional}> — optional</span>
+                Projektreference
+                <span style={styles.optional}> — valgfri</span>
               </label>
               <input
                 type="text"
                 value={ref}
                 onChange={e => setRef(e.target.value)}
-                placeholder="e.g. 2024-042"
+                placeholder="fx 2024-042"
                 style={styles.input}
               />
             </div>
 
             <div style={styles.field}>
-              <label style={styles.label}>Visibility</label>
+              <label style={styles.label}>Synlighed</label>
               <select
                 value={visibility}
                 onChange={e => setVisibility(e.target.value)}
                 style={styles.input}
               >
-                <option value="team">Team - visible to signed-in users</option>
-                <option value="personal">Personal - only visible to you</option>
+                <option value="team">Team — synligt for alle i firmaet</option>
+                <option value="personal">Privat — kun synligt for dig</option>
               </select>
             </div>
 
@@ -139,7 +139,7 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
               onClick={onCancel}
               disabled={loading}
             >
-              Cancel
+              Annullér
             </button>
             <button
               type="submit"
@@ -150,8 +150,8 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
               disabled={loading || !name.trim()}
             >
               {loading
-                ? (isFromTemplate ? 'Creating…' : 'Creating…')
-                : (isFromTemplate ? 'Create from template' : 'Create project')}
+                ? 'Opretter…'
+                : (isFromTemplate ? 'Opret fra skabelon' : 'Opret projekt')}
             </button>
           </div>
         </form>

@@ -178,7 +178,7 @@ function AppPreview() {
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px solid ' + BRAND, paddingBottom: 5, marginBottom: 10 }}>
             <span style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Steel Beam Design
+              Stålbjælke — eftervisning
             </span>
             <span style={{ fontFamily: MONO, fontSize: 9, color: MUTED }}>EC3 §6.3.3</span>
           </div>
@@ -193,7 +193,7 @@ function AppPreview() {
             borderLeft: '3px solid ' + GREEN, padding: '5px 10px',
             fontFamily: MONO, fontSize: 10, color: '#15803d', fontWeight: 700,
           }}>
-            ✓&ensp;BENDING: PASS&ensp;(η = 0.60 &lt; 1.0)
+            ✓&ensp;BØJNING: OK&ensp;(η = 0.60 &lt; 1.0)
           </div>
         </div>
 
@@ -201,7 +201,7 @@ function AppPreview() {
         <div style={{ borderTop: '1px solid ' + BORDER, paddingTop: 14, marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px solid ' + BRAND, paddingBottom: 5, marginBottom: 10 }}>
             <span style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              RC Beam Design
+              Betonbjælke — eftervisning
             </span>
             <span style={{ fontFamily: MONO, fontSize: 9, color: MUTED }}>EC2 §6.1</span>
           </div>
@@ -215,7 +215,7 @@ function AppPreview() {
             borderLeft: '3px solid ' + GREEN, padding: '5px 10px',
             fontFamily: MONO, fontSize: 10, color: '#15803d', fontWeight: 700,
           }}>
-            ✓&ensp;FLEXURE: PASS
+            ✓&ensp;BØJNING: OK
           </div>
         </div>
 
@@ -225,7 +225,7 @@ function AppPreview() {
           padding: '9px 0', fontFamily: SANS, fontSize: 12, fontWeight: 700,
           letterSpacing: '0.04em', cursor: 'pointer',
         }}>
-          Export PDF →
+          Eksportér PDF →
         </button>
       </div>
     </div>
@@ -715,6 +715,15 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
 export default function ProjectsPage() {
   const { user, isSignedIn, isLoaded } = useUser()
   const { openSignIn } = useClerk()
+  // If Clerk hasn't loaded after a short grace period (network issue, wrong
+  // domain for the key, ad-blocker), fall back to the signed-out landing page
+  // instead of hanging on a blank screen.
+  const [clerkTimedOut, setClerkTimedOut] = useState(false)
+  useEffect(() => {
+    if (isLoaded) return
+    const t = setTimeout(() => setClerkTimedOut(true), 2000)
+    return () => clearTimeout(t)
+  }, [isLoaded])
   const [projects,          setProjects]          = useState([])
   const [templates,         setTemplates]         = useState([])
   const [loading,           setLoading]           = useState(true)
@@ -788,8 +797,9 @@ export default function ProjectsPage() {
     />
   )
 
-  // Avoid flashing the marketing page while Clerk determines auth state
-  if (!isLoaded) return <div style={{ background: WHITE, minHeight: '100vh' }} />
+  // Avoid flashing the marketing page while Clerk determines auth state —
+  // but never hang forever if Clerk fails to load.
+  if (!isLoaded && !clerkTimedOut) return <div style={{ background: WHITE, minHeight: '100vh' }} />
 
   return (
     <div style={{ background: WHITE, minHeight: '100vh' }}>

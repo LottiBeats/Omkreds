@@ -46,54 +46,54 @@ import ProjectBasisBlock   from './ProjectBasisBlock.jsx'
 
 // icon: short text badge shown in the left panel (max 3 chars, monospace)
 const BLOCK_TYPES = [
-  { type: 'project_basis', label: 'Project Basis (A1)', icon: 'A1', color: '#0f172a', component: ProjectBasisBlock,
+  { type: 'project_basis', label: 'Projektgrundlag (A1)', icon: 'A1', color: '#0f172a', component: ProjectBasisBlock,
     default: { title: 'Project Basis', consequence_class: 'CC2', wind_zone: 2, terrain_category: 'II',
                snow_zone: 1, gamma_M0: 1.00, gamma_M1: 1.00, gamma_M2: 1.25,
                gamma_c: 1.50, gamma_s: 1.15, gamma_M_timber: 1.30, _exports: null } },
-  { type: 'heading',       label: 'Heading',           icon: 'H',   color: '#64748b', component: HeadingBlock,
+  { type: 'heading',       label: 'Overskrift',        icon: 'H',   color: '#64748b', component: HeadingBlock,
     default: { level: 1, text: '' } },
-  { type: 'text',          label: 'Paragraph',         icon: 'TXT', color: '#64748b', component: TextBlock,
+  { type: 'text',          label: 'Tekstafsnit',       icon: 'TXT', color: '#64748b', component: TextBlock,
     default: { text: '' } },
-  { type: 'image',         label: 'Image',             icon: 'IMG', color: '#64748b', component: ImageBlock,
+  { type: 'image',         label: 'Billede',           icon: 'IMG', color: '#64748b', component: ImageBlock,
     default: { image_b64: null, caption: '', width_pct: 100 } },
-  { type: 'table',         label: 'Table',             icon: 'TBL', color: '#64748b', component: TableBlock,
+  { type: 'table',         label: 'Tabel',             icon: 'TBL', color: '#64748b', component: TableBlock,
     default: { caption: '', has_header: true, rows: [['Kolonne 1', 'Kolonne 2'], ['', '']] } },
-  { type: 'custom_calc',   label: 'Custom calc',       icon: 'CLC', color: '#7c3aed', component: CustomCalcBlock,
+  { type: 'custom_calc',   label: 'Egen beregning',    icon: 'CLC', color: '#7c3aed', component: CustomCalcBlock,
     default: { title: 'Custom Calculation', items: [], _result: null } },
   { type: 'python_calc',   label: 'Python script',     icon: 'PY',  color: '#0284c7', component: PythonBlock,
     default: { title: 'Python Script',
                code: 'import numpy as np\n\nx = np.linspace(0, 10, 100)\nprint(f"Max x = {x.max():.1f}")',
                _output_text: '', _figs_b64: [], _error: '' } },
-  { type: 'steel_beam',    label: 'Steel beam',        icon: 'SB',  color: '#1e3a5f', component: SteelBeamBlock,
+  { type: 'steel_beam',    label: 'Stålbjælke',        icon: 'SB',  color: '#1e3a5f', component: SteelBeamBlock,
     default: { title: 'Steel Beam Check', label: 'S1', section: 'IPE300', grade: 'S355',
                span_m: 5.0, load_type: 'udl', trib_width_m: 1.0, g_k_kNm: 5.0, q_k_kNm: 3.0,
                gamma_M0: 1.0, gamma_M1: 1.0,
                ltb_restrained: false, buck_y_restrained: false, buck_x_restrained: false, _result: null } },
-  { type: 'rc_beam',       label: 'RC beam',           icon: 'RCB', color: '#374151', component: RCBeamBlock,
+  { type: 'rc_beam',       label: 'Betonbjælke',       icon: 'RCB', color: '#374151', component: RCBeamBlock,
     default: { title: 'RC Beam Check', label: 'B1', span_m: 5.0, b_mm: 300, h_mm: 500,
                d_mm: 450, g_k_kNm: 10.0, q_k_kNm: 6.0, f_ck_MPa: 30, f_yk_MPa: 500,
                As_prov_mm2: null, gamma_C: 1.5, gamma_S: 1.15, _result: null } },
-  { type: 'rc_column',     label: 'RC column',         icon: 'RCC', color: '#374151', component: RCColumnBlock,
+  { type: 'rc_column',     label: 'Betonsøjle',        icon: 'RCC', color: '#374151', component: RCColumnBlock,
     default: { title: 'RC Column Check', label: 'C1', h_mm: 300, b_mm: 300, c_mm: 40,
                fck_mpa: 30, fyk_mpa: 500, gamma_c: 1.5, gamma_s: 1.15,
                da_c_mm: 16, n_c: 2, da_t_mm: 16, n_t: 2,
                Ls_mm: 3500, beta_eff: 1.0,
                load_cases: [{ label: 'LC1', NEd_kN: 400, M0Ed_kNm: 20 }], _result: null } },
-  { type: 'rc_slab',       label: 'RC slab',           icon: 'RCS', color: '#374151', component: RCSlabBlock,
+  { type: 'rc_slab',       label: 'Betondæk',          icon: 'RCS', color: '#374151', component: RCSlabBlock,
     default: { title: 'RC Slab Check', label: 'D1', span_m: 5.0, h_mm: 200, d_mm: 165,
                g_k_kNm2: 3.5, q_k_kNm2: 2.5, fck_MPa: 30, fyk_MPa: 500,
                As_prov_mm2m: null, gamma_C: 1.5, gamma_S: 1.15, cover_mm: 35, _result: null } },
-  { type: 'timber_beam',   label: 'Timber beam',       icon: 'TB',  color: '#92400e', component: TimberBeamBlock,
+  { type: 'timber_beam',   label: 'Træbjælke',         icon: 'TB',  color: '#92400e', component: TimberBeamBlock,
     default: { title: 'Timber Beam Check', label: 'T1', span_m: 4.0, b_mm: 90, h_mm: 220,
                g_k_kNm: 3.0, q_k_kNm: 2.0, timber_grade: 'C24', service_class: 1,
                load_duration: 'medium', gamma_M: 1.3,
                compression_edge_restrained: true, torsional_restraint_at_supports: true, _result: null } },
-  { type: 'timber_column', label: 'Timber column',     icon: 'TC',  color: '#92400e', component: TimberColumnBlock,
+  { type: 'timber_column', label: 'Træsøjle',          icon: 'TC',  color: '#92400e', component: TimberColumnBlock,
     default: { title: 'Timber Column Check', label: 'C1', length_m: 3.0, N_Ed_kN: 50.0,
                M_Ed_kNm: 0.0, b_mm: 120, h_mm: 120, timber_grade: 'C24', service_class: 1,
                load_duration: 'medium', gamma_M: 1.3, effective_length_factor: 1.0,
                l_ef_ltb_m: null, _result: null } },
-  { type: 'masonry_wall',  label: 'Masonry wall',      icon: 'MSN', color: '#78350f', component: MasonryWallBlock,
+  { type: 'masonry_wall',  label: 'Murværksvæg',       icon: 'MSN', color: '#78350f', component: MasonryWallBlock,
     default: { title: 'Masonry Wall Check', label: 'W1',
                calc_type: 'vertical',
                // shared material
@@ -157,17 +157,17 @@ const BLOCK_TYPES = [
                supports: [{ node_id: 1, ux: true, uy: true, rz: false }, { node_id: 2, ux: false, uy: true, rz: false }],
                loads:    [{ type: 'udl', elem_id: 1, wy_kNm: 10.0, wx_kNm: 0.0 }],
                _result: null } },
-  { type: 'wind_load',     label: 'Wind load',         icon: 'WND', color: '#0369a1', component: WindLoadBlock,
+  { type: 'wind_load',     label: 'Vindlast',          icon: 'WND', color: '#0369a1', component: WindLoadBlock,
     default: { title: 'Wind Load', label: 'W1', terrain_category: 'II',
                v_b0_ms: 24.0, z_ref_m: 8.0, h_m: 8.0, b_m: 10.0, d_m: 12.0,
                c_dir: 1.0, c_season: 1.0, c_pe_windward: 0.8, c_pe_leeward: -0.5,
                c_pi: 0.2, rho_air: 1.25, _result: null } },
-  { type: 'snow_load',     label: 'Snow load',         icon: 'SNW', color: '#0369a1', component: SnowLoadBlock,
+  { type: 'snow_load',     label: 'Snelast',           icon: 'SNW', color: '#0369a1', component: SnowLoadBlock,
     default: { title: 'Snow Load', label: 'SN1', roof_type: 'pitched',
                alpha_deg: 20.0, s_k_kNm2: 1.0, dk_zone: '1',
                C_e: 1.0, C_t: 1.0, roof_span_m: 8.0, eave_height_m: 3.0,
                gamma_s: 1.5, a_m: 0.0, _result: null } },
-  { type: 'roof_dead_load', label: 'Roof dead load',  icon: 'RDL', color: '#0369a1', component: RoofDeadLoadBlock,
+  { type: 'roof_dead_load', label: 'Tagets egenlast', icon: 'RDL', color: '#0369a1', component: RoofDeadLoadBlock,
     default: { title: 'Roof Dead Load', label: 'G1', alpha_deg: 30.0, a_m: 1.0,
                layers: [
                  { description: 'Tegltagsten (monier)',        g_kNm2: 0.55 },
@@ -178,38 +178,38 @@ const BLOCK_TYPES = [
                  { description: 'Dampspærre',                  g_kNm2: 0.01 },
                ],
                b_mm: 45.0, h_mm: 145.0, rho_kgm3: 380.0, _result: null } },
-  { type: 'foundation',    label: 'Foundation',        icon: 'FND', color: '#57534e', component: FoundationBlock,
+  { type: 'foundation',    label: 'Fundament',         icon: 'FND', color: '#57534e', component: FoundationBlock,
     default: { title: 'Foundation Bearing Check', label: 'F1',
                B_m: 1.5, L_m: 2.0, D_m: 0.8,
                c_kPa: 5.0, phi_deg: 30.0, gamma_kNm3: 18.0, gamma_b_kNm3: 10.0,
                water_table: false, V_Ed_kN: 300.0, H_Ed_kN: 0.0, M_Ed_kNm: 0.0,
                gamma_phi: 1.0, gamma_c: 1.0, gamma_Rv: 1.4, _result: null } },
-  { type: 'load_combo',    label: 'Load combinations', icon: 'LC',  color: '#9333ea', component: LoadComboBlock,
+  { type: 'load_combo',    label: 'Lastkombinationer', icon: 'LC',  color: '#9333ea', component: LoadComboBlock,
     default: { title: 'Load Combinations', label: 'LC1', unit: 'kN/m',
                G_k: 5.0, G_fav: false, loads: [], method: '6.10ab', _result: null } },
-  { type: 'beam_column',   label: 'Beam-column (N+M)', icon: 'BC',  color: '#1e3a5f', component: BeamColumnBlock,
+  { type: 'beam_column',   label: 'Bjælkesøjle (N+M)', icon: 'BC',  color: '#1e3a5f', component: BeamColumnBlock,
     default: { title: 'Beam-Column Check', label: 'BC1', section: 'HEB200', grade: 'S355',
                N_Ed_kN: 200, My_Ed_kNm: 50, Mz_Ed_kNm: 0,
                L_y_m: 4.0, L_z_m: 4.0, L_LTB_m: 4.0,
                k_y: 1.0, k_z: 1.0, C_my: 1.0, C_mz: 1.0, C_mLT: 1.0,
                ltb_restrained: false, gamma_M0: 1.0, gamma_M1: 1.0, _result: null } },
-  { type: 'bolt_group',    label: 'Bolt group',        icon: 'BLT', color: '#1e3a5f', component: BoltConnectionBlock,
+  { type: 'bolt_group',    label: 'Boltgruppe',        icon: 'BLT', color: '#1e3a5f', component: BoltConnectionBlock,
     default: { title: 'Connection Check', label: 'BG1', mode: 'bolts',
                n_bolts: 4, bolt_class: '8.8', d_mm: 20, shear_plane: 'thread',
                n_shear_planes: 1, t_plate_mm: 10, f_u_plate_MPa: 510,
                e1_mm: 40, e2_mm: 40, p1_mm: 60, V_Ed_kN: 100, gamma_M2: 1.25,
                _result: null } },
-  { type: 'fillet_weld',   label: 'Fillet weld',       icon: 'WLD', color: '#1e3a5f', component: BoltConnectionBlock,
+  { type: 'fillet_weld',   label: 'Kantsøm',           icon: 'WLD', color: '#1e3a5f', component: BoltConnectionBlock,
     default: { title: 'Weld Check', label: 'W1', mode: 'weld',
                a_mm: 6, L_mm: 200, F_Ed_kN: 80, steel_grade: 'S355',
                gamma_M2: 1.25, _result: null } },
-  { type: 'plate_girder',  label: 'Plate girder',       icon: 'PG',  color: '#1e3a5f', component: PlateGirderBlock,
+  { type: 'plate_girder',  label: 'Pladedrager',        icon: 'PG',  color: '#1e3a5f', component: PlateGirderBlock,
     default: { title: 'Plate Girder Check', label: 'PG1', grade: 'S355',
                h_w_mm: 1200, t_w_mm: 12, b_f_mm: 400, t_f_mm: 25,
                a_mm: 2000, eta: 1.0, rigid_end_post: true,
                V_Ed_kN: 0, M_Ed_kNm: 0,
                gamma_M0: 1.0, gamma_M1: 1.0, _result: null } },
-  { type: 'saved_calc',    label: 'My Calculation',     icon: 'TPL', color: '#2563eb', component: SavedCalcBlock,
+  { type: 'saved_calc',    label: 'Min beregning',      icon: 'TPL', color: '#2563eb', component: SavedCalcBlock,
     default: { title: '', template_id: null, params: {}, _result: null } },
   { type: 'control_plan', label: 'Kontrolplan (DS 1140)', icon: 'KP', color: '#1e3a5f', component: ControlPlanBlock,
     default: { title: 'Kontrolplan', mode: 'plan', items: [] } },
@@ -221,35 +221,35 @@ const TYPE_MAP = Object.fromEntries(BLOCK_TYPES.map(t => [t.type, t]))
 
 const PANEL_GROUPS = [
   {
-    label: 'Project',
+    label: 'Projekt',
     types: ['project_basis'],
   },
   {
-    label: 'Content',
+    label: 'Indhold',
     types: ['heading', 'text', 'image', 'table'],
   },
   {
-    label: 'Loads  (EN 1990)',
+    label: 'Laster  (EN 1990)',
     types: ['load_combo', 'frame_load_cases'],
   },
   {
-    label: 'Steel  (EC3)',
+    label: 'Stål  (EC3)',
     types: ['steel_beam', 'beam_column'],
   },
   {
-    label: 'Timber  (EC5)',
+    label: 'Træ  (EC5)',
     types: ['timber_beam', 'timber_column'],
   },
   {
-    label: 'Masonry  (EC6)',
+    label: 'Murværk  (EC6)',
     types: ['masonry_wall'],
   },
   {
-    label: 'Analysis',
+    label: 'Analyse',
     types: ['beam_fem', 'general_frame_fem', 'portal_frame_fem'],
   },
   {
-    label: 'Custom',
+    label: 'Brugerdefineret',
     // python_calc is intentionally excluded from the add panel — it runs
     // unrestricted exec() on the server and is an admin/developer tool only.
     // Existing python_calc blocks still render normally (TYPE_MAP is unaffected).
@@ -317,7 +317,7 @@ function BlockPreview({ block }) {
       return (
         <div style={{ fontSize: sz, fontWeight: 700, lineHeight: 1.3, padding: '2px 0',
                       color: d.text ? '#1c1c1e' : '#ccc' }}>
-          {d.text || 'Untitled heading'}
+          {d.text || 'Unavngiven overskrift'}
         </div>
       )
     }
@@ -326,7 +326,7 @@ function BlockPreview({ block }) {
       return (
         <p style={{ fontSize: 14, lineHeight: 1.75, margin: 0, whiteSpace: 'pre-wrap',
                     color: d.text ? '#333' : '#bbb' }}>
-          {d.text || 'Empty paragraph — click to edit'}
+          {d.text || 'Tomt afsnit — klik for at redigere'}
         </p>
       )
 
@@ -337,7 +337,7 @@ function BlockPreview({ block }) {
                  style={{ maxWidth: (d.width_pct || 100) + '%', display: 'block' }} />
             {d.caption && <p style={{ fontSize: 12, color: '#888', marginTop: 6, fontStyle: 'italic' }}>{d.caption}</p>}
           </div>
-        : <div style={{ color: '#bbb', fontSize: 13, padding: '10px 0' }}>🖼 Click to add an image</div>
+        : <div style={{ color: '#bbb', fontSize: 13, padding: '10px 0' }}>🖼 Klik for at tilføje et billede</div>
 
     case 'table': {
       const rows = d.rows ?? []
@@ -582,7 +582,7 @@ function AddZone({ onAdd, templates = [], onAddTemplate, clipboard, onPaste }) {
                 onMouseLeave={e => e.currentTarget.style.background = 'none'}
               >
                 <span style={{ width: 18, fontFamily: 'monospace', fontSize: 10, flexShrink: 0 }}>📋</span>
-                Paste {clipboard.type}
+                Indsæt {clipboard.type}
               </button>
             </div>
           )}
@@ -596,7 +596,7 @@ function AddZone({ onAdd, templates = [], onAddTemplate, clipboard, onPaste }) {
                 padding: '10px 14px 4px',
                 borderTop: '1px solid #f0f0f0',
               }}>
-                My Calculations
+                Mine beregninger
               </div>
               {templates.map(tmpl => (
                 <button
@@ -802,12 +802,12 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
         {/* ── My Calculations ── */}
         <div>
           <div style={{ ...s.panelSection, borderTop: '1px solid #f0f0f0' }}>
-            My Calculations
+            Mine beregninger
           </div>
 
           {templates.length === 0 && (
             <div style={{ padding: '4px 12px 6px', fontSize: 11, color: '#bbb', fontStyle: 'italic' }}>
-              No templates yet
+              Ingen skabeloner endnu
             </div>
           )}
 
@@ -846,7 +846,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
               }}
             >
               <span style={{ ...s.panelIcon, background: '#e8f0fe', color: '#4a90d9' }}>✎</span>
-              Manage templates
+              Administrér skabeloner
             </button>
           )}
         </div>
@@ -858,7 +858,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
         {blocks.length === 0 && (
           <div style={s.empty}>
-            Click a block type on the left, or hover here to use <strong>+</strong>
+            Vælg en bloktype i panelet til venstre, eller hold musen her og brug <strong>+</strong>
           </div>
         )}
 
@@ -900,7 +900,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
                   <span
                     style={s.dragHandle}
                     onPointerDown={e => e.stopPropagation()}
-                    title="Drag to reorder"
+                    title="Træk for at flytte"
                   >⠿</span>
                   {isSelected && (
                     <span style={s.floatBtns} onClick={e => e.stopPropagation()}>
@@ -908,16 +908,16 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
                         title={isMinimised ? 'Expand' : 'Minimise'}>
                         {isMinimised ? '▼' : '▲'}
                       </button>
-                      <button style={s.fb} onClick={e => { e.stopPropagation(); moveUp(index) }}   disabled={index === 0}                title="Move up">↑</button>
-                      <button style={s.fb} onClick={e => { e.stopPropagation(); moveDown(index) }} disabled={index === blocks.length-1} title="Move down">↓</button>
-                      <button style={s.fb} onClick={e => { e.stopPropagation(); duplicateBlock(index) }} title="Duplicate block">⧉</button>
-                      <button style={s.fb} onClick={e => { e.stopPropagation(); onCopyBlock?.(blocks[index]) }} title="Copy block (paste in any document)">📋</button>
+                      <button style={s.fb} onClick={e => { e.stopPropagation(); moveUp(index) }}   disabled={index === 0}                title="Flyt op">↑</button>
+                      <button style={s.fb} onClick={e => { e.stopPropagation(); moveDown(index) }} disabled={index === blocks.length-1} title="Flyt ned">↓</button>
+                      <button style={s.fb} onClick={e => { e.stopPropagation(); duplicateBlock(index) }} title="Duplikér blok">⧉</button>
+                      <button style={s.fb} onClick={e => { e.stopPropagation(); onCopyBlock?.(blocks[index]) }} title="Kopiér blok (kan indsættes i alle dokumenter)">📋</button>
                       {clipboard && (
                         <button style={{ ...s.fb, color: '#4a90d9' }}
                           onClick={e => { e.stopPropagation(); pasteBlock(index + 1) }}
-                          title="Paste copied block after this one">📋+</button>
+                          title="Indsæt kopieret blok efter denne">📋+</button>
                       )}
-                      <button style={{ ...s.fb, ...s.fbDel }} onClick={e => deleteBlock(index, e)} title="Delete">✕</button>
+                      <button style={{ ...s.fb, ...s.fbDel }} onClick={e => deleteBlock(index, e)} title="Slet">✕</button>
                     </span>
                   )}
                 </div>
