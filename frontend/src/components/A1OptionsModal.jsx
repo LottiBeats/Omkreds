@@ -13,6 +13,7 @@
 import { useMemo, useState } from 'react'
 import {
   ANVENDELSER, KONSTRUKTIONSTYPER, MATERIALER, BYGNINGSKATEGORIER,
+  BRANDKLASSER, ANVENDELSESKATEGORIER,
   DEFAULT_OPTIONS, suggestCC, suggestKK,
 } from '../templates/a1.js'
 
@@ -122,6 +123,33 @@ export default function A1OptionsModal({ metadata = {}, initial, docId = 'A1', o
             </Field>
           </div>
 
+          {/* Fire: recorded, not derived. These follow from the fire strategy,
+              so A1 states what the fire consultant has determined — and says
+              "fastlægges" until they have. */}
+          <div style={S.row}>
+            <Field label="Brandklasse" flex="1 1 260px">
+              <select style={S.input} value={o.brandklasse}
+                      onChange={e => set('brandklasse', e.target.value)}>
+                {BRANDKLASSER.map(b => (
+                  <option key={b.key} value={b.key}>{b.label}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Anvendelseskategori" flex="1 1 260px">
+              <select style={S.input} value={o.anvendelseskategori}
+                      onChange={e => set('anvendelseskategori', e.target.value)}>
+                {ANVENDELSESKATEGORIER.map(a => (
+                  <option key={a.key} value={a.key}>{a.label}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div style={S.brandHint}>
+            {(BRANDKLASSER.find(b => b.key === o.brandklasse) ?? BRANDKLASSER[0]).kort}
+            {' · '}
+            {(ANVENDELSESKATEGORIER.find(a => a.key === o.anvendelseskategori) ?? ANVENDELSESKATEGORIER[0]).kort}
+          </div>
+
           {/* The suggestion, with its reasoning — the engineer overrides it in
               the document if the technical judgement differs. */}
           <div style={S.ccBox}>
@@ -215,6 +243,9 @@ function Field({ label, children, flex }) {
 }
 
 const S = {
+  brandHint: {
+    fontSize: 11, color: '#94a3b8', lineHeight: 1.6, marginTop: -6,
+  },
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2300,
     display: 'flex', alignItems: 'center', justifyContent: 'center',

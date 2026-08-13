@@ -228,6 +228,48 @@ function gamma3For(kk) {
 
 // ── Building types ────────────────────────────────────────────────────────────
 
+// ── Brand ─────────────────────────────────────────────────────────────────────
+//
+// Brandklasse and anvendelseskategori are the fire consultant's determination,
+// not something to derive from the structural description: they follow from the
+// fire strategy, and getting them wrong in A1 would put a claim in a signed
+// document that the fire documentation then contradicts. So they are recorded
+// here, with what each one means, and the A1 states them as given.
+//
+// Deliberately no paragraph citations: the numbering in BR18 kapitel 5 has
+// moved between revisions, and the section that used to be generated cited
+// "§ 29" for brandklasse, which is not where it lives. A wrong reference in a
+// document somebody signs is worse than none.
+
+export const BRANDKLASSER = [
+  { key: '',    label: 'Ikke fastlagt endnu',
+    kort: 'fastlægges af brandrådgiveren' },
+  { key: 'BK1', label: 'BK1 — simpelt, traditionelt byggeri',
+    kort: 'brandforholdene dokumenteres ved præaccepterede løsninger, uden certificeret brandrådgiver' },
+  { key: 'BK2', label: 'BK2 — præaccepterede løsninger',
+    kort: 'dokumenteres ved præaccepterede løsninger med certificeret brandrådgiver' },
+  { key: 'BK3', label: 'BK3 — brandteknisk dimensionering',
+    kort: 'der afviges fra de præaccepterede løsninger, eller byggeriet er komplekst' },
+  { key: 'BK4', label: 'BK4 — kompleks brandteknisk dimensionering',
+    kort: 'brandteknisk dimensionering med uafhængig kontrol' },
+]
+
+export const ANVENDELSESKATEGORIER = [
+  { key: '',  label: 'Ikke fastlagt endnu',   kort: 'fastlægges af brandrådgiveren' },
+  { key: '1', label: '1 — kontor, industri o.l.',
+    kort: 'dagophold, personer har kendskab til flugtvejene og kan selv bringe sig i sikkerhed' },
+  { key: '2', label: '2 — undervisning, daginstitution o.l.',
+    kort: 'dagophold, personer kender ikke nødvendigvis flugtvejene, men kan selv bringe sig i sikkerhed' },
+  { key: '3', label: '3 — forsamlingslokale, butik o.l.',
+    kort: 'dagophold med mange personer, som ikke kender flugtvejene, men selv kan bringe sig i sikkerhed' },
+  { key: '4', label: '4 — bolig',
+    kort: 'natophold, personer har kendskab til flugtvejene og kan selv bringe sig i sikkerhed' },
+  { key: '5', label: '5 — hotel, kollegium o.l.',
+    kort: 'natophold, personer kender ikke flugtvejene, men kan selv bringe sig i sikkerhed' },
+  { key: '6', label: '6 — plejeinstitution, hospital o.l.',
+    kort: 'personer kan ikke selv bringe sig i sikkerhed' },
+]
+
 export const KONSTRUKTIONSTYPER = ['Nybyggeri', 'Tilbygning', 'Ombygning']
 
 export const MATERIALER = [
@@ -253,6 +295,8 @@ export const DEFAULT_OPTIONS = {
   geoteknisk: true,
   eksisterende: false,
   naboer: false,
+  brandklasse: '',
+  anvendelseskategori: '',
 }
 
 // ── Template ──────────────────────────────────────────────────────────────────
@@ -483,7 +527,8 @@ export function makeA1Template(options = {}, metadata = {}) {
     `  K_FI-faktor (STR/GEO):       ${kfi}   (se Tabel 2.2a for CC-afhængighed)\n` +
     '  K_FI-faktor (EQU/geoteknik): 1,0    (gælder uafhængigt af CC iht. DK NA:2024)\n' +
     `  Geoteknisk kategori:         GK[${cc}]\n` +
-    '  Brandklasse (BR18):          BK[…]'
+    `  Brandklasse:                 ${o.brandklasse || '[fastlægges — se afsnit 4.7]'}\n` +
+    `  Anvendelseskategori:         ${o.anvendelseskategori || '[fastlægges — se afsnit 4.7]'}`
   )
 
   H(3, '2.4 IKT-værktøjer')
@@ -610,7 +655,68 @@ export function makeA1Template(options = {}, metadata = {}) {
   T('Bygværket henføres til kategori 4 iht. DS/EN 1990 Tabel 2.1 — almindelige konstruktioner med en vejledende forventet levetid på 50 år.\n[Kategori 5 (100 år) ved monumentale bygninger, broer og anlægskonstruktioner.]')
 
   H(3, '4.7 Brand')
-  T('Brandklasse (BR18 § 29): BK[…]\n\nBrandtekniske krav til bærende konstruktioner:\n  Dæk, øverste etage: R[…]\n  Dæk, stueetage: R[…] A2-s1,d0\n  [Tilpas efter brandklasse og konstruktionstype.]\n\n[Brandteknisk dokumentation udarbejdes særskilt og er ikke en del af denne A1.]')
+  {
+    const bk  = BRANDKLASSER.find(x => x.key === o.brandklasse) ?? BRANDKLASSER[0]
+    const ak  = ANVENDELSESKATEGORIER.find(x => x.key === o.anvendelseskategori)
+                ?? ANVENDELSESKATEGORIER[0]
+    T(
+      `Brandklasse: ${bk.key || '[fastlægges]'} — ${bk.kort}.\n` +
+      `Anvendelseskategori: ${ak.key || '[fastlægges]'} — ${ak.kort}.\n\n` +
+      'Den brandtekniske dokumentation udarbejdes særskilt og er ikke en del af ' +
+      'denne A1. Grænsefladen er, at brandstrategien fastlægger den krævede ' +
+      'brandmodstandsevne for hver bygningsdel, og at de bærende konstruktioner ' +
+      'herefter eftervises for den i A2 — i ulykkesgrænsetilstanden (LAK 3), med ' +
+      'ψ-værdier som angivet i afsnit 5.'
+    )
+
+    // The load-bearing parts this project actually has, so the fire consultant
+    // fills in a list that matches the building instead of two fixed lines.
+    const dele = []
+    if (o.kaelder) dele.push(['Dæk over kælder', 'R…', 'Adskillelse mod kælder'])
+    for (let i = 1; i <= Math.max(1, o.etager); i++) {
+      // Storey 1 is stueetagen, so the deck above storey i is the one over
+      // "(i-1). sal" — with three storeys the top deck is over 2. sal, not 3.
+      dele.push([
+        i === 1 ? 'Dæk over stueetage' : `Dæk over ${i - 1}. sal`,
+        'R…',
+        i === o.etager ? 'Øverste etageadskillelse' : 'Etageadskillelse',
+      ])
+    }
+    dele.push(['Tagkonstruktion',            'R…', 'Bærende tagkonstruktion'])
+    dele.push(['Bærende vægge og søjler',    'R…', 'Lodret bærende system'])
+    dele.push(['Afstivende konstruktioner',  'R…', 'Skal bevare stabiliteten i brandsituationen'])
+    if (o.kaelder) dele.push(['Kælderydervægge', 'R…', 'Jordtryk virker fortsat under brand'])
+    dele.push(['Fundamenter', '—', 'Normalt intet krav — vurderes ved brandudsat fundament'])
+
+    TBL('Brandmodstandsevne for bærende konstruktioner', [
+      ['Bygningsdel', 'Krav', 'Bemærkning'],
+      ...dele,
+    ])
+    T('Kravene udfyldes fra brandstrategien. Hvor der stilles krav om ubrændbart ' +
+      'materiale, suppleres med klassifikationen (fx A2-s1,d0).')
+
+    // Only the materials the project is actually built from — a fire note about
+    // concrete cover in an all-timber roof is noise the reader has to filter.
+    const brandnoter = []
+    if (o.materialer.trae) brandnoter.push(
+      'Træ eftervises efter DS/EN 1995-1-2 med den reducerede tværsnitsmetode. ' +
+      'Forkulningshastighed β_n = 0,80 mm/min for massivt nåletræ og 0,70 mm/min ' +
+      'for limtræ (Tabel 3.1), hvortil lægges et nulstyrkelag d_0 = 7 mm. ' +
+      'Beskyttede flader forkuller først efter beklædningens svigt.')
+    if (o.materialer.staal) brandnoter.push(
+      'Stål eftervises efter DS/EN 1993-1-2. Ubeskyttet stål når sjældent R30, ' +
+      'da bæreevnen falder markant omkring 500–600 °C; kravet opnås normalt ved ' +
+      'brandbeskyttelse (isolering, plade eller brandmaling) dimensioneret efter ' +
+      'profilets massivitetsforhold A_m/V.')
+    if (o.materialer.beton) brandnoter.push(
+      'Beton eftervises efter DS/EN 1992-1-2, normalt ved tabelmetoden, hvor ' +
+      'kravet omsættes til mindste tværsnitsdimension og afstand fra ' +
+      'armeringens centrum til overfladen.')
+    if (o.materialer.murvaerk) brandnoter.push(
+      'Murværk eftervises efter DS/EN 1996-1-2 på grundlag af vægtykkelse, ' +
+      'udnyttelsesgrad og eventuel pudslag.')
+    if (brandnoter.length) T('Eftervisning pr. materiale:\n\n' + brandnoter.join('\n\n'))
+  }
 
   H(3, '4.8 Udførelse')
   T(
