@@ -44,6 +44,137 @@ function SectionLabel({ text }) {
   return <div style={s.sectionLabel}>{text}</div>
 }
 
+// ── Live model sketch ─────────────────────────────────────────────────────────
+// Pure-SVG drawing of the current geometry: updates on every keystroke with no
+// server round-trip.  The matplotlib "Forhåndsvis model" figure is still there
+// for the report — this sketch is for *editing* feedback.
+
+const MEMBER_COLORS = ['#1e3a5f', '#d94a2b', '#0f766e', '#7c3aed', '#b45309', '#be185d']
+
+function ModelSketch({ nodes, elements, supports, equalDofs }) {
+  const valid = (nodes ?? []).filter(n => Number.isFinite(n.x) && Number.isFinite(n.y))
+  if (valid.length < 2) {
+    return (
+      <div style={s.sketchEmpty}>
+        Tilføj mindst 2 knuder for at se modelskitsen
+      </div>
+    )
+  }
+
+  const W = 700, H = 280, PAD = 42
+  const xs = valid.map(n => n.x), ys = valid.map(n => n.y)
+  const minX = Math.min(...xs), maxX = Math.max(...xs)
+  const minY = Math.min(...ys), maxY = Math.max(...ys)
+  const spanX = Math.max(maxX - minX, 0.5)
+  const spanY = Math.max(maxY - minY, 0.5)
+  const sc = Math.min((W - 2 * PAD) / spanX, (H - 2 * PAD) / spanY)
+  // Centre the drawing in both directions
+  const offX = (W - spanX * sc) / 2
+  const offY = (H - spanY * sc) / 2
+  const X = x => offX + (x - minX) * sc
+  const Y = y => H - offY - (y - minY) * sc
+
+  const nodeById = Object.fromEntries(valid.map(n => [n.id, n]))
+
+  return (
+    <div style={s.sketchWrap}>
+      <div style={s.sketchLabel}>Modelskitse — opdateres live</div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block' }}>
+
+        {/* Elements */}
+        {(elements ?? []).map((el, i) => {
+          const n1 = nodeById[el.ni], n2 = nodeById[el.nj]
+          if (!n1 || !n2) return null
+          const pinned = el.type === 'truss' || el.release === 'both'
+          const color  = el.member_id != null
+            ? MEMBER_COLORS[(el.member_id - 1) % MEMBER_COLORS.length]
+            : '#1e3a5f'
+          const mx = (X(n1.x) + X(n2.x)) / 2
+          const my = (Y(n1.y) + Y(n2.y)) / 2
+          // Perpendicular offset for the label so it doesn't sit on the line
+          const dx = X(n2.x) - X(n1.x), dy = Y(n2.y) - Y(n1.y)
+          const len = Math.hypot(dx, dy) || 1
+          const ox = -dy / len * 11, oy = dx / len * 11
+          return (
+            <g key={`e${i}`}>
+              <line x1={X(n1.x)} y1={Y(n1.y)} x2={X(n2.x)} y2={Y(n2.y)}
+                stroke={color} strokeWidth={3}
+                strokeDasharray={pinned ? '7 5' : undefined} strokeLinecap="round" />
+              {/* End releases (single pin) */}
+              {(el.release === 'start' || el.release === 'both') && (
+                <circle cx={X(n1.x) + dx / len * 9} cy={Y(n1.y) + dy / len * 9} r={3.5}
+                  fill="#fff" stroke={color} strokeWidth={1.5} />
+              )}
+              {(el.release === 'end' || el.release === 'both') && (
+                <circle cx={X(n2.x) - dx / len * 9} cy={Y(n2.y) - dy / len * 9} r={3.5}
+                  fill="#fff" stroke={color} strokeWidth={1.5} />
+              )}
+              <text x={mx + ox} y={my + oy} fontSize={10} fill={color}
+                fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">
+                {el.id}
+              </text>
+            </g>
+          )
+        })}
+
+        {/* Supports */}
+        {(supports ?? []).map((sp, i) => {
+          const n = nodeById[sp.node_id]
+          if (!n) return null
+          const x = X(n.x), y = Y(n.y)
+          const fixed  = sp.ux && sp.uy && sp.rz
+          const roller = sp.uy && !sp.ux
+          return (
+            <g key={`s${i}`} stroke="#475569" strokeWidth={1.6} fill="none">
+              {fixed ? (
+                <>
+                  <line x1={x - 10} y1={y + 5} x2={x + 10} y2={y + 5} />
+                  {[-8, -4, 0, 4].map(o => (
+                    <line key={o} x1={x + o} y1={y + 5} x2={x + o + 5} y2={y + 11} />
+                  ))}
+                </>
+              ) : (
+                <>
+                  <path d={`M ${x} ${y} L ${x - 9} ${y + 13} L ${x + 9} ${y + 13} Z`} />
+                  {roller
+                    ? <line x1={x - 11} y1={y + 17} x2={x + 11} y2={y + 17} />
+                    : <>{[-9, -3, 3, 9].map(o => (
+                        <line key={o} x1={x + o} y1={y + 13} x2={x + o - 4} y2={y + 18} />
+                      ))}</>
+                  }
+                </>
+              )}
+            </g>
+          )
+        })}
+
+        {/* Pin joints (equalDOF) — orange ring at the shared location */}
+        {(equalDofs ?? []).map((eq, i) => {
+          const n = nodeById[eq.r_node]
+          if (!n) return null
+          return (
+            <circle key={`q${i}`} cx={X(n.x)} cy={Y(n.y)} r={7}
+              fill="none" stroke="#ea580c" strokeWidth={2} />
+          )
+        })}
+
+        {/* Nodes */}
+        {valid.map((n, i) => (
+          <g key={`n${i}`}>
+            <circle cx={X(n.x)} cy={Y(n.y)} r={3.5} fill="#0f172a" />
+            <text x={X(n.x) + 7} y={Y(n.y) - 7} fontSize={10} fill="#64748b"
+              fontFamily="monospace">{n.id}</text>
+          </g>
+        ))}
+      </svg>
+      <div style={s.sketchLegend}>
+        ── bjælke &nbsp;·&nbsp; ╌╌ charnier i begge ender / gitterstang &nbsp;·&nbsp;
+        ○ charnier &nbsp;·&nbsp; △ understøtning &nbsp;·&nbsp; farve = gruppe (member)
+      </div>
+    </div>
+  )
+}
+
 // ── Row components ────────────────────────────────────────────────────────────
 
 function NodeRow({ node, onChange, onRemove }) {
@@ -319,29 +450,6 @@ function Tbl({ headers, rows, zebra = true }) {
   )
 }
 
-function BucklingModeViewer({ figs }) {
-  const [idx, setIdx] = useState(0)
-  const labels = figs.map((_, i) => `Mode ${i + 1}`)
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-        {labels.map((lbl, i) => (
-          <button key={i}
-            style={{ ...s.tabBtn, ...(idx === i ? s.tabBtnActive : {}) }}
-            onClick={() => setIdx(i)}>
-            {lbl}
-          </button>
-        ))}
-      </div>
-      {figs[idx] && (
-        <img src={`data:image/png;base64,${figs[idx]}`}
-          alt={labels[idx]}
-          style={{ width: '100%', display: 'block' }} />
-      )}
-    </div>
-  )
-}
-
 // ── Create-check dropdown button (shown per element row) ─────────────────────
 
 const CHECK_TYPES = [
@@ -557,17 +665,45 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
 
           {/* ── Buckling ── */}
           {tab === 'Buckling' && (() => {
-            const modeFigs    = summary?.buckling_mode_figs ?? []
+            const acr         = summary?.alpha_cr ?? null
             const buckLengths = summary?.buckling_lengths   ?? {}
             const buckRows   = Object.entries(buckLengths)
+            const acrColor = !acr ? '#94a3b8'
+              : acr.klasse === 'ikke svajfølsom' ? '#15803d'
+              : acr.klasse === 'svajfølsom'      ? '#b45309' : '#dc2626'
             return (
               <div>
-                {/* Mode shape figures */}
-                {modeFigs.length > 0 ? (
-                  <BucklingModeViewer figs={modeFigs} />
+                {/* Sway stability — EN 1993-1-1 § 5.2.1(4)B */}
+                {acr ? (
+                  <div style={{ border: '1px solid #e2e8f0', borderLeft: `3px solid ${acrColor}`,
+                                background: '#f8fafc', padding: '12px 14px', marginBottom: 16 }}>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>
+                        α_cr = {acr.alpha_cr ?? '∞'}
+                      </span>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: acrColor,
+                                     textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {acr.klasse}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>{acr.metode}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.55, marginTop: 7 }}>
+                      {acr.konsekvens}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 9, fontFamily: 'var(--font-mono, monospace)' }}>
+                      V_Ed = {acr.V_Ed_kN} kN · h = {acr.h_m} m ·
+                      {' '}H = φ·V_Ed = {acr.H_probe_kN} kN · δ_H = {acr.delta_H_mm} mm
+                      {' '}· φ = {acr.phi} (α_h = {acr.alpha_h}, α_m = {acr.alpha_m}, m = {acr.antal_soejler})
+                    </div>
+                    {(acr.forbehold ?? []).map((f, i) => (
+                      <div key={i} style={{ fontSize: 11, color: '#b45309', marginTop: 6, lineHeight: 1.5 }}>
+                        {f}
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <div style={{ ...s.hint, padding: '8px 0' }}>
-                    No mode shape data — run the analysis to generate buckling modes.
+                    α_cr kunne ikke bestemmes — kræver søjler fra en understøtning og lodret last.
                   </div>
                 )}
 
@@ -894,7 +1030,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         _summary:         res._summary,
         _result:          res._result,
         _exports:         exports_,
-        _buckling_figs:   res._summary?.buckling_mode_figs ?? [],
+        _alpha_cr:        res._summary?.alpha_cr ?? null,
         _buckling_lengths:res._summary?.buckling_lengths   ?? {},
       })
     } catch (err) {
@@ -909,12 +1045,16 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
       <input type="text" value={d.title ?? '2D Frame FEM'}
         onChange={e => update({ title: e.target.value })}
-        placeholder="Analysis title" style={s.titleInput} />
+        placeholder="Analysetitel" style={s.titleInput} />
+
+      {/* Live geometry sketch — instant feedback while editing */}
+      <ModelSketch nodes={nodes} elements={elements}
+        supports={supports} equalDofs={equalDofs} />
 
       {/* Nodes */}
       <div style={s.rowHeader}>
-        <SectionLabel text="Nodes" />
-        <button style={s.addBtn} onClick={addNode}>+ Node</button>
+        <SectionLabel text="Knuder" />
+        <button style={s.addBtn} onClick={addNode}>+ Knude</button>
       </div>
       {nodes.map((n, i) => (
         <NodeRow key={i} node={n} onChange={v => updateNode(i, v)} onRemove={() => removeNode(i)} />
@@ -922,7 +1062,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
       {/* Elements */}
       <div style={s.rowHeader}>
-        <SectionLabel text="Elements" />
+        <SectionLabel text="Elementer" />
         <button style={s.addBtn} onClick={addElem}>+ Element</button>
       </div>
       {elements.map((el, i) => (
@@ -931,8 +1071,8 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
       {/* Supports */}
       <div style={s.rowHeader}>
-        <SectionLabel text="Supports" />
-        <button style={s.addBtn} onClick={addSup}>+ Support</button>
+        <SectionLabel text="Understøtninger" />
+        <button style={s.addBtn} onClick={addSup}>+ Understøtning</button>
       </div>
       {supports.map((sup, i) => (
         <SupportRow key={i} sup={sup} onChange={v => updateSup(i, v)} onRemove={() => removeSup(i)} />
@@ -940,8 +1080,8 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
       {/* Equal-DOF (pin joints) */}
       <div style={s.rowHeader}>
-        <SectionLabel text="Pin joints (equalDOF)" />
-        <button style={s.addBtn} onClick={addEqDof}>+ Pin joint</button>
+        <SectionLabel text="Charnierer (equalDOF)" />
+        <button style={s.addBtn} onClick={addEqDof}>+ Charnier</button>
       </div>
       {equalDofs.map((eq, i) => (
         <EqualDOFRow key={i} eq={eq}
@@ -951,9 +1091,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
       {/* Load mode selector */}
       <div style={s.rowHeader}>
-        <SectionLabel text="Loads" />
+        <SectionLabel text="Laster" />
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-          {[['simple', 'Simple'], ['load_cases', 'Frame Load Cases']].map(([v, l]) => (
+          {[['simple', 'Simpel'], ['load_cases', 'Lastkombinationer']].map(([v, l]) => (
             <button key={v}
               style={{ ...s.addBtn, ...(loadMode === v ? { background: '#111', color: '#fff', border: '1px solid #111' } : {}) }}
               onClick={() => update({ load_mode: v })}>
@@ -968,12 +1108,12 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         <div style={{ background: '#fafafa', border: '1px solid #e8e8e8', padding: '10px 12px', borderRadius: 2 }}>
           {loadCaseBlocks.length === 0 ? (
             <span style={{ fontSize: 12, color: '#e67e22' }}>
-              No Frame Load Cases blocks in this document — add one first.
+              Ingen lastkombinations-blok i dokumentet — tilføj en "Frame Load Cases"-blok først.
             </span>
           ) : (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={s.fieldWrap}>
-                <label style={s.miniLabel}>Load cases block</label>
+                <label style={s.miniLabel}>Lastkombinationsblok</label>
                 <select style={{ ...s.smallInput, width: 220 }}
                   value={selLoadCaseBlock?.id ?? ''}
                   onChange={e => update({ load_cases_block_id: Number(e.target.value) })}>
@@ -984,10 +1124,10 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
               </div>
               {loadCasesReady
                 ? <span style={{ fontSize: 12, color: '#27ae60', fontWeight: 700 }}>
-                    ✓ {loadCaseCombos.length} combinations ready — FEM will run all and envelope
+                    ✓ {loadCaseCombos.length} kombinationer klar — FEM kører alle og danner envelope
                   </span>
                 : <span style={{ fontSize: 12, color: '#e67e22' }}>
-                    Run the Frame Load Cases block first
+                    ① Kør lastkombinations-blokken ovenfor først — derefter aktiveres "Kør FEM"
                   </span>
               }
             </div>
@@ -998,9 +1138,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       {/* Simple loads list */}
       {loadMode === 'simple' && (<>
         <div style={s.rowHeader}>
-          <button style={s.addBtn} onClick={() => addLoad('nodal')}>+ Nodal</button>
-          <button style={s.addBtn} onClick={() => addLoad('udl')}>+ UDL</button>
-          <button style={s.addBtn} onClick={() => addLoad('combo_udl')}>+ Combo UDL</button>
+          <button style={s.addBtn} onClick={() => addLoad('nodal')}>+ Punktlast</button>
+          <button style={s.addBtn} onClick={() => addLoad('udl')}>+ Linjelast</button>
+          <button style={s.addBtn} onClick={() => addLoad('combo_udl')}>+ Kombi-linjelast</button>
         </div>
         {loads.map((ld, i) => (
           <LoadRow key={i} load={ld} comboBlocks={comboBlocks}
@@ -1014,16 +1154,17 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
                          opacity: (loadMode === 'load_cases' && !loadCasesReady) ? 0.5 : 1 }}
           onClick={handleRun}
           disabled={running || previewing || (loadMode === 'load_cases' && !loadCasesReady)}
-          title={loadMode === 'load_cases' && !loadCasesReady ? 'Run the Frame Load Cases block first' : undefined}>
-          {running ? '⏳  Running…' : '▶  Run FEM'}
+          title={loadMode === 'load_cases' && !loadCasesReady ? 'Kør lastkombinations-blokken først' : 'Ctrl+Enter'}>
+          {running ? '⏳  Beregner…' : '▶  Kør FEM'}
         </button>
-        <button style={s.btn} onClick={handlePreview} disabled={running || previewing}>
-          {previewing ? '⏳ …' : '🔍  Preview model'}
+        <button style={s.btn} onClick={handlePreview} disabled={running || previewing}
+          title="Generér modelfigur til rapporten (matplotlib)">
+          {previewing ? '⏳ …' : '🔍  Modelfigur'}
         </button>
         {d._summary && (
           <button style={s.btn}
             onClick={() => update({ _figs_b64: null, _summary: null, _result: null, _model_b64: null })}>
-            ✕  Clear
+            ✕  Ryd
           </button>
         )}
       </div>
@@ -1034,7 +1175,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       {d._model_b64 && !d._summary && (
         <div style={s.resultPanel}>
           <div style={{ ...s.summaryBar, cursor: 'default' }}>
-            <span style={s.summaryBadge}>Static model</span>
+            <span style={s.summaryBadge}>Statisk model</span>
           </div>
           <div style={{ padding: '12px 14px' }}>
             <img src={`data:image/png;base64,${d._model_b64}`}
@@ -1084,6 +1225,12 @@ const s = {
                   fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                   letterSpacing: '0.04em', color: '#555' },
   actionRow:    { display: 'flex', gap: 8, marginTop: 4 },
+  sketchWrap:   { border: '1px solid #e8e8e8', background: '#fcfcfb', padding: '8px 10px 6px' },
+  sketchLabel:  { fontSize: 9, fontWeight: 700, color: '#bbb', letterSpacing: '0.1em',
+                  textTransform: 'uppercase', marginBottom: 4 },
+  sketchLegend: { fontSize: 10, color: '#94a3b8', marginTop: 4, fontFamily: 'monospace' },
+  sketchEmpty:  { border: '1px dashed #e0e0e0', background: '#fcfcfb', padding: '18px 12px',
+                  fontSize: 12, color: '#bbb', textAlign: 'center' },
   btn:          { background: '#f5f5f7', border: '1px solid #e8e8e8', padding: '7px 14px',
                   fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                   letterSpacing: '0.04em' },

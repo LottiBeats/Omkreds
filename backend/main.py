@@ -2175,7 +2175,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
     try:
         from general_frame_fem import (solve, solve_combinations,
                                        make_figures, summarise, plot_model,
-                                       plot_buckling_modes, compute_buckling_lengths)
+                                       compute_buckling_lengths, compute_alpha_cr)
         from calc_core import S, T, TBL
         import math
 
@@ -2212,11 +2212,9 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             best_figs = next((c['figs'] for c in combo_figs if c['name'] == best_combo_name),
                               combo_figs[0]['figs'])
 
-            # Buckling lengths and mode shapes (from governing combo)
-            buck_lengths   = compute_buckling_lengths(nodes, elements, supports,
-                                                      best_res['ele_forces'])
-            buck_mode_figs = plot_buckling_modes(data.title, nodes, elements,
-                                                 best_res.get('eigen_modes', []), ref_size)
+            # Buckling lengths from the governing combination
+            buck_lengths = compute_buckling_lengths(nodes, elements, supports,
+                                                    best_res['ele_forces'])
 
             figs_b64 = [model_fig] + best_figs
 
@@ -2229,7 +2227,12 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             summary['combinations']      = [r['name'] for r in all_results]
             summary['combo_figs']        = combo_figs   # [{name, figs:[defo,M,V,N]}]
             summary['buckling_lengths']  = buck_lengths
-            summary['buckling_mode_figs']= buck_mode_figs
+            # alpha_cr LAST: it re-solves the model, which wipes the OpenSeesPy
+            # state the figures above were read from.
+            summary['alpha_cr'] = compute_alpha_cr(
+                nodes, elements, supports, best_res['ele_forces'],
+                best_res['node_reactions'], equal_dofs,
+            )
 
             result_blocks = [S(data.title), T(f'{len(combos)} load combinations analysed')]
             result_blocks.append(TBL(
@@ -2244,10 +2247,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         # ── Simple mode (flat loads) ──────────────────────────────────────────
         else:
             res = solve(nodes, elements, supports, loads, equal_dofs)
-            buck_lengths   = compute_buckling_lengths(nodes, elements, supports,
-                                                      res['ele_forces'])
-            buck_mode_figs = plot_buckling_modes(data.title, nodes, elements,
-                                                 res.get('eigen_modes', []), ref_size)
+            buck_lengths = compute_buckling_lengths(nodes, elements, supports,
+                                                    res['ele_forces'])
             figs_b64 = [model_fig] + make_figures(
                 data.title, nodes, elements, supports, loads,
                 res['ele_forces'], res['node_disps'], ref_size,
@@ -2255,8 +2256,12 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             summary = summarise(nodes, elements,
                                 res['node_disps'], res['node_reactions'],
                                 res['ele_forces'], supports, loads)
-            summary['buckling_lengths']   = buck_lengths
-            summary['buckling_mode_figs'] = buck_mode_figs
+            summary['buckling_lengths'] = buck_lengths
+            # alpha_cr LAST — see the note in combination mode above.
+            summary['alpha_cr'] = compute_alpha_cr(
+                nodes, elements, supports, res['ele_forces'],
+                res['node_reactions'], equal_dofs,
+            )
             result_blocks = [
                 S(data.title),
                 T(f"{len(nodes)} nodes · {len(elements)} elements"),

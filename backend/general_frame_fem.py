@@ -29,16 +29,22 @@ Sign conventions
 Dependencies: openseespy, opsvis, matplotlib
 """
 
+# Catch Exception, not ImportError: openseespy ships a compiled extension, and
+# an installed-but-unloadable build (missing MSVC runtime, unsupported Python)
+# raises RuntimeError from its own import wrapper. Importing this module must
+# degrade to "solver unavailable" in that case, not crash the whole backend.
 try:
     import openseespy.opensees as ops
     _OPS_AVAILABLE = True
-except ImportError:
+except Exception:
+    ops = None
     _OPS_AVAILABLE = False
 
 try:
     import opsvis as opsv
     _OPSVIS_AVAILABLE = True
-except ImportError:
+except Exception:
+    opsv = None
     _OPSVIS_AVAILABLE = False
 
 import math
@@ -144,95 +150,172 @@ def compute_buckling_lengths(nodes, elements, supports, ele_forces):
 
 
 # ---------------------------------------------------------------------------
-# Buckling mode shape figures
+# Sway stability — alpha_cr per EN 1993-1-1 § 5.2.1(4)B
 # ---------------------------------------------------------------------------
 
-def plot_buckling_modes(title, nodes, elements, eigen_modes, ref_size):
+def _columns(nodes, elements, supports):
     """
-    Plot buckled mode shapes returned by solve() (eigen_modes list).
-    Returns a list of base64 PNG strings — one per mode.
+    The storey columns: beam members that rise from a supported node.
+
+    Deliberately not "whatever is more vertical than horizontal" — a rafter
+    steeper than 45 degrees would be swept up by that rule, corrupting both the
+    column count and the eaves level. Anchoring on the supports also fixes what
+    the result means: this is the bottom storey, which is what
+    § 5.2.1(4)B is applied to per storey and is normally the governing one.
     """
-    if not eigen_modes:
-        return []
+    dn = {n['id']: n for n in nodes}
+    sup_ids = {s['node_id'] for s in supports}
+    out = []
+    for el in elements:
+        if el.get('type', 'beam') != 'beam':
+            continue
+        ni, nj = dn.get(el['ni']), dn.get(el['nj'])
+        if not ni or not nj:
+            continue
+        for bot, top in ((ni, nj), (nj, ni)):
+            if bot['id'] in sup_ids and top['y'] - bot['y'] > 1e-6:
+                out.append({'elem': el, 'top': top, 'bot': bot})
+                break
+    return out
 
-    dict_nodes = {n['id']: n for n in nodes}
-    sz = ref_size * 0.055
 
-    C_UNDEFO = '#AEAEB2'
-    C_MODE   = '#E74825'
+def _roof_slope_deg(nodes, elements, supports):
+    """Steepest slope among the beam members that are not storey columns."""
+    dn = {n['id']: n for n in nodes}
+    col_ids = {c['elem']['id'] for c in _columns(nodes, elements, supports)}
+    worst = 0.0
+    for el in elements:
+        if el.get('type', 'beam') != 'beam' or el['id'] in col_ids:
+            continue
+        ni, nj = dn.get(el['ni']), dn.get(el['nj'])
+        if not ni or not nj:
+            continue
+        dx, dy = nj['x'] - ni['x'], nj['y'] - ni['y']
+        if abs(dx) < 1e-9:
+            continue                      # truly vertical — not a rafter
+        worst = max(worst, abs(math.degrees(math.atan2(dy, dx))))
+    return worst
 
-    figs_out = []
-    for md in eigen_modes:
-        mode_num = md['mode']
-        omega    = md['omega']
-        vecs     = md['vectors']
 
-        # Scale eigenvectors so max displacement ≈ 15 % of structure size
-        max_d = max((math.hypot(v[0], v[1]) for v in vecs.values()), default=1.0)
-        scale = (ref_size * 0.15) / max_d if max_d > 1e-10 else 1.0
+def compute_alpha_cr(nodes, elements, supports, ele_forces, node_reactions,
+                     equal_dofs=None):
+    """
+    Sway stability of the frame, expressed as alpha_cr = F_cr / F_Ed.
 
-        fig, ax = plt.subplots(figsize=(13, 7))
-        fig.patch.set_facecolor('white')
-        ax.set_facecolor('white')
+    Method — EN 1993-1-1 § 5.2.1(4)B:
 
-        # Undeformed (dashed grey)
-        for el in elements:
-            ni = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
-            ax.plot([ni['x'], nj['x']], [ni['y'], nj['y']],
-                    color=C_UNDEFO, lw=1.5, ls='--', zorder=2)
+        alpha_cr = (H_Ed / V_Ed) x (h / delta_H,Ed)
 
-        # Buckled shape
-        for el in elements:
-            ni = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
-            vi = vecs.get(ni['id'], [0.0, 0.0])
-            vj = vecs.get(nj['id'], [0.0, 0.0])
-            xi_d = ni['x'] + scale*vi[0]; yi_d = ni['y'] + scale*vi[1]
-            xj_d = nj['x'] + scale*vj[0]; yj_d = nj['y'] + scale*vj[1]
-            lw  = 2.5 if el.get('type', 'beam') == 'beam' else 1.8
-            ls  = '-' if el.get('type', 'beam') == 'beam' else '--'
-            ax.plot([xi_d, xj_d], [yi_d, yj_d],
-                    color=C_MODE, lw=lw, ls=ls, zorder=3)
+    H_Ed/delta_H is a sway stiffness, and for a linear analysis delta_H scales
+    with H_Ed, so the ratio does not depend on the size of the horizontal load
+    used to measure it.  That matters here: most load combinations have no
+    lateral load at all.  We therefore probe the frame with the equivalent
+    horizontal forces for the sway imperfection (§ 5.3.2(7)), H = phi x V_Ed,
+    which are forces the engineer would have to apply anyway — so the numbers
+    in the report mean something rather than being an arbitrary unit load.
 
-        # Node dots on buckled shape
-        for n in nodes:
-            v  = vecs.get(n['id'], [0.0, 0.0])
-            xd = n['x'] + scale*v[0]; yd = n['y'] + scale*v[1]
-            ax.plot(xd, yd, 'o', color=C_MODE, ms=4.5,
-                    markerfacecolor='white', markeredgewidth=1.5, zorder=4)
+    Returns None when the frame has no identifiable columns, and marks the
+    result as out of scope when the standard's own conditions are not met.
+    """
+    if not _OPS_AVAILABLE:
+        return None
 
-        ax.set_aspect('equal')
-        ax.set_title(f'Mode {mode_num}  —  ω = {omega:.3f} rad/s',
-                     fontsize=12, fontweight='bold', color='#1C1C1E', pad=10)
-        ax.set_xlabel('x  [m]', fontsize=9, color='#555', labelpad=5)
-        ax.set_ylabel('y  [m]', fontsize=9, color='#555', labelpad=5)
-        ax.tick_params(colors='#888', labelsize=8)
-        ax.grid(True, ls=':', lw=0.5, color='#E5E5EA', zorder=0)
-        for sp in ax.spines.values():
-            sp.set_color('#E5E5EA'); sp.set_linewidth(0.8)
+    cols = _columns(nodes, elements, supports)
+    if not cols:
+        return None
 
-        ax.autoscale()
-        xl, yl = ax.get_xlim(), ax.get_ylim()
-        pw = max((xl[1]-xl[0])*0.2, sz*3)
-        ph = max((yl[1]-yl[0])*0.2, sz*3)
-        ax.set_xlim(xl[0]-pw, xl[1]+pw)
-        ax.set_ylim(yl[0]-ph, yl[1]+ph)
+    dn = {n['id']: n for n in nodes}
+    sup_ids = {s['node_id'] for s in supports}
+    if not sup_ids:
+        return None
 
-        handles = [
-            plt.Line2D([0],[0], color=C_UNDEFO, lw=1.5, ls='--', label='Undeformed'),
-            plt.Line2D([0],[0], color=C_MODE,   lw=2.5, label=f'Mode {mode_num} shape'),
-        ]
-        ax.legend(handles=handles, fontsize=8, frameon=False, loc='upper right')
-        fig.suptitle(title, fontsize=10, color='#6E6E73', y=0.98, style='italic')
-        fig.tight_layout(rect=[0, 0, 1, 0.96])
+    base_y  = sum(dn[i]['y'] for i in sup_ids if i in dn) / len(sup_ids)
+    top_ids = sorted({c['top']['id'] for c in cols})
+    top_y   = sum(dn[i]['y'] for i in top_ids) / len(top_ids)
+    h = top_y - base_y
+    if h <= 1e-6:
+        return None
 
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight',
-                    facecolor='white', edgecolor='none')
-        buf.seek(0)
-        plt.close(fig)
-        figs_out.append(base64.b64encode(buf.read()).decode())
+    # V_Ed — total vertical load carried, read off the support reactions
+    V_Ed = sum(node_reactions.get(i, [0, 0, 0])[1] for i in sup_ids)
+    V_Ed = abs(V_Ed)
+    if V_Ed < 1e-6:
+        return None
 
-    return figs_out
+    # Sway imperfection, § 5.3.2(3):  phi = phi_0 x alpha_h x alpha_m
+    m = len(cols)
+    alpha_h = max(2.0 / 3.0, min(1.0, 2.0 / math.sqrt(h)))
+    alpha_m = math.sqrt(0.5 * (1.0 + 1.0 / m)) if m else 1.0
+    phi = (1.0 / 200.0) * alpha_h * alpha_m
+
+    H_probe = phi * V_Ed
+    probe_loads = [
+        {'type': 'nodal', 'node_id': nid, 'Fx_kN': H_probe / len(top_ids),
+         'Fy_kN': 0.0, 'Mz_kNm': 0.0}
+        for nid in top_ids
+    ]
+
+    try:
+        probe = solve(nodes, elements, supports, probe_loads, equal_dofs)
+    except Exception:
+        return None
+
+    ux_top  = sum(probe['node_disps'][i][0] for i in top_ids) / len(top_ids)
+    ux_base = (sum(probe['node_disps'][i][0] for i in sup_ids if i in dn)
+               / len(sup_ids)) if sup_ids else 0.0
+    delta_H = abs(ux_top - ux_base)
+
+    # A frame stiff enough to barely sway is not a stability problem; reporting
+    # a huge number would only invite false precision.
+    if delta_H < 1e-9:
+        alpha_cr = float('inf')
+    else:
+        alpha_cr = (H_probe / V_Ed) * (h / delta_H)
+
+    if   alpha_cr >= 10.0: klasse, konsekvens = 'ikke svajfølsom', (
+        'Andenordens effekter kan ignoreres — førsteordens analyse er tilstrækkelig '
+        '(EN 1993-1-1 § 5.2.1(3)).')
+    elif alpha_cr >= 3.0:  klasse, konsekvens = 'svajfølsom', (
+        f'Andenordens effekter skal medtages. Sidesvajmomenterne kan forstærkes med '
+        f'faktoren 1/(1-1/alpha_cr) = {1.0/(1.0 - 1.0/alpha_cr):.3f} '
+        f'(§ 5.2.2(5)B), eller der kan regnes fuld andenordens analyse.')
+    else:                  klasse, konsekvens = 'meget svajfølsom', (
+        'alpha_cr < 3 — forstærkningsmetoden må ikke anvendes. Der skal regnes fuld '
+        'andenordens analyse med imperfektioner (§ 5.2.2).')
+
+    # § 5.2.1(4)B applies to portal frames with shallow roof slopes and to
+    # beam-and-column plane frames. Say so when we are outside that.
+    slope = _roof_slope_deg(nodes, elements, supports)
+    forbehold = []
+    if slope > 26.0:
+        forbehold.append(
+            f'Taghældningen er {slope:.0f}°. § 5.2.1(4)B gælder for flade '
+            f'taghældninger (under 26°) — alpha_cr skal her bestemmes ved en '
+            f'egenværdianalyse i stedet.')
+    forbehold.append(
+        'Formlen forudsætter desuden, at normalkraften i bjælker og spær ikke er '
+        'betydende (§ 5.2.1(4)B). Kontrollér dette for det aktuelle system.')
+    forbehold.append(
+        'alpha_cr er bestemt for den nederste etage, som normalt er den afgørende. '
+        'Ved flere etager bør de øvrige etager efterses særskilt.')
+
+    return {
+        'alpha_cr':    round(alpha_cr, 2) if alpha_cr != float('inf') else None,
+        'klasse':      klasse,
+        'konsekvens':  konsekvens,
+        'forbehold':   forbehold,
+        'metode':      'EN 1993-1-1 § 5.2.1(4)B',
+        # The inputs, so the number can be checked by hand
+        'h_m':         round(h, 3),
+        'V_Ed_kN':     round(V_Ed, 2),
+        'H_probe_kN':  round(H_probe, 3),
+        'delta_H_mm':  round(delta_H * 1000.0, 3),
+        'phi':         round(phi, 5),
+        'alpha_h':     round(alpha_h, 3),
+        'alpha_m':     round(alpha_m, 3),
+        'antal_soejler': m,
+        'taghaeldning_deg': round(slope, 1),
+    }
 
 
 def solve(nodes, elements, supports, loads, equal_dofs=None):
@@ -388,39 +471,18 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
             f = ops.eleForce(el['id'])
             ele_forces[el['id']] = [f[0], 0, 0, f[1] if len(f) > 1 else -f[0], 0, 0]
 
-    # ── Eigenvalue analysis — mode shapes ────────────────────────────────────
-    # Assign unit masses so ops.eigen() has a mass matrix to work with.
-    # The resulting mode shapes (eigenvectors) approximate the buckled
-    # configurations of the loaded frame; eigenvalues ω are natural frequencies.
-    eigen_modes = []
-    try:
-        n_req = min(3, max(1, len(nodes)))
-        for n in nodes:
-            ops.mass(n['id'], 1.0, 1.0, 1e-6)
-        lambdas = ops.eigen(n_req)
-        for k in range(1, len(lambdas) + 1):
-            vecs = {}
-            for n in nodes:
-                nid = n['id']
-                vecs[nid] = [
-                    ops.nodeEigenvector(nid, k, 1),
-                    ops.nodeEigenvector(nid, k, 2),
-                ]
-            eigen_modes.append({
-                'mode':   k,
-                'omega':  round(math.sqrt(max(lambdas[k-1], 0.0)), 4),
-                'lambda': round(lambdas[k-1], 4),
-                'vectors': vecs,
-            })
-    except Exception:
-        eigen_modes = []
+    # NOTE — there used to be an ops.eigen() call here whose mode shapes were
+    # reported as buckling modes. They were not: the transformation is Linear,
+    # so there is no geometric stiffness, and the masses were fictitious unit
+    # masses. The result was the vibration modes of an imaginary system, with
+    # no relation to alpha_cr. Stability is now assessed by compute_alpha_cr()
+    # against EN 1993-1-1 § 5.2.1(4)B instead.
 
     return {
         'node_disps':     node_disps,
         'node_reactions': node_reactions,
         'ele_forces':     ele_forces,
-        'eigen_modes':    eigen_modes,
-    }
+            }
 
 
 # ---------------------------------------------------------------------------
@@ -535,7 +597,6 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
             'node_disps':         result['node_disps'],
             'node_reactions':     result['node_reactions'],
             'ele_forces':         result['ele_forces'],
-            'eigen_modes':        result.get('eigen_modes', []),
         }
         # Generate figures NOW, while the OpenSeesPy model reflects this combo
         if make_figs and _OPSVIS_AVAILABLE:
