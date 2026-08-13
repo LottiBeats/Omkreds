@@ -375,7 +375,7 @@ def section_force_extremes(pl, L, wy=0.0, wx=0.0):
 # Buckling lengths — Wood's stiffness-distribution method (EN 1993-1-1 Annex B)
 # ---------------------------------------------------------------------------
 
-def compute_buckling_lengths(nodes, elements, supports, ele_forces):
+def compute_buckling_lengths(nodes, elements, supports, ele_forces, ele_extremes=None):
     """
     Estimate effective buckling lengths per beam element using Wood's simplified
     stiffness-distribution formulas (equivalent to EN 1993-1-1 Annex B).
@@ -424,7 +424,12 @@ def compute_buckling_lengths(nodes, elements, supports, ele_forces):
         ni  = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
         L   = math.hypot(nj['x'] - ni['x'], nj['y'] - ni['y'])
         f   = ele_forces.get(eid, [0.0]*6)
-        N   = (f[0] + f[3]) / 2.0   # average axial force (kN)
+        # The axial force in the member, not the average of the two end forces:
+        # those are equal and opposite for a member without a longitudinal load,
+        # so averaging them reported N_Ed = 0 for every column in the table.
+        # N(x) = -N_i - wx*x, so N(0) = -N_i.
+        ext = (ele_extremes or {}).get(eid)
+        N   = ext['N_kN'] if ext else -f[0]
         K_e = ei_l.get(eid, 0.0)
 
         def _eta(nid):

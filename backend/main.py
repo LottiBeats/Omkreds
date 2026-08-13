@@ -2223,7 +2223,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
             # Buckling lengths from the governing combination
             buck_lengths = compute_buckling_lengths(nodes, elements, supports,
-                                                    best_res['ele_forces'])
+                                                    best_res['ele_forces'],
+                                                    best_res.get('ele_extremes'))
 
             figs_b64 = [model_fig] + best_figs
 
@@ -2258,7 +2259,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         else:
             res = solve(nodes, elements, supports, loads, equal_dofs)
             buck_lengths = compute_buckling_lengths(nodes, elements, supports,
-                                                    res['ele_forces'])
+                                                    res['ele_forces'],
+                                                    res.get('ele_extremes'))
             figs_b64 = [model_fig] + make_figures(
                 data.title, nodes, elements, supports, loads,
                 res['ele_forces'], res['node_disps'], ref_size,

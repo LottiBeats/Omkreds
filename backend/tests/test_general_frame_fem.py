@@ -481,6 +481,27 @@ def test_element_forces_are_local_not_global():
 
 
 @ops_required
+def test_buckling_table_reports_the_real_axial_force():
+    """
+    A column carrying a point load. N_Ed in the buckling-length table was the
+    average of the two end forces, which are equal and opposite on a member
+    with no longitudinal load — so it read zero for every column in the frame.
+    """
+    h, P = 4.0, 120.0
+    nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 0, 'y': h}]
+    elements = [{'id': 1, 'ni': 1, 'nj': 2, 'type': 'beam', 'release': 'none',
+                 'E_GPa': E_GPA, 'A_cm2': A_CM2, 'Iz_cm4': IZ_CM4}]
+    supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True}]
+    loads = [{'type': 'nodal', 'node_id': 2, 'Fx_kN': 0.0, 'Fy_kN': -P, 'Mz_kNm': 0.0}]
+
+    res = gf.solve(nodes, elements, supports, loads)
+    buck = gf.compute_buckling_lengths(nodes, elements, supports,
+                                       res['ele_forces'], res['ele_extremes'])
+
+    assert abs(buck[1]['N_Ed_kN']) == pytest.approx(P, rel=0.01)
+
+
+@ops_required
 def test_wind_pushes_the_column_downwind():
     """A positive 'horizontal' load must displace the column towards +X."""
     h, p = 4.0, 2.0
