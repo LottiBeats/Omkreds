@@ -2084,6 +2084,12 @@ class GenFrameElemIn(BaseModel):
     E_GPa:    float = 210.0
     A_cm2:    float = 39.1
     Iz_cm4:   float = 3892.0
+    # Section reference. When given, E/A/I are derived from it so the analysis
+    # and the member check below it cannot describe different sections.
+    # Left empty, the raw values above are used unchanged.
+    material: str | None = None   # "steel" | "timber"
+    section:  str | None = None   # "IPE300" or "140x360" (mm)
+    grade:    str | None = None   # "S355" / "GL24c" / "C24"
 
 class GenFrameSupportIn(BaseModel):
     node_id: int
@@ -2176,11 +2182,14 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         from general_frame_fem import (solve, solve_combinations,
                                        make_figures, summarise, plot_model,
                                        compute_buckling_lengths, compute_alpha_cr)
+        from section_resolver import apply_sections
         from calc_core import S, T, TBL
         import math
 
         nodes    = [n.model_dump() for n in data.nodes]
-        elements = [e.model_dump() for e in data.elements]
+        # Derive E/A/I from each element's section reference where it has one,
+        # so the analysis and the member check read the same section.
+        elements = apply_sections([e.model_dump() for e in data.elements])
         supports = [s.model_dump() for s in data.supports]
         loads    = [l.model_dump() for l in data.loads]
         combos      = [c.model_dump() for c in data.combinations]

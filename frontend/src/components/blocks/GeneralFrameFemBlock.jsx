@@ -18,15 +18,22 @@ import NumericInput from './NumericInput.jsx'
 
 // ── Section presets ───────────────────────────────────────────────────────────
 
-const SECTION_PRESETS = [
-  { label: 'IPE 200 (S235)', E: 210, A: 28.5,  Iz: 1943  },
-  { label: 'IPE 240 (S235)', E: 210, A: 39.1,  Iz: 3892  },
-  { label: 'IPE 300 (S235)', E: 210, A: 53.8,  Iz: 8356  },
-  { label: 'IPE 360 (S235)', E: 210, A: 72.7,  Iz: 16270 },
-  { label: 'IPE 400 (S235)', E: 210, A: 84.5,  Iz: 23130 },
-  { label: 'HEB 200 (S235)', E: 210, A: 78.1,  Iz: 5700  },
-  { label: 'HEB 300 (S235)', E: 210, A: 149.0, Iz: 25170 },
-  { label: 'Custom',         E: null, A: null,  Iz: null  },
+// A section is a *reference*, not a set of numbers copied onto the element.
+// The backend derives E, A and I from it, and the member check generated below
+// inherits the same reference — so the analysis and the verification cannot end
+// up describing different sections.
+const MATERIALS = [
+  { key: 'steel',  label: 'Stål',  grades: ['S235', 'S275', 'S355', 'S420'] },
+  { key: 'timber', label: 'Træ',   grades: ['C18', 'C24', 'C30', 'GL24c', 'GL24h', 'GL28c', 'GL28h', 'GL30c'] },
+]
+
+// Which verification belongs with each material. Mirrors
+// CHECK_TYPE_FOR_MATERIAL in backend/section_resolver.py.
+const CHECK_TYPE_FOR_MATERIAL = { steel: 'steel_beam', timber: 'timber_beam' }
+
+const STEEL_SECTIONS = [
+  'IPE200', 'IPE240', 'IPE270', 'IPE300', 'IPE360', 'IPE400', 'IPE450', 'IPE500',
+  'HEA200', 'HEA300', 'HEB200', 'HEB300',
 ]
 
 // ── Tiny helpers ──────────────────────────────────────────────────────────────
@@ -191,12 +198,26 @@ function NodeRow({ node, onChange, onRemove }) {
 }
 
 function ElemRow({ elem, onChange, onRemove }) {
-  const [preset, setPreset] = useState('Custom')
+  const material = elem.material ?? ''
+  const matDef   = MATERIALS.find(m => m.key === material)
+  // With a section reference the backend owns E/A/I; showing editable fields
+  // would invite them to disagree with the section.
+  const derived  = !!(material && elem.section)
 
-  function applyPreset(label) {
-    const p = SECTION_PRESETS.find(x => x.label === label)
-    setPreset(label)
-    if (p && p.E != null) onChange({ ...elem, E_GPa: p.E, A_cm2: p.A, Iz_cm4: p.Iz })
+  function setMaterial(key) {
+    if (!key) {
+      const { material: _m, section: _s, grade: _g, ...rest } = elem
+      onChange(rest)                       // back to raw E/A/I
+      return
+    }
+    const def = MATERIALS.find(m => m.key === key)
+    onChange({
+      ...elem,
+      material: key,
+      grade: def?.grades?.includes(elem.grade) ? elem.grade : def?.grades?.[key === 'steel' ? 2 : 1],
+      section: key === 'steel' ? (STEEL_SECTIONS.includes(elem.section) ? elem.section : 'IPE300')
+                               : (/^\s*\d/.test(elem.section ?? '') ? elem.section : '140x360'),
+    })
   }
 
   return (
@@ -229,17 +250,47 @@ function ElemRow({ elem, onChange, onRemove }) {
         )}
 
         <div style={s.fieldWrap}>
-          <label style={s.miniLabel}>Section</label>
-          <select style={{ ...s.smallInput, width: 130 }} value={preset}
-            onChange={e => applyPreset(e.target.value)}>
-            {SECTION_PRESETS.map(p => <option key={p.label}>{p.label}</option>)}
+          <label style={s.miniLabel}>Materiale</label>
+          <select style={{ ...s.smallInput, width: 84 }} value={material}
+            onChange={e => setMaterial(e.target.value)}>
+            <option value="">Egne tal</option>
+            {MATERIALS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
           </select>
         </div>
 
-        <NumField label="E (GPa)" val={elem.E_GPa  ?? 210}  set={v => { setPreset('Custom'); onChange({ ...elem, E_GPa:  v }) }} />
-        <NumField label="A (cm²)" val={elem.A_cm2  ?? 39.1} set={v => { setPreset('Custom'); onChange({ ...elem, A_cm2:  v }) }} />
-        {(elem.type ?? 'beam') === 'beam' && (
-          <NumField label="Iz (cm⁴)" val={elem.Iz_cm4 ?? 3892} set={v => { setPreset('Custom'); onChange({ ...elem, Iz_cm4: v }) }} width={88} />
+        {derived && (
+          <>
+            <div style={s.fieldWrap}>
+              <label style={s.miniLabel}>Tværsnit</label>
+              {material === 'steel' ? (
+                <select style={{ ...s.smallInput, width: 96 }} value={elem.section}
+                  onChange={e => onChange({ ...elem, section: e.target.value })}>
+                  {STEEL_SECTIONS.map(x => <option key={x}>{x}</option>)}
+                </select>
+              ) : (
+                <input style={{ ...s.smallInput, width: 96 }} value={elem.section}
+                  placeholder="b x h mm"
+                  onChange={e => onChange({ ...elem, section: e.target.value })} />
+              )}
+            </div>
+            <div style={s.fieldWrap}>
+              <label style={s.miniLabel}>Kvalitet</label>
+              <select style={{ ...s.smallInput, width: 84 }} value={elem.grade ?? ''}
+                onChange={e => onChange({ ...elem, grade: e.target.value })}>
+                {(matDef?.grades ?? []).map(g => <option key={g}>{g}</option>)}
+              </select>
+            </div>
+          </>
+        )}
+
+        {!derived && (
+          <>
+            <NumField label="E (GPa)" val={elem.E_GPa  ?? 210}  set={v => onChange({ ...elem, E_GPa:  v })} />
+            <NumField label="A (cm²)" val={elem.A_cm2  ?? 39.1} set={v => onChange({ ...elem, A_cm2:  v })} />
+            {(elem.type ?? 'beam') === 'beam' && (
+              <NumField label="Iz (cm⁴)" val={elem.Iz_cm4 ?? 3892} set={v => onChange({ ...elem, Iz_cm4: v })} width={88} />
+            )}
+          </>
         )}
         <NumField label="Group" val={elem.member_id ?? 0}
           set={v => onChange({ ...elem, member_id: v > 0 ? Math.round(v) : undefined })}
@@ -459,9 +510,10 @@ const CHECK_TYPES = [
   { type: 'rc_beam',     label: 'RC beam (EC2)' },
 ]
 
-function CreateCheckButton({ elemId, elemL, blockId, onAddBlock }) {
+function CreateCheckButton({ elemId, elemL, blockId, onAddBlock, material }) {
   const [open, setOpen] = useState(false)
   if (!onAddBlock) return null
+  const suggested = CHECK_TYPE_FOR_MATERIAL[material]
 
   function create(type) {
     onAddBlock(type, {
@@ -491,14 +543,15 @@ function CreateCheckButton({ elemId, elemL, blockId, onAddBlock }) {
           <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100,
                         background: '#fff', border: '1px solid #e0e0e0',
                         boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 190, paddingBlock: 4 }}>
-            {CHECK_TYPES.map(c => (
+            {[...CHECK_TYPES].sort((a, b) =>
+                (b.type === suggested ? 1 : 0) - (a.type === suggested ? 1 : 0)).map(c => (
               <button key={c.type} onClick={() => create(c.type)}
                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px',
                          fontSize: 12, background: 'none', border: 'none', cursor: 'pointer',
                          fontFamily: 'inherit' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
                 onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                {c.label}
+                {c.label}{c.type === suggested ? '  ·  passer til materialet' : ''}
               </button>
             ))}
           </div>
@@ -554,9 +607,13 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
     }
 
     if (entries.length > 0) {
-      newBlocks.push({ type: 'heading', data: { level: 3, text: 'Member checks' } })
+      newBlocks.push({ type: 'heading', data: { level: 3, text: 'Eftervisning af stænger' } })
       entries.forEach((entry, i) => {
-        newBlocks.push({ type: 'steel_beam', data: {
+        // The verification follows the element's material. Without a section
+        // reference there is nothing to go on, so fall back to steel and say so
+        // in the title rather than silently producing the wrong check.
+        const type = CHECK_TYPE_FOR_MATERIAL[entry.material] ?? 'steel_beam'
+        const data = {
           title:        entry.label ?? `Element ${entry.id}`,
           label:        `M${i + 1}`,
           load_source:  'fem',
@@ -564,7 +621,20 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
           fem_elem_id:  entry.id,
           fem_end:      'max',
           span_m:       parseFloat((entry.L_m ?? 1).toFixed(2)),
-        }})
+        }
+        if (entry.material === 'steel' && entry.section) {
+          data.section = entry.section
+          if (entry.grade) data.grade = entry.grade
+        }
+        if (entry.material === 'timber' && entry.section) {
+          const m = /^\s*(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*$/.exec(entry.section)
+          if (m) {
+            data.b_mm = parseFloat(m[1].replace(',', '.'))
+            data.h_mm = parseFloat(m[2].replace(',', '.'))
+          }
+          if (entry.grade) data.grade = entry.grade
+        }
+        newBlocks.push({ type, data })
       })
     }
 
@@ -757,14 +827,26 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
 
           {tab === 'Elements' && (
             <div>
-              <div style={s.detailLabel}>Section properties</div>
+              <div style={s.detailLabel}>Tværsnit</div>
               <Tbl
-                headers={['Elem', 'Type', 'ni→nj', 'L (m)', 'E (GPa)', 'A (cm²)', 'Iz (cm⁴)', 'Release']}
+                headers={['Elem', 'Type', 'ni→nj', 'L (m)', 'Tværsnit', 'E (GPa)', 'A (cm²)', 'Iz (cm⁴)', 'Release']}
                 rows={(summary.ele_force_table ?? []).map(e => [
                   e.id, e.type, `${e.ni}→${e.nj}`, e.L_m.toFixed(2),
+                  e.section_resolved?.beskrivelse ?? (e.section ?? 'egne tal'),
                   e.E_GPa, e.A_cm2, e.type === 'beam' ? e.Iz_cm4 : '—', e.release,
                 ])}
               />
+              {/* A mistyped section falls back to the element's own numbers —
+                  say so, or the analysis quietly runs on the wrong stiffness. */}
+              {(summary.ele_force_table ?? []).filter(e => e.section_error).map(e => (
+                <div key={e.id} style={{ fontSize: 11, color: '#b45309', marginTop: 6 }}>
+                  Element {e.id}: {e.section_error} — der er regnet med elementets egne E/A/I.
+                </div>
+              ))}
+              <div style={{ ...s.hint, marginTop: 6 }}>
+                Er der valgt et tværsnit, udledes E, A og Iz af det — og eftervisningen
+                nedenfor arver samme tværsnit, så de to ikke kan komme til at afvige.
+              </div>
               <div style={{ ...s.detailLabel, marginTop: 12 }}>End forces (local axes)</div>
               <table style={s.table}>
                 <thead>
@@ -790,6 +872,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
                           elemL={e.L_m}
                           blockId={blockId}
                           onAddBlock={onAddBlock}
+                          material={e.material}
                         />
                       </td>
                     </tr>

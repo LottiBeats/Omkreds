@@ -1053,6 +1053,13 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
             'E_GPa':   el.get('E_GPa', 210),
             'A_cm2':   el.get('A_cm2', 0),
             'Iz_cm4':  el.get('Iz_cm4', 0),
+            # Section reference — carried through so the member check generated
+            # from this element inherits it instead of being picked again.
+            'material': el.get('material'),
+            'section':  el.get('section'),
+            'grade':    el.get('grade'),
+            'section_resolved': el.get('_section_resolved'),
+            'section_error':    el.get('_section_error'),
             # End i (local) — already in kN / kN·m
             'N_i_kN':  round(f[0], 3),
             'V_i_kN':  round(f[1], 3),
