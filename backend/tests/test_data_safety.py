@@ -6,6 +6,7 @@ day, so they exercise db.py directly (against a temp file) as well as through
 the API.
 """
 import json
+import sqlite3
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -673,3 +674,44 @@ def test_rotation_ignores_other_workers_temp_files(dbfile):
     assert len(finished) == 3
     assert other.exists(), "another worker's in-progress copy was deleted"
     other.unlink()
+
+
+# ── Connections ───────────────────────────────────────────────────────────────
+
+def _is_open(conn) -> bool:
+    try:
+        conn.execute("SELECT 1")
+        return True
+    except sqlite3.ProgrammingError:
+        return False
+
+
+def test_every_connection_is_closed(dbfile, monkeypatch):
+    """
+    sqlite3's context manager commits; it does not close. Leaving connections
+    open leaked a file descriptor — three of them, with WAL — on every request,
+    until the process hit its limit and SQLite reported "unable to open
+    database file". It never showed on Windows, where the handle limit is far
+    higher, so the suite passed there and failed on the server.
+    """
+    opened = []
+    real_connect = sqlite3.connect
+
+    def tracking(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", tracking)
+
+    _db.save_project(_project(), user="u1", path=dbfile)
+    _db.load_project("p1", path=dbfile)
+    _db.load_all_projects("u1", path=dbfile)
+    _db.list_versions("p1", path=dbfile)
+    _db.delete_project("p1", user="u1", path=dbfile)
+    _db.purge_project("p1", path=dbfile)
+
+    assert opened, "the tracking patch never saw a connection"
+    leaked = [c for c in opened if _is_open(c)]
+    assert not leaked, (
+        f"{len(leaked)} of {len(opened)} connections were left open")

@@ -30,6 +30,7 @@ Authentication is handled by Clerk (clerk.com) — no user table needed here.
 import json
 import shutil as _shutil
 import sqlite3
+from contextlib import contextmanager as _contextmanager
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -42,6 +43,35 @@ DB_PATH = Path(_os.environ.get("DATABASE_PATH", "") or
                (Path(__file__).resolve().parent / "projects.db"))
 
 _lock = threading.Lock()
+
+
+def _connect(p: str, timeout: float = 15.0):
+    """
+    A connection that is committed *and* closed.
+
+    sqlite3's own context manager commits or rolls back the transaction — it
+    does not close the connection. Every function here calls init_db() first
+    and then opens its own connection, so each API request left two or more
+    behind, each holding the database file plus its -wal and -shm. On Windows
+    the handle limit is high enough that nothing ever went wrong; on Linux the
+    process ran out of file descriptors partway through a run and sqlite3
+    reported it as "unable to open database file", then recovered once the
+    garbage collector caught up. That is what made it look intermittent.
+
+    The timeout is the one the write path already used, applied everywhere:
+    waiting for a lock is the right behaviour for all of these, not just saves.
+    """
+    return _connect_cm(p, timeout)
+
+
+@_contextmanager
+def _connect_cm(p: str, timeout: float):
+    conn = sqlite3.connect(p, timeout=timeout)
+    try:
+        with conn:          # commit on success, roll back on exception
+            yield conn
+    finally:
+        conn.close()
 
 # ── Retention policy ──────────────────────────────────────────────────────────
 # One automatic snapshot at most per this many minutes per project.  Editing is
@@ -84,7 +114,7 @@ class ConflictError(Exception):
 def init_db(path: Path | None = None) -> None:
     """Create tables if they do not already exist."""
     p = str(path or DB_PATH)
-    with sqlite3.connect(p) as conn:
+    with _connect(p) as conn:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS projects (
@@ -237,7 +267,7 @@ def load_all_projects(user_id: str = "", path: Path | None = None) -> list[dict]
     """Return non-deleted projects visible to user_id, newest first."""
     p = str(path or DB_PATH)
     init_db(path)
-    with sqlite3.connect(p) as conn:
+    with _connect(p) as conn:
         if user_id:
             rows = conn.execute(
                 "SELECT data, rev FROM projects "
@@ -264,7 +294,7 @@ def load_deleted_projects(user_id: str = "", path: Path | None = None) -> list[d
     """Return soft-deleted ('trashed') projects visible to user_id, newest first."""
     p = str(path or DB_PATH)
     init_db(path)
-    with sqlite3.connect(p) as conn:
+    with _connect(p) as conn:
         if user_id:
             rows = conn.execute(
                 "SELECT data, rev, deleted_at, deleted_by FROM projects "
@@ -296,7 +326,7 @@ def load_project(
     """Load a single project by id, or None if not found (or trashed)."""
     p = str(path or DB_PATH)
     init_db(path)
-    with sqlite3.connect(p) as conn:
+    with _connect(p) as conn:
         row = conn.execute(
             "SELECT data, rev, COALESCE(deleted_at, ''), COALESCE(deleted_by, '') "
             "FROM projects WHERE id = ?",
@@ -397,7 +427,7 @@ def save_project(
     visibility = project.get("visibility", "personal")
 
     with _lock:
-        with sqlite3.connect(p, timeout=15) as conn:
+        with _connect(p) as conn:
             # BEGIN IMMEDIATE takes SQLite's write lock *before* the read, so
             # the read-check-write below is atomic across processes as well as
             # threads.  The server runs multiple uvicorn workers, and the
@@ -466,7 +496,7 @@ def delete_project(
     init_db(path)
     now = datetime.now(timezone.utc).isoformat()
     with _lock:
-        with sqlite3.connect(p) as conn:
+        with _connect(p) as conn:
             row = conn.execute(
                 "SELECT data, rev FROM projects WHERE id = ?", (project_id,)
             ).fetchone()
@@ -487,7 +517,7 @@ def restore_deleted_project(project_id: str, path: Path | None = None) -> bool:
     p = str(path or DB_PATH)
     init_db(path)
     with _lock:
-        with sqlite3.connect(p) as conn:
+        with _connect(p) as conn:
             cur = conn.execute(
                 "UPDATE projects SET deleted_at = '', deleted_by = '' "
                 "WHERE id = ? AND COALESCE(deleted_at, '') != ''",
@@ -502,7 +532,7 @@ def purge_project(project_id: str, path: Path | None = None) -> None:
     p = str(path or DB_PATH)
     init_db(path)
     with _lock:
-        with sqlite3.connect(p) as conn:
+        with _connect(p) as conn:
             conn.execute("DELETE FROM project_versions WHERE project_id = ?", (project_id,))
             conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
             conn.commit()
@@ -514,7 +544,7 @@ def purge_expired_trash(days: int = TRASH_RETENTION_DAYS, path: Path | None = No
     init_db(path)
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     with _lock:
-        with sqlite3.connect(p) as conn:
+        with _connect(p) as conn:
             ids = [r[0] for r in conn.execute(
                 "SELECT id FROM projects "
                 "WHERE COALESCE(deleted_at, '') != '' AND deleted_at < ?",
@@ -545,7 +575,7 @@ def create_version(
     p = str(path or DB_PATH)
     init_db(path)
     with _lock:
-        with sqlite3.connect(p) as conn:
+        with _connect(p) as conn:
             row = conn.execute(
                 "SELECT data, rev FROM projects WHERE id = ?", (project_id,)
             ).fetchone()
@@ -567,7 +597,7 @@ def list_versions(project_id: str, path: Path | None = None) -> list[dict]:
     """
     p = str(path or DB_PATH)
     init_db(path)
-    with sqlite3.connect(p) as conn:
+    with _connect(p) as conn:
         rows = conn.execute("""
             SELECT id, rev, kind, label, created_at, created_by, LENGTH(data)
             FROM project_versions
@@ -596,7 +626,7 @@ def load_version(
     """Load the full project snapshot stored in one version row."""
     p = str(path or DB_PATH)
     init_db(path)
-    with sqlite3.connect(p) as conn:
+    with _connect(p) as conn:
         row = conn.execute(
             "SELECT data FROM project_versions WHERE id = ? AND project_id = ?",
             (version_id, project_id),
@@ -644,7 +674,7 @@ def load_template(template_id: str, path: Path | None = None) -> dict | None:
     """Load a single template by id, or None if not found."""
     p = str(path or DB_PATH)
     init_db(path)
-    with sqlite3.connect(p) as conn:
+    with _connect(p) as conn:
         row = conn.execute("""
             SELECT id, name, description, blocks, parameters, code, created_by,
                    created_at, items, owner_id, visibility
@@ -675,7 +705,7 @@ def load_all_templates(user_id: str = "", path: Path | None = None) -> list[dict
     """Return calc templates visible to user_id (own + team), newest first."""
     p = str(path or DB_PATH)
     init_db(path)
-    with sqlite3.connect(p) as conn:
+    with _connect(p) as conn:
         if user_id:
             rows = conn.execute("""
                 SELECT id, name, description, blocks, parameters, code, created_by,
@@ -732,7 +762,7 @@ def save_template(
     now = datetime.now(timezone.utc).isoformat()
     tid = uuid.uuid4().hex[:8]
     with _lock:
-        with sqlite3.connect(p) as conn:
+        with _connect(p) as conn:
             conn.execute("""
                 INSERT INTO calc_library
                     (id, name, description, blocks, parameters, code, created_by, created_at, items, owner_id, visibility)
@@ -764,7 +794,7 @@ def update_template(
     p = str(path or DB_PATH)
     init_db(path)
     with _lock:
-        with sqlite3.connect(p) as conn:
+        with _connect(p) as conn:
             conn.execute("""
                 UPDATE calc_library
                 SET name=?, description=?, parameters=?, code=?, items=?, visibility=?
@@ -785,7 +815,7 @@ def delete_template(template_id: str, path: Path | None = None) -> None:
     p = str(path or DB_PATH)
     init_db(path)
     with _lock:
-        with sqlite3.connect(p) as conn:
+        with _connect(p) as conn:
             conn.execute("DELETE FROM calc_library WHERE id = ?", (template_id,))
             conn.commit()
 
@@ -903,7 +933,7 @@ def start_backup_scheduler(
 def project_count(path: Path | None = None) -> int:
     p = str(path or DB_PATH)
     init_db(path)
-    with sqlite3.connect(p) as conn:
+    with _connect(p) as conn:
         return conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
 
 
