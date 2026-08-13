@@ -21,6 +21,28 @@ import { getAuthToken } from './clerkToken.js'
 //   https://yourdomain.com   (Nginx then forwards /api/ → port 8000)
 const BASE = (import.meta.env.VITE_API_URL ?? '') + '/api'
 
+// ── Errors ────────────────────────────────────────────────────────────────────
+
+/**
+ * An error carrying the HTTP status and the backend's `detail` payload.
+ *
+ * Callers that only show err.message keep working; callers that need to react
+ * to a specific status (409 save conflict) can read err.status / err.detail.
+ */
+export class ApiError extends Error {
+  constructor(message, status, detail = null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.detail = detail
+  }
+
+  /** True when the project was saved by somebody else since we loaded it. */
+  get isConflict() {
+    return this.status === 409
+  }
+}
+
 // ── Internal fetch helper ─────────────────────────────────────────────────────
 
 /**
@@ -47,26 +69,32 @@ async function request(method, path, body = null) {
   // inline.  Do NOT navigate: /sign-in is not a defined route and would just
   // bounce the user to / (ProjectsPage) via the catch-all * route.
   if (response.status === 401) {
-    throw new Error('Session expired — please reload the page and sign in again.')
+    throw new ApiError(
+      'Din session er udløbet — genindlæs siden og log ind igen.', 401
+    )
   }
 
   if (!response.ok) {
     // 413 means the request body (project JSON) is too large for the server.
     // This typically happens when very large images are embedded as base64.
     if (response.status === 413) {
-      throw new Error(
-        'Project is too large to save (HTTP 413). ' +
-        'This is usually caused by large embedded images. ' +
-        'Try reducing image file sizes or use smaller images.'
+      throw new ApiError(
+        'Projektet er for stort til at gemme (HTTP 413). ' +
+        'Det skyldes typisk store indlejrede billeder — prøv med mindre filer.',
+        413
       )
     }
-    // Try to get the error message from FastAPI's JSON response
-    let detail = `HTTP ${response.status}`
+    // Try to get the error message from FastAPI's JSON response.  `detail` is
+    // a string for most errors, but an object for the 409 save conflict.
+    let detail = null
+    let message = `HTTP ${response.status}`
     try {
       const err = await response.json()
-      detail = err.detail || detail
+      detail = err.detail ?? null
+      if (typeof detail === 'string') message = detail
+      else if (detail && detail.message) message = detail.message
     } catch (_) {}
-    throw new Error(detail)
+    throw new ApiError(message, response.status, detail)
   }
 
   // Binary endpoints (PDF, ZIP) return a Blob, not JSON
@@ -125,13 +153,72 @@ export const getProject = (projectId) =>
 /**
  * Save the full project (overwrite).
  * Call this whenever blocks change, metadata changes, etc.
+ *
+ * The `_rev` carried on the project object is the revision we last saw.  The
+ * backend rejects the save with 409 (ApiError.isConflict) if the stored project
+ * has moved on since — somebody else, or another tab, saved in between.
+ *
+ * Resolves to { status, _rev, _updated_at }; keep the returned `_rev` on your
+ * local copy so the next save is checked against the right revision.
  */
 export const saveProject = (project, user = '') =>
   request('PUT', `/projects/${project.id}`, { ...project, _user: user })
 
-/** Delete a project permanently. */
+/** Move a project to the trash. Recoverable via restoreProject(). */
 export const deleteProject = (projectId) =>
   request('DELETE', `/projects/${projectId}`)
+
+
+// ── Trash ─────────────────────────────────────────────────────────────────────
+
+/** List soft-deleted projects (newest deletion first). */
+export const getTrash = () =>
+  request('GET', '/trash')
+
+/** Bring a project back out of the trash. Returns the restored project. */
+export const restoreProject = (projectId) =>
+  request('POST', `/trash/${projectId}/restore`)
+
+/** Permanently delete a trashed project and its history. Irreversible. */
+export const purgeProject = (projectId) =>
+  request('DELETE', `/trash/${projectId}`)
+
+
+// ── Version history ───────────────────────────────────────────────────────────
+
+/** List a project's saved versions, newest first (metadata only). */
+export const getVersions = (projectId) =>
+  request('GET', `/projects/${projectId}/versions`)
+
+/**
+ * Snapshot the project's current state under a label.
+ * @param {string} kind — 'manual' (default) or 'issue' (document issued)
+ */
+export const createVersion = (projectId, label = '', kind = 'manual') =>
+  request('POST', `/projects/${projectId}/versions`, { label, kind })
+
+/** Load one full snapshot — for previewing before restoring. */
+export const getVersion = (projectId, versionId) =>
+  request('GET', `/projects/${projectId}/versions/${versionId}`)
+
+/** Roll the project back to a snapshot. Returns the restored project. */
+export const restoreVersion = (projectId, versionId) =>
+  request('POST', `/projects/${projectId}/versions/${versionId}/restore`)
+
+
+// ── Issuing documents ─────────────────────────────────────────────────────────
+
+/**
+ * Record that a document was issued at a given revision.
+ *
+ * Appends a row to that document's revision history — the table printed on the
+ * PDF cover page — and takes a permanent snapshot of the project, so every line
+ * in the table can be resolved back to the state that produced it.
+ *
+ * @param {{revision, description, override_reason?}} entry
+ */
+export const issueDocument = (projectId, docId, entry) =>
+  request('POST', `/projects/${projectId}/issue/${docId}`, entry)
 
 
 // ── PDF ───────────────────────────────────────────────────────────────────────

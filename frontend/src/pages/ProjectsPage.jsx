@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { UserButton, useUser, useClerk, SignInButton, SignUpButton } from '@clerk/react'
-import { getProjects, deleteProject, getProjectTemplates, deleteProjectTemplate } from '../api/client.js'
+import { getProjects, deleteProject, getProjectTemplates, deleteProjectTemplate, getTrash, restoreProject, purgeProject } from '../api/client.js'
 import CreateProjectModal from '../components/CreateProjectModal.jsx'
 
 // ── tokens ────────────────────────────────────────────────────────────────────
@@ -514,8 +514,80 @@ function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate 
 }
 
 // ── projects dashboard ────────────────────────────────────────────────────────
-function ProjectsSection({ projects, templates, templatesLoading, loading, error, onOpen, onDelete, onNew, onUseTemplate, onDeleteTemplate, isSignedIn }) {
-  const [tab, setTab] = useState('projects')   // 'projects' | 'templates'
+/**
+ * TrashSection — deleted projects, recoverable for 30 days.
+ *
+ * Deleting is the one action in the app with no undo inside the editor, so it
+ * gets a visible second chance rather than a confirm dialog nobody reads.
+ */
+function TrashSection({ trash, loading, onRestore, onPurge }) {
+  if (loading) return (
+    <div style={{ padding: '20px 0', color: MUTED, fontFamily: SANS, fontSize: 13 }}>Indlæser papirkurv…</div>
+  )
+  if (trash.length === 0) return (
+    <div style={{
+      background: WHITE, border: '1px dashed ' + BORDER, padding: '40px 32px',
+      textAlign: 'center', fontFamily: SANS, fontSize: 13, color: MUTED,
+    }}>
+      Papirkurven er tom. Slettede projekter havner her og kan gendannes i 30 dage.
+    </div>
+  )
+
+  const daysLeft = (iso) => {
+    try {
+      const gone = new Date(iso).getTime() + 30 * 86400_000
+      return Math.max(0, Math.ceil((gone - Date.now()) / 86400_000))
+    } catch { return null }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {trash.map(p => {
+        const left = daysLeft(p._deleted_at)
+        return (
+          <div key={p.id} style={{
+            background: WHITE, border: '1px solid ' + BORDER, borderLeft: '3px solid #cbd5e1',
+            padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+          }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13, color: TEXT }}>
+                {p.metadata?.project_name || 'Unavngivet projekt'}
+              </div>
+              <div style={{ fontFamily: SANS, fontSize: 11, color: MUTED, marginTop: 3 }}>
+                {p.metadata?.project_ref ? `${p.metadata.project_ref} · ` : ''}
+                Slettet {p._deleted_at ? new Date(p._deleted_at).toLocaleDateString('da-DK') : '—'}
+                {left !== null && ` · slettes endeligt om ${left} dage`}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => onRestore(p)}
+                style={{ background: BRAND, color: WHITE, border: 'none', padding: '8px 16px', fontFamily: SANS, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Gendan
+              </button>
+              <button
+                onClick={() => onPurge(p)}
+                style={{ background: 'none', border: '1px solid ' + BORDER, color: '#94a3b8', padding: '8px 14px', fontFamily: SANS, fontSize: 12, cursor: 'pointer' }}
+                title="Slet permanent — kan ikke fortrydes"
+              >
+                Slet permanent
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ProjectsSection({ projects, templates, templatesLoading, loading, error, onOpen, onDelete, onNew, onUseTemplate, onDeleteTemplate, isSignedIn, trash, trashLoading, onRestore, onPurge, onOpenTrash }) {
+  const [tab, setTab] = useState('projects')   // 'projects' | 'templates' | 'trash'
+
+  // Load the trash lazily — most sessions never open it.
+  useEffect(() => {
+    if (tab === 'trash') onOpenTrash?.()
+  }, [tab])
 
   if (!isSignedIn) return (
     <section id="projects-section" style={{ background: OFF, borderTop: '1px solid ' + BORDER, padding: '80px 40px' }}>
@@ -545,11 +617,11 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <h2 style={{ fontFamily: SANS, fontSize: 22, fontWeight: 800, color: TEXT, letterSpacing: '-0.01em', margin: 0 }}>
-              {tab === 'projects' ? 'Dine projekter' : 'Skabeloner'}
+              {tab === 'projects' ? 'Dine projekter' : tab === 'templates' ? 'Skabeloner' : 'Papirkurv'}
             </h2>
             {/* Tab toggle */}
             <div style={{ display: 'flex', border: '1px solid ' + BORDER, background: WHITE, overflow: 'hidden' }}>
-              {[['projects', 'Projekter'], ['templates', 'Skabeloner']].map(([key, label]) => (
+              {[['projects', 'Projekter'], ['templates', 'Skabeloner'], ['trash', 'Papirkurv']].map(([key, label]) => (
                 <button
                   key={key}
                   onClick={() => setTab(key)}
@@ -687,7 +759,7 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
                       style={{ background: 'none', border: '1px solid ' + BORDER, color: '#94a3b8', padding: '8px 14px', fontFamily: SANS, fontSize: 12, cursor: 'pointer' }}
                       onClick={(e) => { e.stopPropagation(); onDelete(project, e) }}
                     >
-                      Delete
+                      Slet
                     </button>
                   </div>
                 </div>
@@ -703,6 +775,16 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
             loading={templatesLoading}
             onUseTemplate={onUseTemplate}
             onDeleteTemplate={onDeleteTemplate}
+          />
+        )}
+
+        {/* ── Trash tab ── */}
+        {tab === 'trash' && (
+          <TrashSection
+            trash={trash}
+            loading={trashLoading}
+            onRestore={onRestore}
+            onPurge={onPurge}
           />
         )}
 
@@ -730,6 +812,8 @@ export default function ProjectsPage() {
   const [templatesLoading,  setTemplatesLoading]  = useState(false)
   const [error,             setError]             = useState(null)
   const [showModal,         setShowModal]         = useState(false)
+  const [trash,             setTrash]             = useState(null)   // null = not loaded yet
+  const [trashLoading,      setTrashLoading]      = useState(false)
   // { id, name } when creating from a template; null for blank new project
   const [selectedTemplate,  setSelectedTemplate]  = useState(null)
   const navigate = useNavigate()
@@ -756,9 +840,43 @@ export default function ProjectsPage() {
 
   const onDelete = async (project, e) => {
     e.stopPropagation()
-    if (!window.confirm(`Slet "${project.metadata.project_name}"?`)) return
-    try { await deleteProject(project.id); setProjects(projects.filter(p => p.id !== project.id)) }
+    const name = project.metadata.project_name || 'projektet'
+    if (!window.confirm(`Flyt "${name}" til papirkurven?\n\nDu kan gendanne det i 30 dage.`)) return
+    try {
+      await deleteProject(project.id)
+      setProjects(projects.filter(p => p.id !== project.id))
+      setTrash(null)   // stale — reload next time the tab opens
+    }
     catch (e) { setError(e.message) }
+  }
+
+  // ── Trash ───────────────────────────────────────────────────────────────────
+
+  async function loadTrash() {
+    if (trash !== null) return          // already loaded this session
+    try { setTrashLoading(true); setTrash(await getTrash()) }
+    catch (e) { setError(e.message) }
+    finally { setTrashLoading(false) }
+  }
+
+  const onRestore = async (project) => {
+    try {
+      const restored = await restoreProject(project.id)
+      setTrash((trash ?? []).filter(p => p.id !== project.id))
+      setProjects([restored, ...projects])
+    } catch (e) { setError(e.message) }
+  }
+
+  const onPurge = async (project) => {
+    const name = project.metadata?.project_name || 'projektet'
+    if (!window.confirm(
+      `Slet "${name}" permanent?\n\n` +
+      'Projektet og hele dets versionshistorik fjernes. Dette kan IKKE fortrydes.'
+    )) return
+    try {
+      await purgeProject(project.id)
+      setTrash((trash ?? []).filter(p => p.id !== project.id))
+    } catch (e) { setError(e.message) }
   }
 
   const onDeleteTemplate = async (tmpl) => {
@@ -794,6 +912,11 @@ export default function ProjectsPage() {
       onUseTemplate={useTemplate}
       onDeleteTemplate={onDeleteTemplate}
       isSignedIn={isSignedIn}
+      trash={trash ?? []}
+      trashLoading={trashLoading}
+      onOpenTrash={loadTrash}
+      onRestore={onRestore}
+      onPurge={onPurge}
     />
   )
 

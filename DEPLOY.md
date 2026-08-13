@@ -166,6 +166,49 @@ systemctl status nginx
 nginx -t
 ```
 
+## Backups And Recovery
+
+Three layers protect user data. The first two need no operator action.
+
+**Version history** — every save snapshots the previous state of the project
+into the `project_versions` table (one automatic snapshot per 15 minutes per
+project, 40 kept). Explicit snapshots — issued documents, pre-restore,
+pre-delete — are never pruned. Users reach these from 🕘 in the editor toolbar.
+
+**Trash** — deleting a project sets `deleted_at` instead of removing the row.
+Users restore from the Papirkurv tab. Purged automatically after 30 days.
+
+**Database backups** — a daemon thread writes one copy per day to
+`backups/projects-YYYY-MM-DD.db` next to the database, keeping 7. It uses
+SQLite's online backup API, so it is safe to run while the server is up.
+
+```bash
+ls -lh /var/data/backups/
+```
+
+Restore from a backup (stop the app first — never swap the file underneath a
+running server):
+
+```bash
+systemctl stop structuralcalc
+cp /var/data/projects.db /var/data/projects.db.before-restore
+cp /var/data/backups/projects-2026-08-10.db /var/data/projects.db
+systemctl start structuralcalc
+```
+
+Environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `BACKUP_KEEP_DAYS` | `7` | Daily copies retained. |
+| `DB_MAINTENANCE` | on | Set to `off` to disable the backup/trash-expiry thread. |
+
+Projects embed images as base64, so the database grows faster than the project
+count suggests. The backup is skipped (with a log line) if the volume does not
+have room for another copy plus headroom — a missed backup is recoverable, a
+full disk takes the app down. If you see that message, raise the disk size or
+lower `BACKUP_KEEP_DAYS`.
+
 ## Clerk Production Checklist
 
 Before going live:

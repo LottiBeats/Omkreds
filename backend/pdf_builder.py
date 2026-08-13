@@ -18,6 +18,7 @@ This module converts the v2 blocks into that format and calls generate_pdf_holst
 
 import base64
 import os
+import re as _re
 import tempfile
 from pathlib import Path
 
@@ -35,7 +36,7 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER
 
 def _heading(block: dict) -> list:
     level = block["data"].get("level", 1)
-    text  = block["data"].get("text", "")
+    text  = _pdf_text(block["data"].get("text", ""))
     if level == 1:
         return H1(text)          # H1() already returns a list — don't wrap it again
     else:
@@ -43,7 +44,7 @@ def _heading(block: dict) -> list:
 
 
 def _text(block: dict) -> list:
-    text = block["data"].get("text", "").strip()
+    text = _pdf_text(block["data"].get("text", "")).strip()
     if not text:
         return []
     return [T(text)]
@@ -345,6 +346,40 @@ _PDF_CHAR_MAP = str.maketrans(
 def _pdf(s) -> str:
     """Make a string safe for Helvetica-encoded PDF cells."""
     return str(s).translate(_PDF_CHAR_MAP)
+
+
+# Text and heading blocks take a different route than table cells: the story
+# renderer already turns `x_y` into a subscript and Latin-1 covers ° ² ³ × ·,
+# so those must be left alone.  What it does *not* handle is anything outside
+# Latin-1 — Greek letters, arrows, ≤ — which Helvetica drops silently.  A value
+# vanishing from an engineering document is the worst possible failure mode, so
+# map them to something readable instead.
+_TEXT_CHAR_MAP = {
+    ord('→'): '->', ord('←'): '<-', ord('↔'): '<->', ord('⇒'): '=>',
+    ord('≤'): '<=', ord('≥'): '>=', ord('≠'): '!=', ord('≈'): '~',
+    ord('√'): 'sqrt', ord('∑'): 'sum', ord('∆'): 'delta', ord('∞'): 'uendelig',
+    ord('‰'): 'promille',
+    # Greek — spelled out, the same convention the calculation blocks use
+    ord('α'): 'alpha', ord('β'): 'beta',  ord('γ'): 'gamma', ord('δ'): 'delta',
+    ord('ε'): 'epsilon', ord('ζ'): 'zeta', ord('η'): 'eta',  ord('θ'): 'theta',
+    ord('λ'): 'lambda', ord('μ'): 'my',   ord('ν'): 'ny',    ord('ξ'): 'xi',
+    ord('π'): 'pi',     ord('ρ'): 'rho',  ord('σ'): 'sigma', ord('τ'): 'tau',
+    ord('φ'): 'phi',    ord('χ'): 'chi',  ord('ψ'): 'psi',   ord('ω'): 'omega',
+    ord('Γ'): 'Gamma',  ord('Δ'): 'Delta', ord('Σ'): 'Sigma',
+    ord('Φ'): 'Phi',    ord('Ω'): 'Omega',
+}
+# Subscript/superscript digits become the markup the story renderer understands,
+# so they keep rendering as sub/superscripts rather than disappearing.
+for _i, _sub in enumerate('₀₁₂₃₄₅₆₇₈₉'):
+    _TEXT_CHAR_MAP[ord(_sub)] = f'_{_i}'
+for _i, _sup in enumerate('⁰¹²³⁴⁵⁶⁷⁸⁹'):
+    if _sup not in '¹²³':          # these three are Latin-1 and render as-is
+        _TEXT_CHAR_MAP[ord(_sup)] = f'^{_i}'
+
+
+def _pdf_text(s) -> str:
+    """Make prose safe for the PDF story renderer without flattening sub/superscripts."""
+    return str(s).translate(_TEXT_CHAR_MAP)
 
 
 # ── Editable table block ─────────────────────────────────────────────────────
@@ -825,6 +860,74 @@ def _convert_block(block: dict, tmp_files: list) -> list:
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
+# Official document names (BR18 §§ 494-505 / DS 1140).  Used for the header's
+# "Afsnit" field when a project predates per-document titles being stored.
+from doc_defs import DOC_DEFS as DOC_TITLES
+
+
+def _doclist_table(project: dict) -> dict:
+    """
+    Build the document list BR18 § 501 requires in B1, from the project itself.
+
+    Every DS 1140 document is listed — including the ones that have not been
+    issued yet, because "mangler" is exactly what the reader of a document list
+    needs to see. Revision, date and signatures come from each document's own
+    issue history, so the list cannot drift from what was actually handed over.
+    """
+    documents = project.get("documents") or {}
+    rows = [['Dok.', 'Titel', 'Rev.', 'Dato', 'Udarbejdet af', 'Kontrolleret af']]
+
+    for doc_id, default_title in DOC_TITLES.items():
+        doc = documents.get(doc_id) or {}
+        title = doc.get("title") or default_title
+        revisions = doc.get("revisions") or []
+
+        if revisions:
+            last = revisions[-1]
+            rows.append([
+                doc_id, title,
+                last.get("rev", ""), last.get("date", ""),
+                last.get("by", ""), last.get("checked", ""),
+            ])
+            continue
+
+        # Never issued — say whether there is anything in it yet at all
+        has_content = bool(doc.get("blocks")) or any(
+            sd.get("blocks") for sd in (doc.get("subdocs") or [])
+        )
+        rows.append([
+            doc_id, title, '—',
+            'Under udarbejdelse' if has_content else 'Ikke udarbejdet',
+            '', '',
+        ])
+
+    return {
+        "type": "table",
+        "data": {
+            "caption": "Dokumentliste — statisk dokumentation (BR18 § 501)",
+            "has_header": True,
+            "rows": rows,
+            "col_widths": [8, 40, 8, 20, 12, 12],
+        },
+    }
+
+
+def _expand_generated_blocks(blocks: list, project: dict) -> list:
+    """
+    Replace blocks that are generated from the project rather than authored.
+
+    Currently just `doclist`. These are expanded at render time, never stored,
+    so what is printed is always the current state.
+    """
+    out = []
+    for block in blocks:
+        if block.get("type") == "doclist":
+            out.append(_doclist_table(project))
+        else:
+            out.append(block)
+    return out
+
+
 def _flatten_project(project: dict, doc_id: str = "") -> dict:
     """
     holst_layout.py expects a flat dict with keys like "project", "ref",
@@ -832,22 +935,55 @@ def _flatten_project(project: dict, doc_id: str = "") -> dict:
     with slightly different names.  Map them here.
 
     doc_id is passed so the header can show e.g. "A2 – Statiske beregninger".
+
+    Revisions are per document, not per project: A2 and B1 are separate
+    deliverables and are revised independently, exactly like drawings.  Each
+    document therefore carries its own history in
+    project["documents"][doc_id]["revisions"].  Projects created before that
+    existed fall back to the project-level metadata fields.
     """
     meta = project.get("metadata", {})
+    doc  = (project.get("documents") or {}).get(doc_id) or {}
+
+    doc_revisions = list(doc.get("revisions") or [])
+    if doc_revisions:
+        current = doc_revisions[-1]
+        revision      = current.get("rev", "")
+        revision_desc = current.get("description", "")
+    else:
+        # Never issued (or a pre-issue project) — fall back to the manual fields
+        doc_revisions = list(meta.get("revisions") or [])
+        revision      = meta.get("revision", "A")
+        revision_desc = meta.get("revision_desc", "")
+
+    # The header's "Afsnit" field names the document, not the project — the
+    # project name is already on the line above it.
+    section = doc.get("title") or DOC_TITLES.get(doc_id, "")
+
+    # The date printed next to the signatures: the day the document was issued,
+    # falling back to the manually entered project date.
+    doc_date = ""
+    if doc_revisions:
+        doc_date = doc_revisions[-1].get("date", "")
+
     return {
         # Project info
         "project":       meta.get("project_name", ""),
         "ref":           meta.get("project_ref",  ""),
-        "title":         meta.get("project_name", ""),   # cover page title
-        "revision":      meta.get("revision",     "A"),
-        "revision_desc": meta.get("revision_desc",""),
+        # Cover: the project name is the headline, and the line under it says
+        # *which* document this is — repeating the project name there told the
+        # reader nothing.
+        "title":         f"{doc_id}  –  {section}" if (doc_id and section) else section,
+        "section":       section,                        # header "Afsnit" field
+        "revision":      revision,
+        "revision_desc": revision_desc,
         "client":        meta.get("client",       ""),
         "standard":      meta.get("standard",     ""),
         # Signatures
         "engineer":      meta.get("engineer",     ""),
         "checker":       meta.get("checker",      ""),
         "approver":      meta.get("approver",     ""),
-        "date":          meta.get("date",         ""),
+        "date":          doc_date or meta.get("date", ""),
         # Firm contact info (footer)
         "firm":          meta.get("firm_name",    ""),
         "address":       meta.get("firm_address", ""),
@@ -857,10 +993,19 @@ def _flatten_project(project: dict, doc_id: str = "") -> dict:
         # Document reference for header Afsnit field
         "doc_id":        doc_id,
         # Revision history list [{rev, date, description, by, checked}]
-        "revisions":     meta.get("revisions",    []),
-        # Cover image — populated by build_pdf() after decoding the b64 blob
+        "revisions":     doc_revisions,
+        # Cover image and firm logo — populated by build_pdf() after decoding
+        # the b64 blobs to temp files
         "cover_image_path": "",
+        "logo_path":        "",
     }
+
+
+# A heading that already opens with its own section number — "2.2.1 Konsekvens…"
+# — must not be numbered again.  The A1 template carries SBi-anvisning 271's
+# numbering, which is referenced from A2 and B1 and therefore cannot be
+# renumbered by the renderer.
+_ALREADY_NUMBERED = _re.compile(r'^\d+(\.\d+)*\.?\s')
 
 
 def _number_headings(blocks: list) -> list:
@@ -869,6 +1014,10 @@ def _number_headings(blocks: list) -> list:
     Level 1 → "1.  Title"
     Level 2 → "1.1  Title"
     Level 3 → "1.1.1  Title"
+
+    Headings that already carry a section number are left untouched, and they
+    stop the automatic counter from advancing — otherwise a document mixing the
+    two styles would produce two competing numbering schemes.
     """
     result = []
     counters = [0, 0, 0]   # level-1, level-2, level-3
@@ -878,6 +1027,10 @@ def _number_headings(blocks: list) -> list:
             level = block["data"].get("level", 1)
             text  = block["data"].get("text", "")
             idx   = level - 1  # 0, 1, or 2
+
+            if _ALREADY_NUMBERED.match(text.strip()):
+                result.append(block)
+                continue
 
             if idx < 3:
                 counters[idx] += 1
@@ -909,22 +1062,32 @@ def build_pdf(project: dict, blocks: list, doc_id: str = "") -> bytes:
     # holst_layout expects flat keys; v2 stores them nested under "metadata"
     flat_project = _flatten_project(project, doc_id=doc_id)
 
-    # Decode cover image (stored as base64 data URL in project metadata)
-    cover_b64 = (project.get("metadata") or {}).get("cover_image_b64", "")
-    if cover_b64:
+    # Decode cover image and firm logo (stored as base64 data URLs in metadata)
+    meta = project.get("metadata") or {}
+    for meta_key, flat_key in (
+        ("cover_image_b64", "cover_image_path"),
+        ("logo_b64",        "logo_path"),
+    ):
+        blob = meta.get(meta_key, "")
+        if not blob:
+            continue
         try:
-            header, data = cover_b64.split(",", 1)
+            header, data = blob.split(",", 1)
             ext = "jpg" if ("jpeg" in header or "jpg" in header) else "png"
             tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
             tmp.write(base64.b64decode(data))
             tmp.close()
             tmp_files.append(tmp.name)
-            flat_project["cover_image_path"] = tmp.name
+            flat_project[flat_key] = tmp.name
         except Exception:
-            pass   # silently ignore — cover page just won't have an image
+            pass   # silently ignore — the page just won't have that image
+
+    # Expand project-generated blocks (document list) before anything else, so
+    # they are numbered and rendered like any other content.
+    expanded_blocks = _expand_generated_blocks(blocks, project)
 
     # Pre-number headings so the TOC and body both show "1.", "1.1." etc.
-    numbered_blocks = _number_headings(blocks)
+    numbered_blocks = _number_headings(expanded_blocks)
 
     try:
         # Build the full list of calc_core blocks

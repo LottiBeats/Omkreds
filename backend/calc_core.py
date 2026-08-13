@@ -664,7 +664,7 @@ def build_story(all_blocks, styles):
         elif t == "toc":
             toc = TableOfContents()
             toc.levelStyles = [styles["toc_entry_0"], styles["toc_entry_1"], styles["toc_entry_2"]]
-            story.append(Paragraph("Contents", styles["toc_heading"]))
+            story.append(Paragraph("Indholdsfortegnelse", styles["toc_heading"]))
             story.append(Spacer(1, 2 * mm))
             story.append(toc)
             story.append(PageBreak())

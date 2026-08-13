@@ -71,7 +71,7 @@ const SECTIONS = [
     title: 'Firma',
     hint: 'Vises i PDF-sidefoden på alle sider',
     fields: [
-      { key: 'firm_name',    label: 'Firmanavn',     hint: 'Bruges også når der ikke er uploadet logo' },
+      { key: 'firm_name',    label: 'Firmanavn',     hint: 'Vises i sidehovedet når der ikke er uploadet logo' },
       { key: 'firm_address', label: 'Firmaadresse' },
       { key: 'phone',        label: 'Telefon',       hint: 'fx +45 12 34 56 78' },
       { key: 'email',        label: 'E-mail' },
@@ -83,8 +83,10 @@ const SECTIONS = [
 export default function MetadataPanel({ project, onSave }) {
   const [meta,        setMeta]        = useState(project.metadata)
   const fileInputRef  = useRef(null)
+  const logoInputRef  = useRef(null)
   const [dragOver,    setDragOver]    = useState(false)
   const [compressing, setCompressing] = useState(false)
+  const [logoBusy,    setLogoBusy]    = useState(false)
 
   useEffect(() => {
     setMeta(project.metadata)
@@ -124,6 +126,30 @@ export default function MetadataPanel({ project, onSave }) {
     onSave(updated)
   }
 
+  // ── Firm logo ──────────────────────────────────────────────────────────────
+  // Printed in the header cell on every page. Without one the header shows the
+  // firm name as text — the PDF never carries a stand-in logo, because signed
+  // documentation must not go out under someone else's mark.
+  async function handleLogoFile(file) {
+    if (!file || !file.type.startsWith('image/')) return
+    setLogoBusy(true)
+    try {
+      // The header cell is ~30 mm wide, so a small image is plenty.
+      const b64     = await compressImage(file, 600, 0.9)
+      const updated = { ...meta, logo_b64: b64 }
+      setMeta(updated)
+      onSave(updated)
+    } finally {
+      setLogoBusy(false)
+    }
+  }
+
+  function clearLogo() {
+    const updated = { ...meta, logo_b64: '' }
+    setMeta(updated)
+    onSave(updated)
+  }
+
   return (
     <div style={s.wrapper}>
       <div style={s.header}>
@@ -158,6 +184,45 @@ export default function MetadataPanel({ project, onSave }) {
           </div>
         </div>
       ))}
+
+      {/* ── Firm logo ───────────────────────────────────────────────────────── */}
+      <div style={s.section}>
+        <div style={s.sectionTitle}>Firmalogo</div>
+        <div style={s.sectionHint}>
+          Vises i sidehovedet på alle sider. Uden logo står firmanavnet i stedet.
+          Et bredt, liggende logo fungerer bedst i feltet.
+        </div>
+
+        {logoBusy ? (
+          <div style={{ ...s.logoZone, cursor: 'default' }}>Behandler…</div>
+        ) : meta.logo_b64 ? (
+          <div style={s.logoRow}>
+            <div style={s.logoFrame}>
+              <img src={meta.logo_b64} alt="Firmalogo" style={s.logoImg} />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button style={s.smallBtn} onClick={() => logoInputRef.current?.click()}>
+                Skift logo
+              </button>
+              <button style={{ ...s.smallBtn, color: '#b91c1c' }} onClick={clearLogo}>
+                Fjern
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={s.logoZone} onClick={() => logoInputRef.current?.click()}>
+            Klik for at uploade logo — PNG med transparens eller JPG
+          </div>
+        )}
+
+        <input
+          ref={logoInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={e => handleLogoFile(e.target.files[0])}
+        />
+      </div>
 
       {/* ── Cover image ─────────────────────────────────────────────────────── */}
       <div style={s.section}>
@@ -344,6 +409,35 @@ const s = {
     outline: 'none',
     color: '#1c1c1e',
     background: '#fff',
+  },
+  logoZone: {
+    border:     '1px dashed #d1d5db',
+    background: '#fafafa',
+    padding:    '18px 16px',
+    fontSize:   12,
+    color:      '#94a3b8',
+    textAlign:  'center',
+    cursor:     'pointer',
+  },
+  logoRow: {
+    display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+  },
+  logoFrame: {
+    border:     '1px solid #e5e7eb',
+    background: '#fff',
+    padding:    8,
+    // Mirrors the proportions of the PDF header's logo cell (~30 × 16 mm)
+    width:      150,
+    height:     80,
+    display:    'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoImg: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' },
+  smallBtn: {
+    background: '#fff', border: '1px solid #d1d5db', color: '#475569',
+    padding: '7px 14px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   dropZone: {
     border:         '2px dashed #d1d5db',

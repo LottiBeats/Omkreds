@@ -28,7 +28,7 @@ except ImportError:
 import tempfile
 import math
 import builtins as _builtins
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -134,10 +134,29 @@ except ImportError:
 
 # ── App setup ────────────────────────────────────────────────────────────────
 
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """
+    Start the daily database backup + trash expiry thread.
+
+    Disable with DB_MAINTENANCE=off (tests, one-off scripts).
+    """
+    if _os.environ.get("DB_MAINTENANCE", "").lower() not in {"off", "0", "false"}:
+        try:
+            _db.start_backup_scheduler()
+        except Exception as exc:
+            print(f"[startup] could not start db maintenance: {exc}")
+    yield
+
+
 app = FastAPI(
     title="Structural Calc API",
     version="2.0",
     description="REST API for the Structural Calc document / report tool.",
+    lifespan=_lifespan,
 )
 
 # CORS — allowed origins.
@@ -156,17 +175,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Danish structural documentation categories (BR18 / DS 1140)
-DOC_DEFS = {
-    "A1": "Konstruktionsgrundlag",
-    "A2": "Statiske beregninger",
-    "A3": "Konstruktionstegninger og modeller",
-    "A4": "Konstruktionsaendringer",
-    "A5": "Konstruktion som udfoert",
-    "B1": "Statisk projektredegoerelse",
-    "B2": "Statisk kontrolplan",
-    "B3": "Statisk kontrolrapport",
-}
+# Danish structural documentation categories (BR18 / DS 1140) — see doc_defs.py
+from doc_defs import DOC_DEFS
 
 VALID_VISIBILITIES = {"personal", "team"}
 
@@ -206,8 +216,8 @@ def _is_visible(item: dict, user: dict) -> bool:
     return vis == "team" or item.get("owner_id") == user["id"]
 
 
-def _visible_project(project_id: str, user: dict) -> dict:
-    project = _db.load_project(project_id)
+def _visible_project(project_id: str, user: dict, include_deleted: bool = False) -> dict:
+    project = _db.load_project(project_id, include_deleted=include_deleted)
     if not project or not _is_visible(project, user):
         raise HTTPException(status_code=404, detail="Project not found")
     return project
@@ -396,6 +406,11 @@ def save_project(project_id: str, project: dict, user: dict = Depends(get_curren
 
     The frontend sends the full project dict after any change -
     blocks added/removed, metadata updated, etc.
+
+    Concurrency: if the payload carries the `_rev` the client last saw, the save
+    is rejected with HTTP 409 when the stored project has moved on since — a
+    second tab or a colleague saved in between.  Clients that send no `_rev`
+    keep the old last-write-wins behaviour.
     """
     if project.get("id") != project_id:
         raise HTTPException(status_code=400, detail="Project ID mismatch")
@@ -406,16 +421,196 @@ def save_project(project_id: str, project: dict, user: dict = Depends(get_curren
     project["owner_email"] = existing.get("owner_email", project.get("owner_email", ""))
     project["visibility"] = _clean_visibility(project.get("visibility", existing.get("visibility")))
 
-    _db.save_project(project, user=user["id"])
-    return {"status": "saved"}
+    expected_rev = project.pop("_rev", None)
+    if not isinstance(expected_rev, int):
+        expected_rev = None
+
+    try:
+        new_rev = _db.save_project(project, user=user["id"], expected_rev=expected_rev)
+    except _db.ConflictError as conflict:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message":     "Projektet er ændret af en anden siden du åbnede det.",
+                "current_rev": conflict.current_rev,
+                "updated_at":  conflict.updated_at,
+                "updated_by":  conflict.updated_by,
+            },
+        )
+    return {"status": "saved", "_rev": new_rev, "_updated_at": project.get("_updated_at", "")}
 
 
 @protected.delete("/projects/{project_id}", tags=["Projects"])
 def delete_project(project_id: str, user: dict = Depends(get_current_user)):
-    """Permanently delete a visible project."""
+    """Move a visible project to the trash (recoverable for 30 days)."""
     _visible_project(project_id, user)
-    _db.delete_project(project_id)
-    return {"status": "deleted"}
+    _db.delete_project(project_id, user=user["id"])
+    return {"status": "deleted", "recoverable": True}
+
+
+# ── Trash ─────────────────────────────────────────────────────────────────────
+
+@protected.get("/trash", tags=["Projects"])
+def list_trash(user: dict = Depends(get_current_user)):
+    """Return this user's soft-deleted projects, newest deletion first."""
+    return _db.load_deleted_projects(user_id=user["id"])
+
+
+@protected.post("/trash/{project_id}/restore", tags=["Projects"])
+def restore_from_trash(project_id: str, user: dict = Depends(get_current_user)):
+    """Bring a project back out of the trash."""
+    _visible_project(project_id, user, include_deleted=True)
+    if not _db.restore_deleted_project(project_id):
+        raise HTTPException(status_code=404, detail="Project is not in the trash")
+    return _db.load_project(project_id)
+
+
+@protected.delete("/trash/{project_id}", tags=["Projects"])
+def purge_from_trash(project_id: str, user: dict = Depends(get_current_user)):
+    """Permanently delete a trashed project and its history. Irreversible."""
+    project = _visible_project(project_id, user, include_deleted=True)
+    if not project.get("_deleted_at"):
+        raise HTTPException(
+            status_code=400,
+            detail="Project must be moved to the trash before it can be purged",
+        )
+    _db.purge_project(project_id)
+    return {"status": "purged"}
+
+
+# ── Issuing documents ─────────────────────────────────────────────────────────
+
+@protected.post("/projects/{project_id}/issue/{doc_id}", tags=["Versions"])
+def issue_document(
+    project_id: str,
+    doc_id: str,
+    body: dict = Body(default={}),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Record that a document was issued at a given revision.
+
+    Appends a row to that document's revision history — the table printed on
+    the PDF cover page — and takes a permanent snapshot of the whole project.
+    Together those give the traceability a checking engineer asks for: every
+    line in the revision table can be resolved back to the exact project state
+    that produced it.
+
+    Revisions are per document (A2 rev B is unrelated to B1 rev A), matching
+    how the documents are delivered and revised in practice.
+
+    Body: { revision, description, override_reason? }
+    """
+    project = _visible_project(project_id, user)
+
+    doc = (project.get("documents") or {}).get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found")
+
+    revision = (body.get("revision") or "").strip()[:8]
+    if not revision:
+        raise HTTPException(status_code=400, detail="Revision is required")
+    description = (body.get("description") or "").strip()[:200]
+    if not description:
+        raise HTTPException(status_code=400, detail="Revision description is required")
+    override_reason = (body.get("override_reason") or "").strip()[:200]
+
+    meta  = project.get("metadata") or {}
+    today = str(date.today())
+    entry = {
+        "rev":         revision,
+        "date":        today,
+        "description": description,
+        "by":          meta.get("engineer", ""),
+        "checked":     meta.get("checker",  ""),
+        # Provenance — not printed in the table, but part of the record
+        "issued_at":   datetime.now(timezone.utc).isoformat(),
+        "issued_by":   user.get("email") or user["id"],
+    }
+    if override_reason:
+        entry["override_reason"] = override_reason
+
+    revisions = list(doc.get("revisions") or [])
+    # Re-issuing the same revision replaces its row rather than duplicating it:
+    # a revision letter identifies one issue, and two rows for "B" would make
+    # the table lie about which one the reader is holding.
+    revisions = [r for r in revisions if r.get("rev") != revision]
+    revisions.append(entry)
+    doc["revisions"] = revisions
+
+    _db.save_project(project, user=user["id"])
+
+    label = f"{doc_id} rev {revision} — {description}"
+    version_id = _db.create_version(
+        project_id, kind=_db.KIND_ISSUE, label=label[:120], user=user["id"]
+    )
+
+    return {"status": "issued", "revision": entry, "version_id": version_id}
+
+
+# ── Version history ───────────────────────────────────────────────────────────
+
+@protected.get("/projects/{project_id}/versions", tags=["Versions"])
+def list_project_versions(project_id: str, user: dict = Depends(get_current_user)):
+    """Version history for a project, newest first (metadata only, no blobs)."""
+    _visible_project(project_id, user, include_deleted=True)
+    return _db.list_versions(project_id)
+
+
+@protected.post("/projects/{project_id}/versions", tags=["Versions"])
+def create_project_version(
+    project_id: str,
+    body: dict = Body(default={}),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Snapshot the project's current state under a label.
+
+    Used by "Gem version" and, automatically, when a document is issued.
+    Explicit snapshots are never pruned.
+    """
+    _visible_project(project_id, user)
+    kind  = body.get("kind") or _db.KIND_MANUAL
+    if kind not in {_db.KIND_MANUAL, _db.KIND_ISSUE}:
+        kind = _db.KIND_MANUAL
+    label = (body.get("label") or "").strip()[:120]
+    vid = _db.create_version(project_id, kind=kind, label=label, user=user["id"])
+    if vid is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"status": "created", "version_id": vid}
+
+
+@protected.get("/projects/{project_id}/versions/{version_id}", tags=["Versions"])
+def get_project_version(
+    project_id: str,
+    version_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Load one snapshot in full — for previewing before restoring."""
+    _visible_project(project_id, user, include_deleted=True)
+    snapshot = _db.load_version(project_id, version_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return snapshot
+
+
+@protected.post("/projects/{project_id}/versions/{version_id}/restore", tags=["Versions"])
+def restore_project_version(
+    project_id: str,
+    version_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Roll the project back to an earlier snapshot.
+
+    The state being replaced is snapshotted first, so a restore is itself
+    undoable.  Returns the restored project.
+    """
+    _visible_project(project_id, user)
+    restored = _db.restore_version(project_id, version_id, user=user["id"])
+    if restored is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return restored
 
 
 # ── PDF generation ────────────────────────────────────────────────────────────

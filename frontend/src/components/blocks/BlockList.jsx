@@ -14,6 +14,7 @@ import { maxUtilization, utilColor } from '../CalcResultView.jsx'
 
 import HeadingBlock      from './HeadingBlock.jsx'
 import TableBlock        from './TableBlock.jsx'
+import DocListBlock      from './DocListBlock.jsx'
 import TextBlock         from './TextBlock.jsx'
 import ImageBlock        from './ImageBlock.jsx'
 import PythonBlock       from './PythonBlock.jsx'
@@ -58,6 +59,10 @@ const BLOCK_TYPES = [
     default: { image_b64: null, caption: '', width_pct: 100 } },
   { type: 'table',         label: 'Tabel',             icon: 'TBL', color: '#64748b', component: TableBlock,
     default: { caption: '', has_header: true, rows: [['Kolonne 1', 'Kolonne 2'], ['', '']] } },
+  // Read-only: content comes from the project, so there is no editor component
+  // and no palette entry — it arrives with the B1 template.
+  { type: 'doclist',       label: 'Dokumentliste',     icon: 'DOC', color: '#64748b', component: null,
+    default: {} },
   { type: 'custom_calc',   label: 'Egen beregning',    icon: 'CLC', color: '#7c3aed', component: CustomCalcBlock,
     default: { title: 'Custom Calculation', items: [], _result: null } },
   { type: 'python_calc',   label: 'Python script',     icon: 'PY',  color: '#0284c7', component: PythonBlock,
@@ -308,9 +313,13 @@ const staleBadgeStyle = {
 
 // ── Block preview (rendered document content) ─────────────────────────────────
 
-function BlockPreview({ block }) {
+function BlockPreview({ block, project }) {
   const d = block.data
   switch (block.type) {
+
+    // Generated from the project, not authored — see DocListBlock.jsx
+    case 'doclist':
+      return <DocListBlock data={d} project={project} />
 
     case 'heading': {
       const sz = { 1: 26, 2: 20, 3: 16 }[d.level] || 18
@@ -626,7 +635,7 @@ function AddZone({ onAdd, templates = [], onAddTemplate, clipboard, onPaste }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock }) {
+export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock, project }) {
   const [selectedId,  setSelectedId]  = useState(null)
   // IDs of selected blocks where the editor is collapsed (preview only, blue border)
   const [minimised,   setMinimised]   = useState(() => new Set())
@@ -936,7 +945,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
                   ) : (
                     <>
                       {/* Preview is always shown for non-inline blocks */}
-                      <BlockPreview block={block} />
+                      <BlockPreview block={block} project={project} />
 
                       {/* Editor — only when selected AND not minimised */}
                       {showEditor && (

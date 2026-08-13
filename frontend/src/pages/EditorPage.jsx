@@ -7,7 +7,12 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProject, saveProject, generatePdf, generatePdfZip, generateWord, getCalcTemplates, saveProjectAsTemplate } from '../api/client.js'
+import { getProject, saveProject, generatePdf, generatePdfZip, generateWord, getCalcTemplates, saveProjectAsTemplate, createVersion, issueDocument } from '../api/client.js'
+import VersionHistoryModal from '../components/VersionHistoryModal.jsx'
+import IssueDocumentModal from '../components/IssueDocumentModal.jsx'
+import A1OptionsModal from '../components/A1OptionsModal.jsx'
+import { makeA1Template } from '../templates/a1.js'
+import { makeB1Template } from '../templates/b1.js'
 import BlockList, { isStaleResult, hasCalcResult } from '../components/blocks/BlockList.jsx'
 import MetadataPanel        from '../components/MetadataPanel.jsx'
 import TemplateEditorModal  from '../components/TemplateEditorModal.jsx'
@@ -26,482 +31,7 @@ const DOC_DEFS = {
 
 // ── Document templates ────────────────────────────────────────────────────────
 
-function makeA1Template() {
-  let id = Date.now()
-  return [
-    { id: id++, type: 'heading', data: { level: 1, text: 'A1 Konstruktionsgrundlag' } },
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 1. KONSTRUKTIONSAFSNIT
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: '1. Konstruktionsafsnit' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '1.1 Bygvaerkets art og anvendelse' } },
-    { id: id++, type: 'text', data: { text: 'Naervaerende statiske dokumentation vedroerer [nybyggeri / tilbygning / ombygning] af [bygningstype, fx etageboliger / kontorhus / hotel] beliggende [adresse], matr. [matrikelnummer].\n\nBygherren er: ...\nSags. nr.: ...\n\nBygningen er [antal] etager [med / uden] kaelder. Det samlede bebyggede areal er ca. ... m2 og det samlede etageareal er ca. ... m2.\n\n[Beskriv bygningens opdeling i konstruktionsafsnit og hvilke dele der er omfattet af naervaerende dokumentation. Indsaet oversigtstegning som billede.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '1.2 Konstruktioners art og opbygning' } },
-    { id: id++, type: 'text', data: { text: 'Bygningens primaere baerende system er opbygget som [beskriv konstruktionsprincip, fx: CLT-daek baaret af limtraebjaelker og lette traeskeletvagge / in-situ betondaek med stalsojler og betonkerner / etc.].\n\nLodrette laster: daek -> bjaelker -> soejler/vaegge -> fundament -> undergrund\nVandret stabilisering: [skiver / rammer / kryds / kerne]\n\n[Beskriv spaendretning for daek, udkragninger, saerlige konstruktive forhold. Indsaet opstalt/snit som billede.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '1.3 Konstruktionsafsnit' } },
-    { id: id++, type: 'text', data: { text: 'Opbygningen foelger SBI-anvisning 271, 3. udgave. Naervaerende dokumentation omhandler konstruktionsafsnit markeret med fed nedenfor.' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 1.1 — Oversigt over konstruktionsafsnit',
-      has_header: true,
-      rows: [
-        ['Afsnit nr.', 'Afsnit', 'CC / KK', 'Ansvarlig'],
-        ['A2.1', '[fx CLT konstruktioner]', 'CC2/KK2', '[Firma]'],
-        ['A2.2', '[fx Traeskeletvagge]', 'CC2/KK2', 'Leverandoer'],
-        ['A2.3', '[fx In-situ konstruktioner / Beton]', 'CC2/KK2', '[Firma]'],
-        ['A2.4', '[fx Stalkonstruktioner]', 'CC2/KK2', '[Firma]'],
-        ['A2.5', '[fx Trapper og raekvark]', 'CC2/KK2', 'Leverandoer'],
-        ['A2.6', '[fx Terrændaek og fundering]', 'CC2/KK2', '[Firma]'],
-      ]
-    }},
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 2. GRUNDLAG
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: '2. Grundlag' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '2.1 Normer og standarder' } },
-    { id: id++, type: 'text', data: { text: 'Projektet er udarbejdet iht. Bygningsreglementet 2018 (BR18) og er i overensstemmelse med SBi-anvisning 271, 3. udgave. Slet de raekker der ikke er relevante for dette projekt.' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 2.1 — Gaeldende normer og standarder',
-      has_header: true,
-      rows: [
-        ['Standard', 'Titel', 'DK NA udgave'],
-        ['BR18', 'Bygningsreglementet', '2018 inkl. aendringer'],
-        ['DS/INF 1990', 'Vejledning til konsekvensklasser (Tabel 2)', '2024'],
-        ['DS 1140', 'Dokumentation og kontrol af baerende konstruktioner', '2014'],
-        ['DS/EN 1990', 'Projekteringsgrundlag (EC0)', 'DK NA:2024'],
-        ['DS/EN 1991-1-1', 'Nyttelaster pa bygninger (EC1)', 'DK NA:2024'],
-        ['DS/EN 1991-1-2', 'Brandlast (EC1)', 'DK NA:2014'],
-        ['DS/EN 1991-1-3', 'Snelaster (EC1)', 'DK NA:2015 ver.2'],
-        ['DS/EN 1991-1-4', 'Vindlaster (EC1)', 'DK NA:2015'],
-        ['DS/EN 1991-1-5', 'Termiske laster (EC1)', 'DK NA:2012'],
-        ['DS/EN 1991-1-7', 'Ulykkeslast (EC1)', 'DK NA:2013'],
-        ['DS/EN 1992-1-1', 'Betonkonstruktioner (EC2)', 'DK NA:2021'],
-        ['DS/EN 1992-1-2', 'Beton — brandteknisk dimensionering (EC2)', 'DK NA:2011'],
-        ['DS/EN 1993-1-1', 'Stalkonstruktioner (EC3)', 'DK NA:2019'],
-        ['DS/EN 1993-1-8', 'Stalsamlinger (EC3)', 'DK NA:2019'],
-        ['DS/EN 1995-1-1', 'Traekonstruktioner (EC5)', 'DK NA:2019'],
-        ['DS/EN 1995-1-2', 'Trae — brandteknisk dimensionering (EC5)', 'DK NA:2007'],
-        ['DS/EN 1996-1-1', 'Murvaerkskonstruktioner (EC6)', 'DK NA:2019'],
-        ['DS/EN 1997-1', 'Geoteknisk projektering (EC7)', 'DK NA:2021'],
-        ['DS/EN 1997-2', 'Geoteknik — jordbundsundersoegelser (EC7)', 'DK NA:2013'],
-      ]
-    }},
-
-    // ── 2.2 Konsekvensklasser ────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: '2.2 Konsekvensklasser og konstruktionsklasser' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '2.2.1 Konsekvensklasse — DS/INF 1990:2024 Tabel 2' } },
-    { id: id++, type: 'text', data: { text: 'Konstruktioner henfoeres til konsekvensklasse iht. DS/INF 1990:2024 Tabel 2 (vejledende graensevaerdier). Tabellen angiver maksimalt tilladt konstruktionsspaendvidde [m], hojde over/under terraen [m] jf. Figur 1, og etageantal over terraen for CC1, CC2 og CC3.\n\nDS/INF 1990 er en vejledning — en teknisk-faglig vurdering laegges altid til grund for indplaceringen.\nSymboler: + = ingen begraensning for dette kriterium   * = ingen ovre graense   0 = klassen er ikke opnaaeleg for dette kriterium\nHojde angives som "over terraen / under terraen" (Htop / Ho jf. Figur 1 i DS/INF 1990:2024)' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 2.2 — Vejledende graensevaerdier for konsekvensklasse (DS/INF 1990:2024, Tabel 2)',
-      has_header: true,
-      highlighted: [],
-      // Nr 3.5% | Bygn.anvend. 35% | Spandv.×3 6.5% each | Hojde×3 9% each | Etager×3 5% each = 100%
-      col_widths: [3.5, 35, 6.5, 6.5, 6.5, 9, 9, 9, 5, 5, 5],
-      rows: [
-        ['Nr.', 'Bygningsanvendelse', 'Spandv.\nCC1 [m]', 'Spandv.\nCC2 [m]', 'Spandv.\nCC3 [m]', 'Hojde CC1\no.t./u.t. [m]', 'Hojde CC2\no.t./u.t. [m]', 'Hojde CC3\no.t./u.t. [m]', 'Etager\nCC1', 'Etager\nCC2', 'Etager\nCC3'],
-        ['1',  'Laengere ophold: beboelse, kontor, hotel, feriehus, dag-/doegninstitution, undervisning, klinik', '+', '16', '*', '0 / 0', '12 / 6', '+ / 9', '+', '5',  '15'],
-        ['2',  'Hospital', '+', '16', '*', '0 / 0', '+ / 6', '+ / 9', '+', '2',  '5'],
-        ['3',  'Forsamling <=150 pers. (koncert, sport, kirke, udstilling, teater, scene, detailhandel, spisested)', '+', '16', '36', '0 / 0', '12 / 6', '20 / 9', '+', '2', '5'],
-        ['4',  'Forsamling >150 pers. (koncert, sport, kirke, udstilling, teater, scene, detailhandel, spisested)', '+', '12', '24', '0 / 0', '6 / 0',  '20 / 6', '+', '1', '2'],
-        ['5',  'Forsamling, tribuner >150 pers.', '0', '8',  '12', '0 / 0', '8 / 6',  '16 / 9', '+', '+',  '+'],
-        ['6',  'Forsamling, overdaekning af udendoerstribuner og -scener (>150 pers.)', '0', '12', '24', '0 / +', '16 / +', '20 / +', '+', '+',  '+'],
-        ['7',  'Industri — sundhedsskadelige kemikalier (saerligt store konsekvenser)', '+', '0',  '0',  '0 / 0', '0 / 0',  '0 / 0',  '+', '+',  '+'],
-        ['8',  'Industri — forurenende produktion, arkiver af samfundsmaessig bet. (meget store konsekvenser)', '+', '0', '40', '0 / 0', '0 / 0', '12 / 6', '+', '+', '3'],
-        ['9',  'Industri — kraftvarme, visse typer vareproduktion (andre betydelige konsekvenser)', '+', '40', '*', '0 / 0', '12 / 6', '20 / 9', '+', '+',  '5'],
-        ['10', 'Industri/lager med fa personer: landbrug, vaeksthuse, siloanlæg', '40', '*', '*', '20 / 3', '30 / 6', '50 / 9', '+', '+',  '+'],
-        ['11', 'Dyrehold med arbejdspladser', '20', '40', '*', '12 / 3', '16 / 6', '* / 9',  '+', '+',  '+'],
-        ['12', 'Parkeringsanlaeg', '6',  '18', '*', '+ / 0', '20 / 6', '+ / 9',  '1', '6',  '15'],
-        ['13', 'Master og skorstene (abent ubeboet landskab)', '+',  '+',  '+', '50 / +', '200 / +', '* / *', '+', '+',  '+'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Projektets bygningsanvendelse: Raekke [nr.] — [beskrivelse]\nStorste konstruktionsspaendvidde: ... m\nBygningshojde: ... m over terraen (Htop) / ... m under terraen (Ho)\nAntal etager over terraen: ...\n\nValgt konsekvensklasse: CC[1/2/3]\nPaalidelighedsklasse: RC[1/2/3]\n\nTeknisk-faglig vurdering og begrundelse:\n[Beskriv hvordan bygningens anvendelse, konstruktionsspaendvidde, hojde og etageantal placerer den i den valgte CC-klasse med reference til DS/INF 1990:2024 Tabel 2. DS/INF 1990 er vejledende — afvigelse fra tabellen skal begrundes her.]' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 2.2a — KFI-faktorer pr. konsekvensklasse (DS/EN 1990 DK NA:2024)',
-      has_header: true,
-      highlighted: [],
-      rows: [
-        ['Konsekvensklasse', 'Paalidelighedsklasse', 'KFI — STR/GEO (6.10a/b)', 'KFI — EQU', 'KFI — Geoteknisk'],
-        ['CC1', 'RC1', '0,9', '1,0', '1,0'],
-        ['CC2', 'RC2', '1,0', '1,0', '1,0'],
-        ['CC3', 'RC3', '1,1', '1,1', '1,1'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'OBS: KFI for CC1 = 0,9 kun for STR/GEO lasttilfaelde (brudgraense, styrke og stabilitet). For EQU (ligevaegt) og geotekniske konstruktioner galder KFI = 1,0 ogsaa ved CC1 (DK NA:2024 Tabel A1.2 note).\n\nValgt KFI-faktor for dette projekt (STR/GEO): [0,9 / 1,0 / 1,1]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '2.2.2 Konstruktionsklasse — DS 1140:2014 og BR18' } },
-    { id: id++, type: 'text', data: { text: 'Konstruktioner henfoeres til konstruktionsklasse KK[2] iht. BR18.\n\nHovedreglen: KK-klassen foelger CC-klassen direkte (CC1->KK1, CC2->KK2, CC3->KK3).\n\nUndtagelse — BR18 §489 (CC3-bygning kan placeres i KK2 naar alle tre krav er opfyldt):\n  1. Simpel og traditionel ombygning/forandring af eksisterende enkel konstruktion\n  2. Etagebyggeri til laengere ophold (beboelse, kontor, hotel, dag-/doegninstitution)\n  3. Hojst 6 etager over terraen OG spaendvidde pa hojst 8 m\n\nValgt konstruktionsklasse: KK[2]\nBegrundelse: ...' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 2.3 — Krav pr. konstruktionsklasse (DS 1140:2014 + BR18)',
-      has_header: true,
-      highlighted: [],
-      rows: [
-        ['Klasse', 'CC', 'Projekteringskontrol', 'Udforelseskontrol', 'Dokumentation'],
-        ['KK1', 'CC1', 'Egenkontrol af projekterende', 'Egenkontrol af udforende', 'Ingen saerlige krav'],
-        ['KK2', 'CC2', 'Uafhaengig kontrol: A1 skal kontrolleres af anden person. Beregninger og tegninger kontrolleres af person der ikke har udfort den paagaeldende del. Internt i samme firma er OK.', 'Egenkontrol + systematisk stikproevekontrol af udforende', 'Kontrolplan B2 + kontrolrapport B3'],
-        ['KK3', 'CC3', 'Ekstern uvildig kontrol af alt projektmateriale — kraever eksternt firma', 'Udvidet ekstern uvildig udforelseskontrol', 'B2 + B3 + tredjepartsgodkendelse af projektgrundlag'],
-        ['KK4', 'Saerlig', 'Saerlig kontrol — aftales individuelt med bygningsmyndighed', 'Saerlig kontrol — aftales individuelt', 'Individuel aftale med bygningsmyndighed'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Naermere om KK2-kontrolkrav (DS 1140:2014 Tabel B4b, Note 2):\n- Konstruktionsgrundlag A1: Krav om uafhaengig kontrol (anden person end den der har udarbejdet den paagaeldende del).\n- Statiske beregninger A2 og tegninger A3: Kontrolleres af person der ikke har udfort netop den paagaeldende delberegning eller tegning — internt firma er tilstraekkeligt.\n- Kontrollen dokumenteres i B2 (kontrolplan) og B3 (kontrolrapport).' } },
-
-    // ── 2.3 Sikkerhed ────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: '2.3 Sikkerhed' } },
-    { id: id++, type: 'text', data: { text: 'Bygningen henfoeres til foelgende sikkerhedsklasser:\n  Konsekvensklasse:          CC[2]\n  Konstruktionsklasse:       KK[2]\n  Paalidelighedsklasse:      RC[2]\n  KFI-faktor (STR/GEO):      [1,0]   (se Tabel 2.2a for CC-afhaengighed)\n  KFI-faktor (EQU/geoteknik): 1,0    (galder uafhaengigt af CC iht. DK NA:2024)\n  Geoteknisk kategori:       GK[2]\n  Brandklasse (BR18):        BK[2]' } },
-
-    // ── 2.4 IKT-vaerktoejer ──────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: '2.4 IKT-vaerktojer' } },
-    { id: id++, type: 'text', data: { text: 'Foelgende software er anvendt i projekteringen:\n  [Beregningsprogram, fx Tekla Tedds / Robot Structural Analysis / RFEM / FEM-Design]\n  Microsoft Office 365 — Word / Excel\n  [BIM-program, fx Revit / Archicad]\n  [Evt. specialsoftware]' } },
-
-    // ── 2.5 Referencer ───────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 3, text: '2.5 Referencer' } },
-    { id: id++, type: 'text', data: { text: '[1] Bygningsreglement BR18, seneste udgave\n[2] SBi-anvisning 271, 3. udgave — Dokumentation og kontrol af baerende konstruktioner\n[3] DS/INF 1990:2024 — Vejledning til konsekvensklasser\n[4] [Geoteknisk rapport, firma, rapport nr., dato]\n[5] [Arkitekttegninger, tegningsliste, revisioner]\n[6] [Evt. andre referencer]' } },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 3. FORUNDERSOEGELSER
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: '3. Forundersoegelser' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '3.1 Grunden og lokale forhold' } },
-    { id: id++, type: 'text', data: { text: '[Beskriv grundens beskaffenhed, terrain, afvandingsforhold og lokale paavirkninger. Alternativt: Ikke relevant for denne dokumentation.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '3.2 Geotekniske forhold' } },
-    { id: id++, type: 'text', data: { text: 'Geoteknisk kategori: GK[2] (DS/EN 1997-1)\n\nFunderingsforhold (fra geoteknisk rapport [ref.]):\n  Baeredygtig jordbundsydelse: sigma = ... kN/m2\n  Fundamentskote (underkant): +... m DVR90 (ca. ... m under terraen)\n  Frostfridybde: 0,9 m (DK NA til DS/EN 1997-1)\n  Grundvandskote: +... m DVR90\n\nJordparametre (karakteristiske vaerdier):\n  Friktionsvinkel: phi_k = ... grader\n  Kohaesion: c_k = ... kPa\n  Effektiv rumvaegt: gamma_k = ... kN/m3' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '3.3 Klima- og miljoetekniske forhold' } },
-    { id: id++, type: 'text', data: { text: '[Beskriv relevante klima- og miljoetekniske paavirkninger, fx aggressivt miljo, kysteksponering, hoj luftfugtighed, forurenet jord. Alternativt: Ikke relevant for denne dokumentation.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '3.4 Eksisterende konstruktioner' } },
-    { id: id++, type: 'text', data: { text: '[Beskriv eksisterende konstruktioner der er relevante for projektet. Alternativt: Ikke relevant for denne dokumentation.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '3.5 Tilstodende eksisterende bygvaerker' } },
-    { id: id++, type: 'text', data: { text: '[Beskriv evt. nabobyggeriers indflydelse (saetninger, vibrationer, graevning). Alternativt: Ikke relevant for denne dokumentation.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '3.6 Tilstodende pataenkte bygvaerker' } },
-    { id: id++, type: 'text', data: { text: '[Beskriv fremtidige planlagte byggerier i naerheden. Alternativt: Ikke relevant for denne dokumentation.]' } },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 4. KONSTRUKTIONER
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: '4. Konstruktioner' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.1 Statisk virkemaade' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.1.1 Lodret lastnedfoering' } },
-    { id: id++, type: 'text', data: { text: '[Beskriv lastvej for lodrette laster. Eksempel:\n"De lodrette laster fra egenlast, nyttelast og naturlaster paavirker daekkene som en fladelast, der fordeles til baerende elementer. CLT-daekkene fungerer som stive plader der fordeler fladelasterne til understotningerne, hvor lasterne omdannes til linjelaster/punktlaster og oeverfoeres til soejler/vaegge, fundament og undergrund."\n\nIndsaet evt. snit- eller skemasketegning som billede.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.1.2 Vandret lastfoering' } },
-    { id: id++, type: 'text', data: { text: '[Beskriv stabiliseringssystemet. Eksempel:\n"Bygningens stabiliserende hovedsystem udfoeres som lette traevagge og CLT-vaegge der virker som skiver. Daekkene fungerer som stive plader der fordeler vandrette kraefter til stabiliseringselementerne."\n\nBeskriv hvilke vaegge/kerner der stabiliserer i x- og y-retning.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.2 Anvendelseskrav' } },
-    { id: id++, type: 'text', data: { text: 'Der stilles krav til udbojning (SLS):\n  Daek og bjaelker generelt: L/300 for karakteristiske lastkombinationer\n  Daek med skroebelig belaegning (fliser, terrazzo): L/400\n  Tagelementer: L/200\n\n[Tilpas efter projektets krav og aftale med bygherre. Angiv evt. absolutte vaerdier for nedbojning i mm.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.3 Komfortkrav' } },
-    { id: id++, type: 'text', data: { text: 'Der stilles krav til vibrationskomfort for etagedaek iht. DS/EN 1990 DK NA:2024 Tabel A1.4. Kravene angiver minimumsegenfrekvens og maksimal RMS-acceleration for behagelighed.' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 4.1 — Krav til vibrationskomfort for etagedaek (DS/EN 1990 DK NA:2024, Tabel A1.4)',
-      has_header: true,
-      highlighted: [],
-      rows: [
-        ['Konstruktionstype / rum', 'Min. egenfrekvens f1 [Hz]', 'Maks. RMS-acceleration a_rms [% g]', 'a_rms ca. [m/s2]'],
-        ['Tribuner med fikserede saeder',   '3,4', '5,0', '~0,49'],
-        ['Boliger og hotelvaerelser',        '8,0', '0,5', '~0,049'],
-        ['Kontorlokaler',                   '4,0', '1,0', '~0,098'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Egenfrekvens og acceleration kontrolleres for den dominerende fodgangerfrekvens (typisk 2 Hz lodrette trin) iht. bilag til DS/EN 1990.\n\nValgt anvendelse: [fx Kontorer] — krav: f1 >= [4,0] Hz og a_rms <= [1,0] % g\nBeregnede vaerdier kontrolleres i A2.' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.4 Funktionskrav' } },
-    { id: id++, type: 'text', data: { text: 'Byggeriet gennemfoeres iht. bestemmelserne i BR18 og gaeldende normer.\n[Beskriv saerlige funktionskrav — akustik, vandtaethed, brandadskillelsesvagge, adskillelse fra installationer, etc.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.5 Robusthed' } },
-    { id: id++, type: 'text', data: { text: 'Konstruktionernes robusthed vurderes iht. DS/EN 1990 + DS/EN 1991-1-7. Minimumskrav for mekaniske forbindelser til sikring mod progrederende kollaps:' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 4.2 — Minimumskrav til robusthed (punkt- og linjelast)',
-      has_header: true,
-      rows: [
-        ['Etageantal', 'Punktlast [kN]', 'Linjelast [kN/m]'],
-        ['1-2 etager', '10 (20)', '2 (4)'],
-        ['3-5 etager', '20', '4'],
-        ['6-10 etager', '40', '8'],
-        ['11-15 etager', '60', '12'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Vaerdier i parentes gaelder ved CC2 med mere end 2 etager.' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.6 Levetid' } },
-    { id: id++, type: 'text', data: { text: 'Bygvaerket henfoeres til kategori 4 iht. DS/EN 1990 Tabel 2.1 — Almindelige konstruktioner med en vejledende forventet levetid pa 50 aar.\n[Kategori 5 (100 aar) ved monumentale bygninger, broer og anlaegskonstruktioner]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.7 Brand' } },
-    { id: id++, type: 'text', data: { text: 'Brandklasse (BR18 §29): BK[2]\n\nBrandtekniske krav til baerende konstruktioner:\n  Dak, saerste etage: R[60]\n  Dak, stueetage: R[60] A2-s1,d0\n  [Tilpas efter brandklasse og konstruktionstype]\n\n[Brandteknisk dokumentation udarbejdes saerskilt / er ikke en del af denne A1]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.8 Udforelse' } },
-    { id: id++, type: 'text', data: { text: 'Alle maal og koter er vejledende og skal kontrolleres paa stedet inden udforelse.\n\nEventuel midlertidig afstivning hoerer til den arbejdsudforende i fuld udstraekning, inkl. evt. udarbejdelse af midlertidigt afstivningsprojekt.\n\nDer regnes med god byggeskik og faglart arbejder paa byggepladsen. Det anbefales at der udfoeres tilsyn og kvalitetssikring med alle byggeriets faser.\n\n[Saerlige udforelseskrav — tolerancer, udstobningsraekkoelge, harde- og hviletider for beton, krav til montage af praefab elementer, etc.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '4.9 Drift og vedligehold' } },
-    { id: id++, type: 'text', data: { text: '[Beskriv saerlige krav til drift og vedligehold, fx inspektion af expasionsbolte, vedligehold af overfladebehandling paa stalkonstruktioner, kontrol af taedaekningens taethed. Alternativt: Ikke relevant for denne dokumentation.]' } },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 5. KONSTRUKTIONSMATERIALER
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: '5. Konstruktionsmaterialer' } },
-    { id: id++, type: 'text', data: { text: 'Nedenstaaende karakteristiske materialeegenskaber laegges til grund for dimensioneringen. Slet de afsnit der ikke er relevante for dette projekt.' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '5.1 Grund og jord' } },
-    { id: id++, type: 'text', data: { text: '[Se afsnit 3.2 Geotekniske forhold. Alternativt: Ikke relevant.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '5.2 Beton' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 5.1 — Karakteristiske betonstyrker (DS/EN 1992-1-1)',
-      has_header: true,
-      rows: [
-        ['Klasse', 'fck [MPa]', 'fctm [MPa]', 'Ecm [GPa]', 'Rumvaegt [kN/m3]', 'Anvendelse i projektet'],
-        ['C20/25', '20', '2,2', '30', '25', ''],
-        ['C25/30', '25', '2,6', '31', '25', ''],
-        ['C30/37', '30', '2,9', '33', '25', ''],
-        ['C35/45', '35', '3,2', '34', '25', ''],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Armering: B500 NOR (duktilitetsklasse N), fyk = 500 MPa, Es = 200 GPa\nBetondaekningstykkelse: c_nom = [25 / 30 / 35] mm (afhaengig af eksponeringsklasse)\nEksponeringsklasse: XC[1/2/3/4]\nPartialkoefficienter: gamma_C = 1,50 (beton), gamma_S = 1,15 (armering)' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '5.3 Staal' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 5.2 — Karakteristiske staalstyrker (DS/EN 1993-1-1)',
-      has_header: true,
-      rows: [
-        ['Kvalitet', 'Tykkelse t [mm]', 'fy [MPa]', 'fu [MPa]', 'E [GPa]', 'Rumvaegt [kN/m3]'],
-        ['S235', 't <= 40',      '235', '360', '210', '78,5'],
-        ['S235', '40 < t <= 80', '215', '360', '210', '78,5'],
-        ['S355', 't <= 40',      '355', '510', '210', '78,5'],
-        ['S355', '40 < t <= 80', '335', '470', '210', '78,5'],
-        ['S420', 't <= 40',      '420', '520', '210', '78,5'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Partialkoefficienter: gamma_M0 = 1,00 (flydning), gamma_M1 = 1,00 (instabilitet), gamma_M2 = 1,25 (brud/forbindelser)\nUdforelsesklasse (EXC): EXC[2] iht. DS/EN 1090-1 (CC2, SC1, PC2)' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '5.4 Murvaerk' } },
-    { id: id++, type: 'text', data: { text: '[Ikke relevant — slet dette afsnit]\n\nAlternativt:\nMurstenskvalitet: MU[20/30/50] iht. DS/EN 771-1\nMortel: M[5/10/15] iht. DS/EN 998-2\nPartialkoefficient: gamma_M = [2,3 / 2,5 / 3,0] afhaengig af mortelkategori' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '5.5 Trae' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 5.3 — Anvendelsesklasser for traekonstruktioner (DS/EN 1995-1-1)',
-      has_header: true,
-      rows: [
-        ['Klasse', 'Beskrivelse', 'Eksempler'],
-        ['1', 'Fugtindhold svarende til 20 grader C / 65% relativ luftfugtighed (aret rundt)', 'Opvarmede bygninger: boliger, kontorer, butikker'],
-        ['2', 'Fugtindhold svarende til 20 grader C / 80% relativ luftfugtighed (aret rundt)', 'Ventilerede, ikke-permanent opvarmede bygninger. Fritidshuse, garager, lagre. Ventilerede tagkonstruktioner beskyttet mod nedbor'],
-        ['3', 'Klimaforhold der kan fore til hojere fugtindhold end klasse 2', 'Konstruktioner udsat for nedbor eller vand. Underlag for tagpaptage'],
-      ]
-    }},
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 5.4 — Lastvarighed (DS/EN 1995-1-1)',
-      has_header: true,
-      rows: [
-        ['Lastgruppe', 'Kode', 'Varighed', 'Eksempler'],
-        ['Permanent',   'P', 'Mere end 10 aar',        'Egenlast'],
-        ['Langtidslast','L', '6 maaneder til 10 aar',  'Oplagret gods'],
-        ['Mellemlang',  'M', '1 uge til 6 maaneder',   'Variable laster, snelast'],
-        ['Korttidslast','K', 'Mindre end 1 uge',        'Snelast, vindlast'],
-        ['Ojebliksslig','O', 'Ojeblikkeig',             'Ulykkeslast, vindlast'],
-      ]
-    }},
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 5.5 — Modifikationsfaktor kmod og kdef (DS/EN 1995-1-1 Tabel 3.1 + 3.2)',
-      has_header: true,
-      rows: [
-        ['Materiale', 'Anv.kl.', 'kmod Permanent', 'kmod Langtid', 'kmod Mellemlang', 'kmod Korttid', 'kmod Ojeblikslig', 'kdef'],
-        ['Konstruktionstrae / Limtrae / LVL', '1', '0,60', '0,70', '0,80', '0,90', '1,10', '0,60'],
-        ['Konstruktionstrae / Limtrae / LVL', '2', '0,60', '0,70', '0,80', '0,90', '1,10', '0,80'],
-        ['Konstruktionstrae / Limtrae / LVL', '3', '0,40', '0,55', '0,65', '0,70', '0,90', '2,00'],
-      ]
-    }},
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 5.6 — Materialekvaliteter og karakteristiske vaerdier',
-      has_header: true,
-      rows: [
-        ['Konstruktionsdel', 'Anv. klasse', 'Styrkeklasse', 'fm,k [MPa]', 'fc,0,k [MPa]', 'E0,mean [MPa]', 'Rumvaegt [kN/m3]'],
-        ['Traeskeletvagge — indvendige', '1', 'Min. C18 (iht. leverandoer)', '18', '18', '9.000', '380'],
-        ['Traeskeletvagge — udvendige',  '3', 'GL24c', '24', '21,5', '11.000', '420'],
-        ['Bjaelker (limtrae) — indvendig','1', 'GL24c', '24', '21,5', '11.000', '365'],
-        ['Bjaelker (limtrae) — udvendig', '3', 'GL24c', '24', '21,5', '11.000', '365'],
-        ['CLT — tagdaek',     '1', 'CL24', '24', '21', '11.000', '420'],
-        ['CLT — etagedaek',   '1', 'CL24', '24', '21', '11.000', '420'],
-        ['CLT — vagge',       '1', 'CL24', '24', '21', '11.000', '420'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Partialkoefficienter (ULS, vedvarende og midlertidige tilstande):\n  Limtrae, LVL og pladematerialer: gamma_M = 1,30 x gamma_3\n  Konstruktionstrae:               gamma_M = 1,35 x gamma_3\n  Forbindelser (dornforbindelser): gamma_M = 1,35 x gamma_3\n  Forbindelser (limede bolte):     gamma_M = 1,50 x gamma_3\n\n  Saerpet kontrolklasse (KK3): gamma_3 = 0,95\n  Normal kontrolklasse (KK2):  gamma_3 = 1,00\n  Lempet kontrolklasse (KK1):  gamma_3 = 1,10\n\nFugtindhold ved levering:\n  Konstruktionstrae: max. 15% +/- 2%\n  CLT og limtrae: max. 12% +/- 2%' } },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 6. LASTER
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: '6. Laster' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '6.1 Lastkombinationer og lasttilfaelde' } },
-    { id: id++, type: 'text', data: { text: 'Dimensionering udfoeres i brudgraensetilstand (ULS) og anvendelsesgraensetilstand (SLS) iht. DS/EN 1990 DK NA:2024.\n\nLAK 1: Anvendelsesgraensetilstand\nHaandteres under den enkelte bygningsdel med udgangspunkt i de opsummerede karakteristiske laster.\n\nLAK 2: Brudgraensetilstand (STR)\n  LAK 2.1 — Nyttelast dominerende:\n    KFI x (Gsup + 1,5 x (Qprim + psiQ,0 x Qsek + psiS,0 x S + psiV,0 x V))\n\n  LAK 2.2 — Snelast dominerende:\n    KFI x (Gsup + 1,5 x (psiQ,0 x Q + S + psiV,0 x V))\n\n  LAK 2.3 — Vindlast dominerende:\n    KFI x (Gsup + 1,5 x (psiQ,0 x Q + V))\n\n  LAK 2.4 — Vindlast dominerende (opvaeltning):\n    0,9 x Ginf + 1,5 x KFI x V\n\n  LAK 2.5 — Egenlast dominerende:\n    1,2 x KFI x Gsup\n\nLAK 3: Ulykkesgraensetilstand (brand)\n  LAK 3.1 — Nyttelast primaar:   Gsup + psiQ,1 x Q\n  LAK 3.2 — Snelast primaar:     Gsup + psiQ,2 x Q + psiS,1 x S\n  LAK 3.3 — Vindlast primaar:    Gsup + psiQ,2 x Q + psiV,1 x V\n\nOBS: I tilfaelde af afvigelse fra ovenstaande noteres dette ved den enkelte lastnedfoering.\nKonsekvensklasse CC2: KFI = 1,0' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 6.1 — ULS lastsikkerhedsfaktorer (DS/EN 1990 DK NA:2024, Tabel A1.2(B), STR/GEO)',
-      has_header: true,
-      col_widths: [8, 52, 10, 10, 12, 8],
-      rows: [
-        ['Formel', 'Udtryk', 'gamma_G,sup', 'gamma_G,inf', 'gamma_Q,1', 'xi (DK NA)'],
-        ['6.10a', 'gamma_G,sup x KFI x Gk + sum(gamma_Q,i x KFI x psi0,i x Qk,i)', '1,35', '1,00', '1,50 x psi0,i', '--'],
-        ['6.10b', 'xi x gamma_G,sup x KFI x Gk + gamma_Q,1 x KFI x Qk,1 + sum(gamma_Q,i x KFI x psi0,i x Qk,i)', '1,35', '1,00', '1,50', '0,89'],
-        ['EQU',   'gamma_G,sup x Gk + gamma_Q,1 x psi0,1 x Qk,1', '1,05', '0,95', '1,50 x psi0,1', '--'],
-        ['GEO',   'Som STR 6.10a/b med geotekniske partialkoefficienter', '1,35', '1,00', '1,50', '0,89'],
-      ]
-    }},
-
-    { id: id++, type: 'heading', data: { level: 3, text: '6.2 Permanente laster' } },
-    { id: id++, type: 'text', data: { text: 'Egenlaster fremgaar generelt af tvaersnittets geometri og nedenstaaende materialevaegte (DS/EN 1991-1-1 Annex A).' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 6.2 — Materialevaegte (DS/EN 1991-1-1 Annex A)',
-      has_header: true,
-      rows: [
-        ['Materiale / konstruktionselement', 'Rumvaegt / fladel.', 'Enhed'],
-        ['Armeret beton (in-situ)', '25,0', 'kN/m3'],
-        ['Uarmeret beton', '24,0', 'kN/m3'],
-        ['Konstruktionsstaal', '78,5', 'kN/m3'],
-        ['Konstruktionstrae C24 (gran/fyr)', '4,2', 'kN/m3'],
-        ['Limtrae GL24c/GL28h', '4,5', 'kN/m3'],
-        ['CLT CL24', '4,2', 'kN/m3'],
-        ['Murvaerk, massivt tegl', '18,0-22,0', 'kN/m3'],
-        ['Gipsplader 13 mm', '0,10', 'kN/m2'],
-        ['Tagsten, beton', '0,50', 'kN/m2'],
-        ['Tagsten, tegl', '0,60', 'kN/m2'],
-        ['Tagpap + 200 mm isolering', '0,15-0,25', 'kN/m2'],
-        ['Terrazzo/flisegulv 20 mm + mortel', '0,60-1,00', 'kN/m2'],
-      ]
-    }},
-
-    { id: id++, type: 'heading', data: { level: 3, text: '6.3 Nyttelast' } },
-    { id: id++, type: 'text', data: { text: 'Nyttelaster fastsaettes iht. DS/EN 1991-1-1 DK NA:2024. Nedenstaaende tabel angiver projektets valgte nyttelaster med psi-faktorer.' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 6.3 — Projektets nyttelaster (lodrette flade- og punktlaster)',
-      has_header: true,
-      rows: [
-        ['Betegnelse', 'Beskrivelse / rum', 'Kat.', 'qk [kN/m2]', 'Qk [kN]', 'psi0', 'psi1 (brand)', 'psi2 (ulykke)'],
-        ['Q01', '[fx Hotelvaerelser / boliger]', 'A', '1,5', '2', '0,5', '0,3', '0,2'],
-        ['Q02', '[fx Altaner]', 'A', '2,5', '2', '0,5', '0,3', '0,2'],
-        ['Q03', '[fx Loftsrum]', 'A', '1,0', '0,5', '0,5', '0,3', '0,2'],
-        ['Q04', '[fx Administration / kontorer]', 'B', '2,5', '2,5', '0,6', '0,4', '0,2'],
-        ['Q05', '[fx Lounge, trapper, gaenge, faelles]', 'C', '5,0', '4', '0,6', '0,6', '0,5'],
-        ['Q06', '[fx Tag — ikke tilgaengeligt]', 'H', '0,5', '1,0', '0', '0', '0'],
-      ]
-    }},
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 6.4 — psi-faktorer for variable laster (DS/EN 1990 DK NA:2024, Tabel A1.1)',
-      has_header: true,
-      highlighted: [],
-      col_widths: [28, 52, 7, 7, 6],
-      rows: [
-        ['Lasttype', 'Lastkategori / anvendelse', 'psi0', 'psi1', 'psi2'],
-        ['Nyttelast — Kat. A', 'Boliger og boligformaal', '0,5', '0,3', '0,2'],
-        ['Nyttelast — Kat. B', 'Kontor og administrationsarealer', '0,6', '0,4', '0,2'],
-        ['Nyttelast — Kat. C1-C4', 'Forsamlingslokaler, biografer, kirker, museer, restauranter', '0,6', '0,6', '0,5'],
-        ['Nyttelast — Kat. C5', 'Forsamlingslokaler med risiko for traengsel (stadioner, koncerter)', '0,8', '0,7', '0,6'],
-        ['Nyttelast — Kat. D', 'Butikker og forretningsarealer', '0,6', '0,6', '0,5'],
-        ['Nyttelast — Kat. E', 'Lagerbygninger', '0,8', '0,8', '0,7'],
-        ['Nyttelast — Kat. F', 'Trafiklast <= 30 kN (lette koeretoejer, parkering)', '0,6', '0,6', '0,5'],
-        ['Nyttelast — Kat. G', 'Trafiklast 30-160 kN (tunge koeretoejer)', '0,6', '0,5', '0,3'],
-        ['Nyttelast — Kat. H', 'Tage (ikke tilgaengelige)', '0', '0', '0'],
-        ['Snelast (DK)', 'Kombineret med andre variable laster (prim/sek)', '0,3', '0,2', '0'],
-        ['Snelast (DK)', 'Kombineret med vindlast som primaaer', '0', '—', '—'],
-        ['Vindlast (DK)', 'Kombineret med andre variable laster', '0,3', '0,2', '0'],
-        ['Temperaturlast (DK)', 'Termiske deformationer (ikke brand)', '0,6', '0,5', '0'],
-      ]
-    }},
-
-    { id: id++, type: 'heading', data: { level: 3, text: '6.4 Naturlaster' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '6.4.1 Snelast' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 6.5 — Snelastzoner i Danmark (DS/EN 1991-1-3 DK NA, Figur DK.1)',
-      has_header: true,
-      rows: [
-        ['Zone', 'sk [kN/m2]', 'Geografisk daekkning'],
-        ['1', '0,9', 'Sjaelland, Fyn, Lolland-Falster og de fleste oeer'],
-        ['2', '1,0', 'Det meste af Jylland (ost og centrale dele)'],
-        ['3', '1,1', 'Vest- og nordvestjylland'],
-        ['4', '1,5', 'Bornholm og hojt beliggende lokaliteter'],
-      ]
-    }},
-    { id: id++, type: 'text', data: { text: 'Grundet tagets udformning:\n  Snezone: Zone [1/2/3/4]   sk = ... kN/m2\n  Tagtype: [ensidig / tosidig / fladt]   Haeldning: alpha = ... grader\n  Formfaktor: my1 = ... (fra DK NA Figur DK.3)\n  Karakteristisk tagsnelast: s = my1 x Ce x Ct x sk = ... kN/m2\n\n[Beskriv evt. saerlige snelastforhold — snestriber, trug, etc.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '6.4.2 Vindlast' } },
-    { id: id++, type: 'text', data: { text: 'Vindlast beregnes iht. DS/EN 1991-1-4 DK NA:2024.\n\n  Referencebasisvindhastighed: vb,0 = 24 m/s\n  Terrankategori: [0 / I / II / III / IV]   (0=hav, II=normal, IV=taet bybebyggelse)\n  Referencehojde: zref = ... m\n  Karakteristisk vindhastighedstryk: qp = ... kN/m2\n\nFormfaktorer og vindtryk fremgaar af A2. [Henvis evt. til bilag.]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '6.5 Geometriske imperfektioner' } },
-    { id: id++, type: 'text', data: { text: '[Ikke relevant — slet / Alternativt: beskriv indledende kraengning phi_0 og reduktionsfaktor alpha_h iht. DS/EN 1993-1-1 §5.3 (staal) eller DS/EN 1992-1-1 §5.2 (beton)]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '6.6 Ulykkeslaster' } },
-    { id: id++, type: 'text', data: { text: 'Uidentificerede ulykkeslaster (robusthed) er gennemgaaet i afsnit 4.5.\nKonstruktioner med krav om brandbaerevne undersoeges i ulykkesgraensetilstand (LAK 3).\n\nPaakorsels-/eksplosionslast: [Ikke relevant / Ad = ... kN ved parkering og gennemkorsel]' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '6.7 Seismisk last' } },
-    { id: id++, type: 'text', data: { text: 'Ikke relevant — seismisk hazard er negligibel i Danmark.' } },
-
-    { id: id++, type: 'heading', data: { level: 3, text: '6.8 Midlertidige laster' } },
-    { id: id++, type: 'text', data: { text: '[Ikke relevant — slet / Alternativt: beskriv udforelseslaster iht. DS/EN 1991-1-6, fx last fra stilladser, kraner, stoebning af overliggende etage]' } },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // REFERENCEDOKUMENTER
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Referencedokumenter' } },
-    { id: id++, type: 'table', data: {
-      caption: 'Tabel 7.1 — Projektdokumenter og referencer',
-      has_header: true,
-      rows: [
-        ['Dok. nr.', 'Titel', 'Udstedt af', 'Dato / Rev.'],
-        ['A1', 'Konstruktionsgrundlag (dette dokument)', '', ''],
-        ['A2', 'Statiske beregninger', '', ''],
-        ['A3', 'Konstruktionstegninger', '', ''],
-        ['B1', 'Statisk projektredegørelse', '', ''],
-        ['B2', 'Statisk kontrolplan', '', ''],
-        ['B3', 'Statisk kontrolrapport', '', ''],
-        ['GEO-01', 'Geoteknisk rapport', '', ''],
-        ['ARK-01', 'Arkitekttegninger', '', ''],
-      ]
-    }},
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // GODKENDELSE
-    // ─────────────────────────────────────────────────────────────────────────
-    { id: id++, type: 'heading', data: { level: 2, text: 'Godkendelse' } },
-    { id: id++, type: 'text', data: { text: 'Konstruktionsgrundlaget (A1) er udarbejdet og kontrolleret iht. DS 1140 og giver grundlag for de statiske beregninger (A2).\n\nUdarbejdet af:   ___________________________   Dato: ____________\n                Navn, titel\n\nKontrolleret af: ___________________________   Dato: ____________\n                Navn, titel (uvildig kontrollant, KK2)\n\nGodkendt af:    ___________________________   Dato: ____________\n                Navn, stilling' } },
-  ]
-}
-
-function makeB1Template() {
-  let id = Date.now()
-  return [
-    { id: id++, type: 'heading', data: { level: 1, text: 'Statisk projektredegørelse' } },
-
-    { id: id++, type: 'heading', data: { level: 2, text: 'Projekt- og konstruktionstype' } },
-    { id: id++, type: 'text',    data: { text: 'Projektets betegnelse: …\nBygherre: …\nAdresse/matrikel: …\nKonstruktionstype: Nybyggeri / Ombygning / Tilbygning\nAnvendelse: Beboelse / Erhverv / Industri / Offentlig' } },
-
-    { id: id++, type: 'heading', data: { level: 2, text: 'Konstruktivt system' } },
-    { id: id++, type: 'text',    data: { text: 'Overordnet beskrivelse af det konstruktive system:\n• Bærende elementer (bjælker, søjler, dæk, vægge)\n• Primær bærende retning\n• Spændvidder og etageantal\n• Principper for lastaflastning' } },
-
-    { id: id++, type: 'heading', data: { level: 2, text: 'Fundering' } },
-    { id: id++, type: 'text',    data: { text: 'Funderingsprincip: Direkte / Pælfundering\nFundamenteringskote: +… m DVR90\nFundamenttype: Punktfundamenter / Stribefundamenter / Pladefundament\nBæredygtig jordbundsydelse: σ = … kN/m²' } },
-
-    { id: id++, type: 'heading', data: { level: 2, text: 'Stabilisering' } },
-    { id: id++, type: 'text',    data: { text: 'Vandret stabilisering: Skiver / Rammer / Kerner / Kryds\nLodrette laster: Bærende vægge / Søjlesystem\nTværvæggenes placering og funktion beskrives.' } },
-
-    { id: id++, type: 'heading', data: { level: 2, text: 'Konsekvensklasse og kontrolklasse' } },
-    { id: id++, type: 'text',    data: { text: 'Konsekvensklasse (DS/EN 1990 + DS 1140): CC… (KK1 / KK2 / KK3 / KK4)\nSikkerhedsklasse (DS 409): SK…\nKontrolklasse: Normal / Udvidet / Særlig\n\nBegrundelse for klassevalg:\n…' } },
-
-    { id: id++, type: 'heading', data: { level: 2, text: 'Projektmaterialets omfang' } },
-    { id: id++, type: 'text',    data: { text: 'Det statiske projektmateriale består af:\n• A1: Konstruktionsgrundlag\n• A2: Statiske beregninger\n• A3: Konstruktionstegninger og modeller\n• A4: Konstruktionsændringer\n• A5: Konstruktion som udført\n• B2: Statisk kontrolplan\n• B3: Statisk kontrolrapport' } },
-
-    { id: id++, type: 'heading', data: { level: 2, text: 'Særlige konstruktive forhold og forudsætninger' } },
-    { id: id++, type: 'text',    data: { text: 'Angiv eventuelle særlige forudsætninger, begrænsninger eller opmærksomhedspunkter:\n…' } },
-  ]
-}
 
 // ── A2: Portal frame ──────────────────────────────────────────────────────────
 function makePortalFrameTemplate() {
@@ -1305,8 +835,11 @@ const DOC_TEMPLATES = {
   A1: [
     {
       label:       'Konstruktionsgrundlag',
-      description: 'Projektbeskrivelse · Normer · CC-klasse · Laster · Materialer · Geoteknik',
-      make:        makeA1Template,
+      description: 'Tilpasses projektet — bygningsanvendelse, materialer og CC-klasse',
+      // A1 is generated from a description of the project rather than emitted
+      // whole; `needsOptions` makes the editor ask before applying it.
+      needsOptions: 'a1',
+      make:        (opts, metadata) => makeA1Template(opts, metadata),
     },
   ],
   A2: [
@@ -1360,8 +893,10 @@ const DOC_TEMPLATES = {
   B1: [
     {
       label:       'Statisk projektredegørelse',
-      description: 'Konstruktivt system · Fundering · Stabilisering · Konsekvensklasse · Projektomfang',
-      make:        makeB1Template,
+      description: 'Samme projektbeskrivelse som A1 · levende dokumentliste (BR18 § 501)',
+      // Shares A1's answers so the two documents cannot state different classes
+      needsOptions: 'a1',
+      make:        (opts, metadata) => makeB1Template(opts, metadata),
     },
   ],
   B2: [
@@ -1608,6 +1143,69 @@ const styles = {
     borderLeft: '3px solid #dc2626',
   },
 
+  // ── Save conflict ───────────────────────────────────────────────────────────
+  conflictOverlay: {
+    position:       'fixed',
+    inset:          0,
+    background:     'rgba(0,0,0,0.55)',
+    zIndex:         2400,
+    display:        'flex',
+    alignItems:     'center',
+    justifyContent: 'center',
+  },
+  conflictModal: {
+    width:      'min(520px, 92vw)',
+    background: '#fff',
+    padding:    '22px 24px 18px',
+    boxShadow:  '0 24px 80px rgba(0,0,0,0.35)',
+    borderTop:  `3px solid ${BRAND}`,
+  },
+  conflictTitle: {
+    fontSize:   15,
+    fontWeight: 700,
+    color:      '#1c1c1e',
+    marginBottom: 10,
+  },
+  conflictBody: {
+    fontSize:   12.5,
+    lineHeight: 1.6,
+    color:      '#475569',
+    margin:     '0 0 18px',
+  },
+  conflictActions: {
+    display:  'flex',
+    gap:      8,
+    flexWrap: 'wrap',
+  },
+  conflictPrimary: {
+    background:    BRAND,
+    color:         '#fff',
+    border:        'none',
+    padding:       '9px 16px',
+    fontSize:      11,
+    fontWeight:    700,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    cursor:        'pointer',
+    fontFamily:    'inherit',
+  },
+  conflictGhost: {
+    background: '#fff',
+    color:      '#475569',
+    border:     '1px solid #d1d5db',
+    padding:    '9px 14px',
+    fontSize:   11,
+    fontWeight: 600,
+    cursor:     'pointer',
+    fontFamily: 'inherit',
+  },
+  conflictNote: {
+    fontSize:   11,
+    color:      '#94a3b8',
+    lineHeight: 1.5,
+    margin:     '16px 0 0',
+  },
+
   // ── PDF preview modal ───────────────────────────────────────────────────────
   pdfOverlay: {
     position:       'fixed',
@@ -1695,6 +1293,15 @@ export default function EditorPage() {
   const tplRef         = useRef(null)
   const subdocInputRef = useRef(null)
   const autoSaveTimer  = useRef(null)  // debounce handle for block saves
+  const revRef         = useRef(null)  // server revision we last saw
+  const saveQueue      = useRef(Promise.resolve())  // serialises writes
+  const conflictRef    = useRef(false) // writes frozen while a conflict is open
+  const [conflict,     setConflict]     = useState(null)  // unresolved save conflict
+  const [historyOpen,  setHistoryOpen]  = useState(false)
+  const [issueOpen,    setIssueOpen]    = useState(false)
+  const [issuing,      setIssuing]      = useState(false)
+  // Template awaiting its options dialog (currently only A1)
+  const [pendingTemplate, setPendingTemplate] = useState(null)
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -1719,6 +1326,7 @@ export default function EditorPage() {
       for (const [docId, title] of Object.entries(DOC_DEFS)) {
         if (!docs[docId]) docs[docId] = { title, blocks: [], subdocs: [] }
       }
+      revRef.current = typeof data._rev === 'number' ? data._rev : null
       setProject({ ...data, documents: docs })
     } catch (err) {
       setError(err.message)
@@ -1738,20 +1346,58 @@ export default function EditorPage() {
   }
 
   /**
+   * Persist a project to the backend — the single write path for the editor.
+   *
+   * Two things every caller gets for free:
+   *
+   *   Serialised writes.  Saves are chained, so two in-flight requests can
+   *   never reach the server out of order (which would look like a conflict
+   *   against ourselves and could resurrect older content).
+   *
+   *   Revision tracking.  We send the rev we last saw and store the rev the
+   *   server hands back.  If somebody else saved in between, the backend
+   *   answers 409 and we stop writing until the user has chosen what to keep —
+   *   rather than silently overwriting their work.
+   */
+  const persist = useCallback((updatedProject, { silent = false } = {}) => {
+    const run = async () => {
+      if (conflictRef.current) return { ok: false, conflict: true }
+      try {
+        setSaving(true)
+        const payload = revRef.current == null
+          ? updatedProject
+          : { ...updatedProject, _rev: revRef.current }
+        const res = await saveProject(payload)
+        if (typeof res?._rev === 'number') revRef.current = res._rev
+        return { ok: true }
+      } catch (err) {
+        if (err?.status === 409) {
+          conflictRef.current = true
+          setConflict({
+            updatedBy: err.detail?.updated_by || '',
+            updatedAt: err.detail?.updated_at || '',
+            local:     updatedProject,
+          })
+          return { ok: false, conflict: true, error: err }
+        }
+        if (!silent) setError(err.message)
+        return { ok: false, error: err }
+      } finally {
+        setSaving(false)
+      }
+    }
+    saveQueue.current = saveQueue.current.then(run, run)
+    return saveQueue.current
+  }, [])
+
+  /**
    * Save the full project to the backend.
    */
-  const save = useCallback(async (updatedProject) => {
+  const save = useCallback((updatedProject) => {
     // Optimistic update first — state is correct immediately, no overwrite race
     setProject(updatedProject)
-    try {
-      setSaving(true)
-      await saveProject(updatedProject)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSaving(false)
-    }
-  }, [])
+    return persist(updatedProject)
+  }, [persist])
 
   /** Read the currently active blocks (parent doc OR active subdoc) */
   function _currentBlocks(p = project) {
@@ -1784,12 +1430,7 @@ export default function EditorPage() {
     setProject(updated)
     // Debounce the API save — one request per typing pause, not per keystroke
     clearTimeout(autoSaveTimer.current)
-    autoSaveTimer.current = setTimeout(() => {
-      setSaving(true)
-      saveProject(updated)
-        .catch(err => setError(err.message))
-        .finally(() => setSaving(false))
-    }, 800)
+    autoSaveTimer.current = setTimeout(() => persist(updated), 800)
   }
 
   /** Called by BlockList when blocks change — pushes to undo stack */
@@ -1832,10 +1473,10 @@ export default function EditorPage() {
       setCanUndo(undoStack.current.length > 0)
       setCanRedo(true)
       const updated = _writeBlocks(p, prev)
-      saveProject(updated).catch(() => {})
+      persist(updated)
       return updated
     })
-  }, [activeDoc, activeSubdoc])
+  }, [activeDoc, activeSubdoc, persist])
 
   const handleRedo = useCallback(() => {
     if (redoStack.current.length === 0) return
@@ -1847,10 +1488,10 @@ export default function EditorPage() {
       setCanUndo(true)
       setCanRedo(redoStack.current.length > 0)
       const updated = _writeBlocks(p, next)
-      saveProject(updated).catch(() => {})
+      persist(updated)
       return updated
     })
-  }, [activeDoc, activeSubdoc])
+  }, [activeDoc, activeSubdoc, persist])
 
   // Reset undo/redo stacks when switching documents or sub-documents
   useEffect(() => {
@@ -1871,6 +1512,57 @@ export default function EditorPage() {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [handleUndo, handleRedo])
+
+  // ── Save conflict resolution ───────────────────────────────────────────────
+  // Reached when somebody else (or another tab) saved the project while this
+  // editor had it open.  Writes stay frozen until the user picks a side — the
+  // one thing we must never do is guess.
+
+  /** Discard our unsaved changes and load the version that is on the server. */
+  async function resolveConflictReload() {
+    conflictRef.current = false
+    setConflict(null)
+    await loadProject()
+    setError('Projektet er genindlæst med den nyeste version fra serveren.')
+  }
+
+  /** Keep our version. The other version is snapshotted first, never lost. */
+  async function resolveConflictOverwrite() {
+    const local = conflict?.local ?? project
+    try {
+      setSaving(true)
+      // Snapshot what is currently on the server, so their work is recoverable
+      // from the version history even though we are about to replace it.
+      await createVersion(projectId, 'Før overskrivning', 'manual')
+      const server = await getProject(projectId)
+      revRef.current = typeof server._rev === 'number' ? server._rev : null
+      conflictRef.current = false
+      setConflict(null)
+      setProject(local)
+      const res = await persist(local)
+      if (res?.ok) {
+        setError('✓ Dine ændringer er gemt. Den anden version ligger i versionshistorikken.')
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /** Escape hatch: keep a local copy on disk before deciding anything. */
+  function downloadLocalCopy() {
+    const local = conflict?.local ?? project
+    if (!local) return
+    const blob = new Blob([JSON.stringify(local, null, 2)], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    const name = (local.metadata?.project_name || 'projekt').replace(/[^\wæøåÆØÅ-]+/g, '_')
+    a.href = url
+    a.download = `${name}-lokal-kopi.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   /** Called by MetadataPanel when any metadata field is committed */
   function updateMeta(newMeta) {
@@ -2021,30 +1713,31 @@ export default function EditorPage() {
     clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = null
     if (!project) return true
-    setSaving(true)
+
+    const res = await persist(project, { silent: true })
+    if (res?.ok) return true
+    if (res?.conflict) return false   // the conflict dialog now owns the decision
+
+    const msg = res?.error?.message ?? ''
+    const is413 = res?.error?.status === 413 ||
+                  msg.includes('413') || msg.toLowerCase().includes('too large')
+    if (!is413) {
+      console.warn('Pre-export save failed:', msg)
+      setError(msg)
+      return false
+    }
+    // 413: recompress every image in the project and retry
+    console.warn('Project too large — recompressing images and retrying save…')
     try {
-      await saveProject(project)
+      const compressed = await _recompressProjectImages(project)
+      const retry = await persist(compressed, { silent: true })
+      if (!retry?.ok) throw retry?.error ?? new Error('save failed')
+      // Update React state so future saves also use compressed images
+      setProject(compressed)
       return true
-    } catch (err) {
-      const is413 = err.message.includes('413') || err.message.toLowerCase().includes('too large')
-      if (!is413) {
-        console.warn('Pre-export save failed:', err.message)
-        return false
-      }
-      // 413: recompress every image in the project and retry
-      console.warn('Project too large — recompressing images and retrying save…')
-      try {
-        const compressed = await _recompressProjectImages(project)
-        await saveProject(compressed)
-        // Update React state so future saves also use compressed images
-        setProject(compressed)
-        return true
-      } catch (err2) {
-        console.warn('Recompressed save also failed — proceeding with DB state:', err2.message)
-        return false
-      }
-    } finally {
-      setSaving(false)
+    } catch (err2) {
+      console.warn('Recompressed save also failed — proceeding with DB state:', err2.message)
+      return false
     }
   }
 
@@ -2074,9 +1767,12 @@ export default function EditorPage() {
    * document (incl. sub-documents) has stale results (inputs changed since the
    * last run) or has never been run.  Returns true to proceed.
    */
-  function confirmExportIntegrity() {
-    if (!activeDoc || !project) return true
-    const doc = project.documents[activeDoc]
+  /**
+   * Count calculations in a document (incl. sub-documents) that would make the
+   * report untrustworthy: results computed from inputs that have since changed,
+   * and calculations never run at all.
+   */
+  function docIntegrity(doc) {
     const all = [
       ...(doc?.blocks ?? []),
       ...(doc?.subdocs ?? []).flatMap(sd => sd.blocks ?? []),
@@ -2088,6 +1784,12 @@ export default function EditorPage() {
       if (isStaleResult(b)) stale++
       else if (!hasCalcResult(b)) unrun++
     }
+    return { stale, unrun }
+  }
+
+  function confirmExportIntegrity() {
+    if (!activeDoc || !project) return true
+    const { stale, unrun } = docIntegrity(project.documents[activeDoc])
     if (!stale && !unrun) return true
     const lines = []
     if (stale) lines.push(`• ${stale} beregning${stale > 1 ? 'er' : ''} har ændrede input siden sidste kørsel (forældet resultat)`)
@@ -2097,6 +1799,43 @@ export default function EditorPage() {
       lines.join('\n') +
       '\n\nRapporten kan vise resultater, der ikke svarer til de angivne input.\nEksportér alligevel?'
     )
+  }
+
+  /**
+   * Issue the active document: record the revision, snapshot the project, then
+   * download the PDF.  The order matters — the snapshot must be taken from the
+   * state the PDF is generated from, or the revision row points at the wrong
+   * thing.
+   */
+  async function handleIssue(entry) {
+    if (!activeDoc || !project) return
+    setIssuing(true)
+    setError(null)
+    try {
+      const saved = await _flushSave()
+      if (!saved) {
+        setError('Kunne ikke gemme de seneste ændringer — udstedelsen er afbrudt. ' +
+                 'Et udstedt dokument skal svare til det, der er gemt.')
+        return
+      }
+      const { revision } = await issueDocument(projectId, activeDoc, entry)
+      await loadProject()          // pick up the new revision row and rev counter
+      setIssueOpen(false)
+
+      const blob     = await generatePdf(projectId, activeDoc)
+      const url      = URL.createObjectURL(blob)
+      const anchor   = document.createElement('a')
+      anchor.href    = url
+      anchor.download = `${project.metadata.project_ref || projectId}_${activeDoc}_rev${revision.rev}.pdf`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      setError(`✓ ${activeDoc} udstedt som revision ${revision.rev}. ` +
+               'Projektet er gemt i versionshistorikken.')
+    } catch (err) {
+      setError(`Udstedelse fejlede: ${err.message}`)
+    } finally {
+      setIssuing(false)
+    }
   }
 
   async function handleGeneratePdf() {
@@ -2209,7 +1948,45 @@ export default function EditorPage() {
     if (existing.length > 0) {
       if (!window.confirm(`Anvend skabelonen "${tpl.label}"? Dette erstatter det eksisterende indhold.`)) return
     }
+    // Some templates are generated from a description of the project rather
+    // than emitted whole — ask first, apply when the dialog returns.
+    if (tpl.needsOptions) {
+      setPendingTemplate(tpl)
+      return
+    }
     updateBlocks(tpl.make())
+  }
+
+  /**
+   * Apply a template that was configured through an options dialog.
+   *
+   * The answers are stored on the project, so the sibling documents generated
+   * from the same description (A1 and B1) don't ask twice — and, more to the
+   * point, cannot end up stating different consequence classes.  Blocks and
+   * metadata are written in one save so the two can't get out of step.
+   */
+  function applyTemplateWithOptions(opts) {
+    const tpl = pendingTemplate
+    setPendingTemplate(null)
+    if (!tpl || !project || !activeDoc) return
+
+    const metadata = { ...(project.metadata ?? {}), _doc_options: opts }
+    const blocks   = tpl.make(opts, metadata)
+
+    undoStack.current = [...undoStack.current.slice(-49), _currentBlocks()]
+    redoStack.current = []
+    setCanUndo(true)
+    setCanRedo(false)
+
+    const doc = project.documents[activeDoc]
+    const documents = activeSubdoc !== null
+      ? { ...project.documents, [activeDoc]: {
+          ...doc,
+          subdocs: (doc.subdocs ?? []).map((sd, i) => i === activeSubdoc ? { ...sd, blocks } : sd),
+        } }
+      : { ...project.documents, [activeDoc]: { ...doc, blocks } }
+
+    save({ ...project, metadata, documents })
   }
 
   async function handleSaveAsTemplate() {
@@ -2487,6 +2264,14 @@ export default function EditorPage() {
           <span style={styles.docTitle}>{toolbarTitle}</span>
           {saving && <span style={styles.saving}>Gemmer…</span>}
 
+          <button
+            style={{ ...styles.tplBtn, padding: '6px 10px' }}
+            onClick={() => setHistoryOpen(true)}
+            title="Versionshistorik — se og gendan tidligere versioner"
+          >
+            🕘
+          </button>
+
           {/* Undo / Redo */}
           {activeDoc && (
             <span style={{ display: 'flex', gap: 2 }}>
@@ -2556,14 +2341,22 @@ export default function EditorPage() {
                 {pdfGenerating ? '⏳' : '👁 Forhåndsvisning'}
               </button>
               <button
-                style={{ ...styles.pdfBtn, opacity: pdfGenerating ? 0.6 : 1 }}
+                style={{ ...styles.pdfBtn, background: '#fff', color: '#475569', border: '1px solid #cbd5e1', opacity: pdfGenerating ? 0.6 : 1 }}
                 onClick={handleGeneratePdf}
                 disabled={pdfGenerating}
-                onMouseEnter={e => { if (!pdfGenerating) e.currentTarget.style.background = BRAND_LT }}
-                onMouseLeave={e => { if (!pdfGenerating) e.currentTarget.style.background = BRAND }}
-                title="Eksportér alle underdokumenter samlet i én PDF"
+                title="Eksportér et udkast — ingen revision registreres"
               >
                 ↓ Eksportér PDF
+              </button>
+              <button
+                style={{ ...styles.pdfBtn, opacity: issuing ? 0.6 : 1 }}
+                onClick={() => setIssueOpen(true)}
+                disabled={issuing}
+                onMouseEnter={e => { if (!issuing) e.currentTarget.style.background = BRAND_LT }}
+                onMouseLeave={e => { if (!issuing) e.currentTarget.style.background = BRAND }}
+                title="Registrér revision, gem et permanent øjebliksbillede og hent PDF"
+              >
+                {issuing ? '⏳' : '✓ Udsted'}
               </button>
               {/* Separate PDFs button — only when the document has sub-documents */}
               {(project?.documents?.[activeDoc]?.subdocs?.length > 0) && (
@@ -2612,6 +2405,7 @@ export default function EditorPage() {
             <BlockList
               blocks={currentBlocks}
               onChange={updateBlocks}
+              project={project}
               templates={templates}
               onManageTemplates={() => { setTmplEditorInitId(null); setTmplEditorOpen(true) }}
               onOpenTemplateEditor={(id) => { setTmplEditorInitId(id); setTmplEditorOpen(true) }}
@@ -2624,6 +2418,76 @@ export default function EditorPage() {
       </main>
 
     </div>
+
+    {/* ── Save conflict ── */}
+    {conflict && (
+      <div style={styles.conflictOverlay}>
+        <div style={styles.conflictModal}>
+          <div style={styles.conflictTitle}>Projektet er ændret af en anden</div>
+          <p style={styles.conflictBody}>
+            {conflict.updatedBy
+              ? <>En anden bruger gemte projektet, mens du havde det åbent
+                  {conflict.updatedAt ? ` (${new Date(conflict.updatedAt).toLocaleString('da-DK')})` : ''}.</>
+              : <>Projektet blev gemt et andet sted — sandsynligvis i en anden fane —
+                  mens du havde det åbent.</>}
+            {' '}Dine ændringer er <strong>ikke</strong> gemt endnu. Vælg hvad der skal ske:
+          </p>
+          <div style={styles.conflictActions}>
+            <button style={styles.conflictPrimary} onClick={resolveConflictOverwrite}>
+              Behold mine ændringer
+            </button>
+            <button style={styles.conflictGhost} onClick={resolveConflictReload}>
+              Hent serverens version
+            </button>
+            <button style={styles.conflictGhost} onClick={downloadLocalCopy}>
+              ↓ Gem min version som fil
+            </button>
+          </div>
+          <p style={styles.conflictNote}>
+            Uanset hvad du vælger, gemmes den anden version i versionshistorikken —
+            intet arbejde går tabt.
+          </p>
+        </div>
+      </div>
+    )}
+
+    {/* ── Project description (A1 / B1) ── */}
+    {pendingTemplate?.needsOptions === 'a1' && (
+      <A1OptionsModal
+        metadata={project?.metadata ?? {}}
+        initial={project?.metadata?._doc_options}
+        docId={activeDoc}
+        onGenerate={applyTemplateWithOptions}
+        onClose={() => setPendingTemplate(null)}
+      />
+    )}
+
+    {/* ── Issue document ── */}
+    {issueOpen && activeDoc && project && (
+      <IssueDocumentModal
+        docId={activeDoc}
+        docTitle={project.documents[activeDoc]?.title ?? DOC_DEFS[activeDoc] ?? ''}
+        metadata={project.metadata ?? {}}
+        revisions={project.documents[activeDoc]?.revisions ?? []}
+        integrity={docIntegrity(project.documents[activeDoc])}
+        busy={issuing}
+        onIssue={handleIssue}
+        onClose={() => { if (!issuing) setIssueOpen(false) }}
+      />
+    )}
+
+    {/* ── Version history ── */}
+    {historyOpen && (
+      <VersionHistoryModal
+        projectId={projectId}
+        onClose={() => setHistoryOpen(false)}
+        onRestored={(restored) => {
+          revRef.current = typeof restored?._rev === 'number' ? restored._rev : null
+          loadProject()
+          setError('✓ Projektet er gendannet til en tidligere version.')
+        }}
+      />
+    )}
 
     {/* ── Template editor modal ── */}
     {tmplEditorOpen && (

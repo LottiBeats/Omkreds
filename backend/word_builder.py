@@ -735,8 +735,13 @@ def build_word(project: dict, blocks: list, doc_id: str = "") -> bytes:
     # Cover page
     _add_cover(doc, project, doc_id)
 
+    # Expand project-generated blocks (document list) — same rule as the PDF:
+    # they read the project at render time and are never stored.
+    from pdf_builder import _expand_generated_blocks
+    expanded_blocks = _expand_generated_blocks(blocks, project)
+
     # Number headings
-    numbered_blocks = _number_headings(blocks)
+    numbered_blocks = _number_headings(expanded_blocks)
 
     for block in numbered_blocks:
         try:

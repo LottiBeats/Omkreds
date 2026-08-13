@@ -33,9 +33,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 
 from calc_core import build_story, make_styles, _TocAnchor
 
-_BASE_DIR        = Path(__file__).resolve().parent
-LOGO_PATH        = str(_BASE_DIR / "Billede2.png")
-_DEFAULT_LOGO_OK = Path(LOGO_PATH).exists()   # checked once at import time
+_BASE_DIR = Path(__file__).resolve().parent
 
 # ─────────────────────────────────────────────────────────────
 # LAYOUT CONSTANTS
@@ -106,9 +104,13 @@ def _geo(W, H):
 def _draw_logo_or_firm(canvas, project, hl, hb):
     """
     Draw the logo cell.  Priority:
-      1. project['logo_path'] — custom logo uploaded by the firm
-      2. LOGO_PATH             — default logo bundled with the app
-      3. Text fallback          — firm name in bold if no image available
+      1. project['logo_path'] — the firm's own logo, uploaded per project
+      2. Text fallback         — firm name in bold
+
+    There is deliberately no bundled default image.  This is signed structural
+    documentation: a document that goes out under one firm's name must never
+    carry another firm's mark.  An empty cell is correct; someone else's logo
+    is not.
     """
     pad = 2 * mm
     draw_x = hl + pad
@@ -116,10 +118,9 @@ def _draw_logo_or_firm(canvas, project, hl, hb):
     draw_w = _LOGO_W - 2 * pad
     draw_h = _HDR_H - 2 * pad
 
-    # Resolve logo path
     logo = project.get("logo_path", "")
     if not (logo and Path(logo).exists()):
-        logo = LOGO_PATH if _DEFAULT_LOGO_OK else ""
+        logo = ""
 
     if logo:
         try:
