@@ -1110,6 +1110,14 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           id:             1000 + mid,
           member_id:      mid,
           label:          `Member ${mid}  (Elem ${subElems.map(e => e.id).join('+')}  ${firstE.ni}→${lastE.nj}  L=${totalL.toFixed(2)}m)`,
+          // The section reference and the real length. Without them the check
+          // generated from this member fell back to a steel IPE300 over a 1 m
+          // span — printed, in a document about a C24 roof, as if it meant
+          // something. The sub-elements of a member share one section.
+          material:       firstE.material,
+          section:        firstE.section,
+          grade:          firstE.grade,
+          L_m:            totalL,
           M_max_kNm:      Math.max(...subElems.map(worstM)),
           V_max_kN:       Math.max(...subElems.map(worstV)),
           N_max_kN:       Math.max(...subElems.map(worstN)),
@@ -1126,6 +1134,10 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           ...eleTable.map(e => ({
             id:         e.id,
             label:      `Elem ${e.id}  (${e.ni}→${e.nj}, L=${e.L_m}m)`,
+            material:   e.material,
+            section:    e.section,
+            grade:      e.grade,
+            L_m:        e.L_m,
             M_max_kNm:  worstM(e),
             V_max_kN:   worstV(e),
             N_max_kN:   worstN(e),

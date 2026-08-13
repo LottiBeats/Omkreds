@@ -76,7 +76,22 @@ for (const t of PROJECT_TYPES) {
   const statesBoth = b2.includes(`Konstruktionsklasse: ${kk}`) && b2.includes(`Konsekvensklasse: CC${cc}`)
   report(statesBoth, `B2 angiver ${kk} og CC${cc} — samme som A1 og B1 er genereret fra`)
 
-  // 6 — a control plan that asks for things this project does not contain is
+  // 6 — every frame element must name its section, not just carry stiffness.
+  //     An element with raw E/A/I has no material, and the check generated from
+  //     it falls back to a steel IPE300 — which is how a C24 roof ended up with
+  //     two EN 1993-1-1 checks in its A2.
+  checks += 1
+  const femBlocks = Object.values(docs).flat()
+    .filter(b => b.type === 'general_frame_fem')
+  const bare = femBlocks.flatMap(b => (b.data.elements ?? [])
+    .filter(e => !e.material || !e.section)
+    .map(e => `${b.data.title}: element ${e.id}`))
+  report(bare.length === 0,
+    bare.length === 0
+      ? `${femBlocks.reduce((n, b) => n + (b.data.elements?.length ?? 0), 0)} FEM-elementer har tværsnitsreference`
+      : `uden tværsnit: ${bare.join(', ')}`)
+
+  // 7 — a control plan that asks for things this project does not contain is
   //     worse than no control plan
   const materialer = o.materialer ?? {}
   const nonsense = []

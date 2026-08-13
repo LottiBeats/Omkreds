@@ -35,11 +35,17 @@ export function makeTimberRoofTemplate() {
     hConclusion:    nid(),   conclusion: nid(),
   }
 
-  // ── Section properties ──────────────────────────────────────────────────
-  // 45×145 C24  A = 65.25 cm²  Iz = 1143 cm⁴  E₀,mean = 11 GPa
-  // 45×95  C24  A = 42.75 cm²  Iz =  322 cm⁴  E₀,mean = 11 GPa
-  const RAF_A = 65.25, RAF_I = 1143
-  const HAN_A = 42.75, HAN_I = 322
+  // ── Sections ────────────────────────────────────────────────────────────
+  //
+  // Given as a *reference*, not as numbers. The backend derives E, A and I from
+  // it — 45x145 C24 resolves to A = 65.25 cm², Iz = 1143 cm⁴, E₀,mean = 11.04
+  // GPa, the values this template used to carry by hand — and the member check
+  // generated from an element inherits the same reference. Elements that only
+  // carry raw stiffness have no material, so "Opret eftervisning" fell back to
+  // the steel template: a C24 roof came out of A2 with two IPE300 checks to
+  // EN 1993-1-1, importing the timber members' actions.
+  const SPAER    = { material: 'timber', section: '45x145', grade: 'C24' }
+  const HANEBAND = { material: 'timber', section: '45x95',  grade: 'C24' }
 
   // ── Geometry ────────────────────────────────────────────────────────────
   // α = arctan(2/3) = 33.69°  cos α = 0.832  sin α = 0.555
@@ -212,11 +218,11 @@ export function makeTimberRoofTemplate() {
         { id: 6, x: 3.0, y: 2.0 },
       ],
       elements: [
-        { id: 1, ni: 1, nj: 3, type: 'beam', release: 'none', member_id: 1, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
-        { id: 2, ni: 3, nj: 5, type: 'beam', release: 'none', member_id: 1, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
-        { id: 3, ni: 6, nj: 4, type: 'beam', release: 'none', member_id: 2, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
-        { id: 4, ni: 4, nj: 2, type: 'beam', release: 'none', member_id: 2, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
-        { id: 5, ni: 3, nj: 4, type: 'beam', release: 'both',               E_GPa: 11, A_cm2: HAN_A, Iz_cm4: HAN_I },
+        { id: 1, ni: 1, nj: 3, type: 'beam', release: 'none', member_id: 1, ...SPAER },
+        { id: 2, ni: 3, nj: 5, type: 'beam', release: 'none', member_id: 1, ...SPAER },
+        { id: 3, ni: 6, nj: 4, type: 'beam', release: 'none', member_id: 2, ...SPAER },
+        { id: 4, ni: 4, nj: 2, type: 'beam', release: 'none', member_id: 2, ...SPAER },
+        { id: 5, ni: 3, nj: 4, type: 'beam', release: 'both',               ...HANEBAND },
       ],
       equal_dofs: [{ r_node: 5, c_node: 6, dofs: [1, 2] }],
       supports: [
