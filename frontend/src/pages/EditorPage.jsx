@@ -13,6 +13,10 @@ import IssueDocumentModal from '../components/IssueDocumentModal.jsx'
 import A1OptionsModal from '../components/A1OptionsModal.jsx'
 import { makeA1Template } from '../templates/a1.js'
 import { makeB1Template } from '../templates/b1.js'
+import { makeTimberRoofTemplate } from '../templates/a2TimberRoof.js'
+import { makeB2Template } from '../templates/b2.js'
+import { PROJECT_TYPES, makeProjectDocuments, optionsFor } from '../templates/projectTypes.js'
+import ProjectTypeModal from '../components/ProjectTypeModal.jsx'
 import BlockList, { isStaleResult, hasCalcResult } from '../components/blocks/BlockList.jsx'
 import MetadataPanel        from '../components/MetadataPanel.jsx'
 import TemplateEditorModal  from '../components/TemplateEditorModal.jsx'
@@ -290,306 +294,6 @@ function makeGeneralFrameFemTemplate() {
   ]
 }
 
-// ── A2: Timber collar-beam roof (hanebåndsramme) ─────────────────────────────
-// Symmetric saddle roof · 6 m span · 2 m rise (α = 33.7°) · hanebånd at 1.2 m
-// Full documentation: EN 1991-1-3/4 loads · FEM envelope · EN 1995-1-1 checks
-function makeTimberRoofTemplate() {
-  const base = Date.now()
-  let n = 0
-  const nid = () => base + n++
-
-  const ids = {
-    h1:           nid(),
-    intro:        nid(),
-    hLoads:       nid(),
-    hDead:        nid(),   deadBlock:  nid(),
-    hSnow:        nid(),   snowBlock:  nid(),
-    hWind:        nid(),   windBlock:  nid(),   txtWind:  nid(),
-    hCombos:      nid(),   loadCases:  nid(),
-    hTimberCombos: nid(),  timberCases: nid(),
-    hFem:         nid(),   fem:        nid(),
-    hChecks:        nid(),
-    hSpærVenstre:   nid(),   txtSpærNote: nid(),   chkSpærV: nid(),
-    hSpærHøjre:     nid(),                          chkSpærH: nid(),
-    hHane:          nid(),   chkHane:    nid(),
-    hConclusion:    nid(),   conclusion: nid(),
-  }
-
-  // ── Section properties ──────────────────────────────────────────────────
-  // 45×145 C24  A = 65.25 cm²  Iz = 1143 cm⁴  E₀,mean = 11 GPa
-  // 45×95  C24  A = 42.75 cm²  Iz =  322 cm⁴  E₀,mean = 11 GPa
-  const RAF_A = 65.25, RAF_I = 1143
-  const HAN_A = 42.75, HAN_I = 322
-
-  // ── Geometry ────────────────────────────────────────────────────────────
-  // α = arctan(2/3) = 33.69°  cos α = 0.832  sin α = 0.555
-  // Elem 1: (0,0)→(1.8,1.2)  L = √(1.8²+1.2²) = 2.163 m  (nedre venstre)
-  // Elem 2: (1.8,1.2)→(3,2)  L = √(1.2²+0.8²) = 1.442 m  (øvre venstre)
-  // Elem 3: (3,2)→(4.2,1.2)  L = 1.442 m                  (øvre højre)
-  // Elem 4: (4.2,1.2)→(6,0)  L = 2.163 m                  (nedre højre)
-  // Elem 5: (1.8,1.2)→(4.2,1.2) L = 2.400 m               (hanebånd)
-
-  // ── Loads (derived below) ────────────────────────────────────────────────
-  // g_k = 0.90 kN/m  (pr. spær, vandret projektion)
-  // s   = 0.63 kN/m  (pr. spær, vandret projektion, μ₁ = 0.70, s_k = 0.90 kN/m²)
-  // W+  = +0.31 kN/m ⊥  (vindtryk på venstre spær,  c_net = +0.47)
-  // W−  = −0.20 kN/m ⊥  (vindsug  på højre spær,    c_net = −0.30)
-
-  return [
-
-    // ═══════════════════════════════════════════════════════════════════════
-    { id: ids.h1, type: 'heading', data: { level: 1,
-      text: 'A2 — Tagkonstruktion: Hanebåndsramme 6,0 m' } },
-
-    { id: ids.intro, type: 'text', data: { text:
-      'Statisk system:  Symmetrisk hanebåndsramme (saddeltag)\n' +
-      'Spænd:           L = 6,0 m   ·   Tværafstand: a = 1,0 m\n' +
-      'Rejsning:        h = 2,0 m   →   Taghældning: α = arctan(2/3) = 33,7°\n' +
-      'Hanebånd:        h_h = 1,2 m over murplade (60 % af rejsning)\n' +
-      'Profiler:        Spær 45×145 C24   ·   Hanebånd 45×95 C24\n' +
-      'Serviceklasse:   SK2 — ventileret konstruktion, udsat for vejr (DS/EN 1995-1-1)\n' +
-      'Konsekvensklasse: CC2   KFI = 1,0\n\n' +
-      'Beregningsgang:\n' +
-      '  1. Lastgrundlag — egenlast, snelast (EN 1991-1-3 DK NA), vindlast (EN 1991-1-4 DK NA)\n' +
-      '  2. Lastkombinationer — EN 1990 lign. 6.10a/b (CC2)\n' +
-      '  3. FEM-analyse — alle kombinationer enveloperes\n' +
-      '  4. Kapacitetskontrol — alle spær + hanebånd (EN 1995-1-1)' } },
-
-    // ═══════════════════════════════════════════════════════════════════════
-    { id: ids.hLoads, type: 'heading', data: { level: 2, text: '1. Lastgrundlag' } },
-
-    // ── Dead load ─────────────────────────────────────────────────────────
-    { id: ids.hDead, type: 'heading', data: { level: 3, text: '1.1 Egenlast (G)' } },
-    { id: ids.deadBlock, type: 'roof_dead_load', data: {
-      title:     'Egenlast — tagopbygning + spær',
-      label:     'G1',
-      alpha_deg: 33.69,
-      a_m:       1.0,
-      layers: [
-        { description: 'Tegltagsten (monier)',        g_kNm2: 0.55 },
-        { description: 'Lægte + kontralägte (38 mm)', g_kNm2: 0.04 },
-        { description: 'Undertag (vindspærrepap)',     g_kNm2: 0.03 },
-        { description: 'Krydsfinérsarking 12 mm',     g_kNm2: 0.07 },
-        { description: 'Isolering 200 mm (glasuld)',   g_kNm2: 0.04 },
-        { description: 'Dampspærre',                  g_kNm2: 0.01 },
-      ],
-      b_mm: 45, h_mm: 145, rho_kgm3: 380,
-      _result: null,
-    }},
-
-    // ── Snow load ─────────────────────────────────────────────────────────
-    { id: ids.hSnow, type: 'heading', data: { level: 3, text: '1.2 Snelast (S) — DS/EN 1991-1-3 DK NA' } },
-    { id: ids.snowBlock, type: 'snow_load', data: {
-      title:         'Snelast — saddeltag 33,7°',
-      label:         'SN1',
-      roof_type:     'pitched',
-      alpha_deg:     33.69,
-      s_k_kNm2:      0.9,
-      dk_zone:       '1',
-      C_e:           1.0,
-      C_t:           1.0,
-      roof_span_m:   6.0,
-      eave_height_m: 0.0,
-      gamma_s:       1.5,
-      a_m:           1.0,
-      _result:       null,
-    }},
-
-    // ── Wind load ─────────────────────────────────────────────────────────
-    { id: ids.hWind, type: 'heading', data: { level: 3, text: '1.3 Vindlast (W) — DS/EN 1991-1-4 DK NA' } },
-    { id: ids.windBlock, type: 'wind_load', data: {
-      title:          'Vindlast — referencetryk',
-      label:          'W1',
-      terrain_category: 'II',
-      v_b0_ms:        24.0,
-      z_ref_m:        5.0,
-      h_m:            5.0,
-      b_m:            6.0,
-      d_m:            8.0,
-      c_dir:          1.0,
-      c_season:       1.0,
-      c_pe_windward:  0.27,
-      c_pe_leeward:   -0.50,
-      c_pi:           0.20,
-      rho_air:        1.25,
-      _result:        null,
-    }},
-    { id: ids.txtWind, type: 'text', data: { text:
-      'Terrænkategori II · Vindzone 2 · v_b,0 = 24 m/s · z_ref = 5,0 m\n\n' +
-      'Beregnet peakhastighedstryk: q_p ≈ 0,65 kN/m²  (fra vindlastblok ovenfor)\n\n' +
-      'Formfaktorer for saddeltag α = 33,7° (DS/EN 1991-1-4 Tabel 7.4a, θ = 0°):\n' +
-      '  Vindsiden (zone H):   c_pe = +0,27  (interpoleret 30°→45°: 0,20→0,50)\n' +
-      '  Læsiden  (zone I):    c_pe = −0,50\n' +
-      '  Indvendig overtryk:   c_pi = +0,20  (mest ugunstig for netto vindtryk)\n\n' +
-      'Netto vindtryk pr. spær a = 1,0 m (vinkelret på tagflade):\n' +
-      '  Vindside (venstre):  w₊ = (c_pe + c_pi) × q_p × a = (0,27 + 0,20) × 0,65 × 1,0 = +0,31 kN/m\n' +
-      '  Læside  (højre):     w₋ = (c_pe + c_pi) × q_p × a = (−0,50 + 0,20) × 0,65 × 1,0 = −0,20 kN/m\n\n' +
-      'Fortegn: positiv w = tryk MOD overfladen · negativ w = sug FRA overfladen\n' +
-      'Belastningen appliceres vinkelret på spærfladen (direction = perpendicular).' } },
-
-    // ── Load combinations ─────────────────────────────────────────────────
-    { id: ids.hCombos, type: 'heading', data: { level: 3, text: '1.4 Lastkombinationer — DS/EN 1990 DK NA lign. 6.10a/b (CC2)' } },
-    { id: ids.loadCases, type: 'frame_load_cases', data: {
-      title: 'Lastkombinationer — Hanebåndsramme (G+S+W)',
-      consequence_class: 'CC2',
-      method: '6.10ab',
-      cases: [
-        // G — egenlast: spær (vandret projektion) + hanebånd egenvægt (lodret)
-        // g_hane = 0.045 × 0.095 × 380 × 9.81/1000 = 0.016 kN/m (vertikal, elem 5)
-        { id: 'G', type: 'permanent', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm: 0.90, direction: 'projected' },
-          { load_type: 'udl', member_id: 2, value_kNm: 0.90, direction: 'projected' },
-          { load_type: 'udl', elem_id: 5,   value_kNm: 0.016, direction: 'vertical' },
-        ]},
-        // S — snelast på vandret projektion (μ₁ = 0.70, s_k = 0.90 kN/m²)
-        { id: 'S', type: 'snow', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm: 0.63, direction: 'projected' },
-          { load_type: 'udl', member_id: 2, value_kNm: 0.63, direction: 'projected' },
-        ]},
-        // W — vind fra venstre, vinkelret på tagflade
-        // Vindside (venstre spær, member 1): tryk +0.31 kN/m
-        // Læside  (højre  spær, member 2): sug  −0.20 kN/m
-        { id: 'W', type: 'wind', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm:  0.31, direction: 'perpendicular' },
-          { load_type: 'udl', member_id: 2, value_kNm: -0.20, direction: 'perpendicular' },
-        ]},
-      ],
-      _exports: null, _result: null,
-    }},
-
-    // ── Timber load combinations (G + S only — wind excluded) ────────────
-    { id: ids.hTimberCombos, type: 'heading', data: { level: 3,
-      text: '1.5 Lastkombinationer til trækontrol (G + S — vind udeladt)' } },
-    { id: ids.timberCases, type: 'frame_load_cases', data: {
-      title: 'Lastkombinationer til træ — G + S (DS/EN 1990 DK NA lign. 6.10a/b, CC2)',
-      consequence_class: 'CC2',
-      method: '6.10ab',
-      cases: [
-        { id: 'G', type: 'permanent', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm: 0.90,  direction: 'projected' },
-          { load_type: 'udl', member_id: 2, value_kNm: 0.90,  direction: 'projected' },
-          { load_type: 'udl', elem_id: 5,   value_kNm: 0.016, direction: 'vertical' },
-        ]},
-        { id: 'S', type: 'snow', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm: 0.63, direction: 'projected' },
-          { load_type: 'udl', member_id: 2, value_kNm: 0.63, direction: 'projected' },
-        ]},
-      ],
-      _exports: null, _result: null,
-    }},
-
-    // ═══════════════════════════════════════════════════════════════════════
-    { id: ids.hFem, type: 'heading', data: { level: 2, text: '2. FEM-analyse' } },
-
-    { id: ids.fem, type: 'general_frame_fem', data: {
-      title: 'Hanebåndsramme — FEM (OpenSeesPy)',
-      nodes: [
-        { id: 1, x: 0.0, y: 0.0 },
-        { id: 2, x: 6.0, y: 0.0 },
-        { id: 3, x: 1.8, y: 1.2 },
-        { id: 4, x: 4.2, y: 1.2 },
-        { id: 5, x: 3.0, y: 2.0 },
-        { id: 6, x: 3.0, y: 2.0 },
-      ],
-      elements: [
-        { id: 1, ni: 1, nj: 3, type: 'beam', release: 'none', member_id: 1, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
-        { id: 2, ni: 3, nj: 5, type: 'beam', release: 'none', member_id: 1, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
-        { id: 3, ni: 6, nj: 4, type: 'beam', release: 'none', member_id: 2, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
-        { id: 4, ni: 4, nj: 2, type: 'beam', release: 'none', member_id: 2, E_GPa: 11, A_cm2: RAF_A, Iz_cm4: RAF_I },
-        { id: 5, ni: 3, nj: 4, type: 'beam', release: 'both',               E_GPa: 11, A_cm2: HAN_A, Iz_cm4: HAN_I },
-      ],
-      equal_dofs: [{ r_node: 5, c_node: 6, dofs: [1, 2] }],
-      supports: [
-        { node_id: 1, ux: true,  uy: true,  rz: false },
-        { node_id: 2, ux: false, uy: true,  rz: false },
-      ],
-      loads: [],
-      load_mode: 'load_cases',
-      load_cases_block_id: ids.timberCases,
-      _figs_b64: null, _summary: null, _result: null, _exports: null,
-    }},
-
-    // ═══════════════════════════════════════════════════════════════════════
-    { id: ids.hChecks, type: 'heading', data: { level: 2,
-      text: '3. Kapacitetskontrol (DS/EN 1995-1-1)' } },
-
-    // ── Venstre spær — member 1 (elem 1 + 2, samlet) ─────────────────────
-    { id: ids.hSpærVenstre, type: 'heading', data: { level: 3,
-      text: 'Venstre spær — 45×145 C24 (member 1: elem 1+2, L_total = 3,61 m)' } },
-    { id: ids.txtSpærNote, type: 'text', data: { text:
-      'Spæret er i FEM-modellen opdelt i to elementer ved hanebåndssamlingen (node 3):\n' +
-      '  Nedre del: elem 1 — L₁ = 2,163 m  (murplade → hanebåndssamling)\n' +
-      '  Øvre del:  elem 2 — L₂ = 1,442 m  (hanebåndssamling → rygning)\n\n' +
-      'Checket anvender member-niveau snitkræfter (id = 1001) — worst-case M/V/N\n' +
-      'på tværs af begge elementer i memberen.\n\n' +
-      'Effektiv knæklængde for sideudknækning (LTB):\n' +
-      '  Lateral afstivning ved: murplade (node 1), hanebåndssamling (node 3) og rygning (node 5)\n' +
-      '  Længste uafstivede del: L_ef = L₁ = 2,163 m (nedre del — dimensionerende for LTB)\n' +
-      '  "span_m" er sat til 2,163 m da denne er bestemmende for sideudknækning.' } },
-    { id: ids.chkSpærV, type: 'timber_beam', data: {
-      title: 'Venstre spær 45×145 C24 — member 1 (worst-case M/V/N)', label: 'S1',
-      span_m: 2.163, b_mm: 45, h_mm: 145,
-      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
-      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 1001, fem_end: 'max',
-      compression_edge_restrained: false, torsional_restraint_at_supports: true,
-      _result: null,
-    }},
-
-    // ── Højre spær — member 2 (elem 3 + 4, samlet) ───────────────────────
-    { id: ids.hSpærHøjre, type: 'heading', data: { level: 3,
-      text: 'Højre spær — 45×145 C24 (member 2: elem 3+4, L_total = 3,61 m)' } },
-    { id: ids.chkSpærH, type: 'timber_beam', data: {
-      title: 'Højre spær 45×145 C24 — member 2 (worst-case M/V/N)', label: 'S2',
-      span_m: 2.163, b_mm: 45, h_mm: 145,
-      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
-      load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 1002, fem_end: 'max',
-      compression_edge_restrained: false, torsional_restraint_at_supports: true,
-      _result: null,
-    }},
-
-    // ── Hanebånd — trækcheck (elem 5) ────────────────────────────────────
-    { id: ids.hHane, type: 'heading', data: { level: 3,
-      text: 'Hanebånd — 45×95 C24 (elem 5, L = 2,40 m) — Trækcheck EN 1995-1-1 §6.1.2' } },
-    { id: ids.chkHane, type: 'custom_calc', data: {
-      title: 'Hanebånd 45×95 C24 — Trækcheck',
-      items: [
-        { type: 'section', text: 'Materialeparametre — C24 (DS/EN 338)' },
-        { type: 'variable', symbol: 'f_{t,0,k}',  expression: '14',  unit: 'MPa', description: 'Karakteristisk trækstyrke C24' },
-        { type: 'variable', symbol: '\\gamma_M',   expression: '1.3', unit: '—',  description: 'Partialkoefficient træ (KK2)' },
-        { type: 'variable', symbol: 'k_{mod}',     expression: '0.9', unit: '—',  description: 'Modifikationsfaktor (SK2, kortvarig last — sne)' },
-        { type: 'formula',  symbol: 'f_{t,0,d}',   expression: 'k_mod * f_t0k / gamma_M', variables: { k_mod: 0.9, f_t0k: 14, gamma_M: 1.3 }, unit: 'MPa', description: 'Dimensionerende trækstyrke' },
-        { type: 'section', text: 'Tværsnit' },
-        { type: 'variable', symbol: 'b',   expression: '45',  unit: 'mm', description: 'Bredde' },
-        { type: 'variable', symbol: 'h',   expression: '95',  unit: 'mm', description: 'Højde' },
-        { type: 'formula',  symbol: 'A',   expression: 'b * h', variables: { b: 45, h: 95 }, unit: 'mm²', description: 'Nettoareal (ingen udsparinger antaget)' },
-        { type: 'section', text: 'Kapacitet' },
-        { type: 'formula',  symbol: 'N_{t,Rd}', expression: 'f_t0d * A / 1000', variables: { f_t0d: 0.9*14/1.3, A: 45*95 }, unit: 'kN', description: 'Dimensionerende trækkapacitet' },
-        { type: 'section', text: 'Påvirkning — aflæses fra FEM (element 5)' },
-        { type: 'variable', symbol: 'N_{Ed}', expression: '0', unit: 'kN', description: 'Dimensionerende trækraft — OPDATER fra FEM-resultat (element 5, N_i/N_j)' },
-        { type: 'check',    symbol: '\\eta_t', expression: 'N_Ed / N_t_Rd', variables: { N_Ed: 0, N_t_Rd: 0.9*14/1.3*45*95/1000 }, limit: 1.0, description: 'Udnyttelsesgrad trækcheck §6.1.2' },
-      ],
-      _result: null,
-    }},
-
-    // ═══════════════════════════════════════════════════════════════════════
-    { id: ids.hConclusion, type: 'heading', data: { level: 2, text: '4. Konklusion' } },
-    { id: ids.conclusion, type: 'text', data: { text:
-      '[Udfyld udnyttelsesgrader efter kørsel af alle blokke]\n\n' +
-      'Lastkombinationer (kør "Frame Load Cases" blokken):\n' +
-      '  Kombinationer genereret iht. EN 1990 lign. 6.10a/b · CC2 · KFI = 1,0\n\n' +
-      'FEM-analyse (kør "General Frame FEM" blokken):\n' +
-      '  Alle kombinationer enveloperet · Snitkræfter M/V/N pr. element\n\n' +
-      'Kapacitetskontrol:\n' +
-      '  S1 — Venstre spær (member 1, L_ef=2,16 m, worst-case M/V/N):  η = … %   ✓/✗\n' +
-      '  S2 — Højre spær   (member 2, L_ef=2,16 m, worst-case M/V/N):  η = … %   ✓/✗\n' +
-      '  H1 — Hanebånd (elem 5, L=2,40 m): N_Ed = … kN  ≤  N_Rd = 41,4 kN   ✓/✗\n\n' +
-      'Bemærkninger:\n' +
-      '  • Hvert spær udgøres af 2 FEM-elementer (nedre + øvre) — checket bruger member-niveau worst-case\n' +
-      '  • Effektiv LTB-længde = 2,163 m (nedre del — bestemmende afstivningsafstand)\n' +
-      '  • Vindlast beregnet for vind fra venstre (W+/W−) — symmetrisk ved modsat vind\n' +
-      '  • Samlinger (murplade, hanebåndssamling, rygningstappe) er ikke kontrolleret' } },
-  ]
-}
 
 // Statically determinate: m = 2n − 3  →  17 = 2×10 − 3  ✓
 // Loads at top chord (purlin loads from roof).
@@ -733,49 +437,6 @@ function makeA5Template() {
   ]
 }
 
-function makeB2Template() {
-  let id = Date.now()
-  return [
-    { id: id++, type: 'heading', data: { level: 1, text: 'Statisk kontrolplan' } },
-
-    { id: id++, type: 'text',    data: { text: 'Udarbejdet i henhold til DS 1140 og DS/EN 1990.\nKontrolklasse: KK… · Projekt: …' } },
-
-    { id: id++, type: 'heading', data: { level: 2, text: 'Projekteringskontrol' } },
-    { id: id++, type: 'control_plan', data: {
-      title: 'Projekteringskontrol',
-      mode: 'plan',
-      items: [
-        { pos: '1',  description: 'Konstruktionsgrundlag (A1) er gennemgået og godkendt', kk: 'KK1', control: 'E', responsible: '', reference: 'A1' },
-        { pos: '2',  description: 'Gældende normer og nationale annekser er identificeret', kk: 'KK1', control: 'E', responsible: '', reference: 'A1' },
-        { pos: '3',  description: 'Laster og lastkombinationer er korrekte', kk: 'KK1', control: 'E', responsible: '', reference: 'A2' },
-        { pos: '4',  description: 'Geometriske mål og tværsnitsparametre er korrekte', kk: 'KK1', control: 'E', responsible: '', reference: 'A2, A3' },
-        { pos: '5',  description: 'Materialeparametre er korrekte og dokumenterede', kk: 'KK1', control: 'E', responsible: '', reference: 'A1, A2' },
-        { pos: '6',  description: 'Beregningsmodeller er repræsentative for den faktiske konstruktion', kk: 'KK2', control: 'E', responsible: '', reference: 'A2' },
-        { pos: '7',  description: 'Brudgrænsetilstand (STR/GEO) er kontrolleret', kk: 'KK1', control: 'E', responsible: '', reference: 'A2' },
-        { pos: '8',  description: 'Anvendelsesgrænsetilstand (SLS – nedbøjning, revnedannelse) er kontrolleret', kk: 'KK2', control: 'E', responsible: '', reference: 'A2' },
-        { pos: '9',  description: 'Stabiliteten (lodret og vandret) er sikret', kk: 'KK1', control: 'E', responsible: '', reference: 'A2, B1' },
-        { pos: '10', description: 'Funderingen er kontrolleret (EC7/DS 415)', kk: 'KK1', control: 'E', responsible: '', reference: 'A2' },
-        { pos: '11', description: 'Konstruktionstegninger er i overensstemmelse med beregningerne', kk: 'KK2', control: 'E', responsible: '', reference: 'A3' },
-        { pos: '12', description: 'Uvildig kontrol udført (kræves ved KK2+)', kk: 'KK2', control: 'U', responsible: '', reference: '' },
-      ]
-    }},
-
-    { id: id++, type: 'heading', data: { level: 2, text: 'Udførelseskontrol' } },
-    { id: id++, type: 'control_plan', data: {
-      title: 'Udførelseskontrol',
-      mode: 'plan',
-      items: [
-        { pos: '1', description: 'Materialer kontrolleret (leverandørattester, CE-mærkning)', kk: 'KK1', control: 'E', responsible: '', reference: '' },
-        { pos: '2', description: 'Geometriske afvigelser er inden for tolerancer (DS/ISO 4463)', kk: 'KK1', control: 'E', responsible: '', reference: '' },
-        { pos: '3', description: 'Samlinger og forbindelser er udført korrekt', kk: 'KK1', control: 'E', responsible: '', reference: 'A3' },
-        { pos: '4', description: 'Fundering og jordarbejder er udført og godkendt', kk: 'KK1', control: 'E', responsible: '', reference: 'A3' },
-        { pos: '5', description: 'Armeringsplacering kontrolleret inden støbning', kk: 'KK2', control: 'E', responsible: '', reference: 'A3' },
-        { pos: '6', description: 'Konstruktionen er i overensstemmelse med tegningerne', kk: 'KK1', control: 'E', responsible: '', reference: 'A3' },
-      ]
-    }},
-  ]
-}
-
 function makeB3Template() {
   let id = Date.now()
   return [
@@ -902,8 +563,11 @@ const DOC_TEMPLATES = {
   B2: [
     {
       label:       'Statisk kontrolplan (DS 1140)',
-      description: 'Projekteringskontrol + udførelseskontrol med KK-krav og kontroltype (E/U/T)',
-      make:        makeB2Template,
+      description: 'Konstruktionsklassen udledes af projektbeskrivelsen · kun de kontrolpunkter der gælder',
+      // Same answers as A1 and B1, so the plan cannot name a different class
+      // than the documents it controls.
+      needsOptions: 'a1',
+      make:        (opts, metadata) => makeB2Template(opts, metadata),
     },
   ],
   B3: [
@@ -1069,6 +733,40 @@ const styles = {
     borderRadius:  0,
     transition:    'background 0.12s, color 0.12s',
     whiteSpace:    'nowrap',
+  },
+  // Sits next to the per-document template button but reads as a different
+  // kind of action: it writes four documents, not the one you are looking at.
+  projTypeBtn: {
+    background:    '#fff',
+    color:         '#d94a2b',
+    border:        '1px solid #f3c9bd',
+    padding:       '6px 12px',
+    fontSize:      11,
+    fontWeight:    700,
+    cursor:        'pointer',
+    fontFamily:    'inherit',
+    borderRadius:  0,
+    whiteSpace:    'nowrap',
+  },
+  startPrompt: {
+    background:   '#fffaf8',
+    border:       '1px solid #f3c9bd',
+    borderLeft:   '3px solid #d94a2b',
+    padding:      '16px 20px',
+    marginBottom: 14,
+  },
+  startPromptTitle: { fontSize: 13.5, fontWeight: 700, color: '#1c1c1e', marginBottom: 6 },
+  startPromptText:  { fontSize: 12.5, color: '#57534e', lineHeight: 1.7, maxWidth: 620 },
+  startPromptBtn: {
+    marginTop:  12,
+    background: '#d94a2b',
+    color:      '#fff',
+    border:     'none',
+    padding:    '9px 20px',
+    fontSize:   12.5,
+    fontWeight: 700,
+    fontFamily: 'inherit',
+    cursor:     'pointer',
   },
   tplDropdown: {
     position:   'absolute',
@@ -1272,6 +970,16 @@ export default function EditorPage() {
   const [saving,          setSaving]          = useState(false)
   const [error,           setError]           = useState(null)
   const [tplOpen,         setTplOpen]         = useState(false)
+  const [projectTypeOpen, setProjectTypeOpen] = useState(false)
+  // Empty across every document and sub-document — a project nobody has
+  // started, not just a document that happens to be blank.
+  const projectIsEmpty = React.useMemo(() => {
+    const docs = Object.values(project?.documents ?? {})
+    if (docs.length === 0) return false
+    return docs.every(d =>
+      (d?.blocks?.length ?? 0) === 0 &&
+      (d?.subdocs ?? []).every(sd => (sd?.blocks?.length ?? 0) === 0))
+  }, [project])
   const [templates,       setTemplates]       = useState([])
   const [tmplEditorOpen,  setTmplEditorOpen]  = useState(false)
   const [tmplEditorInitId,setTmplEditorInitId]= useState(null)
@@ -1965,10 +1673,60 @@ export default function EditorPage() {
    * point, cannot end up stating different consequence classes.  Blocks and
    * metadata are written in one save so the two can't get out of step.
    */
+  /**
+   * A project type was picked and then described — write every document it
+   * covers in one save.
+   *
+   * All of them together or none: documents generated from the same answers
+   * are only worth anything because they agree, and a half-applied project
+   * type would leave A1 and B2 stating different classes.
+   */
+  async function applyProjectType(typeKey, opts) {
+    if (!project) return
+    const metadata = { ...(project.metadata ?? {}), _doc_options: opts }
+    const generated = makeProjectDocuments(typeKey, opts, metadata)
+    if (!generated) return
+
+    // Overwriting four documents at once needs a restore point that definitely
+    // exists. Automatic snapshots are throttled, so the newest one can be older
+    // than the work about to be replaced — take an explicit one, and do not
+    // proceed if it fails.
+    if (!projectIsEmpty) {
+      try {
+        await _flushSave()
+        const label = PROJECT_TYPES.find(t => t.key === typeKey)?.label ?? 'projekttype'
+        await createVersion(projectId, `Før projekttype: ${label}`, 'manual')
+      } catch (err) {
+        setError('Kunne ikke gemme en version før projekttypen blev anvendt — ' +
+                 'intet er ændret. ' + (err?.message ?? ''))
+        return
+      }
+    }
+
+    // Undo works on the blocks of one document, so it cannot describe a change
+    // that rewrites four. Clear it rather than leave entries that would restore
+    // one document over a set that is meant to agree — the whole project is
+    // recoverable from Versionshistorik, which is the right granularity here.
+    undoStack.current = []
+    redoStack.current = []
+    setCanUndo(false)
+    setCanRedo(false)
+
+    const documents = { ...project.documents }
+    for (const [docId, blocks] of Object.entries(generated)) {
+      documents[docId] = { ...(documents[docId] ?? { title: DOC_DEFS[docId], subdocs: [] }), blocks }
+    }
+    save({ ...project, metadata, documents })
+    setActiveDoc('A1')
+    setActiveSubdoc(null)
+  }
+
   function applyTemplateWithOptions(opts) {
     const tpl = pendingTemplate
     setPendingTemplate(null)
-    if (!tpl || !project || !activeDoc) return
+    if (!tpl || !project) return
+    if (tpl.projectType) return applyProjectType(tpl.projectType, opts)
+    if (!activeDoc) return
 
     const metadata = { ...(project.metadata ?? {}), _doc_options: opts }
     const blocks   = tpl.make(opts, metadata)
@@ -2293,6 +2051,15 @@ export default function EditorPage() {
             </span>
           )}
 
+          {/* Project type — fills A1, A2, B1 and B2 from one description */}
+          <button
+            style={styles.projTypeBtn}
+            onClick={() => setProjectTypeOpen(true)}
+            title="Udfyld A1, A2, B1 og B2 ud fra én beskrivelse af opgaven"
+          >
+            ⌂ Projekttype
+          </button>
+
           {/* Template dropdown — shown whenever a document is open */}
           {activeDoc && (
             <div ref={tplRef} style={{ position: 'relative' }}>
@@ -2394,6 +2161,22 @@ export default function EditorPage() {
             }>{error}</div>
           )}
 
+          {/* An empty project is the one moment where the fastest route is not
+              "add a block" — it is to say what kind of job this is. */}
+          {projectIsEmpty && (
+            <div style={styles.startPrompt}>
+              <div style={styles.startPromptTitle}>Kom i gang</div>
+              <div style={styles.startPromptText}>
+                Vælg en projekttype, så udfyldes A1, A2, B1 og B2 ud fra én
+                beskrivelse af opgaven — med samme konsekvens- og
+                konstruktionsklasse i alle fire dokumenter.
+              </div>
+              <button style={styles.startPromptBtn} onClick={() => setProjectTypeOpen(true)}>
+                Vælg projekttype →
+              </button>
+            </div>
+          )}
+
           {activeDoc === null ? (
             // No document selected — show project metadata form
             <MetadataPanel
@@ -2452,11 +2235,33 @@ export default function EditorPage() {
     )}
 
     {/* ── Project description (A1 / B1) ── */}
+    {projectTypeOpen && project && (
+      <ProjectTypeModal
+        hasContent={Object.values(project.documents ?? {})
+          .some(d => (d?.blocks?.length ?? 0) > 0)}
+        onClose={() => setProjectTypeOpen(false)}
+        onChoose={key => {
+          setProjectTypeOpen(false)
+          const t = PROJECT_TYPES.find(x => x.key === key)
+          // The type's answers win over any already stored: picking a project
+          // type is a statement about what the job is. Nothing is written
+          // until the description dialog is confirmed, so every field is
+          // visible and editable first.
+          setPendingTemplate({
+            label: t?.label ?? 'Projekttype',
+            needsOptions: 'a1',
+            projectType: key,
+            initialOptions: optionsFor(key),
+          })
+        }}
+      />
+    )}
+
     {pendingTemplate?.needsOptions === 'a1' && (
       <A1OptionsModal
         metadata={project?.metadata ?? {}}
-        initial={project?.metadata?._doc_options}
-        docId={activeDoc}
+        initial={pendingTemplate.initialOptions ?? project?.metadata?._doc_options}
+        docId={pendingTemplate.projectType ? 'A1' : activeDoc}
         onGenerate={applyTemplateWithOptions}
         onClose={() => setPendingTemplate(null)}
       />
