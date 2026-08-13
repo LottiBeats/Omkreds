@@ -8,6 +8,11 @@ venv/
 # Frontend
 node_modules/
 frontend/.env.local
+# Built output. deploy.sh runs `npm run build` on the server, which rewrote
+# these files and left the working tree dirty — so the next `git pull` aborted
+# and the deploy stopped halfway. The server builds its own; nothing needs the
+# committed copy.
+frontend/dist/
 
 # Database
 *.db

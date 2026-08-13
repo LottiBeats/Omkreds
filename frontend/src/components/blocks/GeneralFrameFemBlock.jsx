@@ -480,7 +480,7 @@ function EqualDOFRow({ eq, onChange, onRemove }) {
 
 // ── Result panel ──────────────────────────────────────────────────────────────
 
-const TABS = ['Figures', 'Buckling', 'Elements', 'Nodes', 'Loads', 'Reactions']
+const TABS = ['Figurer', 'Stabilitet', 'Elementer', 'Knuder', 'Laster', 'Reaktioner']
 const FIG_LABELS       = ['Static model', 'Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
 const COMBO_FIG_LABELS = ['Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
 
@@ -504,10 +504,10 @@ function Tbl({ headers, rows, zebra = true }) {
 // ── Create-check dropdown button (shown per element row) ─────────────────────
 
 const CHECK_TYPES = [
-  { type: 'steel_beam',  label: 'Steel beam (EC3)' },
-  { type: 'beam_column', label: 'Beam-column N+M (EC3)' },
-  { type: 'timber_beam', label: 'Timber beam (EC5)' },
-  { type: 'rc_beam',     label: 'RC beam (EC2)' },
+  { type: 'steel_beam',  label: 'Stålbjælke (EC3)' },
+  { type: 'beam_column', label: 'Søjle-bjælke N+M (EC3)' },
+  { type: 'timber_beam', label: 'Træbjælke (EC5)' },
+  { type: 'rc_beam',     label: 'Betonbjælke (EC2)' },
 ]
 
 function CreateCheckButton({ elemId, elemL, blockId, onAddBlock, material }) {
@@ -534,7 +534,7 @@ function CreateCheckButton({ elemId, elemL, blockId, onAddBlock, material }) {
         onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
         style={{ fontSize: 10, padding: '2px 7px', background: '#1e3a5f', color: '#fff',
                  border: 'none', cursor: 'pointer', borderRadius: 2, whiteSpace: 'nowrap' }}>
-        → Check
+        → Eftervis
       </button>
       {open && (
         <>
@@ -561,18 +561,10 @@ function CreateCheckButton({ elemId, elemL, blockId, onAddBlock, material }) {
   )
 }
 
-// Check type heuristic based on element orientation
-function guessCheckType(elemId, elements) {
-  const el = elements?.find(e => e.id === elemId)
-  if (!el) return 'steel_beam'
-  // Need node positions — not available here, default to steel_beam
-  // In practice: columns have member_id and near-vertical geometry, beams horizontal
-  return 'steel_beam'
-}
 
 function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, elements }) {
   const [open,      setOpen]      = useState(true)
-  const [tab,       setTab]       = useState('Figures')
+  const [tab,       setTab]       = useState('Figurer')
   const [figIdx,    setFigIdx]    = useState(0)
   const [comboIdx,  setComboIdx]  = useState(null)  // null = static model
 
@@ -679,7 +671,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
           </div>
 
           {/* ── Figures ── */}
-          {tab === 'Figures' && figs?.length > 0 && (() => {
+          {tab === 'Figurer' && figs?.length > 0 && (() => {
             const comboFigs    = summary?.combo_figs ?? []
             const hasComboFigs = comboFigs.length > 0
 
@@ -734,7 +726,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
           })()}
 
           {/* ── Buckling ── */}
-          {tab === 'Buckling' && (() => {
+          {tab === 'Stabilitet' && (() => {
             const acr         = summary?.alpha_cr ?? null
             const buckLengths = summary?.buckling_lengths   ?? {}
             const buckRows   = Object.entries(buckLengths)
@@ -811,7 +803,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
 
           {/* ── Elements ── */}
           {/* ── Envelope (combination mode) ── */}
-          {tab === 'Elements' && summary?.envelope && (
+          {tab === 'Elementer' && summary?.envelope && (
             <div style={{ marginBottom: 14 }}>
               <div style={s.detailLabel}>Envelope — worst case per element (all combinations)</div>
               <Tbl
@@ -825,7 +817,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
             </div>
           )}
 
-          {tab === 'Elements' && (
+          {tab === 'Elementer' && (
             <div>
               <div style={s.detailLabel}>Tværsnit</div>
               <Tbl
@@ -883,7 +875,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
           )}
 
           {/* ── Nodes ── */}
-          {tab === 'Nodes' && (
+          {tab === 'Knuder' && (
             <Tbl
               headers={['Node', 'x (m)', 'y (m)', 'δ_x (mm)', 'δ_y (mm)', 'θ_z (mrad)']}
               rows={(summary.node_disp_table ?? []).map(n => [
@@ -894,7 +886,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
           )}
 
           {/* ── Loads ── */}
-          {tab === 'Loads' && (
+          {tab === 'Laster' && (
             <Tbl
               headers={['Type', 'Target', 'Fx (kN)', 'Fy (kN)', 'Mz (kNm)', 'wy (kN/m)', 'wx (kN/m)']}
               rows={(summary.loads_table ?? []).map(l => [
@@ -909,7 +901,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
           )}
 
           {/* ── Reactions ── */}
-          {tab === 'Reactions' && (
+          {tab === 'Reaktioner' && (
             <Tbl
               headers={['Node', 'Fx (kN)', 'Fy (kN)', 'Mz (kNm)']}
               rows={Object.entries(summary.reactions ?? {}).map(([nid, R]) => [

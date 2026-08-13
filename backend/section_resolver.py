@@ -13,7 +13,6 @@ keep whatever E/A/I they were given: existing models must not change behaviour.
 
 from __future__ import annotations
 
-import math
 import re
 
 from section_catalog import get_steel_profile
