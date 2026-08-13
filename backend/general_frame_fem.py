@@ -318,6 +318,60 @@ def check_results(nodes, node_disps, ele_forces, ref_size):
 
 
 # ---------------------------------------------------------------------------
+# Section forces between the element ends
+# ---------------------------------------------------------------------------
+
+def section_forces_2d(pl, x, wy=0.0, wx=0.0):
+    """
+    Section forces (N, V, M) at distance *x* from end i of a plane frame element.
+
+        N(x) = -N_i - wx*x
+        V(x) =  V_i + wy*x
+        M(x) = -M_i + V_i*x + wy*x^2/2
+
+    where (N_i, V_i, M_i) are the element's *local* end forces and (wy, wx) are
+    the values handed to eleLoad -beamUniform. This is the same distribution
+    opsvis integrates to draw the diagrams, so the reported figures and the
+    reported numbers describe one structure.
+    """
+    N_i, V_i, M_i = pl[0], pl[1], pl[2]
+    return (-N_i - wx * x,
+             V_i + wy * x,
+            -M_i + V_i * x + 0.5 * wy * x * x)
+
+
+def section_force_extremes(pl, L, wy=0.0, wx=0.0):
+    """
+    The largest N, V and M anywhere along the element, not only at its ends.
+
+    An element under a distributed load reaches its greatest moment between the
+    nodes: for a simply supported member the ends carry no moment at all while
+    midspan carries wL²/8. Reading design actions off the end forces alone —
+    which is all eleForce reports — therefore understates them, silently, on
+    every member that carries a distributed load.
+
+    N and V vary linearly, so their extremes are at the ends. M is quadratic in
+    x, so the stationary point is included when it falls inside the element.
+    Values are returned signed, picking whichever extreme is largest in
+    magnitude, together with where along the element it occurs.
+    """
+    xs = [0.0, L]
+    if abs(wy) > 1e-12:
+        x_stat = -pl[1] / wy          # V(x) = 0
+        if 0.0 < x_stat < L:
+            xs.append(x_stat)
+
+    best = {'N_kN': 0.0, 'V_kN': 0.0, 'M_kNm': 0.0,
+            'x_N_m': 0.0, 'x_V_m': 0.0, 'x_M_m': 0.0}
+    for x in xs:
+        N, V, M = section_forces_2d(pl, x, wy, wx)
+        if abs(N) > abs(best['N_kN']):  best['N_kN'],  best['x_N_m'] = N, x
+        if abs(V) > abs(best['V_kN']):  best['V_kN'],  best['x_V_m'] = V, x
+        if abs(M) > abs(best['M_kNm']): best['M_kNm'], best['x_M_m'] = M, x
+    return best
+
+
+# ---------------------------------------------------------------------------
 # Buckling lengths — Wood's stiffness-distribution method (EN 1993-1-1 Annex B)
 # ---------------------------------------------------------------------------
 
@@ -676,6 +730,9 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
                             '-release', rel_code)
 
     # Loads
+    # The uniform load on each element is kept as it was handed to eleLoad, so
+    # the section forces between the nodes can be reconstructed afterwards.
+    ele_udl = {}
     has_loads = bool(loads)
     if has_loads:
         ops.timeSeries('Constant', 1)
@@ -706,6 +763,9 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
                     wy_ops = -float(ld.get('wy_kNm', 0.0))
                     wx_ops =  float(ld.get('wx_kNm', 0.0))
                 ops.eleLoad('-ele', ld['elem_id'], '-type', '-beamUniform', wy_ops, wx_ops)
+                # Several loads can share an element — they superpose
+                prev_y, prev_x = ele_udl.get(ld['elem_id'], (0.0, 0.0))
+                ele_udl[ld['elem_id']] = (prev_y + wy_ops, prev_x + wx_ops)
 
     # Analysis
     ops.system('BandGeneral')
@@ -724,14 +784,41 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
     node_disps     = {n['id']: ops.nodeDisp(n['id'])     for n in nodes}
     node_reactions = {n['id']: ops.nodeReaction(n['id']) for n in nodes}
 
-    ele_forces = {}
+    # Element forces — in LOCAL axes.
+    #
+    # eleForce returns the resisting forces in *global* axes, so reading them
+    # as [N, V, M] only happens to work for members that run along x. On a
+    # rafter it reported the global vertical component as the axial force. The
+    # local set is what N and V are supposed to mean, and it is what opsvis
+    # draws its diagrams from, so both now come from the same place.
+    ele_forces   = {}
+    ele_extremes = {}
     for el in elements:
-        if el.get('type', 'beam') != 'truss':
-            ele_forces[el['id']] = ops.eleForce(el['id'])
+        eid = el['id']
+        ni, nj = dict_nodes[el['ni']], dict_nodes[el['nj']]
+        L = math.hypot(nj['x'] - ni['x'], nj['y'] - ni['y'])
+
+        if el.get('type', 'beam') == 'truss':
+            # Axial only. eleResponse gives it directly; eleForce would need
+            # resolving out of the global components.
+            axial = ops.eleResponse(eid, 'axialForce')
+            N = float(axial[0]) if axial else 0.0
+            ele_forces[eid]   = [N, 0.0, 0.0, -N, 0.0, 0.0]
+            ele_extremes[eid] = {'N_kN': -N, 'V_kN': 0.0, 'M_kNm': 0.0,
+                                 'x_N_m': 0.0, 'x_V_m': 0.0, 'x_M_m': 0.0}
+            continue
+
+        pl = ops.eleResponse(eid, 'localForces')
+        if len(pl) == 6:
+            wy, wx = ele_udl.get(eid, (0.0, 0.0))
+            ele_extremes[eid] = section_force_extremes(pl, L, wy, wx)
         else:
-            # Truss returns [N_i, N_j] — pad to 6 for consistent shape
-            f = ops.eleForce(el['id'])
-            ele_forces[el['id']] = [f[0], 0, 0, f[1] if len(f) > 1 else -f[0], 0, 0]
+            # Unexpected build — fall back to what was read before so the
+            # analysis still returns something, and record that the span
+            # maximum is unknown rather than reporting the end value as one.
+            pl = list(ops.eleForce(eid))
+            ele_extremes[eid] = None
+        ele_forces[eid] = list(pl)
 
     # A model can pass validate_model() and still be near-singular — a joint
     # braced only by a nearly-parallel pair of members, say. The result is the
@@ -751,6 +838,7 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         'node_disps':     node_disps,
         'node_reactions': node_reactions,
         'ele_forces':     ele_forces,
+        'ele_extremes':   ele_extremes,
             }
 
 
@@ -878,6 +966,7 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
             'node_disps':         result['node_disps'],
             'node_reactions':     result['node_reactions'],
             'ele_forces':         result['ele_forces'],
+            'ele_extremes':       result.get('ele_extremes', {}),
         }
         # Generate figures NOW, while the OpenSeesPy model reflects this combo
         if make_figs and _OPSVIS_AVAILABLE:
@@ -908,9 +997,16 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
                        for sc in (1, 2, 3)}
         for r in all_results:
             f = r['ele_forces'].get(eid, [0.0] * 6)
-            M = max(abs(f[2]), abs(f[5]))
-            V = max(abs(f[1]), abs(f[4]))
-            N = max(abs(f[0]), abs(f[3]))
+            # The envelope is what the member checks are designed against, so
+            # it has to be the worst value anywhere along the element, not the
+            # worst of its two ends.
+            ext = (r.get('ele_extremes') or {}).get(eid)
+            if ext:
+                M, V, N = abs(ext['M_kNm']), abs(ext['V_kN']), abs(ext['N_kN'])
+            else:
+                M = max(abs(f[2]), abs(f[5]))
+                V = max(abs(f[1]), abs(f[4]))
+                N = max(abs(f[0]), abs(f[3]))
             dur = r.get('governing_duration', 'short')
             if M > best['M']: best['M'] = M; best['M_combo'] = r['name']; best['M_duration'] = dur
             if V > best['V']: best['V'] = V; best['V_combo'] = r['name']; best['V_duration'] = dur
@@ -1269,9 +1365,21 @@ def make_figures(title, nodes, elements, supports, loads,
     return figs
 
 
-def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports, loads):
+def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports, loads,
+              ele_extremes=None):
     """Return structured summary dict including full element and node detail."""
     import math
+
+    ele_extremes = ele_extremes or {}
+
+    def _worst(eid, f):
+        """Worst N, V, M along the element — falling back to its ends."""
+        ext = ele_extremes.get(eid)
+        if ext:
+            return abs(ext['N_kN']), abs(ext['V_kN']), abs(ext['M_kNm'])
+        return (max(abs(f[0]), abs(f[3])),
+                max(abs(f[1]), abs(f[4])),
+                max(abs(f[2]), abs(f[5])))
 
     # ── Max displacements ─────────────────────────────────────────────────────
     max_ux = max((abs(node_disps[n['id']][0]) for n in nodes), default=0.0)
@@ -1283,10 +1391,8 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
     beam_eles = [el for el in elements if el.get('type', 'beam') == 'beam']
     if beam_eles:
         el_max_M = max(beam_eles,
-                       key=lambda el: max(abs(ele_forces[el['id']][2]),
-                                          abs(ele_forces[el['id']][5])))
-        max_M = max(abs(ele_forces[el_max_M['id']][2]),
-                    abs(ele_forces[el_max_M['id']][5]))
+                       key=lambda el: _worst(el['id'], ele_forces[el['id']])[2])
+        max_M = _worst(el_max_M['id'], ele_forces[el_max_M['id']])[2]
     else:
         el_max_M = None
         max_M = 0.0
@@ -1349,6 +1455,14 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
             'N_j_kN':  round(f[3], 3),
             'V_j_kN':  round(f[4], 3),
             'M_j_kNm': round(f[5], 3),
+            # Worst anywhere along the element, and where. On a member carrying
+            # a distributed load this is the design action; the end values above
+            # can be far smaller, and are zero on a simply supported span.
+            'N_max_kN':   round(_worst(eid, f)[0], 3),
+            'V_max_kN':   round(_worst(eid, f)[1], 3),
+            'M_max_kNm':  round(_worst(eid, f)[2], 3),
+            'x_M_max_m':  round(ele_extremes.get(eid, {}).get('x_M_m', 0.0), 3)
+                          if ele_extremes.get(eid) else None,
         })
 
     # ── Applied loads summary ─────────────────────────────────────────────────

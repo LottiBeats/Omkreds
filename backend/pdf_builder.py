@@ -135,7 +135,7 @@ def _calc_block(block: dict) -> list:
     result = d.get("_result")
 
     if result is None:
-        return [S(title), N("This block has not been run yet — open the editor and click 'Run check'.")]
+        return [S(title), N("[Beregningen er ikke udført — afsnittet er ufuldstændigt.]")]
 
     # Flatten one level: some calc modules call H1() which returns a list,
     # and if they appended (not extended) it ends up nested.
@@ -164,7 +164,7 @@ def _beam_fem_block(block: dict, tmp_files: list) -> list:
     result = d.get("_result")
 
     if result is None:
-        return [S(title), N("This block has not been run yet — open the editor and click 'Run'.")]
+        return [S(title), N("[Beregningen er ikke udført — afsnittet er ufuldstændigt.]")]
 
     # Flatten in case any items are nested lists
     flat = []
@@ -251,7 +251,7 @@ def _frame_fem_block(block: dict, tmp_files: list) -> list:
 
     if result is None:
         return [S(title),
-                N("Block has not been run yet — open the editor and click 'Run analysis'.")]
+                N("[Beregningen er ikke udført — afsnittet er ufuldstændigt.]")]
 
     out = [S(title)]
 
@@ -664,25 +664,25 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
     out = [MH(title, "2D Frame FEM — OpenSeesPy", "general")]
 
     if not summary:
-        out.append(N("Block has not been run yet — open the editor and click ▶ Run FEM."))
+        out.append(N("[Beregningen er ikke udført — afsnittet er ufuldstændigt.]"))
         return out
 
     # ── Figures ──────────────────────────────────────────────────────────────
     out += _figs_b64_to_pdf(
         figs, tmp_files,
-        ["Deflected shape", "Bending moment diagram", "Shear force diagram", "Axial force diagram"],
+        ["Deformeret form", "Momentkurve", "Forskydningskurve", "Normalkraftkurve"],
     )
 
     # ── Headline results ─────────────────────────────────────────────────────
-    out.append(S("Key results"))
+    out.append(S("Hovedresultater"))
     out.append(TBL(
-        ["Result", "Value", "Location"],
+        ["Resultat", "Værdi", "Placering"],
         [
-            ["Max horizontal displacement δ_x",
-             f"{summary['max_ux_mm']:.2f} mm", f"Node {summary['max_ux_node']}"],
-            ["Max vertical displacement δ_y",
-             f"{summary['max_uy_mm']:.2f} mm", f"Node {summary['max_uy_node']}"],
-            ["Max bending moment M",
+            ["Største vandrette flytning δ_x",
+             f"{summary['max_ux_mm']:.2f} mm", f"Knude {summary['max_ux_node']}"],
+            ["Største lodrette flytning δ_y",
+             f"{summary['max_uy_mm']:.2f} mm", f"Knude {summary['max_uy_node']}"],
+            ["Største moment M",
              f"{summary['max_moment_kNm']:.2f} kNm",
              f"Element {summary['max_moment_ele']}"],
         ],
@@ -691,7 +691,7 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
     # ── Applied loads ─────────────────────────────────────────────────────────
     loads_table = summary.get("loads_table", [])
     if loads_table:
-        out.append(S("Applied loads"))
+        out.append(S("Påførte laster"))
         out.append(TBL(
             ["Type", "Target", "Fx (kN)", "Fy (kN)", "Mz (kNm)", "wy (kN/m)", "wx (kN/m)"],
             [
@@ -710,16 +710,20 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
     # ── Element section forces ────────────────────────────────────────────────
     ele_table = summary.get("ele_force_table", [])
     if ele_table:
-        out.append(S("Element cross-section forces"))
+        out.append(S("Snitkræfter i elementerne"))
         out.append(T(
-            "Forces in local element axes. "
-            "End i = start node, end j = end node. "
-            "N: axial (+ tension)  V: shear  M: bending moment."
+            "Snitkræfter i lokale elementakser. "
+            "Ende i = startknude, ende j = slutknude. "
+            "N: normalkraft (+ træk)  V: forskydning  M: moment.  "
+            "M_max er det største moment et vilkårligt sted langs elementet, "
+            "og x angiver hvor. På et element med linjelast ligger maksimum "
+            "mellem knuderne — det er den værdi, eftervisningen regner med."
         ))
         out.append(TBL(
             ["Elem", "Type", "L (m)", "A (cm²)", "Iz (cm⁴)",
              "N_i (kN)", "V_i (kN)", "M_i (kNm)",
-             "N_j (kN)", "V_j (kN)", "M_j (kNm)"],
+             "N_j (kN)", "V_j (kN)", "M_j (kNm)",
+             "M_max (kNm)", "x (m)"],
             [
                 [
                     str(e["id"]), e["type"], f"{e['L_m']:.2f}",
@@ -727,6 +731,8 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
                     str(e["Iz_cm4"]) if e["type"] == "beam" else "—",
                     f"{e['N_i_kN']:.2f}", f"{e['V_i_kN']:.2f}", f"{e['M_i_kNm']:.2f}",
                     f"{e['N_j_kN']:.2f}", f"{e['V_j_kN']:.2f}", f"{e['M_j_kNm']:.2f}",
+                    f"{e['M_max_kNm']:.2f}" if e.get("M_max_kNm") is not None else "—",
+                    f"{e['x_M_max_m']:.2f}" if e.get("x_M_max_m") is not None else "—",
                 ]
                 for e in ele_table
             ],
@@ -735,7 +741,7 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
     # ── Node displacements ────────────────────────────────────────────────────
     node_table = summary.get("node_disp_table", [])
     if node_table:
-        out.append(S("Nodal displacements"))
+        out.append(S("Knudeflytninger"))
         out.append(TBL(
             ["Node", "x (m)", "y (m)", "δ_x (mm)", "δ_y (mm)", "θ_z (mrad)"],
             [
@@ -750,7 +756,7 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
     # ── Reactions ─────────────────────────────────────────────────────────────
     reactions = summary.get("reactions", {})
     if reactions:
-        out.append(S("Support reactions"))
+        out.append(S("Reaktioner"))
         out.append(TBL(
             ["Node", "Fx (kN)", "Fy (kN)", "Mz (kNm)"],
             [
@@ -772,7 +778,7 @@ def _portal_frame_fem_block(block: dict, tmp_files: list) -> list:
     out = [MH(title, "Portal Frame FEM — OpenSeesPy", "general")]
 
     if not summary:
-        out.append(N("Block has not been run yet — open the editor and click ▶ Run FEM."))
+        out.append(N("[Beregningen er ikke udført — afsnittet er ufuldstændigt.]"))
         return out
 
     out += _figs_b64_to_pdf(
@@ -780,17 +786,17 @@ def _portal_frame_fem_block(block: dict, tmp_files: list) -> list:
         ["Static model", "Deflected shape", "Bending moment diagram", "Shear force diagram", "Axial force diagram"],
     )
 
-    out.append(S("Key results"))
+    out.append(S("Hovedresultater"))
     out.append(TBL(
-        ["Result", "Value", "Location"],
+        ["Resultat", "Værdi", "Placering"],
         [
             ["Max lateral displacement δ_x",
              f"{summary['max_lateral_disp_mm']:.2f} mm",
              f"Node {summary['max_lateral_disp_node']}"],
-            ["Max vertical displacement δ_y",
+            ["Største lodrette flytning δ_y",
              f"{summary['max_vertical_disp_mm']:.2f} mm",
              f"Node {summary['max_vertical_disp_node']}"],
-            ["Max bending moment M",
+            ["Største moment M",
              f"{summary['max_moment_kNm']:.2f} kNm",
              f"Element {summary['max_moment_ele']}"],
         ],
@@ -798,7 +804,7 @@ def _portal_frame_fem_block(block: dict, tmp_files: list) -> list:
 
     reactions = summary.get("reactions", {})
     if reactions:
-        out.append(S("Support reactions"))
+        out.append(S("Reaktioner"))
         out.append(TBL(
             ["Column", "Fx (kN)", "Fy (kN)", "Mz (kNm)"],
             [

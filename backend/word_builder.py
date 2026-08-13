@@ -560,7 +560,7 @@ def _convert_doc_block(doc: Document, block: dict, tmp_files: list):
         result = d.get("_result")
         if result is None:
             doc.add_heading(d.get("title", "Beam FEM Analysis"), level=2)
-            doc.add_paragraph("This block has not been run yet.")
+            doc.add_paragraph("[Beregningen er ikke udført — afsnittet er ufuldstændigt.]")
             return
         _render_calc_blocks(doc, result, tmp_files)
         # Embed FEM figure
@@ -583,7 +583,7 @@ def _convert_doc_block(doc: Document, block: dict, tmp_files: list):
         if result is None:
             title = d.get("title", btype.replace("_", " ").title())
             doc.add_heading(title, level=2)
-            doc.add_paragraph("This block has not been run yet — open the editor and click 'Run check'.")
+            doc.add_paragraph("[Beregningen er ikke udført — afsnittet er ufuldstændigt.]")
             return
         _render_calc_blocks(doc, result, tmp_files)
         return

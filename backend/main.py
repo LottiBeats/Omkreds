@@ -2230,7 +2230,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             # Build envelope summary for frontend
             summary = summarise(nodes, elements,
                                 best_res['node_disps'], best_res['node_reactions'],
-                                best_res['ele_forces'], supports, [])
+                                best_res['ele_forces'], supports, [],
+                                best_res.get('ele_extremes'))
             summary['envelope']          = envelope
             summary['timber_envelope']   = timber_envelope   # {eid: {sc: {M_Ed, V_Ed, duration, combo}}}
             summary['combinations']      = [r['name'] for r in all_results]
@@ -2264,7 +2265,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             )
             summary = summarise(nodes, elements,
                                 res['node_disps'], res['node_reactions'],
-                                res['ele_forces'], supports, loads)
+                                res['ele_forces'], supports, loads,
+                                res.get('ele_extremes'))
             summary['buckling_lengths'] = buck_lengths
             # alpha_cr LAST — see the note in combination mode above.
             summary['alpha_cr'] = compute_alpha_cr(

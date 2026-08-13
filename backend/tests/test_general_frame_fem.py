@@ -23,7 +23,7 @@ import math
 import pytest
 
 import general_frame_fem as gf
-from general_frame_fem import ModelError
+from general_frame_fem import ModelError, section_forces_2d
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -109,6 +109,66 @@ def test_negative_vertical_load_acts_upwards():
     """The sign still means something — uplift must be expressible."""
     (gx, gy), _ = _project('vertical', -2.0, 0.0)
     assert gy == pytest.approx(+2.0, abs=1e-12)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 1b. Section forces between the ends
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# The end forces below are not copied from the solver — they are derived from
+# the boundary conditions of the case, so the test states the statics rather
+# than the implementation. For a simply supported span under w downwards,
+# eleLoad takes Wy = -w, and M(0) = M(L) = 0 forces V_i = wL/2, M_i = 0.
+
+def test_simply_supported_span_reaches_wl2_over_8_between_the_ends():
+    w, L = 10.0, 6.0
+    pl = [0.0, w * L / 2, 0.0, 0.0, 0.0, 0.0]     # N_i, V_i, M_i, ...
+
+    # Both ends carry no moment at all
+    assert section_forces_2d(pl, 0.0, wy=-w)[2] == pytest.approx(0.0, abs=1e-9)
+    assert section_forces_2d(pl, L,   wy=-w)[2] == pytest.approx(0.0, abs=1e-9)
+
+    ext = gf.section_force_extremes(pl, L, wy=-w)
+    assert ext['M_kNm'] == pytest.approx(w * L**2 / 8, rel=1e-9)
+    assert ext['x_M_m'] == pytest.approx(L / 2, rel=1e-9)
+
+
+def test_cantilever_moment_peaks_at_the_fixed_end():
+    """No stationary point inside the element — the extreme is at an end."""
+    w, L = 5.0, 3.0
+    # Fixed at i, free at j. M(L) = 0 and |M(0)| = wL²/2 together give
+    # V_i = wL and M_i = +wL²/2.
+    pl = [0.0, w * L, w * L**2 / 2, 0.0, 0.0, 0.0]
+
+    assert section_forces_2d(pl, L, wy=-w)[2] == pytest.approx(0.0, abs=1e-9)
+
+    ext = gf.section_force_extremes(pl, L, wy=-w)
+    assert abs(ext['M_kNm']) == pytest.approx(w * L**2 / 2, rel=1e-9)
+    assert ext['x_M_m'] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_shear_is_linear_and_extreme_at_an_end():
+    w, L = 10.0, 6.0
+    pl = [0.0, w * L / 2, 0.0, 0.0, 0.0, 0.0]
+    ext = gf.section_force_extremes(pl, L, wy=-w)
+    assert abs(ext['V_kN']) == pytest.approx(w * L / 2, rel=1e-9)
+    assert section_forces_2d(pl, L / 2, wy=-w)[1] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_axial_varies_with_a_longitudinal_load():
+    L, wx = 4.0, 2.0
+    pl = [-8.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    assert section_forces_2d(pl, 0.0, wx=wx)[0] == pytest.approx(8.0)
+    assert section_forces_2d(pl, L,   wx=wx)[0] == pytest.approx(8.0 - wx * L)
+
+
+def test_no_element_load_leaves_the_moment_linear():
+    """Without a distributed load the extreme is always at an end."""
+    L = 4.0
+    pl = [0.0, 3.0, -2.0, 0.0, 0.0, 0.0]
+    ext = gf.section_force_extremes(pl, L)
+    assert ext['M_kNm'] == pytest.approx(2.0 + 3.0 * L)
+    assert ext['x_M_m'] == pytest.approx(L)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -354,6 +414,70 @@ def test_cantilever_matches_the_closed_form():
     delta = -res['node_disps'][2][1]
     assert delta == pytest.approx(w * L**4 / (8 * EI), rel=0.01)
     assert abs(res['ele_forces'][1][2]) == pytest.approx(w * L**2 / 2, rel=0.01)
+
+
+@ops_required
+def test_design_moment_is_the_span_maximum_not_the_end_value():
+    """
+    One element, simply supported, full-span UDL. Both ends carry zero moment
+    and midspan carries wL²/8 — so anything reading the end forces reports a
+    design moment of zero for a beam that is fully loaded.
+
+    This is the case the two-element beam above cannot catch: splitting the
+    span puts a node at midspan, which turns the span maximum into an end value
+    and hides the defect.
+    """
+    L, w = 6.0, 10.0
+    nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': L, 'y': 0}]
+    elements = [{'id': 1, 'ni': 1, 'nj': 2, 'type': 'beam', 'release': 'none',
+                 'E_GPa': E_GPA, 'A_cm2': A_CM2, 'Iz_cm4': IZ_CM4}]
+    supports = [{'node_id': 1, 'ux': True,  'uy': True, 'rz': False},
+                {'node_id': 2, 'ux': False, 'uy': True, 'rz': False}]
+    loads = [{'type': 'udl', 'elem_id': 1, 'direction': 'vertical', 'value_kNm': w}]
+
+    res = gf.solve(nodes, elements, supports, loads)
+
+    f = res['ele_forces'][1]
+    assert abs(f[2]) == pytest.approx(0.0, abs=1e-6), 'end i carries no moment'
+    assert abs(f[5]) == pytest.approx(0.0, abs=1e-6), 'end j carries no moment'
+
+    ext = res['ele_extremes'][1]
+    assert abs(ext['M_kNm']) == pytest.approx(w * L**2 / 8, rel=0.001)
+    assert ext['x_M_m']      == pytest.approx(L / 2,        rel=0.001)
+    assert abs(ext['V_kN'])  == pytest.approx(w * L / 2,    rel=0.001)
+
+    summary = gf.summarise(nodes, elements, res['node_disps'],
+                           res['node_reactions'], res['ele_forces'],
+                           supports, loads, res['ele_extremes'])
+    assert summary['max_moment_kNm'] == pytest.approx(w * L**2 / 8, rel=0.001)
+    assert summary['ele_force_table'][0]['M_max_kNm'] == pytest.approx(w * L**2 / 8, rel=0.001)
+
+
+@ops_required
+def test_element_forces_are_local_not_global():
+    """
+    A rafter carrying a vertical load. In global axes the end force is almost
+    all vertical; resolved into the member's own axes it is part axial, part
+    shear. eleForce reports the global set, which is what made a rafter's
+    "axial force" the vertical reaction — so the checks were handed the wrong
+    N and V. localForces is what N and V are supposed to mean.
+    """
+    L, angle, w = 4.0, 30.0, 6.0
+    a = math.radians(angle)
+    nodes = [{'id': 1, 'x': 0, 'y': 0},
+             {'id': 2, 'x': L * math.cos(a), 'y': L * math.sin(a)}]
+    elements = [{'id': 1, 'ni': 1, 'nj': 2, 'type': 'beam', 'release': 'none',
+                 'E_GPa': E_GPA, 'A_cm2': A_CM2, 'Iz_cm4': IZ_CM4}]
+    supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True}]
+    loads = [{'type': 'udl', 'elem_id': 1, 'direction': 'vertical', 'value_kNm': w}]
+
+    res = gf.solve(nodes, elements, supports, loads)
+    N_i, V_i = res['ele_forces'][1][0], res['ele_forces'][1][1]
+
+    # Total load on the member, resolved into its own axes
+    W = w * L
+    assert abs(N_i) == pytest.approx(W * math.sin(a), rel=0.01)
+    assert abs(V_i) == pytest.approx(W * math.cos(a), rel=0.01)
 
 
 @ops_required

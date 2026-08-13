@@ -531,13 +531,21 @@ class HolstDocTemplate(BaseDocTemplate):
                 toc.beforeBuild()
             self._toc_counter = 0
             self.build(copy.deepcopy(story), canvasmaker=canvasmaker)
-            # Capture total pages after first pass so header can show "X af Y"
-            if self._total_pages is None:
-                self._total_pages = self.page
-            if toc is None or toc.isSatisfied():
-                break
-        else:
+            # The page count is only known once a pass has run — and it changes
+            # between passes, because filling in the table of contents can push
+            # the document onto another page. Keeping the count from the first
+            # pass is what printed "Side 14 af 13": pass 1 had an empty TOC and
+            # ran to 13 pages, pass 2 filled it in and ran to 14. So the count
+            # is taken from every pass, and the build only stops once it has
+            # stopped moving.
+            prev_total, self._total_pages = self._total_pages, self.page
+            if (toc is None or toc.isSatisfied()) and prev_total == self._total_pages:
+                return
+
+        if toc is not None and not toc.isSatisfied():
             raise IndexError(f"TOC not resolved after {maxPasses} passes")
+        # The page count never settled — one page out in the header is a far
+        # better outcome than refusing to produce the document at all.
 
     def afterFlowable(self, flowable):
         """Register TOC anchors emitted by calc modules."""

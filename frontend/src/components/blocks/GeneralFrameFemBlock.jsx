@@ -856,11 +856,12 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
                 Er der valgt et tværsnit, udledes E, A og Iz af det — og eftervisningen
                 nedenfor arver samme tværsnit, så de to ikke kan komme til at afvige.
               </div>
-              <div style={{ ...s.detailLabel, marginTop: 12 }}>End forces (local axes)</div>
+              <div style={{ ...s.detailLabel, marginTop: 12 }}>Snitkræfter (lokale akser)</div>
               <table style={s.table}>
                 <thead>
                   <tr>
-                    {['Elem','N_i (kN)','V_i (kN)','M_i (kNm)','N_j (kN)','V_j (kN)','M_j (kNm)',''].map(h => (
+                    {['Elem','N_i (kN)','V_i (kN)','M_i (kNm)','N_j (kN)','V_j (kN)','M_j (kNm)',
+                      'M_max (kNm)','ved x (m)',''].map(h => (
                       <th key={h} style={s.th}>{h}</th>
                     ))}
                   </tr>
@@ -875,6 +876,15 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
                       <td style={s.td}>{e.N_j_kN.toFixed(2)}</td>
                       <td style={s.td}>{e.V_j_kN.toFixed(2)}</td>
                       <td style={s.td}>{e.M_j_kNm.toFixed(2)}</td>
+                      {/* The design moment. On a member with a distributed
+                          load it sits between the nodes, so the end columns
+                          above can both read zero while this does not. */}
+                      <td style={{ ...s.td, fontWeight: 700 }}>
+                        {e.M_max_kNm != null ? e.M_max_kNm.toFixed(2) : '—'}
+                      </td>
+                      <td style={s.td}>
+                        {e.x_M_max_m != null ? e.x_M_max_m.toFixed(2) : '—'}
+                      </td>
                       <td style={{ ...s.td, padding: '3px 6px' }}>
                         <CreateCheckButton
                           elemId={e.id}
@@ -1051,7 +1061,17 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         equal_dofs:   equalDofs,
       })
 
-      // Build _exports so capacity check blocks can read element forces
+      // Build _exports so capacity check blocks can read element forces.
+      //
+      // The design action is the worst value *along* the element, which the
+      // backend now reports as N/V/M_max. Reading the end values instead
+      // understates the moment on every member with a distributed load — on a
+      // simply supported span the ends carry none at all. The fallbacks keep
+      // results produced by an older backend readable.
+      const worstM = e => e.M_max_kNm ?? Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm))
+      const worstV = e => e.V_max_kN  ?? Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN))
+      const worstN = e => e.N_max_kN  ?? Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN))
+
       const eleTable        = res._summary?.ele_force_table ?? []
       const envelope        = res._summary?.envelope        ?? {}
       const timberEnvelope  = res._summary?.timber_envelope ?? {}
@@ -1090,9 +1110,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           id:             1000 + mid,
           member_id:      mid,
           label:          `Member ${mid}  (Elem ${subElems.map(e => e.id).join('+')}  ${firstE.ni}→${lastE.nj}  L=${totalL.toFixed(2)}m)`,
-          M_max_kNm:      Math.max(...subElems.map(e => Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)))),
-          V_max_kN:       Math.max(...subElems.map(e => Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)))),
-          N_max_kN:       Math.max(...subElems.map(e => Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)))),
+          M_max_kNm:      Math.max(...subElems.map(worstM)),
+          V_max_kN:       Math.max(...subElems.map(worstV)),
+          N_max_kN:       Math.max(...subElems.map(worstN)),
           M_duration:     bestMDuration,
           timber:         memberTimber,   // {1: {M_Ed_kNm, V_Ed_kN, duration, combo}, 2: ..., 3: ...}
           M_i_kNm: firstE.M_i_kNm, V_i_kN: firstE.V_i_kN, N_i_kN: firstE.N_i_kN,
@@ -1106,9 +1126,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           ...eleTable.map(e => ({
             id:         e.id,
             label:      `Elem ${e.id}  (${e.ni}→${e.nj}, L=${e.L_m}m)`,
-            M_max_kNm:  Math.max(Math.abs(e.M_i_kNm), Math.abs(e.M_j_kNm)),
-            V_max_kN:   Math.max(Math.abs(e.V_i_kN),  Math.abs(e.V_j_kN)),
-            N_max_kN:   Math.max(Math.abs(e.N_i_kN),  Math.abs(e.N_j_kN)),
+            M_max_kNm:  worstM(e),
+            V_max_kN:   worstV(e),
+            N_max_kN:   worstN(e),
             M_duration: envelope[e.id]?.M_duration ?? 'short',
             timber:     timberEnvelope[e.id] ?? {},
             M_i_kNm: e.M_i_kNm, V_i_kN: e.V_i_kN, N_i_kN: e.N_i_kN,
