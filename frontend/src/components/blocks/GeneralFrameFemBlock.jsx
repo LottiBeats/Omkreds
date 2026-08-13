@@ -1062,7 +1062,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
       {/* Live geometry sketch — instant feedback while editing */}
       <ModelSketch nodes={nodes} elements={elements}
-        supports={supports} equalDofs={equalDofs} />
+        supports={supports} equalDofs={equalDofs} loads={loads} />
 
       {systemOpen && (
         <FemSystemModal
@@ -1190,9 +1190,12 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           title={loadMode === 'load_cases' && !loadCasesReady ? 'Kør lastkombinations-blokken først' : 'Ctrl+Enter'}>
           {running ? '⏳  Beregner…' : '▶  Kør FEM'}
         </button>
+        {/* The sketch above is the working view; this renders the same model
+            at report quality. Naming it for the report keeps anyone from
+            pressing it just to see what they have built. */}
         <button style={s.btn} onClick={handlePreview} disabled={running || previewing}
-          title="Generér modelfigur til rapporten (matplotlib)">
-          {previewing ? '⏳ …' : '🔍  Modelfigur'}
+          title="Tegner modellen i rapportkvalitet. Til redigering er skitsen ovenfor nok — den viser også laster og charnierer.">
+          {previewing ? '⏳ …' : '🖨  Figur til rapport'}
         </button>
         {d._summary && (
           <button style={s.btn}
