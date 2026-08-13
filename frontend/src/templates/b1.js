@@ -13,7 +13,7 @@
  * a live `doclist` block that reads the project's actual documents and their
  * issued revisions when it renders.
  */
-import { suggestCC, ANVENDELSER, MATERIALER, DEFAULT_OPTIONS } from './a1.js'
+import { suggestCC, suggestKK, ANVENDELSER, MATERIALER, DEFAULT_OPTIONS } from './a1.js'
 
 /** Join a list the way Danish prose does: "beton, stål og træ". */
 function ogListe(items) {
@@ -28,7 +28,8 @@ export function makeB1Template(options = {}, metadata = {}) {
   const m = metadata || {}
 
   const { cc, row, begrundelse } = suggestCC(o)
-  const kk   = `KK${cc}`
+  const kkResult = suggestKK({ ...o, cc })
+  const kk   = kkResult.kk
   const brug = MATERIALER.filter(x => o.materialer[x.key]).map(x => x.label)
 
   let id = Date.now()
@@ -90,11 +91,14 @@ export function makeB1Template(options = {}, metadata = {}) {
   H(2, '5. Konsekvensklasse og konstruktionsklasse')
   T(
     `Konsekvensklasse: CC${cc}\n` +
-    `Konstruktionsklasse: ${kk}\n` +
+    `Konstruktionsklasse: ${kk}   (BR18 ${kkResult.regel})\n` +
     `Pålidelighedsklasse: RC${cc}\n` +
     `K_FI-faktor (STR/GEO): ${cc === 1 ? '0,9' : cc === 3 ? '1,1' : '1,0'}\n\n` +
-    `Begrundelse for klassevalg:\n${begrundelse}\n\n` +
-    `Indplaceringen er den samme som i A1 afsnit 2.2 og skal følges ad ved ændringer.`
+    `Begrundelse for konsekvensklasse:\n${begrundelse}\n\n` +
+    `Begrundelse for konstruktionsklasse:\n${kkResult.begrundelse}` +
+    (kkResult.dokumentationskrav ? `\n\nOBS: ${kkResult.dokumentationskrav}` : '') +
+    (kkResult.kraeverVurdering ? `\n\n${kkResult.kraeverVurdering}` : '') +
+    `\n\nIndplaceringen er den samme som i A1 afsnit 2.2 og skal følges ad ved ændringer.`
   )
 
   H(2, '6. Organisation og koordinering')

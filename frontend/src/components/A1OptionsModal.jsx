@@ -12,7 +12,8 @@
  */
 import { useMemo, useState } from 'react'
 import {
-  ANVENDELSER, KONSTRUKTIONSTYPER, MATERIALER, DEFAULT_OPTIONS, suggestCC,
+  ANVENDELSER, KONSTRUKTIONSTYPER, MATERIALER, BYGNINGSKATEGORIER,
+  DEFAULT_OPTIONS, suggestCC, suggestKK,
 } from '../templates/a1.js'
 
 const BRAND = '#d94a2b'
@@ -34,6 +35,7 @@ export default function A1OptionsModal({ metadata = {}, initial, docId = 'A1', o
     setO(prev => ({ ...prev, materialer: { ...prev.materialer, [key]: !prev.materialer[key] } }))
 
   const { cc, begrundelse } = useMemo(() => suggestCC(o), [o])
+  const kk = useMemo(() => suggestKK({ ...o, cc }), [o, cc])
   const valgteMaterialer = MATERIALER.filter(m => o.materialer[m.key])
 
   return (
@@ -74,6 +76,33 @@ export default function A1OptionsModal({ metadata = {}, initial, docId = 'A1', o
             </select>
           </Field>
 
+          <Field label="Bygningskategori — BR18 § 489">
+            <select style={S.input} value={o.bygningskategori}
+                    onChange={e => set('bygningskategori', e.target.value)}>
+              {BYGNINGSKATEGORIER.map(b => (
+                <option key={b.key} value={b.key}>{b.label}</option>
+              ))}
+            </select>
+          </Field>
+
+          {/* §§ 487-488 are judgements the engineer makes; we never infer them */}
+          <div style={S.row}>
+            <Field label="Kompleksitet — § 487" flex="1 1 220px">
+              <select style={S.input} value={o.simpel ? 'simpel' : 'kompleks'}
+                      onChange={e => set('simpel', e.target.value === 'simpel')}>
+                <option value="simpel">Simpel — lastveje er lette at overskue</option>
+                <option value="kompleks">Kompleks — kræver særlige værktøjer</option>
+              </select>
+            </Field>
+            <Field label="Erfaring — § 488" flex="1 1 220px">
+              <select style={S.input} value={o.traditionel ? 'traditionel' : 'utraditionel'}
+                      onChange={e => set('traditionel', e.target.value === 'traditionel')}>
+                <option value="traditionel">Traditionel — kendt teknologi</option>
+                <option value="utraditionel">Utraditionel — begrænset erfaring</option>
+              </select>
+            </Field>
+          </div>
+
           <div style={S.row}>
             <Field label="Etager over terræn" flex="1 1 110px">
               <input style={S.input} type="number" min="1" value={o.etager}
@@ -97,10 +126,21 @@ export default function A1OptionsModal({ metadata = {}, initial, docId = 'A1', o
               the document if the technical judgement differs. */}
           <div style={S.ccBox}>
             <div style={S.ccHead}>
-              Foreslået konsekvensklasse: <strong style={{ fontSize: 15 }}>CC{cc}</strong>
-              <span style={S.ccKk}>→ konstruktionsklasse KK{cc}, K_FI = {cc === 1 ? '0,9' : cc === 3 ? '1,1' : '1,0'}</span>
+              Konsekvensklasse: <strong style={{ fontSize: 15 }}>CC{cc}</strong>
+              <span style={S.ccKk}>K_FI = {cc === 1 ? '0,9' : cc === 3 ? '1,1' : '1,0'} · DS/INF 1990 Tabel 2</span>
             </div>
             <div style={S.ccWhy}>{begrundelse}</div>
+            <div style={S.kkHead}>
+              Konstruktionsklasse: <strong style={{ fontSize: 15 }}>{kk.kk}</strong>
+              <span style={S.ccKk}>{kk.regel}</span>
+            </div>
+            <div style={S.ccWhy}>{kk.begrundelse}</div>
+            {kk.dokumentationskrav && (
+              <div style={S.kkNote}>OBS: {kk.dokumentationskrav}</div>
+            )}
+            {kk.kraeverVurdering && (
+              <div style={S.kkNote}>{kk.kraeverVurdering}</div>
+            )}
           </div>
 
           <Field label="Bærende materialer">
@@ -216,6 +256,11 @@ const S = {
   ccHead: { fontSize: 13, color: '#1c1c1e', display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' },
   ccKk:   { fontSize: 11, color: '#64748b' },
   ccWhy:  { fontSize: 11.5, color: '#475569', lineHeight: 1.55, marginTop: 6 },
+  kkHead: {
+    fontSize: 13, color: '#1c1c1e', display: 'flex', gap: 10, alignItems: 'baseline',
+    flexWrap: 'wrap', marginTop: 10, paddingTop: 9, borderTop: '1px solid #e2e8f0',
+  },
+  kkNote: { fontSize: 11, color: '#b45309', lineHeight: 1.5, marginTop: 6 },
   warn:   { fontSize: 11, color: '#b45309', marginTop: 6 },
   note:   { fontSize: 11, color: '#94a3b8', lineHeight: 1.55, borderTop: '1px solid #f1f5f9', paddingTop: 12 },
   footer: {

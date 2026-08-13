@@ -120,6 +120,102 @@ export function suggestCC({ anvendelseNr = 1, spaendvidde = 0, hoejdeOver = 0, h
   }
 }
 
+// ── BR18 § 489 — konstruktionsklasse ──────────────────────────────────────────
+// Construction class does NOT simply follow consequence class. § 489 puts a
+// good deal of CC2 work in KK1 — a single-family house in two storeys is CC2
+// but KK1 — and pushes complex or untraditional CC2 work up into KK3. Getting
+// this wrong costs the user either an independent check they do not need, or
+// one they do.
+//
+// Complexity (§ 487) and experience (§ 488) are judgements the engineer makes,
+// so they are inputs here, never inferred.
+
+export const BYGNINGSKATEGORIER = [
+  { key: 'enfamiliehus', label: 'Enfamiliehus, rækkehus eller sommerhus (uden vandrette lejlighedsskel)' },
+  { key: 'etagebyggeri', label: 'Etagebyggeri til længere ophold (bolig, kontor, hotel, institution)' },
+  { key: 'landbrug',     label: 'Landbrugsbygning i én etage' },
+  { key: 'industri',     label: 'Industri- eller lagerbygning i én etage' },
+  { key: 'andet',        label: 'Andet' },
+]
+
+/**
+ * Suggest a konstruktionsklasse per BR18 § 489.
+ *
+ * Returns the class, the rule that produced it, and — for the two "ombygning"
+ * routes — the fact that documentation control still has to follow KK2 even
+ * though the structure sits in a lower class. That condition is easy to miss
+ * and is the whole reason those routes are allowed.
+ */
+export function suggestKK({
+  cc = 2,
+  simpel = true,
+  traditionel = true,
+  bygningskategori = 'andet',
+  etager = 1,
+  spaendvidde = 0,
+  konstruktionstype = 'Nybyggeri',
+} = {}) {
+  const ombygning = konstruktionstype === 'Ombygning' || konstruktionstype === 'Tilbygning'
+  const enkel = simpel && traditionel
+
+  if (cc <= 1) {
+    return { kk: 'KK1', regel: '§ 489', begrundelse:
+      'Konstruktioner i lav konsekvensklasse (CC1) henføres til konstruktionsklasse 1.' }
+  }
+
+  if (cc === 2) {
+    if (!enkel) {
+      return { kk: 'KK3', regel: '§ 489', begrundelse:
+        `Konstruktionen er angivet som ${!simpel ? 'kompleks' : 'utraditionel'}. ` +
+        'CC2-konstruktioner, der er komplekse eller utraditionelle, henføres til ' +
+        'konstruktionsklasse 3 — ikke KK2.' }
+    }
+    if (bygningskategori === 'enfamiliehus' && etager <= 2) {
+      return { kk: 'KK1', regel: '§ 489', begrundelse:
+        `Enfamiliehus/rækkehus/sommerhus uden vandrette lejlighedsskel i ${etager} etage` +
+        `${etager === 1 ? '' : 'r'} henføres til konstruktionsklasse 1, selvom konstruktionen ` +
+        'er i CC2.' }
+    }
+    if ((bygningskategori === 'landbrug' || bygningskategori === 'industri')
+        && etager <= 1 && spaendvidde <= 40) {
+      return { kk: 'KK1', regel: '§ 489', begrundelse:
+        `Simpel og traditionel ${bygningskategori === 'landbrug' ? 'landbrugsbygning' : 'industri-/lagerbygning'} ` +
+        `i én etage med spændvidde ${spaendvidde} m (højst 40 m) henføres til konstruktionsklasse 1.` }
+    }
+    if (ombygning) {
+      return { kk: 'KK1', regel: '§ 489, stk. 2', begrundelse:
+        'Simpel og traditionel ombygning/forandring i en eksisterende simpel og traditionel ' +
+        'CC2-konstruktion kan henføres til konstruktionsklasse 1.',
+        dokumentationskrav:
+          'Kontrol af dokumentationen skal fortsat ske efter BR18 kapitel 30 svarende til ' +
+          'konstruktionsklasse 2 — det er betingelsen for nedrykningen.',
+        kraeverVurdering:
+          'Forudsætter at både den eksisterende konstruktion og indgrebet er simple og ' +
+          'traditionelle. Bekræft vurderingen her.' }
+    }
+    return { kk: 'KK2', regel: '§ 489', begrundelse:
+      'CC2-konstruktion, der ikke er omfattet af konstruktionsklasse 1 eller 3.' }
+  }
+
+  // CC3
+  if (ombygning && enkel && bygningskategori === 'etagebyggeri'
+      && etager <= 6 && spaendvidde <= 8) {
+    return { kk: 'KK2', regel: '§ 489, stk. 2', begrundelse:
+      `Simpel og traditionel ombygning i en eksisterende simpel og traditionel CC3-konstruktion ` +
+      `i etagebyggeri til længere ophold med ${etager} etager (højst 6) og spændvidde ` +
+      `${spaendvidde} m (højst 8 m) kan henføres til konstruktionsklasse 2.`,
+      dokumentationskrav:
+        'Kontrol af dokumentationen skal ske efter BR18 kapitel 30 svarende til ' +
+        'konstruktionsklasse 2.',
+      kraeverVurdering:
+        'Forudsætter at både den eksisterende konstruktion og indgrebet er simple og ' +
+        'traditionelle. Bekræft vurderingen her.' }
+  }
+  return { kk: 'KK3', regel: '§ 489', begrundelse:
+    'Konstruktioner i høj konsekvensklasse (CC3) henføres til konstruktionsklasse 3. ' +
+    'Er svigtkonsekvenserne særligt alvorlige, skal KK4 overvejes i dialog med bygningsmyndigheden.' }
+}
+
 /** KFI per DS/EN 1990 DK NA:2024. CC1's 0,9 applies to STR/GEO only. */
 function kfiFor(cc) {
   return cc === 1 ? '0,9' : cc === 3 ? '1,1' : '1,0'
@@ -144,6 +240,10 @@ export const MATERIALER = [
 export const DEFAULT_OPTIONS = {
   konstruktionstype: 'Nybyggeri',
   anvendelseNr: 1,
+  // BR18 §§ 487-489 — the engineer's judgement, not something we can infer
+  bygningskategori: 'andet',
+  simpel: true,
+  traditionel: true,
   etager: 2,
   kaelder: false,
   spaendvidde: 6,
@@ -172,7 +272,8 @@ export function makeA1Template(options = {}, metadata = {}) {
   const m = metadata || {}
 
   const { cc, row, begrundelse } = suggestCC(o)
-  const kk   = `KK${cc}`
+  const kkResult = suggestKK({ ...o, cc })
+  const kk   = kkResult.kk
   const rc   = `RC${cc}`
   const kfi  = kfiFor(cc)
   const g3   = gamma3For(kk)
@@ -323,27 +424,49 @@ export function makeA1Template(options = {}, metadata = {}) {
     `Valgt K_FI-faktor for dette projekt (STR/GEO): ${kfi}`
   )
 
-  H(3, '2.2.2 Konstruktionsklasse — DS 1140:2014 og BR18')
+  H(3, '2.2.2 Konstruktionsklasse — BR18 § 489')
   T(
-    `Konstruktioner henføres til konstruktionsklasse ${kk} iht. BR18.\n\n` +
-    'Hovedreglen: KK-klassen følger CC-klassen direkte (CC1→KK1, CC2→KK2, CC3→KK3).\n\n' +
-    'Undtagelse — BR18 § 489 (en CC3-bygning kan placeres i KK2, når alle tre krav er opfyldt):\n' +
-    '  1. Simpel og traditionel ombygning/forandring af en eksisterende enkel konstruktion\n' +
-    '  2. Etagebyggeri til længere ophold (beboelse, kontor, hotel, dag-/døgninstitution)\n' +
-    '  3. Højst 6 etager over terræn OG spændvidde på højst 8 m\n\n' +
-    `Valgt konstruktionsklasse: ${kk}\n` +
-    `Begrundelse: Følger konsekvensklasse CC${cc}` +
-    (cc === 3 && o.konstruktionstype === 'Ombygning' && o.etager <= 6 && o.spaendvidde <= 8
-      ? '. Bemærk: projektet opfylder muligvis undtagelsen i BR18 § 489 — vurdér om KK2 kan anvendes.'
-      : '.')
+    'Konstruktionsklassen fastlægges iht. BR18 § 489 ud fra konsekvensklassen, ' +
+    'konstruktionens kompleksitet (§ 487) og erfaringen med konstruktionstypen (§ 488). ' +
+    'Klassen følger ikke konsekvensklassen automatisk: en række CC2-konstruktioner ' +
+    'henføres til KK1, og komplekse eller utraditionelle CC2-konstruktioner til KK3.\n\n' +
+    `Kompleksitet (§ 487): ${o.simpel ? 'Simpel konstruktion' : 'Kompleks konstruktion'}\n` +
+    `Erfaring (§ 488): ${o.traditionel ? 'Traditionel konstruktion' : 'Utraditionel konstruktion'}\n` +
+    `Bygningskategori: ${(BYGNINGSKATEGORIER.find(b => b.key === o.bygningskategori) || {}).label || '—'}\n\n` +
+    `Valgt konstruktionsklasse: ${kk}   (${kkResult.regel})\n` +
+    `Begrundelse: ${kkResult.begrundelse}` +
+    (kkResult.dokumentationskrav ? `\n\nOBS: ${kkResult.dokumentationskrav}` : '') +
+    (kkResult.kraeverVurdering ? `\n\n${kkResult.kraeverVurdering}` : '')
   )
-  TBL('Tabel 2.3 — Krav pr. konstruktionsklasse (DS 1140:2014 + BR18)', [
-    ['Klasse', 'CC', 'Projekteringskontrol', 'Udførelseskontrol', 'Dokumentation'],
-    ['KK1', 'CC1', 'Egenkontrol af projekterende', 'Egenkontrol af udførende', 'Ingen særlige krav'],
-    ['KK2', 'CC2', 'Uafhængig kontrol: A1 skal kontrolleres af en anden person. Beregninger og tegninger kontrolleres af en person, der ikke har udført den pågældende del. Internt i samme firma er tilstrækkeligt.', 'Egenkontrol + systematisk stikprøvekontrol af udførende', 'Kontrolplan B2 + kontrolrapport B3'],
-    ['KK3', 'CC3', 'Ekstern uvildig kontrol af alt projektmateriale — kræver eksternt firma', 'Udvidet ekstern uvildig udførelseskontrol', 'B2 + B3 + tredjepartsgodkendelse af projektgrundlag'],
-    ['KK4', 'Særlig', 'Særlig kontrol — aftales individuelt med bygningsmyndigheden', 'Særlig kontrol — aftales individuelt', 'Individuel aftale med bygningsmyndigheden'],
-  ], { highlighted: Array.from({ length: 5 }, (_, ci) => `${cc},${ci}`) })
+  TBL('Tabel 2.3 — Indplacering i konstruktionsklasse (BR18 § 489)', [
+    ['Klasse', 'Omfatter'],
+    ['KK1', 'CC1-konstruktioner · CC2 i enfamiliehuse, rækkehuse og sommerhuse uden vandrette lejlighedsskel, højst 2 etager · simple og traditionelle CC2-konstruktioner i landbrugs-, industri- og lagerbygninger i én etage med spændvidde højst 40 m'],
+    ['KK2', 'CC2-konstruktioner, der ikke er omfattet af KK1 eller KK3'],
+    ['KK3', 'CC2-konstruktioner, der er komplekse eller utraditionelle · alle CC3-konstruktioner'],
+    ['KK4', 'CC3-konstruktioner hvor svigtkonsekvenserne er særligt alvorlige — aftales individuelt med bygningsmyndigheden'],
+  ], { col_widths: [10, 90], highlighted: (() => {
+    const idx = ['KK1', 'KK2', 'KK3', 'KK4'].indexOf(kk) + 1
+    return idx > 0 ? [`${idx},0`, `${idx},1`] : []
+  })() })
+  T(
+    'Nedrykning ved ombygning (BR18 § 489, stk. 2) — begge forudsætter at både den ' +
+    'eksisterende konstruktion og selve indgrebet er simple og traditionelle:\n' +
+    '· CC2 → KK1 ved simpel og traditionel ombygning/forandring i en eksisterende simpel og traditionel konstruktion.\n' +
+    '· CC3 → KK2 ved samme, i etagebyggeri til længere ophold med højst 6 etager over terræn og spændvidde på højst 8 m.\n\n' +
+    'I begge tilfælde skal kontrollen af dokumentationen fortsat ske efter BR18 kapitel 30 ' +
+    'svarende til konstruktionsklasse 2. Nedrykningen letter altså konstruktionsklassen, ' +
+    'ikke dokumentationskontrollen.'
+  )
+  TBL('Tabel 2.3a — Kontrolkrav pr. konstruktionsklasse (DS 1140:2014)', [
+    ['Klasse', 'Projekteringskontrol', 'Udførelseskontrol', 'Dokumentation'],
+    ['KK1', 'Egenkontrol af projekterende', 'Egenkontrol af udførende', 'Ingen særlige krav'],
+    ['KK2', 'Uafhængig kontrol: A1 skal kontrolleres af en anden person. Beregninger og tegninger kontrolleres af en person, der ikke har udført den pågældende del. Internt i samme firma er tilstrækkeligt.', 'Egenkontrol + systematisk stikprøvekontrol af udførende', 'Kontrolplan B2 + kontrolrapport B3'],
+    ['KK3', 'Ekstern uvildig kontrol af alt projektmateriale — kræver eksternt firma', 'Udvidet ekstern uvildig udførelseskontrol', 'B2 + B3 + tredjepartsgodkendelse af projektgrundlag'],
+    ['KK4', 'Særlig kontrol — aftales individuelt med bygningsmyndigheden', 'Særlig kontrol — aftales individuelt', 'Individuel aftale med bygningsmyndigheden'],
+  ], { highlighted: (() => {
+    const idx = ['KK1', 'KK2', 'KK3', 'KK4'].indexOf(kkResult.dokumentationskrav ? 'KK2' : kk) + 1
+    return idx > 0 ? Array.from({ length: 4 }, (_, ci) => `${idx},${ci}`) : []
+  })() })
   T(
     'Nærmere om KK2-kontrolkrav (DS 1140:2014 Tabel B4b, note 2):\n' +
     '· Konstruktionsgrundlag A1: krav om uafhængig kontrol (en anden person end den, der har udarbejdet den pågældende del).\n' +
