@@ -252,7 +252,10 @@ export const FEM_SYSTEMS = [
 
       elements.push({
         id: eid.next(), ni: collarLeft, nj: collarRight, type: 'beam',
-        release: 'both', group: 'collar',
+        // The collar is one piece of timber like the rafters are, so it gets a
+        // member of its own — otherwise it shows up as an element belonging to
+        // nothing, and its section cannot be set where the others' are.
+        release: 'both', member_id: 3, group: 'collar',
       })
 
       return {

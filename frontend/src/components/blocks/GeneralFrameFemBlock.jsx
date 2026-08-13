@@ -68,6 +68,109 @@ function NodeRow({ node, onChange, onRemove }) {
   )
 }
 
+// ── Members ───────────────────────────────────────────────────────────────────
+//
+// A rafter is one member. That it is analysed as four elements is a property of
+// the calculation, not of the structure, and the automatic subdivision made
+// that worse rather than better: it removed the typing and replaced it with a
+// wall of near-identical rows to scroll past. So members are what is shown, and
+// the elements they are made of sit behind a disclosure.
+
+function groupMembers(elements, nodes) {
+  const byId = Object.fromEntries((nodes ?? []).map(n => [n.id, n]))
+  const seen = new Map()
+  const loose = []
+
+  for (const el of elements ?? []) {
+    if (el.member_id == null) { loose.push(el); continue }
+    if (!seen.has(el.member_id)) seen.set(el.member_id, [])
+    seen.get(el.member_id).push(el)
+  }
+
+  const length = (els) => els.reduce((sum, el) => {
+    const a = byId[el.ni], b = byId[el.nj]
+    return sum + (a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 0)
+  }, 0)
+
+  const members = [...seen.entries()].map(([id, els]) => ({
+    id, els,
+    ni: els[0]?.ni, nj: els[els.length - 1]?.nj,
+    L: length(els),
+  }))
+  members.sort((a, b) => a.id - b.id)
+  return { members, loose }
+}
+
+
+function MemberRow({ member, onSection, onRemove }) {
+  const first    = member.els[0] ?? {}
+  const material = first.material ?? ''
+  const mixed    = member.els.some(e =>
+    e.material !== first.material || e.section !== first.section || e.grade !== first.grade)
+
+  function setMaterial(key) {
+    if (!key) return onSection({ material: undefined, section: undefined, grade: undefined })
+    const def = MATERIALS.find(m => m.key === key)
+    onSection({
+      material: key,
+      grade:   def?.grades?.includes(first.grade) ? first.grade : def?.grades?.[key === 'steel' ? 2 : 1],
+      section: key === 'steel' ? (STEEL_SECTIONS.includes(first.section) ? first.section : 'IPE300')
+                               : (/^\s*\d/.test(first.section ?? '') ? first.section : '45x145'),
+    })
+  }
+
+  return (
+    <div style={s.listRow}>
+      <div style={s.listRowInner}>
+        <div style={s.memberTag}>Led {member.id}</div>
+        <div style={s.memberMeta}>
+          knude {member.ni} → {member.nj} · L = {member.L.toFixed(2)} m ·{' '}
+          {member.els.length} {member.els.length === 1 ? 'element' : 'elementer'}
+        </div>
+
+        <div style={s.fieldWrap}>
+          <label style={s.miniLabel}>Materiale</label>
+          <select style={{ ...s.smallInput, width: 84 }} value={material}
+            onChange={e => setMaterial(e.target.value)}>
+            <option value="">Egne tal</option>
+            {MATERIALS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+          </select>
+        </div>
+
+        {material && (
+          <>
+            <div style={s.fieldWrap}>
+              <label style={s.miniLabel}>Tværsnit</label>
+              {material === 'steel' ? (
+                <select style={{ ...s.smallInput, width: 96 }} value={first.section ?? ''}
+                  onChange={e => onSection({ section: e.target.value })}>
+                  {STEEL_SECTIONS.map(x => <option key={x}>{x}</option>)}
+                </select>
+              ) : (
+                <input style={{ ...s.smallInput, width: 88 }} value={first.section ?? ''}
+                  placeholder="b×h i mm"
+                  onChange={e => onSection({ section: e.target.value })} />
+              )}
+            </div>
+            <div style={s.fieldWrap}>
+              <label style={s.miniLabel}>Kvalitet</label>
+              <select style={{ ...s.smallInput, width: 78 }} value={first.grade ?? ''}
+                onChange={e => onSection({ grade: e.target.value })}>
+                {(MATERIALS.find(m => m.key === material)?.grades ?? [])
+                  .map(g => <option key={g}>{g}</option>)}
+              </select>
+            </div>
+          </>
+        )}
+
+        {mixed && <span style={s.mixedWarn}>elementerne har forskellige tværsnit</span>}
+      </div>
+      <button onClick={onRemove} style={s.removeBtn} title="Fjern hele leddet">✕</button>
+    </div>
+  )
+}
+
+
 function ElemRow({ elem, onChange, onRemove }) {
   const material = elem.material ?? ''
   const matDef   = MATERIALS.find(m => m.key === material)
@@ -832,6 +935,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
   const [previewing, setPreviewing] = useState(false)
   const [systemOpen, setSystemOpen] = useState(false)
+  // The raw lists start closed once there is a model to hide — they are the
+  // way in when there is nothing yet, and clutter once there is.
+  const [rawOpen, setRawOpen] = useState((d.elements ?? []).length === 0)
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
@@ -869,6 +975,30 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
                                 const nj = nodes[nodes.length - 1]?.id ?? 2
                                 update({ elements: [...elements, { id, ni, nj, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1, Iz_cm4: 3892 }] }) }
   function removeElem(i)      { update({ elements: elements.filter((_, j) => j !== i) }) }
+
+  // ── Members ─────────────────────────────────────────────────────────────────
+  const { members, loose } = groupMembers(elements, nodes)
+
+  /** One section for the whole member — it is one piece of timber. */
+  function setMemberSection(memberId, patch) {
+    update({ elements: elements.map(el => {
+      if (el.member_id !== memberId) return el
+      const next = { ...el, ...patch }
+      for (const k of ['material', 'section', 'grade'])
+        if (next[k] === undefined) delete next[k]
+      return next
+    }) })
+  }
+
+  /** Removing a member takes its elements, and the nodes nothing else holds. */
+  function removeMember(memberId) {
+    const keep = elements.filter(el => el.member_id !== memberId)
+    const used = new Set()
+    for (const el of keep) { used.add(el.ni); used.add(el.nj) }
+    for (const sp of supports) used.add(sp.node_id)
+    for (const eq of equalDofs) { used.add(eq.r_node); used.add(eq.c_node) }
+    update({ elements: keep, nodes: nodes.filter(n => used.has(n.id)) })
+  }
 
   // Supports
   const supports = d.supports ?? []
@@ -1084,23 +1214,67 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         />
       )}
 
-      {/* Nodes */}
-      <div style={s.rowHeader}>
-        <SectionLabel text="Knuder" />
-        <button style={s.addBtn} onClick={addNode}>+ Knude</button>
-      </div>
-      {nodes.map((n, i) => (
-        <NodeRow key={i} node={n} onChange={v => updateNode(i, v)} onRemove={() => removeNode(i)} />
-      ))}
+      {/* Members — the structure as it is thought about */}
+      {members.length > 0 && (
+        <>
+          <div style={s.rowHeader}>
+            <SectionLabel text="Led" />
+            <span style={s.rowHeaderHint}>
+              tværsnittet gælder hele leddet
+            </span>
+          </div>
+          {members.map(m => (
+            <MemberRow key={m.id} member={m}
+              onSection={patch => setMemberSection(m.id, patch)}
+              onRemove={() => removeMember(m.id)} />
+          ))}
+        </>
+      )}
 
-      {/* Elements */}
+      {/* Nodes and elements — the calculation model behind the members */}
       <div style={s.rowHeader}>
-        <SectionLabel text="Elementer" />
-        <button style={s.addBtn} onClick={addElem}>+ Element</button>
+        <button style={s.discloseBtn} onClick={() => setRawOpen(o => !o)}>
+          {rawOpen ? '▾' : '▸'}&nbsp; Beregningsmodel
+        </button>
+        <span style={s.rowHeaderHint}>
+          {nodes.length} knuder · {elements.length} elementer
+          {equalDofs.length > 0 && ` · ${equalDofs.length} charnierbinding${equalDofs.length > 1 ? 'er' : ''}`}
+          {loose.length > 0 && ` · ${loose.length} uden for et led`}
+        </span>
       </div>
-      {elements.map((el, i) => (
-        <ElemRow key={i} elem={el} onChange={v => updateElem(i, v)} onRemove={() => removeElem(i)} />
-      ))}
+
+      {rawOpen && (
+        <>
+          <div style={s.rowHeader}>
+            <SectionLabel text="Knuder" />
+            <button style={s.addBtn} onClick={addNode}>+ Knude</button>
+          </div>
+          {nodes.map((n, i) => (
+            <NodeRow key={i} node={n} onChange={v => updateNode(i, v)} onRemove={() => removeNode(i)} />
+          ))}
+
+          <div style={s.rowHeader}>
+            <SectionLabel text="Elementer" />
+            <button style={s.addBtn} onClick={addElem}>+ Element</button>
+          </div>
+          {elements.map((el, i) => (
+            <ElemRow key={i} elem={el} onChange={v => updateElem(i, v)} onRemove={() => removeElem(i)} />
+          ))}
+
+          {/* equalDOF is how a hinge is written for the solver, not something
+              anyone thinks in. Generated systems bring their own; this is here
+              for a model built by hand. */}
+          <div style={s.rowHeader}>
+            <SectionLabel text="Charnierbindinger (equalDOF)" />
+            <button style={s.addBtn} onClick={addEqDof}>+ Charnier</button>
+          </div>
+          {equalDofs.map((eq, i) => (
+            <EqualDOFRow key={i} eq={eq}
+              onChange={v => updateEqDof(i, v)}
+              onRemove={() => removeEqDof(i)} />
+          ))}
+        </>
+      )}
 
       {/* Supports */}
       <div style={s.rowHeader}>
@@ -1109,17 +1283,6 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       </div>
       {supports.map((sup, i) => (
         <SupportRow key={i} sup={sup} onChange={v => updateSup(i, v)} onRemove={() => removeSup(i)} />
-      ))}
-
-      {/* Equal-DOF (pin joints) */}
-      <div style={s.rowHeader}>
-        <SectionLabel text="Charnierer (equalDOF)" />
-        <button style={s.addBtn} onClick={addEqDof}>+ Charnier</button>
-      </div>
-      {equalDofs.map((eq, i) => (
-        <EqualDOFRow key={i} eq={eq}
-          onChange={v => updateEqDof(i, v)}
-          onRemove={() => removeEqDof(i)} />
       ))}
 
       {/* Load mode selector */}
@@ -1267,6 +1430,14 @@ const s = {
   sketchLegend: { fontSize: 10, color: '#94a3b8', marginTop: 4, fontFamily: 'monospace' },
   sketchEmpty:  { border: '1px dashed #e0e0e0', background: '#fcfcfb', padding: '18px 12px',
                   fontSize: 12, color: '#bbb', textAlign: 'center' },
+  memberTag:    { fontSize: 11, fontWeight: 700, color: '#1e3a5f', background: '#eef2f7',
+                  border: '1px solid #dbe3ec', padding: '3px 9px', whiteSpace: 'nowrap' },
+  memberMeta:   { fontSize: 11, color: '#94a3b8', fontFamily: 'monospace', whiteSpace: 'nowrap' },
+  mixedWarn:    { fontSize: 10.5, color: '#b45309' },
+  rowHeaderHint:{ fontSize: 10.5, color: '#b8b8bd' },
+  discloseBtn:  { background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: 10, fontWeight: 700, color: '#9a9aa0',
+                  letterSpacing: '0.1em', textTransform: 'uppercase' },
   systemRow:    { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' },
   systemBtn:    { background: '#fffaf8', color: '#d94a2b', border: '1px solid #f3c9bd',
                   padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
