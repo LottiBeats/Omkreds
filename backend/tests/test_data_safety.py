@@ -605,3 +605,71 @@ def test_migration_repairs_stored_transliterated_titles(tmp_path):
     assert docs["A4"]["title"] == "Konstruktionsændringer"
     assert docs["B1"]["title"] == "Statisk projektredegørelse"
     assert docs["A2"]["title"] == "Mit eget navn", "a user-chosen title must survive"
+
+
+# ── Multi-worker safety ───────────────────────────────────────────────────────
+# Production runs uvicorn with several workers, so the threading.Lock in db.py
+# covers only one of them. These cover what has to hold across processes too.
+
+def test_concurrent_saves_never_reuse_a_revision(dbfile):
+    """
+    Two savers must never both get the same rev — that is the lost update the
+    counter exists to prevent, and it is what BEGIN IMMEDIATE buys us.
+    """
+    import threading
+    _db.save_project(_project(), user="u1", path=dbfile)
+
+    revs, errors = [], []
+    lock = threading.Lock()
+
+    def saver(n):
+        try:
+            for _ in range(5):
+                r = _db.save_project(_project(name=f"w{n}"), user=f"u{n}", path=dbfile)
+                with lock:
+                    revs.append(r)
+        except Exception as exc:            # noqa: BLE001 — reported below
+            with lock:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=saver, args=(i,)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, errors
+    assert len(revs) == len(set(revs)), f"duplicate revisions handed out: {sorted(revs)}"
+    assert _db.load_project("p1", path=dbfile)["_rev"] == max(revs)
+
+
+def test_backup_temp_file_is_process_specific(dbfile):
+    """Two workers writing the same scratch file would truncate the backup."""
+    import os
+    _db.save_project(_project(), user="u1", path=dbfile)
+    _db.backup_database(path=dbfile)
+
+    leftovers = list(_db.backup_dir(dbfile).glob("*.part*"))
+    assert leftovers == [], f"temp files left behind: {leftovers}"
+
+    # The name a second worker would use must differ from this process's
+    dest = _db.backup_dir(dbfile) / "projects-2020-01-01.db"
+    assert str(os.getpid()) in str(dest.with_suffix(f".db.part{os.getpid()}"))
+
+
+def test_rotation_ignores_other_workers_temp_files(dbfile):
+    """A .part file must never be counted as a backup, nor deleted as one."""
+    _db.save_project(_project(), user="u1", path=dbfile)
+    _db.backup_database(path=dbfile)
+
+    d = _db.backup_dir(dbfile)
+    other = d / "projects-2020-01-01.db.part99999"
+    other.write_bytes(b"partial")
+    for day in range(1, 12):
+        (d / f"projects-2020-02-{day:02d}.db").touch()
+
+    _db.backup_database(path=dbfile, keep=3, force=True)
+    finished = [f for f in d.glob("projects-*.db") if f.suffix == ".db"]
+    assert len(finished) == 3
+    assert other.exists(), "another worker's in-progress copy was deleted"
+    other.unlink()

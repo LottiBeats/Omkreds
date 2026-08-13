@@ -397,7 +397,15 @@ def save_project(
     visibility = project.get("visibility", "personal")
 
     with _lock:
-        with sqlite3.connect(p) as conn:
+        with sqlite3.connect(p, timeout=15) as conn:
+            # BEGIN IMMEDIATE takes SQLite's write lock *before* the read, so
+            # the read-check-write below is atomic across processes as well as
+            # threads.  The server runs multiple uvicorn workers, and the
+            # threading.Lock above only covers one of them — without this, two
+            # workers could both read rev 5 and both write rev 6, which is
+            # exactly the lost update the rev counter exists to prevent.
+            conn.isolation_level = None
+            conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
                 "SELECT data, rev, updated_at, updated_by FROM projects WHERE id = ?",
                 (project_id,),
@@ -835,7 +843,11 @@ def backup_database(
     if dest.exists() and not force:
         return dest
 
-    tmp = dest.with_suffix(".db.part")
+    # The temp file carries the pid: the server runs several uvicorn workers,
+    # each with its own maintenance thread, and two of them writing the same
+    # scratch file would produce a truncated "backup".  With a per-process name
+    # the worst case is two identical copies and one atomic rename winning.
+    tmp = dest.with_suffix(f".db.part{_os.getpid()}")
     with _lock:
         source = sqlite3.connect(str(src))
         target = sqlite3.connect(str(tmp))
@@ -846,8 +858,13 @@ def backup_database(
             source.close()
     tmp.replace(dest)   # atomic — a partial file is never mistaken for a backup
 
-    # Rotate: keep the newest *keep* files, delete the rest.
-    backups = sorted(dest_dir.glob("projects-*.db"), reverse=True)
+    # Rotate: keep the newest *keep* files, delete the rest.  The glob is
+    # anchored on ".db" so a concurrent worker's ".db.part<pid>" is never
+    # mistaken for a finished backup and deleted out from under it.
+    backups = sorted(
+        (f for f in dest_dir.glob("projects-*.db") if f.suffix == ".db"),
+        reverse=True,
+    )
     for old in backups[keep:]:
         try:
             old.unlink()
