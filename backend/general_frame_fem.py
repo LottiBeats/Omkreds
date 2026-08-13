@@ -56,6 +56,268 @@ import base64
 
 
 # ---------------------------------------------------------------------------
+# Model validation
+# ---------------------------------------------------------------------------
+
+class ModelError(ValueError):
+    """
+    The model cannot be analysed, or the analysis produced a result that is not
+    a structural response.
+
+    Carries a message written for the engineer using the block, not a stack
+    trace: the endpoint passes it straight through as the 422 detail.
+    """
+    pass
+
+
+def _rz_stiffness_ends(el):
+    """
+    (bool, bool) — does this element restrain rotation at its i-end / j-end?
+
+    Truss elements carry axial force only. A beam with both end moments
+    released does the same. Neither contributes anything to the rz degree of
+    freedom at its nodes.
+    """
+    if el.get('type', 'beam') == 'truss':
+        return False, False
+    rel = el.get('release', 'none')
+    return rel not in ('start', 'both'), rel not in ('end', 'both')
+
+
+def _rigid_body_rank(supports, dict_nodes, equal_dofs):
+    """
+    Rank of the support constraints against the three rigid-body modes of a
+    plane structure: translation x, translation y, rotation about z.
+
+    A constrained DOF kills one linear combination of (tx, ty, theta), where a
+    rigid-body displacement at (x, y) is  ux = tx - theta*y,  uy = ty + theta*x.
+    Rank 3 means the structure cannot move as a rigid body; anything less is a
+    mechanism and the stiffness matrix is singular.
+
+    equalDOF ties are folded in first: tying a DOF of one node to the same DOF
+    of a restrained node restrains it too, at its own coordinates — which can
+    contribute rank of its own.
+    """
+    import numpy as np
+
+    fixed = {}   # node_id → set of dof numbers (1=ux, 2=uy, 3=rz)
+    for sup in supports:
+        nid = sup['node_id']
+        s = fixed.setdefault(nid, set())
+        if sup.get('ux'): s.add(1)
+        if sup.get('uy'): s.add(2)
+        if sup.get('rz'): s.add(3)
+
+    # Propagate through equalDOF ties until nothing new appears. The tie is an
+    # equality, so restraint travels in both directions.
+    for _ in range(len(equal_dofs or []) + 1):
+        changed = False
+        for eq in (equal_dofs or []):
+            r, c = eq['r_node'], eq['c_node']
+            tied = {int(d) for d in eq.get('dofs', [1, 2])}
+            for a, b in ((r, c), (c, r)):
+                gained = (fixed.get(a, set()) & tied) - fixed.get(b, set())
+                if gained:
+                    fixed.setdefault(b, set()).update(gained)
+                    changed = True
+        if not changed:
+            break
+
+    rows = []
+    for nid, dofs in fixed.items():
+        n = dict_nodes.get(nid)
+        if n is None:
+            continue
+        if 1 in dofs: rows.append([1.0, 0.0, -float(n['y'])])
+        if 2 in dofs: rows.append([0.0, 1.0,  float(n['x'])])
+        if 3 in dofs: rows.append([0.0, 0.0,  1.0])
+
+    if not rows:
+        return 0
+    return int(np.linalg.matrix_rank(np.array(rows), tol=1e-9))
+
+
+def validate_model(nodes, elements, supports, loads=None, equal_dofs=None):
+    """
+    Reject models that cannot produce a meaningful result, before they reach
+    the solver.
+
+    This exists because OpenSees does not reject them either. A singular
+    stiffness matrix — a mechanism, a node with no rotational stiffness, a
+    floating node — is solved by the BandGeneral solver without complaint:
+    analyze() returns 0 and the displacements come back as whatever the
+    factorisation produced, typically many metres. Those numbers then look
+    exactly like a result. Catching the cause here is the only place the user
+    can be told what is actually wrong with their model.
+
+    Raises ModelError listing every problem found, so the engineer can fix them
+    in one pass instead of one per run.
+    """
+    errors = []
+
+    if not nodes:
+        raise ModelError('Modellen har ingen knuder.')
+    if not elements:
+        raise ModelError('Modellen har ingen elementer.')
+
+    # ── Identity ──────────────────────────────────────────────────────────────
+    seen = set()
+    for n in nodes:
+        if n['id'] in seen:
+            errors.append(f'Knude {n["id"]} er defineret mere end én gang.')
+        seen.add(n['id'])
+    dict_nodes = {n['id']: n for n in nodes}
+
+    seen = set()
+    for el in elements:
+        if el['id'] in seen:
+            errors.append(f'Element {el["id"]} er defineret mere end én gang.')
+        seen.add(el['id'])
+
+    # ── Element geometry and section properties ───────────────────────────────
+    for el in elements:
+        eid = el['id']
+        for end, nid in (('start', el['ni']), ('slut', el['nj'])):
+            if nid not in dict_nodes:
+                errors.append(f'Element {eid} har {end}knude {nid}, som ikke findes.')
+        if el['ni'] in dict_nodes and el['nj'] in dict_nodes:
+            ni, nj = dict_nodes[el['ni']], dict_nodes[el['nj']]
+            if math.hypot(nj['x'] - ni['x'], nj['y'] - ni['y']) < 1e-9:
+                errors.append(
+                    f'Element {eid} har længden 0 — knude {el["ni"]} og {el["nj"]} '
+                    f'ligger samme sted. Brug en equalDOF-binding i stedet for et '
+                    f'element, hvis de skal kobles sammen.')
+        for key, label in (('E_GPa', 'E'), ('A_cm2', 'A'), ('Iz_cm4', 'I')):
+            if key == 'Iz_cm4' and el.get('type', 'beam') == 'truss':
+                continue   # a truss carries axial force only — I is not used
+            # Absent is fine: solve() supplies the same defaults it always has.
+            # Present but zero or negative is not — that is a member with no
+            # stiffness, which makes the matrix singular.
+            if el.get(key) is None:
+                continue
+            try:
+                v = float(el[key])
+            except (TypeError, ValueError):
+                errors.append(f'Element {eid} har en ugyldig værdi for {label}.')
+                continue
+            if v <= 0.0:
+                errors.append(f'Element {eid} har {label} = {v:g}. '
+                              f'Vælg et profil eller indtast tværsnitsdata.')
+
+    # ── Supports and constraints reference real nodes ─────────────────────────
+    for sup in supports:
+        if sup['node_id'] not in dict_nodes:
+            errors.append(f'Understøtning er sat på knude {sup["node_id"]}, som ikke findes.')
+    for eq in (equal_dofs or []):
+        for role, nid in (('fastholdt', eq['r_node']), ('bundet', eq['c_node'])):
+            if nid not in dict_nodes:
+                errors.append(f'equalDOF henviser til {role} knude {nid}, som ikke findes.')
+        if eq['r_node'] == eq['c_node']:
+            errors.append(f'equalDOF binder knude {eq["r_node"]} til sig selv.')
+
+    # ── Loads reference real targets ──────────────────────────────────────────
+    elem_ids = {el['id'] for el in elements}
+    for ld in (loads or []):
+        if ld.get('type') == 'nodal':
+            if ld.get('node_id') not in dict_nodes:
+                errors.append(f'Der er en knudelast på knude {ld.get("node_id")}, som ikke findes.')
+        elif ld.get('type') == 'udl':
+            if ld.get('elem_id') not in elem_ids:
+                errors.append(f'Der er en linjelast på element {ld.get("elem_id")}, som ikke findes.')
+
+    # ── Floating nodes ────────────────────────────────────────────────────────
+    connected = set()
+    for el in elements:
+        connected.add(el['ni']); connected.add(el['nj'])
+    tied = set()
+    for eq in (equal_dofs or []):
+        tied.add(eq['r_node']); tied.add(eq['c_node'])
+    for n in nodes:
+        if n['id'] not in connected and n['id'] not in tied:
+            errors.append(
+                f'Knude {n["id"]} er ikke forbundet til noget element. '
+                f'Fjern den, eller forbind den.')
+
+    # ── Rotational stiffness ──────────────────────────────────────────────────
+    # The failure mode behind most "60 m deflection" results: a node that only
+    # touches truss elements or doubly-released beams has an rz degree of
+    # freedom with no stiffness at all, and the model is built with ndf=3.
+    has_rz = {n['id']: False for n in nodes}
+    for el in elements:
+        si, sj = _rz_stiffness_ends(el)
+        if si and el['ni'] in has_rz: has_rz[el['ni']] = True
+        if sj and el['nj'] in has_rz: has_rz[el['nj']] = True
+    rz_fixed = {s['node_id'] for s in supports if s.get('rz')}
+    for eq in (equal_dofs or []):
+        if 3 in {int(d) for d in eq.get('dofs', [1, 2])}:
+            # rz is tied — the pair only needs stiffness or restraint once
+            r, c = eq['r_node'], eq['c_node']
+            ok = has_rz.get(r) or has_rz.get(c) or r in rz_fixed or c in rz_fixed
+            if ok:
+                has_rz[r] = has_rz[c] = True
+    loose = sorted(nid for nid, ok in has_rz.items()
+                   if not ok and nid not in rz_fixed and nid in connected)
+    if loose:
+        errors.append(
+            ('Knude ' if len(loose) == 1 else 'Knuderne ') +
+            ', '.join(str(i) for i in loose) +
+            ' har ingen rotationsstivhed: der er kun truss-elementer eller bjælker med '
+            'momentudløsning i begge ender. Fasthold rotationen (rz) i knuden, eller '
+            'lad mindst ét element optage moment der.')
+
+    # ── Rigid-body stability ──────────────────────────────────────────────────
+    rank = _rigid_body_rank(supports, dict_nodes, equal_dofs)
+    if rank < 3:
+        missing = {0: 'ingen understøtninger', 1: 'kun én', 2: 'kun to'}.get(rank, '')
+        errors.append(
+            f'Understøtningerne fastholder ikke konstruktionen — {missing} af de tre '
+            f'stivlegemebevægelser (flytning x, flytning y, rotation) er låst. '
+            f'Konstruktionen er en mekanisme og kan ikke regnes.')
+
+    if errors:
+        raise ModelError('Modellen kan ikke regnes:\n· ' + '\n· '.join(errors))
+
+
+def check_results(nodes, node_disps, ele_forces, ref_size):
+    """
+    Refuse to report a solution that is not a structural response.
+
+    Two things are caught. Non-finite numbers, which mean the factorisation
+    failed outright. And displacements far beyond the size of the structure:
+    the analysis is linear and small-displacement, so a result of that
+    magnitude is not a deflection the theory can describe — it is a
+    near-singular stiffness matrix that happened to factor.
+
+    The limit is span/10, roughly twenty times any serviceability limit, so a
+    genuinely flexible structure still gets its answer.
+    """
+    for nid, d in node_disps.items():
+        if not all(math.isfinite(v) for v in d):
+            raise ModelError(
+                f'Beregningen gav et ugyldigt resultat i knude {nid}. '
+                f'Stivhedsmatricen er singulær — modellen er underfastholdt.')
+    for eid, f in ele_forces.items():
+        if not all(math.isfinite(v) for v in f):
+            raise ModelError(
+                f'Beregningen gav en ugyldig snitkraft i element {eid}. '
+                f'Stivhedsmatricen er singulær — modellen er underfastholdt.')
+
+    limit = max(ref_size, 1.0) / 10.0
+    worst_nid, worst = None, 0.0
+    for nid, d in node_disps.items():
+        u = math.hypot(d[0], d[1])
+        if u > worst:
+            worst_nid, worst = nid, u
+    if worst > limit:
+        mm = f'{worst * 1e3:,.0f}'.replace(',', '.')   # Danish thousands separator
+        raise ModelError(
+            f'Beregningen gav en flytning på {mm} mm i knude {worst_nid} '
+            f'({worst / max(ref_size, 1e-9):.1f} gange konstruktionens udstrækning). '
+            f'Det er ikke en flytning — det er en næsten singulær stivhedsmatrix. '
+            f'Kontrollér understøtninger, elementforbindelser og tværsnitsdata.')
+
+
+# ---------------------------------------------------------------------------
 # Buckling lengths — Wood's stiffness-distribution method (EN 1993-1-1 Annex B)
 # ---------------------------------------------------------------------------
 
@@ -344,6 +606,10 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
     if not _OPS_AVAILABLE:
         raise ImportError("openseespy is required. pip install openseespy")
 
+    # Reject unanalysable models here rather than letting OpenSees "solve" them:
+    # it does not report a singular stiffness matrix, it factors it anyway.
+    validate_model(nodes, elements, supports, loads, equal_dofs)
+
     ops.wipe()
     ops.model('basic', '-ndm', 2, '-ndf', 3)
 
@@ -467,6 +733,13 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
             f = ops.eleForce(el['id'])
             ele_forces[el['id']] = [f[0], 0, 0, f[1] if len(f) > 1 else -f[0], 0, 0]
 
+    # A model can pass validate_model() and still be near-singular — a joint
+    # braced only by a nearly-parallel pair of members, say. The result is the
+    # same "structure moved 60 m" answer, so it is caught on the way out too.
+    xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
+    ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+    check_results(nodes, node_disps, ele_forces, ref_size)
+
     # NOTE — there used to be an ops.eigen() call here whose mode shapes were
     # reported as buckling modes. They were not: the transformation is Linear,
     # so there is no geometric stiffness, and the masses were fictitious unit
@@ -490,13 +763,22 @@ def _project_load(ld, elements, dict_nodes):
     Convert a frame-load-case load to the internal eleLoad/nodal format
     used by solve(), applying geometry-based projection where needed.
 
+    Sign convention
+    ---------------
+    The returned wy is in *input* convention — positive means the load acts in
+    the direction the engineer chose (downward for gravity, +X for wind, into
+    the surface for perpendicular) — because solve() negates it on the way into
+    eleLoad, whose local y points 90 degrees anticlockwise from the element
+    axis. Returning OpenSees convention here instead would double-negate and
+    apply gravity upwards.
+
     Directions
     ----------
     'vertical'   : global Y downward — projects onto local element axes.
-                   For horizontal elements this is simply wy = -p.
+                   For horizontal elements this is simply wy = p.
     'projected'  : snow on horizontal projection.
-                   p [kN/m horizontal] → wy_local = -p·cos²α, wx_local = -p·cosα·sinα
-    'horizontal' : global X (wind) → wy_local = -p·sinα, wx_local = p·cosα
+                   p [kN/m horizontal] → wy = p·cos²α, wx_local = -p·cosα·sinα
+    'horizontal' : global X (wind) → wy = p·sinα, wx_local = p·cosα
     """
     if ld.get('load_type') == 'nodal':
         return {
@@ -524,17 +806,19 @@ def _project_load(ld, elements, dict_nodes):
     if direction == 'projected':
         # Snow load per unit horizontal length, global downward.
         # Per unit element length: p·cosα downward.
-        # local y: dot((0,-1), (-sa, ca))  = -ca  →  wy = -p·ca²
-        # local x: dot((0,-1), ( ca, sa))  = -sa  →  wx = -p·ca·sa
-        wy = -p * ca * ca
+        # local y: dot((0,-1), (-sa, ca))  = -ca  →  eleLoad wy = -p·ca², so
+        #          the input-convention value solve() will negate is +p·ca²
+        # local x: dot((0,-1), ( ca, sa))  = -sa  →  wx = -p·ca·sa (not negated)
+        wy =  p * ca * ca
         wx = -p * ca * sa
 
     elif direction == 'horizontal':
         # Wind: p kN/m globally rightward (positive X).
-        # local y: dot((1,0), (-sa, ca))  = -sa  →  wy = -p·sa
-        # local x: dot((1,0), ( ca, sa))  =  ca  →  wx =  p·ca
-        wy = -p * sa
-        wx =  p * ca
+        # local y: dot((1,0), (-sa, ca))  = -sa  →  eleLoad wy = -p·sa,
+        #          so the input-convention value is +p·sa
+        # local x: dot((1,0), ( ca, sa))  =  ca  →  wx =  p·ca (not negated)
+        wy = p * sa
+        wx = p * ca
 
     elif direction == 'perpendicular':
         # Load perpendicular to element surface.
@@ -546,9 +830,10 @@ def _project_load(ld, elements, dict_nodes):
         wx = 0.0
 
     else:  # 'vertical' or default — global Y downward
-        # local y: dot((0,-1), (-sa, ca))  = -ca  →  wy = -p·ca
-        # local x: dot((0,-1), ( ca, sa))  = -sa  →  wx = -p·sa
-        wy = -p * ca
+        # local y: dot((0,-1), (-sa, ca))  = -ca  →  eleLoad wy = -p·ca,
+        #          so the input-convention value solve() will negate is +p·ca
+        # local x: dot((0,-1), ( ca, sa))  = -sa  →  wx = -p·sa (not negated)
+        wy =  p * ca
         wx = -p * sa
 
     return {'type': 'udl', 'elem_id': eid, 'wy_kNm': wy, 'wx_kNm': wx}
@@ -877,11 +1162,11 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
 
     # Legend entries
     handles = [
-        plt.Line2D([0],[0], color=C_BEAM,    lw=2.5, label='Beam element'),
-        plt.Line2D([0],[0], color=C_TRUSS,   lw=1.8, ls='--', label='Truss element'),
-        plt.Line2D([0],[0], color=C_LOAD,    lw=1.5, label='Applied load'),
+        plt.Line2D([0],[0], color=C_BEAM,    lw=2.5, label='Bjælkeelement'),
+        plt.Line2D([0],[0], color=C_TRUSS,   lw=1.8, ls='--', label='Truss-element'),
+        plt.Line2D([0],[0], color=C_LOAD,    lw=1.5, label='Påført last'),
         plt.Line2D([0],[0], marker='o', color=C_RELEASE, ms=7,
-                   markerfacecolor='white', lw=0, label='Moment release'),
+                   markerfacecolor='white', lw=0, label='Momentudløsning'),
     ]
     ax.legend(handles=handles, fontsize=8, frameon=False, loc='upper right')
 
@@ -956,18 +1241,18 @@ def make_figures(title, nodes, elements, supports, loads,
         fmt_defo={'color': '#E74825', 'linestyle': (0, (4, 5)), 'linewidth': 2.2},
         fmt_undefo={'color': '#AEAEB2', 'linestyle': 'solid', 'linewidth': 1.5},
     )
-    figs.append(_style_and_capture('Deflected shape'))
+    figs.append(_style_and_capture('Deformeret form'))
 
     if beam_eles:
         opsv.section_force_diagram_2d('M', mFac, fig_wi_he=(13, 7),
                                       fmt_secforce1={'color': '#1A6640'},
                                       fmt_secforce2={'color': '#1A6640'})
-        figs.append(_style_and_capture('Bending moment  [kNm]'))
+        figs.append(_style_and_capture('Momentkurve  [kNm]'))
 
         opsv.section_force_diagram_2d('V', vFac, fig_wi_he=(13, 7),
                                       fmt_secforce1={'color': '#1A4FA0'},
                                       fmt_secforce2={'color': '#1A4FA0'})
-        figs.append(_style_and_capture('Shear force  [kN]'))
+        figs.append(_style_and_capture('Forskydningskurve  [kN]'))
 
     # Axial force — all element types
     max_N = max(
@@ -979,7 +1264,7 @@ def make_figures(title, nodes, elements, supports, loads,
     opsv.section_force_diagram_2d('N', nFac, fig_wi_he=(13, 7),
                                   fmt_secforce1={'color': '#B45309'},
                                   fmt_secforce2={'color': '#B45309'})
-    figs.append(_style_and_capture('Axial force  [kN]'))
+    figs.append(_style_and_capture('Normalkraftkurve  [kN]'))
 
     return figs
 

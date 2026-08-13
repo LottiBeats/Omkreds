@@ -2179,7 +2179,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
     """
     import traceback
     try:
-        from general_frame_fem import (solve, solve_combinations,
+        from general_frame_fem import (ModelError, solve, solve_combinations,
                                        make_figures, summarise, plot_model,
                                        compute_buckling_lengths, compute_alpha_cr)
         from section_resolver import apply_sections
@@ -2291,9 +2291,15 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
         return {"_figs_b64": figs_b64, "_summary": summary, "_result": result_blocks}
 
+    # ImportError is handled first on purpose: ModelError is imported inside the
+    # try block, so it is only a bound name once that import has succeeded.
     except ImportError as exc:
         raise HTTPException(status_code=501,
                             detail=f"Missing dependency: {exc}. pip install openseespy opsvis")
+    except ModelError as exc:
+        # The model itself is the problem, and the message says how — send it
+        # through as-is. A traceback here would only bury the explanation.
+        raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=422,
                             detail=str(exc) + "\n" + traceback.format_exc())

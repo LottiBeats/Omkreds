@@ -347,11 +347,14 @@ function SupportRow({ sup, onChange, onRemove }) {
   )
 }
 
+// A positive w always acts in the direction named here — negative is uplift or
+// suction. The hint under the field says so, because the previous behaviour
+// (positive acting upwards) taught anyone who used the block to type a minus.
 const UDL_DIRECTIONS = [
-  { value: 'vertical',     label: '↓ Vertical (gravity / snow)' },
-  { value: 'projected',    label: '❄ Snow (horizontal projection)' },
-  { value: 'horizontal',   label: '→ Horizontal (wind on wall)' },
-  { value: 'perpendicular',label: '⊥ Perpendicular (wind on surface)' },
+  { value: 'vertical',     label: '↓ Lodret (egenlast / nyttelast)', hint: '+ virker nedad' },
+  { value: 'projected',    label: '❄ Sne (vandret projektion)',      hint: '+ virker nedad, pr. m vandret' },
+  { value: 'horizontal',   label: '→ Vandret (vind på væg)',         hint: '+ virker mod højre (+x)' },
+  { value: 'perpendicular',label: '⊥ Vinkelret (vind på flade)',     hint: '+ trykker ind på fladen' },
 ]
 
 function LoadRow({ load, onChange, onRemove, comboBlocks }) {
@@ -372,9 +375,9 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
           <label style={s.miniLabel}>Type</label>
           <select style={{ ...s.smallInput, width: 88 }} value={lt}
             onChange={e => onChange({ ...load, type: e.target.value })}>
-            <option value="nodal">Nodal</option>
-            <option value="udl">UDL</option>
-            <option value="combo_udl">Combo UDL</option>
+            <option value="nodal">Punktlast</option>
+            <option value="udl">Linjelast</option>
+            <option value="combo_udl">Kombi-linjelast</option>
           </select>
         </div>
 
@@ -409,6 +412,9 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
           </div>
           <NumField label="w (kN/m)" val={load.value_kNm ?? load.wy_kNm ?? 10}
             set={v => onChange({ ...load, value_kNm: v })} />
+          <span style={s.dirHint}>
+            {UDL_DIRECTIONS.find(x => x.value === udlDirection)?.hint}
+          </span>
         </>}
 
         {lt === 'combo_udl' && <>
@@ -416,7 +422,7 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
           <div style={s.fieldWrap}>
             <label style={s.miniLabel}>Combo</label>
             {comboBlocks.length === 0
-              ? <span style={{ fontSize: 10, color: '#e67e22' }}>No combo blocks</span>
+              ? <span style={{ fontSize: 10, color: '#e67e22' }}>Ingen kombinationsblokke</span>
               : <select style={{ ...s.smallInput, width: 120 }}
                   value={selCombo?.data?.label ?? ''}
                   onChange={e => onChange({ ...load, combo_label: e.target.value })}>
@@ -432,7 +438,7 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
               ? <span style={{ fontSize: 12, color: '#27ae60', fontWeight: 700, padding: '4px 6px' }}>
                   {comboW.toFixed(2)}
                 </span>
-              : <span style={{ fontSize: 10, color: '#e67e22', padding: '4px 6px' }}>run combo first</span>
+              : <span style={{ fontSize: 10, color: '#e67e22', padding: '4px 6px' }}>kør kombinationen først</span>
             }
           </div>
         </>}
@@ -481,8 +487,19 @@ function EqualDOFRow({ eq, onChange, onRemove }) {
 // ── Result panel ──────────────────────────────────────────────────────────────
 
 const TABS = ['Figurer', 'Stabilitet', 'Elementer', 'Knuder', 'Laster', 'Reaktioner']
-const FIG_LABELS       = ['Static model', 'Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
-const COMBO_FIG_LABELS = ['Deflection', 'Bending Moment', 'Shear Force', 'Axial Force']
+/**
+ * Two decimals on every number reads as precision the analysis does not have —
+ * "1052856.00 kNm" is four significant digits of noise. Scale the decimals to
+ * the magnitude instead.
+ */
+function fmt(v) {
+  if (v == null || !Number.isFinite(v)) return '—'
+  const a = Math.abs(v)
+  return v.toFixed(a >= 1000 ? 0 : a >= 100 ? 1 : 2)
+}
+
+const FIG_LABELS       = ['Statisk model', 'Deformation', 'Moment', 'Forskydning', 'Normalkraft']
+const COMBO_FIG_LABELS = ['Deformation', 'Moment', 'Forskydning', 'Normalkraft']
 
 function Tbl({ headers, rows, zebra = true }) {
   return (
@@ -586,7 +603,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
     if (figs?.[0]) {
       newBlocks.push({ type: 'image', data: {
         image_b64: `data:image/png;base64,${figs[0]}`,
-        caption: 'Fig. 1 — Static model and loading', width_pct: 100,
+        caption: 'Fig. 1 — Statisk model og last', width_pct: 100,
       }})
     }
     // Bending moment diagram (index 2 = BMD in standard order)
@@ -594,7 +611,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
     if (bmdIdx >= 0 && figs?.[bmdIdx]) {
       newBlocks.push({ type: 'image', data: {
         image_b64: `data:image/png;base64,${figs[bmdIdx]}`,
-        caption: 'Fig. 2 — Bending moment diagram', width_pct: 100,
+        caption: 'Fig. 2 — Momentkurve', width_pct: 100,
       }})
     }
 
@@ -638,11 +655,11 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
       {/* Header bar */}
       <button style={s.summaryBar} onClick={() => setOpen(o => !o)}>
         <span style={s.summaryBadge}>
-          δ_x = {summary.max_ux_mm.toFixed(2)} mm
+          δ_x = {fmt(summary.max_ux_mm)} mm
           &nbsp;·&nbsp;
-          δ_y = {summary.max_uy_mm.toFixed(2)} mm
+          δ_y = {fmt(summary.max_uy_mm)} mm
           &nbsp;·&nbsp;
-          M_max = {summary.max_moment_kNm.toFixed(2)} kNm
+          M_max = {fmt(summary.max_moment_kNm)} kNm
         </span>
         <span style={{ flex: 1 }} />
         {onAddBlocks && (
@@ -688,12 +705,12 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
                 {/* Combination selector — only when combo mode */}
                 {hasComboFigs && (
                   <div style={{ marginBottom: 10 }}>
-                    <div style={s.detailLabel}>Combination</div>
+                    <div style={s.detailLabel}>Lastkombination</div>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
                       <button
                         style={{ ...s.tabBtn, ...(isStatic ? s.tabBtnActive : {}) }}
                         onClick={() => setComboIdx(null)}>
-                        Static model
+                        Statisk model
                       </button>
                       {comboFigs.map((cf, ci) => (
                         <button key={ci}
@@ -1095,7 +1112,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
             M_duration: envelope[e.id]?.M_duration ?? 'short',
             timber:     timberEnvelope[e.id] ?? {},
             M_i_kNm: e.M_i_kNm, V_i_kN: e.V_i_kN, N_i_kN: e.N_i_kN,
-            M_j_kNm: e.M_j_kNm, V_j_kN: e.V_j_kV, N_j_kN: e.N_j_kN,
+            M_j_kNm: e.M_j_kNm, V_j_kN: e.V_j_kN, N_j_kN: e.N_j_kN,
           })),
         ],
       }
@@ -1110,6 +1127,12 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       })
     } catch (err) {
       setError(err.message)
+      // Drop the previous run's results. Leaving them on screen next to an
+      // error message is how a rejected model ends up quoted in a report.
+      update({
+        _figs_b64: null, _summary: null, _result: null,
+        _exports: null, _alpha_cr: null, _buckling_lengths: {},
+      })
     } finally {
       setRunning(false)
     }
@@ -1254,7 +1277,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           </div>
           <div style={{ padding: '12px 14px' }}>
             <img src={`data:image/png;base64,${d._model_b64}`}
-              alt="Static model" style={{ width: '100%', display: 'block' }} />
+              alt="Statisk model" style={{ width: '100%', display: 'block' }} />
           </div>
         </div>
       )}
@@ -1310,8 +1333,13 @@ const s = {
                   fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                   letterSpacing: '0.04em' },
   btnRun:       { background: '#111', color: '#fff', border: '1px solid #111' },
-  error:        { background: '#fdf3f2', border: '1px solid #f5c6c6', padding: '8px 12px',
-                  fontSize: 12, color: '#c0392b' },
+  dirHint:      { fontSize: 10, color: '#8a8a8e', alignSelf: 'flex-end',
+                  paddingBottom: 6, whiteSpace: 'nowrap' },
+  // whiteSpace: model-validation errors are a bulleted list, one fault per line
+  error:        { background: '#fdf3f2', border: '1px solid #f5c6c6',
+                  borderLeft: '3px solid #c0392b', padding: '10px 14px',
+                  fontSize: 12, color: '#c0392b', lineHeight: 1.6,
+                  whiteSpace: 'pre-line' },
   resultPanel:  { border: '1px solid #e8e8e8', marginTop: 2 },
   summaryBar:   { display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                   background: '#f5f5f7', border: 'none', borderBottom: '1px solid #e8e8e8',

@@ -285,6 +285,21 @@ const mkBadge = ok => ({
 // block (_input_hash).  If the inputs later change, the result is stale and
 // must not silently end up in an exported report.
 
+// Inputs are not the only thing a result depends on — the calculation itself
+// changes too. Bump the number here when a fix changes what a block computes
+// from unchanged inputs, and every stored result from before the fix is flagged
+// stale so it cannot be exported without being re-run.
+//
+//   general_frame_fem  2 — 2026-08-13: UDL directions were applied with the
+//                          sign reversed (a downward load acted upwards).
+const CALC_REVISION = {
+  general_frame_fem: 2,
+}
+
+function calcRevision(type) {
+  return CALC_REVISION[type] ?? 1
+}
+
 export function hashCalcInputs(data) {
   const entries = Object.entries(data || {})
     .filter(([k]) => !k.startsWith('_') && k !== 'title')
@@ -302,8 +317,23 @@ export function hasCalcResult(block) {
 
 export function isStaleResult(block) {
   const d = block?.data || {}
-  if (!hasCalcResult(block) || !d._input_hash) return false
+  if (!hasCalcResult(block)) return false
+  // Computed by a superseded version of the calculation — stale whether or not
+  // the inputs have moved, and whether or not it predates the input hash.
+  if ((d._calc_rev ?? 1) !== calcRevision(block?.type)) return true
+  if (!d._input_hash) return false
   return d._input_hash !== hashCalcInputs(d)
+}
+
+/** Why a result is stale — the two causes need different wording. */
+export function staleReason(block) {
+  const d = block?.data || {}
+  if (!hasCalcResult(block)) return null
+  if ((d._calc_rev ?? 1) !== calcRevision(block?.type))
+    return 'Beregningen er rettet siden resultatet blev regnet — kør den igen.'
+  if (d._input_hash && d._input_hash !== hashCalcInputs(d))
+    return 'Input er ændret siden sidste kørsel — kør beregningen igen.'
+  return null
 }
 
 const staleBadgeStyle = {
@@ -446,7 +476,7 @@ function BlockPreview({ block, project }) {
           </span>
           {sub && <span style={{ fontSize: 12, color: '#aaa', fontFamily: 'monospace' }}>{sub}</span>}
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-            {isStaleResult(block) && <span style={staleBadgeStyle} title="Input er ændret siden sidste kørsel — kør beregningen igen">⟳ Forældet</span>}
+            {isStaleResult(block) && <span style={staleBadgeStyle} title={staleReason(block)}>⟳ Forældet</span>}
             {(() => {
               const util = maxUtilization(d._result)
               return util !== null && (
@@ -661,10 +691,13 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
       (newD._summary     && newD._summary     !== oldD._summary) ||
       (newD._output_text && newD._output_text !== oldD._output_text)
     if (gotNewResult) {
-      b = { ...b, data: { ...newD, _input_hash: hashCalcInputs(newD) } }
+      b = { ...b, data: { ...newD,
+        _input_hash: hashCalcInputs(newD),
+        _calc_rev:   calcRevision(b.type),
+      } }
     } else if (newD._input_hash && !newD._result && !newD._summary && !newD._output_text) {
       // Result cleared → drop the hash so the block isn't flagged stale.
-      const { _input_hash, ...rest } = newD
+      const { _input_hash, _calc_rev, ...rest } = newD
       b = { ...b, data: rest }
     }
     const n = [...blocks]; n[i] = b; onChange(n)
@@ -961,7 +994,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
                               display: 'flex', alignItems: 'center', gap: 8,
                             }}>
                               <span>⟳</span>
-                              Input er ændret siden sidste kørsel — resultatet er forældet. Kør beregningen igen.
+                              {staleReason(block)}
                             </div>
                           )}
                           <Comp

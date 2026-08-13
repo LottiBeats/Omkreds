@@ -238,3 +238,57 @@ calculation module. It is intended for the engineer reviewing the output.
 **Assumptions**
 - Small deformations (linear). No geometric or material non-linearity.
 - Elastic supports not implemented (supports are pinned or fixed).
+
+---
+
+## General 2D Frame FEM (`general_frame_fem.py`)  OpenSeesPy
+
+**Scope**
+- Linear-elastic plane frame and truss analysis with arbitrary geometry:
+  `elasticBeamColumn` (axial + shear + bending) and `Truss` (axial only).
+- Moment releases at either or both element ends; equalDOF ties for pin joints
+  between co-located nodes.
+- Nodal loads and uniformly distributed element loads, applied either directly
+  or once per load combination from the Frame Load Cases block.
+- Sway stability by EN 1993-1-1 § 5.2.1(4)B and buckling lengths by Wood's
+  method (Annex B) — both documented under their own headings in the output.
+
+**Sign conventions**
+- Global axes: x to the right, y upwards.
+- A UDL is entered as a positive number in the direction chosen in the block:
+  `Lodret` acts downwards (gravity, snow), `Vandret` acts towards +x (wind),
+  `Vinkelret` presses into the element surface, `Projiceret` is snow per metre
+  of horizontal projection. Enter a negative value for uplift or suction.
+- Nodal loads are in global axes: Fy negative is downwards.
+
+**Assumptions**
+- First-order theory: small displacements, no P-delta. The amplification of
+  sway moments must be applied by hand where alpha_cr indicates it.
+- Prismatic elements. Shear deformation is not included (Euler-Bernoulli).
+- Rigid joints unless a release or an equalDOF tie is specified. Semi-rigid
+  connection stiffness is not modelled.
+- Nodes carry three degrees of freedom (ux, uy, rz) whether or not the elements
+  meeting there provide stiffness for all three. A node connected only to truss
+  elements, or only to beams released at both ends, therefore has no rotational
+  stiffness and the model is rejected — fix rz at that node, or let one element
+  carry moment.
+
+**Validation**
+- The solver does not report a singular stiffness matrix: it factors it anyway
+  and returns displacements of arbitrary magnitude. Models are therefore
+  checked before analysis (missing or duplicated nodes and elements, zero-length
+  elements, non-positive section properties, unconnected nodes, unrestrained
+  rotational degrees of freedom, and support conditions that leave a rigid-body
+  mechanism) and the results are checked afterwards (non-finite values, and
+  displacements exceeding one tenth of the extent of the structure, which is
+  outside the validity of small-displacement theory in any case).
+- Verified against closed-form solutions for the simply supported and cantilever
+  beam under full-span UDL in `tests/test_general_frame_fem.py`.
+
+**Not covered**
+- Second-order analysis, geometric imperfections in the model itself, and
+  buckling eigenvalue analysis.
+- Out-of-plane behaviour of any kind — the model is plane, so lateral-torsional
+  buckling and out-of-plane stability must be verified in the member checks.
+- Material non-linearity, plastic hinges, cracked-section stiffness.
+- Dynamic response. Support settlements, temperature and prestrain loading.
