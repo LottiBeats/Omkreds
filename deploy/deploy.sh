@@ -23,9 +23,23 @@ echo "==> Restarting backend..."
 systemctl restart structuralcalc
 systemctl status structuralcalc --no-pager
 
-echo "==> Reloading Nginx config..."
-cp "$APP_DIR/app/deploy/nginx.conf" /etc/nginx/sites-available/structuralcalc
-nginx -t && systemctl reload nginx
+# Nginx is deliberately NOT touched here.
+#
+# This used to copy deploy/nginx.conf over the live config on every deploy. That
+# file is a template: it carries "server_name YOUR_DOMAIN" and listens on port
+# 80 only. Certbot writes the real domain and the TLS block into the live file —
+# so every deploy overwrote them, and the site was one `nginx -t` away from
+# going dark. The live config was found sitting at YOUR_DOMAIN.
+#
+# Server configuration is set up once (see DEPLOY.md) and edited by certbot; a
+# code deploy has no business rewriting it. Nginx serves the built files
+# straight from disk, so a frontend rebuild needs no reload at all.
+#
+# If deploy/nginx.conf changes, apply it by hand and keep the domain and the
+# certbot block:
+#     diff /etc/nginx/sites-available/structuralcalc deploy/nginx.conf
+#     nginx -t && systemctl reload nginx
+echo "==> Nginx left untouched (server config is not deployed — see DEPLOY.md)"
 
 echo ""
 echo "==> Deployed successfully!"
