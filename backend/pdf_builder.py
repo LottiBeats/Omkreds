@@ -638,7 +638,8 @@ def _control_plan(block: dict) -> list:
 
 # ── General / Portal Frame FEM blocks ────────────────────────────────────────
 
-def _figs_b64_to_pdf(figs_b64: list, tmp_files: list, captions: list) -> list:
+def _figs_b64_to_pdf(figs_b64: list, tmp_files: list, captions: list,
+                     width_mm: int = 160) -> list:
     """Decode a list of base64 PNGs and return FIG() blocks."""
     out = []
     for i, b64 in enumerate(figs_b64):
@@ -648,10 +649,14 @@ def _figs_b64_to_pdf(figs_b64: list, tmp_files: list, captions: list) -> list:
             tmp.close()
             tmp_files.append(tmp.name)
             caption = captions[i] if i < len(captions) else ""
-            out.append(FIG(tmp.name, caption, width_mm=160))
+            out.append(FIG(tmp.name, caption, width_mm=width_mm))
         except Exception as exc:
             out.append(N(f"Could not embed figure: {exc}"))
     return out
+
+
+def _dk(v, d=2):
+    return f"{v:.{d}f}".replace(".", ",")
 
 
 def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
@@ -668,25 +673,54 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
         return out
 
     # ── Figures ──────────────────────────────────────────────────────────────
+    # Figurteksten bærer tallet. Den der bladrer i en statisk beregning leder
+    # efter det dimensionsgivende snit, ikke efter en billedtekst der gentager
+    # hvad figuren allerede har skrevet i sit eget hjørne.
+    def _cap(base, value, unit, ele=None, dec=2):
+        if value is None:
+            return base
+        where = f" i element {ele}" if ele is not None else ""
+        return f"{base} — max {_dk(float(value), dec)} {unit}{where}"
+
     out += _figs_b64_to_pdf(
         figs, tmp_files,
-        ["Deformeret form", "Momentkurve", "Forskydningskurve", "Normalkraftkurve"],
+        [
+            "Statisk model og last",
+            _cap("Deformeret form",
+                 max(abs(summary.get('max_ux_mm') or 0.0),
+                     abs(summary.get('max_uy_mm') or 0.0)), "mm", dec=1),
+            _cap("Momentkurve", summary.get('max_moment_kNm'), "kNm",
+                 summary.get('max_moment_ele')),
+            _cap("Forskydningskurve", summary.get('max_shear_kN'), "kN",
+                 summary.get('max_shear_ele')),
+            _cap("Normalkraftkurve", summary.get('max_axial_kN'), "kN",
+                 summary.get('max_axial_ele')),
+        ],
     )
 
     # ── Headline results ─────────────────────────────────────────────────────
     out.append(S("Hovedresultater"))
-    out.append(TBL(
-        ["Resultat", "Værdi", "Placering"],
-        [
-            ["Største vandrette flytning δ_x",
-             f"{summary['max_ux_mm']:.2f} mm", f"Knude {summary['max_ux_node']}"],
-            ["Største lodrette flytning δ_y",
-             f"{summary['max_uy_mm']:.2f} mm", f"Knude {summary['max_uy_node']}"],
-            ["Største moment M",
-             f"{summary['max_moment_kNm']:.2f} kNm",
-             f"Element {summary['max_moment_ele']}"],
-        ],
-    ))
+    rows = [
+        ["Største vandrette flytning δ_x",
+         f"{_dk(summary['max_ux_mm'])} mm", f"Knude {summary['max_ux_node']}"],
+        ["Største lodrette flytning δ_y",
+         f"{_dk(summary['max_uy_mm'])} mm", f"Knude {summary['max_uy_node']}"],
+        ["Største moment M",
+         f"{_dk(summary['max_moment_kNm'])} kNm",
+         f"Element {summary['max_moment_ele']}"],
+    ]
+    # V og N stod kun i elementtabellen, hvor de skulle findes blandt alt
+    # andet — men det er dem eftervisningen falder på lige så ofte som på M.
+    if summary.get('max_shear_ele') is not None:
+        rows.append(["Største forskydning V",
+                     f"{_dk(summary['max_shear_kN'])} kN",
+                     f"Element {summary['max_shear_ele']}"])
+    if summary.get('max_axial_ele') is not None:
+        N_Ed = float(summary.get('max_axial_kN') or 0.0)
+        rows.append(["Største normalkraft N",
+                     f"{_dk(N_Ed)} kN ({'træk' if N_Ed > 0 else 'tryk'})",
+                     f"Element {summary['max_axial_ele']}"])
+    out.append(TBL(["Resultat", "Værdi", "Placering"], rows))
 
     # ── Applied loads ─────────────────────────────────────────────────────────
     loads_table = summary.get("loads_table", [])

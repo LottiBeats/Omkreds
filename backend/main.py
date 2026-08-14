@@ -2140,6 +2140,11 @@ class GenFrameFemInput(BaseModel):
     loads:        list[GenFrameLoadIn]      = []
     combinations: list[FrameComboIn]       = []
     equal_dofs:   list[GenFrameEqualDOFIn] = []  # pin joints between co-located nodes
+    # Ordinate scaling on the section-force diagrams. 1.0 = automatic, which
+    # sizes the largest ordinate to a fixed share of the model. A frame whose
+    # curves crowd its own columns wants it smaller; a nearly straight
+    # diagram wants it larger. It changes the drawing, never the numbers.
+    diagram_scale: float = 1.0
 
 
 @protected.post("/calc/general-frame-fem/preview", tags=["Calculations"])
@@ -2164,6 +2169,57 @@ def preview_general_frame_fem(data: GenFrameFemInput):
         b64 = plot_model(data.title, nodes, elements, supports, loads, ref_size)
         return { "_model_b64": b64 }
 
+    except Exception as exc:
+        raise HTTPException(status_code=422,
+                            detail=str(exc) + "\n" + traceback.format_exc())
+
+
+class GenFrameRedrawInput(BaseModel):
+    """
+    Everything the diagrams need and nothing the solver needs.
+
+    The section forces come from a run that already happened. Redrawing does
+    not re-solve — it cannot, there is no load here — so the scale slider can
+    never quietly change a design action, only how tall the curve is drawn.
+    """
+    nodes:      list[GenFrameNodeIn]     = []
+    elements:   list[GenFrameElemIn]     = []
+    supports:   list[GenFrameSupportIn]  = []
+    ele_forces: dict[str, list[float]]   = {}   # {elem_id: [Ni,Vi,Mi,Nj,Vj,Mj]}
+    ele_udl:    dict[str, list[float]]   = {}   # {elem_id: [wy, wx]} as eleLoad
+    node_disps: dict[str, list[float]]   = {}   # {node_id: [ux, uy, rz]}
+    scale:      float                    = 1.0
+
+
+@protected.post("/calc/general-frame-fem/diagrams", tags=["Calculations"])
+def redraw_general_frame_fem(data: GenFrameRedrawInput):
+    """
+    Redraw the four result figures at a different ordinate scale.
+    Pure matplotlib — no OpenSeesPy. Returns { _figs_b64 }.
+    """
+    import traceback
+    try:
+        from fem_diagrams import render_all
+        from section_resolver import apply_sections
+
+        nodes    = [n.model_dump() for n in data.nodes]
+        elements = apply_sections([e.model_dump() for e in data.elements])
+        supports = [s.model_dump() for s in data.supports]
+        if not nodes or not elements:
+            raise ValueError("Ingen model at tegne.")
+
+        ele_forces = {int(k): list(v) for k, v in data.ele_forces.items()}
+        ele_udl    = {int(k): (float(v[0]), float(v[1]))
+                      for k, v in data.ele_udl.items() if len(v) >= 2}
+        node_disps = {int(k): list(v) for k, v in data.node_disps.items()}
+
+        xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
+        ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+        scale = max(0.2, min(float(data.scale or 1.0), 4.0))
+
+        return {"_figs_b64": render_all(nodes, elements, supports, ele_forces,
+                                        ele_udl, node_disps, ref_size,
+                                        scale=scale)}
     except Exception as exc:
         raise HTTPException(status_code=422,
                             detail=str(exc) + "\n" + traceback.format_exc())
@@ -2201,16 +2257,31 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         model_fig = plot_model(data.title, nodes, elements, supports,
                                loads or [], ref_size)
 
+        def _diagram_state(r):
+            """
+            What it takes to draw the curves again without solving again.
+            Small next to the PNGs it replaces, and it is what lets the
+            ordinate scale be a slider instead of another full run.
+            """
+            return {
+                'ele_forces': {str(k): [float(x) for x in v]
+                               for k, v in r['ele_forces'].items()},
+                'ele_udl':    {str(k): [float(v[0]), float(v[1])]
+                               for k, v in (r.get('ele_udl') or {}).items()},
+                'node_disps': {str(k): [float(x) for x in v]
+                               for k, v in r['node_disps'].items()},
+            }
+
         # ── Combination mode ──────────────────────────────────────────────────
         if combos:
-            # make_figs=True: figures are generated per-combo while the OpenSeesPy
-            # model still reflects that combination (opsvis reads the live model).
+            scale = max(0.2, min(float(data.diagram_scale or 1.0), 4.0))
             envelope, timber_envelope, all_results = solve_combinations(
                 nodes, elements, supports, combos, equal_dofs,
-                make_figs=True, ref_size=ref_size,
+                make_figs=True, ref_size=ref_size, diagram_scale=scale,
             )
 
-            combo_figs = [{'name': r['name'], 'figs': r.get('figs', [])}
+            combo_figs = [{'name': r['name'], 'figs': r.get('figs', []),
+                           'state': _diagram_state(r)}
                           for r in all_results]
 
             # _figs_b64 = static model + governing combo (backward compat)
@@ -2236,10 +2307,14 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             summary['envelope']          = envelope
             summary['timber_envelope']   = timber_envelope   # {eid: {sc: {M_Ed, V_Ed, duration, combo}}}
             summary['combinations']      = [r['name'] for r in all_results]
-            summary['combo_figs']        = combo_figs   # [{name, figs:[defo,M,V,N]}]
+            summary['combo_figs']        = combo_figs   # [{name, figs:[defo,M,V,N], state}]
             summary['buckling_lengths']  = buck_lengths
-            # alpha_cr LAST: it re-solves the model, which wipes the OpenSeesPy
-            # state the figures above were read from.
+            summary['diagram_scale']     = scale
+            summary['diagram_state']     = _diagram_state(best_res)
+            # compute_alpha_cr re-solves the model. That used to have to happen
+            # after the figures, which opsvis read off the live OpenSeesPy
+            # state; the diagrams are drawn from section forces now, so the
+            # order is free.
             summary['alpha_cr'] = compute_alpha_cr(
                 nodes, elements, supports, best_res['ele_forces'],
                 best_res['node_reactions'], equal_dofs,
@@ -2257,6 +2332,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
         # ── Simple mode (flat loads) ──────────────────────────────────────────
         else:
+            scale = max(0.2, min(float(data.diagram_scale or 1.0), 4.0))
             res = solve(nodes, elements, supports, loads, equal_dofs)
             buck_lengths = compute_buckling_lengths(nodes, elements, supports,
                                                     res['ele_forces'],
@@ -2264,13 +2340,15 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             figs_b64 = [model_fig] + make_figures(
                 data.title, nodes, elements, supports, loads,
                 res['ele_forces'], res['node_disps'], ref_size,
+                ele_udl=res.get('ele_udl', {}), scale=scale,
             )
             summary = summarise(nodes, elements,
                                 res['node_disps'], res['node_reactions'],
                                 res['ele_forces'], supports, loads,
                                 res.get('ele_extremes'))
             summary['buckling_lengths'] = buck_lengths
-            # alpha_cr LAST — see the note in combination mode above.
+            summary['diagram_scale']    = scale
+            summary['diagram_state']    = _diagram_state(res)
             summary['alpha_cr'] = compute_alpha_cr(
                 nodes, elements, supports, res['ele_forces'],
                 res['node_reactions'], equal_dofs,
@@ -2299,7 +2377,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
     # try block, so it is only a bound name once that import has succeeded.
     except ImportError as exc:
         raise HTTPException(status_code=501,
-                            detail=f"Missing dependency: {exc}. pip install openseespy opsvis")
+                            detail=f"Missing dependency: {exc}. pip install openseespy")
     except ModelError as exc:
         # The model itself is the problem, and the message says how — send it
         # through as-is. A traceback here would only bury the explanation.

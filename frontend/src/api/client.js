@@ -324,6 +324,14 @@ export const previewGeneralFrameFem = (data) =>
   request('POST', '/calc/general-frame-fem/preview', data)
 
 /**
+ * Redraw the section-force diagrams at a different ordinate scale.
+ * Takes the section forces from a run that already happened, so it neither
+ * re-solves nor can it change a number — it is the same analysis, drawn again.
+ */
+export const redrawGeneralFrameFemDiagrams = (data) =>
+  request('POST', '/calc/general-frame-fem/diagrams', data)
+
+/**
  * Generate EN 1990 load combinations from named load cases.
  * Returns { _exports: { combinations }, _result }
  */

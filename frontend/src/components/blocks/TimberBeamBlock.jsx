@@ -198,7 +198,7 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         <Field label="FEM block" style={{ gridColumn: '1/-1' }}>
           {femBlocks.length === 0 ? (
             <span style={{ fontSize: 12, color: '#e67e22' }}>
-              No FEM blocks in this document — add a Beam FEM or General Frame FEM block first.
+              Ingen FEM-blokke i dette dokument — indsæt en Bjælke-FEM eller Rammeberegning (FEM) først.
             </span>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

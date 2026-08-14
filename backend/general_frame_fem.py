@@ -40,12 +40,9 @@ except Exception:
     ops = None
     _OPS_AVAILABLE = False
 
-try:
-    import opsvis as opsv
-    _OPSVIS_AVAILABLE = True
-except Exception:
-    opsv = None
-    _OPSVIS_AVAILABLE = False
+# opsvis was imported here to draw the section-force diagrams. They are drawn
+# by fem_diagrams now, from the section forces rather than from OpenSees' live
+# model state, so this module no longer needs it at all.
 
 import math
 import matplotlib
@@ -844,6 +841,10 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         'node_reactions': node_reactions,
         'ele_forces':     ele_forces,
         'ele_extremes':   ele_extremes,
+        # The uniform load per element in the eleLoad sense. Without it the end
+        # forces alone cannot say what happens between the nodes, so both the
+        # span extremes and the diagrams would have to guess.
+        'ele_udl':        ele_udl,
             }
 
 
@@ -933,7 +934,7 @@ def _project_load(ld, elements, dict_nodes):
 
 
 def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
-                       make_figs=False, ref_size=1.0):
+                       make_figs=False, ref_size=1.0, diagram_scale=1.0):
     """
     Run the FEM once per load combination and return envelope results.
 
@@ -942,11 +943,12 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
     combinations : list of dicts
         Each: { name: str, loads: [frame-load-case load dicts] }
     make_figs : bool
-        If True, generate OpsVis figures immediately after each solve() call
-        (while the OpenSeesPy model still reflects that combination) and store
-        them in all_results[i]['figs'].  Must be True when per-combo diagrams
-        are needed — calling make_figures() after the loop produces wrong results
-        because opsvis reads from the live model which is always the last combo.
+        If True, store per-combination diagrams in all_results[i]['figs'].
+        They are drawn from that combination's own section forces, so the
+        timing no longer matters — it used to, when opsvis read the live
+        OpenSeesPy model and every figure showed the last combination solved.
+    diagram_scale : float
+        The engineer's ordinate scaling, passed through to the diagrams.
 
     Returns
     -------
@@ -972,12 +974,13 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
             'node_reactions':     result['node_reactions'],
             'ele_forces':         result['ele_forces'],
             'ele_extremes':       result.get('ele_extremes', {}),
+            'ele_udl':            result.get('ele_udl', {}),
         }
-        # Generate figures NOW, while the OpenSeesPy model reflects this combo
-        if make_figs and _OPSVIS_AVAILABLE:
+        if make_figs:
             entry['figs'] = make_figures(
                 combo['name'], nodes, elements, supports, [],
                 result['ele_forces'], result['node_disps'], ref_size,
+                ele_udl=result.get('ele_udl', {}), scale=diagram_scale,
             )
         all_results.append(entry)
 
@@ -1041,6 +1044,42 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
     return envelope, timber_envelope, all_results
 
 
+def udl_arrow_direction(ld, ca, sa):
+    """
+    Which way a uniform load acts, as a unit vector in global axes.
+
+    Pulled out of plot_model because it is the one thing in that figure that
+    can be wrong without looking wrong: every downward load used to be drawn
+    as arrows rising into the underside of the member. The analysis applied it
+    correctly the whole time, so nothing but the picture disagreed — and the
+    picture is what an engineer checks the model against.
+
+    (ca, sa) is the element's direction cosine. Returns (0, -1) for a load
+    pressing down, and None when there is nothing to draw.
+    """
+    direction = ld.get('direction')
+    is_combo  = ld.get('type') == 'combo_udl'
+
+    if is_combo:
+        mag = 1.0          # magnitude unknown until the combination is run
+    elif direction in ('vertical', 'projected', 'horizontal'):
+        mag = float(ld.get('value_kNm', 0) or 0)
+    else:
+        mag = float(ld.get('wy_kNm', 0) or 0)
+
+    if abs(mag) < 1e-10 and not is_combo:
+        return None
+
+    s = math.copysign(1.0, mag) if mag else 1.0
+    if direction in ('vertical', 'projected'):
+        return (0.0, -s)
+    if direction == 'horizontal':
+        return (s, 0.0)
+    # Legacy local wy: positive means downward on the member, which is the
+    # member's own -y — (sa, -ca) once it is written in global axes.
+    return (sa * s, -ca * s)
+
+
 def plot_model(title, nodes, elements, supports, loads, ref_size):
     """
     Draw the static structural model: geometry, supports, releases, loads.
@@ -1073,6 +1112,12 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
     ax.set_facecolor('white')
 
     # ── Elements ──────────────────────────────────────────────────────────────
+    # Elementnumre samles pr. led. Et spær delt i fire elementer fik fire
+    # numre langs sig, oven i lastpilene — og opdelingen er noget beregningen
+    # finder på, ikke noget konstruktionen har. Nummerintervallet bliver
+    # stående, så elementtabellen stadig kan slås op.
+    member_labels = {}
+
     for el in elements:
         xi, yi, xj, yj, L, ca, sa = elem_geom(el)
         ls   = '-'  if el.get('type', 'beam') == 'beam' else '--'
@@ -1081,11 +1126,10 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
         ax.plot([xi, xj], [yi, yj], color=col, lw=lw, ls=ls,
                 solid_capstyle='round', zorder=3)
 
-        # Element ID label at midpoint (offset perpendicular)
-        mx, my = (xi+xj)/2 - sa*sz*0.6, (yi+yj)/2 + ca*sz*0.6
-        ax.text(mx, my, str(el['id']), fontsize=7.5, color=C_LABEL,
-                ha='center', va='center', zorder=5,
-                bbox=dict(fc='white', ec='none', pad=0.5))
+        key = el.get('member_id', ('e', el['id']))
+        entry = member_labels.setdefault(key, {'ids': [], 'mids': []})
+        entry['ids'].append(el['id'])
+        entry['mids'].append(((xi+xj)/2, (yi+yj)/2, -sa, ca))
 
         # Moment release symbols (open circles at element ends)
         rel = el.get('release', 'none')
@@ -1100,6 +1144,20 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
             cy = yj - sa * r_circ * 1.5
             circ = plt.Circle((cx, cy), r_circ, fc='white', ec=C_RELEASE, lw=1.5, zorder=6)
             ax.add_patch(circ)
+
+    for entry in member_labels.values():
+        ids = sorted(entry['ids'])
+        txt = str(ids[0]) if len(ids) == 1 else \
+              (f'{ids[0]}–{ids[-1]}' if ids[-1] - ids[0] == len(ids) - 1
+               else ', '.join(str(i) for i in ids))
+        # Numrene ligger på den modsatte side af leddet end lasten. Lasten
+        # tegnes altid udad; ligger nummeret samme sted, står de i hinanden.
+        mid = entry['mids'][len(entry['mids']) // 2]
+        mx = sum(m[0] for m in entry['mids']) / len(entry['mids'])
+        my = sum(m[1] for m in entry['mids']) / len(entry['mids'])
+        ax.text(mx - mid[2]*sz*0.75, my - mid[3]*sz*0.75, txt,
+                fontsize=7.5, color=C_LABEL, ha='center', va='center', zorder=5,
+                bbox=dict(fc='white', ec='none', pad=0.5))
 
     # ── Interior member nodes (suppress dots/labels) ──────────────────────────
     # A node is interior if it connects exactly two elements of the same member
@@ -1181,50 +1239,49 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
 
     arr = sz * 1.5   # arrow length
 
+    # One arrow points the way the load acts, and its tail is on the side the
+    # load comes from. That was inverted for every uniform load: a downward
+    # 2 kN/m was drawn as arrows rising into the underside of the beam, with
+    # the label below. The analysis was right — only the picture was upside
+    # down, which is worse, because the picture is what gets checked.
+    label_groups = {}
+
     for eid, ld in udl_by_elem.items():
         el = next((e for e in elements if e['id'] == eid), None)
         if not el: continue
         xi, yi, xj, yj, L, ca, sa = elem_geom(el)
-        direction = ld.get('direction')
-        value     = float(ld.get('value_kNm', 0) or 0)
-        wy_raw    = float(ld.get('wy_kNm',    0) or 0)
-        if ld.get('type') == 'combo_udl':
-            value = wy_raw = 1.0   # placeholder
-        # Choose arrow direction based on load type
-        if direction == 'vertical' or direction == 'projected':
-            # Arrow straight down (global -y)
-            draw_wy = value; ox_unit = 0.0; oy_unit = -1.0
-        elif direction == 'horizontal':
-            # Arrow in global +x (or -x if negative)
-            draw_wy = value; ox_unit = math.copysign(1.0, value) if value else 1.0; oy_unit = 0.0
-            draw_wy = abs(value)
-        else:
-            # Legacy perpendicular-to-element (local wy)
-            draw_wy = wy_raw if direction is None else value
-            ox_unit = -sa; oy_unit = ca
-        if abs(draw_wy) < 1e-10 and ld.get('type') != 'combo_udl': continue
-        if direction in ('vertical', 'projected'):
-            sign = 1   # downward arrow tail above point
-        elif direction == 'horizontal':
-            sign = 1
-        else:
-            sign = -1 if wy_raw >= 0 else 1
+        is_combo = ld.get('type') == 'combo_udl'
+        act = udl_arrow_direction(ld, ca, sa)
+        if act is None:
+            continue
+        ax_, ay_ = act
+        key = 'value_kNm' if ld.get('direction') is not None else 'wy_kNm'
+        mag = 1.0 if is_combo else abs(float(ld.get(key, 0) or 0))
+
         n_arr = max(4, int(L / (ref_size * 0.12)) + 1)
         for k in range(n_arr + 1):
             t  = k / n_arr
             px = xi + t*(xj - xi); py = yi + t*(yj - yi)
-            ox = ox_unit * arr * sign; oy = oy_unit * arr * sign
-            ax.annotate('', xy=(px, py), xytext=(px + ox, py + oy),
+            ax.annotate('', xy=(px, py),
+                        xytext=(px - ax_*arr, py - ay_*arr),
                         arrowprops=dict(arrowstyle='->', color=C_LOAD, lw=1.0,
                                         mutation_scale=8), zorder=6)
-        # Connecting line at tips
-        tip_xs = [xi + ox_unit*arr*sign + k/n_arr*(xj-xi) for k in range(n_arr+1)]
-        tip_ys = [yi + oy_unit*arr*sign + k/n_arr*(yj-yi) for k in range(n_arr+1)]
-        ax.plot(tip_xs, tip_ys, color=C_LOAD, lw=1.2, zorder=5)
-        # Label
-        lbl = f'{abs(draw_wy):.1f} kN/m' if ld.get('type') != 'combo_udl' else 'w_Ed [combo]'
-        ax.text((xi+xj)/2 - sa*arr*sign*1.6, (yi+yj)/2 + ca*arr*sign*1.6,
-                lbl, fontsize=7.5, color=C_LOAD, ha='center', va='center',
+        ax.plot([xi - ax_*arr, xj - ax_*arr], [yi - ay_*arr, yj - ay_*arr],
+                color=C_LOAD, lw=1.2, zorder=5)
+
+        lbl = 'w_Ed [komb.]' if is_combo else \
+              f'{abs(mag):.2f}'.rstrip('0').rstrip('.').replace('.', ',') + ' kN/m'
+        key = (el.get('member_id', ('e', eid)), lbl, round(ax_, 3), round(ay_, 3))
+        label_groups.setdefault(key, []).append(((xi+xj)/2, (yi+yj)/2))
+
+    # One label per member. A span split into four elements carries the same
+    # load four times, and printing it four times is how a figure starts
+    # looking like a dump rather than a drawing.
+    for (_, lbl, ax_, ay_), mids in label_groups.items():
+        mx = sum(p[0] for p in mids) / len(mids)
+        my = sum(p[1] for p in mids) / len(mids)
+        ax.text(mx - ax_*arr*1.8, my - ay_*arr*1.8, lbl,
+                fontsize=8, color=C_LOAD, ha='center', va='center',
                 bbox=dict(fc='white', ec='none', pad=1), zorder=7)
 
     for ld in loads:
@@ -1245,129 +1302,38 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
                 bbox=dict(fc='white', ec='none', pad=1), zorder=9)
 
     # ── Styling ───────────────────────────────────────────────────────────────
-    ax.set_aspect('equal')
-    for sp in ax.spines.values():
-        sp.set_color(C_GRID)
-    ax.tick_params(colors='#888', labelsize=8)
-    ax.set_xlabel('x  [m]', fontsize=9, color='#555', labelpad=5)
-    ax.set_ylabel('y  [m]', fontsize=9, color='#555', labelpad=5)
-    ax.set_title('Statisk model', fontsize=12, fontweight='bold', color='#1C1C1E', pad=10)
-    ax.grid(True, ls=':', lw=0.5, color=C_GRID, zorder=0)
+    # Samme afslutning som snitkraftkurverne. Den statiske model er figur 1 i
+    # hvert eneste FEM-afsnit, og den stod med akser, gitter og en ramme om sig
+    # mens de fire resultatfigurer var tegninger — to stilarter i samme afsnit.
+    from fem_diagrams import _finish
 
     ax.autoscale()
     xl, yl = ax.get_xlim(), ax.get_ylim()
-    pw = max((xl[1]-xl[0]) * 0.18, sz * 3)
-    ph = max((yl[1]-yl[0]) * 0.18, sz * 3)
-    ax.set_xlim(xl[0]-pw, xl[1]+pw)
-    ax.set_ylim(yl[0]-ph, yl[1]+ph)
+    only_beams = all(el.get('type', 'beam') == 'beam' for el in elements)
+    legend = 'Bjælkeelementer' if only_beams else 'Bjælke- og truss-elementer'
+    if any(el.get('release', 'none') != 'none' for el in elements):
+        legend += ' · ○ momentudløsning'
 
-    # Legend entries
-    handles = [
-        plt.Line2D([0],[0], color=C_BEAM,    lw=2.5, label='Bjælkeelement'),
-        plt.Line2D([0],[0], color=C_TRUSS,   lw=1.8, ls='--', label='Truss-element'),
-        plt.Line2D([0],[0], color=C_LOAD,    lw=1.5, label='Påført last'),
-        plt.Line2D([0],[0], marker='o', color=C_RELEASE, ms=7,
-                   markerfacecolor='white', lw=0, label='Momentudløsning'),
-    ]
-    ax.legend(handles=handles, fontsize=8, frameon=False, loc='upper right')
-
-    fig.suptitle(title, fontsize=10, color='#6E6E73', y=0.98, style='italic')
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight',
-                facecolor='white', edgecolor='none')
-    buf.seek(0)
-    plt.close(fig)
-    return base64.b64encode(buf.read()).decode()
+    return _finish(fig, ax, list(xl), list(yl), 'Statisk model', legend)
 
 
 def make_figures(title, nodes, elements, supports, loads,
-                 ele_forces, node_disps, ref_size):
+                 ele_forces, node_disps, ref_size, ele_udl=None, scale=1.0):
     """
-    Generate OpsVis figures for the frame analysis.
-    Returns list of base64 PNG strings: [deformed shape, M diagram, V diagram].
+    Deformeret form og snitkraftkurver: [deformation, M, V, N].
+
+    Tegnes af fem_diagrams ud fra snitkræfterne — ikke af opsvis ud fra
+    OpenSees' aktuelle model. To grunde, som begge kun ses i den færdige
+    rapport: opsvis' figurer var 13x7 tommer med akser og gitter uanset
+    konstruktionen, og de integrerede deres egen fordeling, så kurven kunne
+    toppe et andet sted end tabellen skrev.
+
+    *title* indgår ikke længere i figuren. Hver kurve siger selv hvad den er,
+    og rapporten sætter sin egen figurtekst; overskriften stod tre steder.
     """
-    if not _OPSVIS_AVAILABLE:
-        raise ImportError("opsvis is required. pip install opsvis")
-
-    def _style_and_capture(subtitle):
-        """Apply clean styling to the current OpsVis figure, then capture it."""
-        fig = plt.gcf()
-        fig.patch.set_facecolor('white')
-        fig.set_size_inches(13, 7)
-
-        for ax in fig.axes:
-            ax.set_facecolor('white')
-            ax.set_title(subtitle, fontsize=12, fontweight='bold',
-                         color='#1C1C1E', pad=10)
-            ax.set_xlabel('x  [m]', fontsize=9, color='#555', labelpad=5)
-            ax.set_ylabel('y  [m]', fontsize=9, color='#555', labelpad=5)
-            ax.tick_params(colors='#888', labelsize=8)
-            ax.grid(True, ls=':', lw=0.5, color='#E5E5EA', zorder=0)
-            for spine in ax.spines.values():
-                spine.set_color('#E5E5EA')
-                spine.set_linewidth(0.8)
-
-        fig.suptitle(title, fontsize=10, color='#6E6E73',
-                     y=0.98, style='italic')
-        fig.tight_layout(rect=[0, 0, 1, 0.96])
-
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight',
-                    facecolor='white', edgecolor='none')
-        buf.seek(0)
-        plt.close(fig)
-        return base64.b64encode(buf.read()).decode()
-
-    beam_eles = [el for el in elements if el.get('type', 'beam') == 'beam']
-    max_M = max(
-        (max(abs(ele_forces[el['id']][2]), abs(ele_forces[el['id']][5]))
-         for el in beam_eles if el['id'] in ele_forces),
-        default=1.0,
-    )
-    max_V = max(
-        (max(abs(ele_forces[el['id']][1]), abs(ele_forces[el['id']][4]))
-         for el in beam_eles if el['id'] in ele_forces),
-        default=1.0,
-    )
-    mFac = (ref_size * 0.25) / max_M if max_M > 1e-6 else 5e-6
-    vFac = (ref_size * 0.25) / max_V if max_V > 1e-6 else 15e-6
-
-    figs = []
-
-    plt.close('all')
-    opsv.plot_defo(
-        fig_wi_he=(13, 7),
-        fmt_defo={'color': '#E74825', 'linestyle': (0, (4, 5)), 'linewidth': 2.2},
-        fmt_undefo={'color': '#AEAEB2', 'linestyle': 'solid', 'linewidth': 1.5},
-    )
-    figs.append(_style_and_capture('Deformeret form'))
-
-    if beam_eles:
-        opsv.section_force_diagram_2d('M', mFac, fig_wi_he=(13, 7),
-                                      fmt_secforce1={'color': '#1A6640'},
-                                      fmt_secforce2={'color': '#1A6640'})
-        figs.append(_style_and_capture('Momentkurve  [kNm]'))
-
-        opsv.section_force_diagram_2d('V', vFac, fig_wi_he=(13, 7),
-                                      fmt_secforce1={'color': '#1A4FA0'},
-                                      fmt_secforce2={'color': '#1A4FA0'})
-        figs.append(_style_and_capture('Forskydningskurve  [kN]'))
-
-    # Axial force — all element types
-    max_N = max(
-        (max(abs(ele_forces[el['id']][0]), abs(ele_forces[el['id']][3]))
-         for el in elements if el['id'] in ele_forces),
-        default=1.0,
-    )
-    nFac = (ref_size * 0.25) / max_N if max_N > 1e-6 else 5e-6
-    opsv.section_force_diagram_2d('N', nFac, fig_wi_he=(13, 7),
-                                  fmt_secforce1={'color': '#B45309'},
-                                  fmt_secforce2={'color': '#B45309'})
-    figs.append(_style_and_capture('Normalkraftkurve  [kN]'))
-
-    return figs
+    from fem_diagrams import render_all
+    return render_all(nodes, elements, supports, ele_forces,
+                      ele_udl or {}, node_disps, ref_size, scale=scale)
 
 
 def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports, loads,
@@ -1401,6 +1367,31 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
     else:
         el_max_M = None
         max_M = 0.0
+
+    # ── Max shear and axial force ─────────────────────────────────────────────
+    # The headline used to be δ_x, δ_y and M alone, so the two actions the
+    # member check fails on just as often had to be looked up in the element
+    # table. V follows beam elements; N counts trusses too, and keeps its sign
+    # because "-42 kN" and "42 kN" are different questions for a column.
+    if beam_eles:
+        el_max_V = max(beam_eles,
+                       key=lambda el: _worst(el['id'], ele_forces[el['id']])[1])
+        max_V = _worst(el_max_V['id'], ele_forces[el_max_V['id']])[1]
+    else:
+        el_max_V, max_V = None, 0.0
+
+    def _axial(eid):
+        ext = ele_extremes.get(eid)
+        if ext:
+            return ext['N_kN']
+        f = ele_forces[eid]
+        return -f[0]
+
+    if elements:
+        el_max_N = max(elements, key=lambda el: abs(_axial(el['id'])))
+        max_N    = _axial(el_max_N['id'])
+    else:
+        el_max_N, max_N = None, 0.0
 
     # ── Reactions ─────────────────────────────────────────────────────────────
     sup_node_ids = {s['node_id'] for s in supports}
@@ -1502,6 +1493,10 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
         'max_uy_node':    node_max_uy['id'],
         'max_moment_kNm': round(max_M, 3),
         'max_moment_ele': el_max_M['id'] if el_max_M else None,
+        'max_shear_kN':   round(max_V, 3),
+        'max_shear_ele':  el_max_V['id'] if el_max_V else None,
+        'max_axial_kN':   round(max_N, 3),
+        'max_axial_ele':  el_max_N['id'] if el_max_N else None,
         # Detailed tables
         'reactions':       reactions,
         'node_disp_table': node_disp_table,

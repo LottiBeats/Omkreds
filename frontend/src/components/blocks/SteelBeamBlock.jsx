@@ -232,7 +232,7 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
       {source === 'fem' && (
         <Field label="FEM block" style={{ gridColumn: '1/-1' }}>
           {femBlocks.length === 0
-            ? <span style={warn}>No FEM blocks in this document — add a Beam FEM or General Frame FEM block first.</span>
+            ? <span style={warn}>Ingen FEM-blokke i dette dokument — indsæt en Bjælke-FEM eller Rammeberegning (FEM) først.</span>
             : <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
                 <select style={inp} value={selFem?.id ?? ''}
                   onChange={e => update({ fem_block_id: Number(e.target.value), fem_elem_id: null })}>

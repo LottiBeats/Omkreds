@@ -11,8 +11,9 @@
  *   - 3 matplotlib figures: deformed shape, bending moment, shear
  *   - Summary: max displacements, max moment, reactions
  */
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { calcGeneralFrameFem, previewGeneralFrameFem,
+         redrawGeneralFrameFemDiagrams,
          calcTimberBeam, calcSteelBeam } from '../../api/client.js'
 import { maxUtilization, utilColor } from '../CalcResultView.jsx'
 import Field from './Field.jsx'
@@ -666,11 +667,45 @@ function CreateCheckButton({ elemId, elemL, blockId, onAddBlock, material }) {
 }
 
 
-function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, elements }) {
+function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
+                       nodes, elements, supports }) {
   const [open,      setOpen]      = useState(true)
   const [tab,       setTab]       = useState('Figurer')
   const [figIdx,    setFigIdx]    = useState(0)
   const [comboIdx,  setComboIdx]  = useState(null)  // null = static model
+  // Redrawn figures live beside the stored ones rather than replacing them.
+  // The scale is a way of looking at the result, not part of it — what the
+  // report prints stays what the run produced until it is run again.
+  const [scale,     setScale]     = useState(summary?.diagram_scale ?? 1)
+  const [scaledFigs, setScaledFigs] = useState({})
+  const [redrawing, setRedrawing] = useState(false)
+
+  // A new run means new figures. Redrawn ones from the previous run belong to
+  // a result that no longer exists, and leaving them on screen would show a
+  // curve from the old model under the new model's numbers.
+  useEffect(() => { setScaledFigs({}) }, [figs])
+
+  async function redraw(value, state, key) {
+    if (!state || !nodes?.length) return
+    if (value === 1) { setScaledFigs(f => ({ ...f, [key]: null })); return }
+    setRedrawing(true)
+    try {
+      const res = await redrawGeneralFrameFemDiagrams({
+        nodes, elements, supports,
+        ele_forces: state.ele_forces ?? {},
+        ele_udl:    state.ele_udl    ?? {},
+        node_disps: state.node_disps ?? {},
+        scale: value,
+      })
+      setScaledFigs(f => ({ ...f, [key]: res._figs_b64 }))
+    } catch {
+      // A failed redraw leaves the stored figures on screen. They are the
+      // ones the report uses anyway, so there is nothing to warn about.
+      setScaledFigs(f => ({ ...f, [key]: null }))
+    } finally {
+      setRedrawing(false)
+    }
+  }
 
   function generateA2() {
     if (!onAddBlocks) return
@@ -741,12 +776,18 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
     <div style={s.resultPanel}>
       {/* Header bar */}
       <button style={s.summaryBar} onClick={() => setOpen(o => !o)}>
+        {/* Overskriften på en kørsel er de fire tal eftervisningen falder på.
+            M stod her alene, mens V og N skulle findes i elementtabellen. */}
         <span style={s.summaryBadge}>
-          δ_x = {fmt(summary.max_ux_mm)} mm
+          M<sub>max</sub> = {fmt(summary.max_moment_kNm)} kNm
+          {summary.max_shear_ele != null && <>
+            &nbsp;·&nbsp;V<sub>max</sub> = {fmt(summary.max_shear_kN)} kN
+          </>}
+          {summary.max_axial_ele != null && <>
+            &nbsp;·&nbsp;N<sub>max</sub> = {fmt(summary.max_axial_kN)} kN
+          </>}
           &nbsp;·&nbsp;
-          δ_y = {fmt(summary.max_uy_mm)} mm
-          &nbsp;·&nbsp;
-          M_max = {fmt(summary.max_moment_kNm)} kNm
+          δ<sub>y</sub> = {fmt(summary.max_uy_mm)} mm
         </span>
         <span style={{ flex: 1 }} />
         {onAddBlocks && (
@@ -779,13 +820,22 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
             const comboFigs    = summary?.combo_figs ?? []
             const hasComboFigs = comboFigs.length > 0
 
-            // Active figure set
+            // Active figure set. The static set carries the model sketch in
+            // front, so the redraw — which only makes the four result curves —
+            // has to be spliced back in behind it.
             const isStatic   = comboIdx === null || !hasComboFigs
-            const activeFigs = isStatic ? figs : (comboFigs[comboIdx]?.figs ?? [])
+            const baseFigs   = isStatic ? figs : (comboFigs[comboIdx]?.figs ?? [])
+            const redrawn    = scaledFigs[isStatic ? 'static' : comboIdx]
+            const activeFigs = redrawn
+              ? (isStatic ? [baseFigs[0], ...redrawn] : redrawn)
+              : baseFigs
             const labels     = isStatic
-              ? FIG_LABELS.slice(0, figs.length)
+              ? FIG_LABELS.slice(0, activeFigs.length)
               : COMBO_FIG_LABELS.slice(0, activeFigs.length)
             const idx = Math.min(figIdx, activeFigs.length - 1)
+            const state = isStatic
+              ? summary?.diagram_state
+              : (comboFigs[comboIdx]?.state ?? summary?.diagram_state)
 
             return (
               <div>
@@ -820,6 +870,35 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title, e
                     </button>
                   ))}
                 </div>
+                {/* Ordinatskala. Den automatiske skala gør den største
+                    ordinat lige høj hver gang, hvilket er rigtigt lige indtil
+                    kurverne støder ind i nabofagene på en ramme — eller indtil
+                    en næsten ret kurve skal aflæses. Den rører kun tegningen:
+                    tallene kommer fra den kørsel der allerede er lavet. */}
+                {idx > 0 && state && (
+                  <div style={s.scaleRow}>
+                    <span style={s.detailLabel}>Ordinat</span>
+                    <input type="range" min="0.3" max="3" step="0.1"
+                      value={scale} disabled={redrawing}
+                      onChange={e => setScale(parseFloat(e.target.value))}
+                      onMouseUp={e => redraw(parseFloat(e.target.value), state,
+                                             isStatic ? 'static' : comboIdx)}
+                      onKeyUp={e => redraw(parseFloat(e.target.value), state,
+                                           isStatic ? 'static' : comboIdx)}
+                      onTouchEnd={e => redraw(scale, state,
+                                              isStatic ? 'static' : comboIdx)}
+                      style={{ flex: 1, maxWidth: 220 }} />
+                    <span style={s.scaleValue}>{scale.toFixed(1)}×</span>
+                    {scale !== 1 && (
+                      <button style={s.scaleReset} disabled={redrawing}
+                        onClick={() => { setScale(1); redraw(1, state,
+                          isStatic ? 'static' : comboIdx) }}>
+                        Nulstil
+                      </button>
+                    )}
+                    {redrawing && <span style={s.scaleBusy}>tegner …</span>}
+                  </div>
+                )}
                 {activeFigs[idx] && (
                   <img src={`data:image/png;base64,${activeFigs[idx]}`}
                     alt={labels[idx]}
@@ -1174,6 +1253,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         loads:        resolvedLoads,
         combinations,
         equal_dofs:   equalDofs,
+        diagram_scale: d.diagram_scale ?? 1,
       })
 
       // Build _exports so capacity check blocks can read element forces.
@@ -1539,7 +1619,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           onAddBlocks={onAddBlocks}
           blockId={block.id}
           title={d.title}
+          nodes={nodes}
           elements={elements}
+          supports={supports}
         />
       )}
 
@@ -1634,4 +1716,12 @@ const s = {
   td:           { padding: '5px 10px', borderBottom: '1px solid #f0f0f0', fontSize: 12 },
   detailLabel:  { fontSize: 10, fontWeight: 700, color: '#aaa', letterSpacing: '0.1em',
                   textTransform: 'uppercase', marginBottom: 6 },
+  scaleRow:     { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8,
+                  padding: '6px 2px' },
+  scaleValue:   { fontSize: 11, fontWeight: 700, color: '#555', minWidth: 32,
+                  fontFamily: 'monospace' },
+  scaleReset:   { background: 'none', border: 'none', fontSize: 11, color: '#777',
+                  cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit',
+                  padding: 0 },
+  scaleBusy:    { fontSize: 11, color: '#aaa', fontStyle: 'italic' },
 }

@@ -138,7 +138,7 @@ const BLOCK_TYPES = [
                    ] },
                ],
                _exports: null, _result: null } },
-  { type: 'general_frame_fem', label: 'General Frame FEM', icon: 'GF',  color: '#0f766e', component: GeneralFrameFemBlock,
+  { type: 'general_frame_fem', label: 'Rammeberegning (FEM)', icon: 'GF',  color: '#0f766e', component: GeneralFrameFemBlock,
     default: { title: '2D Frame FEM',
                nodes:    [{ id: 1, x: 0, y: 0 }, { id: 2, x: 0, y: 4 }, { id: 3, x: 6, y: 4 }, { id: 4, x: 6, y: 0 }],
                elements: [
@@ -292,8 +292,15 @@ const mkBadge = ok => ({
 //
 //   general_frame_fem  2 — 2026-08-13: UDL directions were applied with the
 //                          sign reversed (a downward load acted upwards).
+//   general_frame_fem  3 — 2026-08-14: the section-force diagrams were drawn
+//                          by opsvis, which integrated its own distribution —
+//                          the moment curve could peak somewhere the table did
+//                          not. The figure captions in the PDF were also shifted
+//                          one place, so the moment curve was printed under the
+//                          heading "Deformeret form". A stored result carries
+//                          those figures with it, so it has to be re-run.
 const CALC_REVISION = {
-  general_frame_fem: 2,
+  general_frame_fem: 3,
 }
 
 function calcRevision(type) {
