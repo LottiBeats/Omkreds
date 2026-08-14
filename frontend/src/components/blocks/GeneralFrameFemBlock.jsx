@@ -12,7 +12,9 @@
  *   - Summary: max displacements, max moment, reactions
  */
 import React, { useState } from 'react'
-import { calcGeneralFrameFem, previewGeneralFrameFem } from '../../api/client.js'
+import { calcGeneralFrameFem, previewGeneralFrameFem,
+         calcTimberBeam, calcSteelBeam } from '../../api/client.js'
+import { maxUtilization, utilColor } from '../CalcResultView.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
 import ModelSketch from './ModelSketch.jsx'
@@ -68,6 +70,64 @@ function NodeRow({ node, onChange, onRemove }) {
   )
 }
 
+// ── Member utilisation ────────────────────────────────────────────────────────
+//
+// The question the block exists to answer is "is 45x145 enough" — and until now
+// answering it meant creating a separate check block per member, running each
+// one, and reading the ratio four blocks further down. The actions are already
+// exported per member; the check endpoints already accept them directly. So the
+// answer belongs on the member's own row, next to the section that decides it.
+
+/** A member with a moment release at both ends carries axial force only. */
+function isAxialOnly(member) {
+  return member.els.every(el =>
+    el.type === 'truss' || el.release === 'both')
+}
+
+/**
+ * Utilisation for one member, from the same endpoint the documented check
+ * block calls — so the number on the row and the number in the report cannot
+ * come from two different calculations.
+ */
+async function checkMember(member, actions, settings) {
+  const first = member.els[0] ?? {}
+  if (!first.material || !first.section) return { skipped: 'intet tværsnit' }
+  if (isAxialOnly(member)) {
+    // A bending check on a member that carries no moment reports eta = 0 and
+    // means nothing. Say what it is instead of showing a reassuring zero.
+    return { skipped: 'aksialt led — eftervises særskilt', axial: true }
+  }
+
+  const common = {
+    label:   `M${member.id}`,
+    span_m:  Number(member.L.toFixed(3)),
+    M_Ed_kNm_direct: actions.M_max_kNm ?? 0,
+    V_Ed_kN_direct:  actions.V_max_kN  ?? 0,
+  }
+
+  if (first.material === 'timber') {
+    const m = /^\s*(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*$/.exec(first.section ?? '')
+    if (!m) return { skipped: 'tværsnit kan ikke læses' }
+    const blocks = await calcTimberBeam({
+      ...common,
+      b_mm: parseFloat(m[1].replace(',', '.')),
+      h_mm: parseFloat(m[2].replace(',', '.')),
+      timber_grade:  first.grade ?? 'C24',
+      service_class: settings.service_class,
+      load_duration: actions.M_duration ?? settings.load_duration,
+    })
+    return { eta: maxUtilization(blocks) }
+  }
+
+  const blocks = await calcSteelBeam({
+    ...common,
+    section: first.section,
+    grade:   first.grade ?? 'S355',
+  })
+  return { eta: maxUtilization(blocks) }
+}
+
+
 // ── Members ───────────────────────────────────────────────────────────────────
 //
 // A rafter is one member. That it is analysed as four elements is a property of
@@ -102,7 +162,58 @@ function groupMembers(elements, nodes) {
 }
 
 
-function MemberRow({ member, onSection, onRemove }) {
+/** Which member decides it — so the conclusion is not something to work out. */
+function Verdict({ members, checks }) {
+  if (!checks) return null
+  const rated = members
+    .map(m => ({ m, c: checks[m.id] }))
+    .filter(x => x.c && typeof x.c.eta === 'number')
+  if (rated.length === 0) return null
+
+  const worst   = rated.reduce((a, b) => (b.c.eta > a.c.eta ? b : a))
+  const failed  = rated.filter(x => x.c.eta > 1).length
+  const skipped = members.length - rated.length
+  const col = utilColor(worst.c.eta)
+
+  return (
+    <div style={{ ...s.verdict, borderLeftColor: col }}>
+      <strong style={{ color: col }}>
+        {failed === 0 ? 'Alle led holder' : `${failed} af ${rated.length} led holder ikke`}
+      </strong>
+      <span style={s.verdictDetail}>
+        bestemmende: Led {worst.m.id} · η = {worst.c.eta.toFixed(2).replace('.', ',')}
+        {skipped > 0 && ` · ${skipped} led eftervises særskilt`}
+      </span>
+    </div>
+  )
+}
+
+
+/** The answer, on the row that decides it. */
+function Utilisation({ check }) {
+  if (!check) return <span style={s.etaPending}>—</span>
+  if (check.skipped) return <span style={s.etaSkipped}>{check.skipped}</span>
+  if (check.error) return <span style={s.etaError} title={check.error}>kunne ikke regnes</span>
+  if (check.eta == null) return <span style={s.etaSkipped}>ingen kontrol</span>
+
+  const eta = check.eta
+  const col = utilColor(eta)
+  return (
+    <span style={s.etaWrap} title={eta > 1 ? 'Udnyttelsen overskrider 1,0' : undefined}>
+      <span style={{ ...s.etaBarTrack }}>
+        <span style={{ ...s.etaBarFill,
+                       width: `${Math.min(100, eta * 100)}%`, background: col }} />
+      </span>
+      <span style={{ ...s.etaValue, color: col }}>
+        η = {eta.toFixed(2).replace('.', ',')}
+      </span>
+      <span style={{ ...s.etaMark, color: col }}>{eta > 1 ? '✗' : '✓'}</span>
+    </span>
+  )
+}
+
+
+function MemberRow({ member, check, onSection, onRemove }) {
   const first    = member.els[0] ?? {}
   const material = first.material ?? ''
   const mixed    = member.els.some(e =>
@@ -164,6 +275,8 @@ function MemberRow({ member, onSection, onRemove }) {
         )}
 
         {mixed && <span style={s.mixedWarn}>elementerne har forskellige tværsnit</span>}
+        <span style={{ flex: 1 }} />
+        <Utilisation check={check} />
       </div>
       <button onClick={onRemove} style={s.removeBtn} title="Fjern hele leddet">✕</button>
     </div>
@@ -1151,11 +1264,30 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         ],
       }
 
+      // One run answers the whole question: the frame, and then whether each
+      // member holds. Doing it here rather than in N separate blocks is the
+      // difference between an analysis you must then interpret and an answer.
+      const memberActions = Object.fromEntries(
+        exports_.elements.filter(e => e.id >= 1000)
+          .map(e => [e.member_id, e]))
+      const checks = {}
+      await Promise.all(members.map(async m => {
+        try {
+          checks[m.id] = await checkMember(m, memberActions[m.id] ?? {}, {
+            service_class: d.service_class ?? 1,
+            load_duration: d.load_duration ?? 'medium',
+          })
+        } catch (err) {
+          checks[m.id] = { error: err.message }
+        }
+      }))
+
       update({
         _figs_b64:        res._figs_b64,
         _summary:         res._summary,
         _result:          res._result,
         _exports:         exports_,
+        _member_checks:   checks,
         _alpha_cr:        res._summary?.alpha_cr ?? null,
         _buckling_lengths:res._summary?.buckling_lengths   ?? {},
       })
@@ -1165,7 +1297,8 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       // error message is how a rejected model ends up quoted in a report.
       update({
         _figs_b64: null, _summary: null, _result: null,
-        _exports: null, _alpha_cr: null, _buckling_lengths: {},
+        _exports: null, _member_checks: null,
+        _alpha_cr: null, _buckling_lengths: {},
       })
     } finally {
       setRunning(false)
@@ -1219,15 +1352,30 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         <>
           <div style={s.rowHeader}>
             <SectionLabel text="Led" />
-            <span style={s.rowHeaderHint}>
-              tværsnittet gælder hele leddet
-            </span>
+            <span style={s.rowHeaderHint}>tværsnittet gælder hele leddet</span>
+            <span style={{ flex: 1 }} />
+            <label style={s.inlineLabel}>Anvendelsesklasse</label>
+            <select style={{ ...s.smallInput, width: 46 }} value={d.service_class ?? 1}
+              onChange={e => update({ service_class: Number(e.target.value), _member_checks: null })}>
+              {[1, 2, 3].map(x => <option key={x} value={x}>{x}</option>)}
+            </select>
+            <label style={s.inlineLabel}>Lastvarighed</label>
+            <select style={{ ...s.smallInput, width: 92 }} value={d.load_duration ?? 'medium'}
+              onChange={e => update({ load_duration: e.target.value, _member_checks: null })}>
+              <option value="permanent">Permanent</option>
+              <option value="long">Lang</option>
+              <option value="medium">Middel</option>
+              <option value="short">Kort</option>
+              <option value="instant">Øjeblikkelig</option>
+            </select>
           </div>
           {members.map(m => (
             <MemberRow key={m.id} member={m}
+              check={(d._member_checks ?? {})[m.id]}
               onSection={patch => setMemberSection(m.id, patch)}
               onRemove={() => removeMember(m.id)} />
           ))}
+          <Verdict members={members} checks={d._member_checks} />
         </>
       )}
 
@@ -1430,6 +1578,20 @@ const s = {
   sketchLegend: { fontSize: 10, color: '#94a3b8', marginTop: 4, fontFamily: 'monospace' },
   sketchEmpty:  { border: '1px dashed #e0e0e0', background: '#fcfcfb', padding: '18px 12px',
                   fontSize: 12, color: '#bbb', textAlign: 'center' },
+  inlineLabel:  { fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+                  textTransform: 'uppercase', color: '#b8b8bd' },
+  verdict:      { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
+                  background: '#fbfbfc', borderLeft: '3px solid #ccc',
+                  padding: '8px 12px', margin: '2px 0 4px', fontSize: 12.5 },
+  verdictDetail:{ fontSize: 11.5, color: '#94a3b8', fontFamily: 'monospace' },
+  etaWrap:      { display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' },
+  etaBarTrack:  { display: 'inline-block', width: 62, height: 6, background: '#eeeef0' },
+  etaBarFill:   { display: 'block', height: '100%' },
+  etaValue:     { fontSize: 12, fontWeight: 700, fontFamily: 'monospace' },
+  etaMark:      { fontSize: 12, fontWeight: 700 },
+  etaPending:   { fontSize: 11, color: '#c8c8cc' },
+  etaSkipped:   { fontSize: 10.5, color: '#94a3b8' },
+  etaError:     { fontSize: 10.5, color: '#b45309' },
   memberTag:    { fontSize: 11, fontWeight: 700, color: '#1e3a5f', background: '#eef2f7',
                   border: '1px solid #dbe3ec', padding: '3px 9px', whiteSpace: 'nowrap' },
   memberMeta:   { fontSize: 11, color: '#94a3b8', fontFamily: 'monospace', whiteSpace: 'nowrap' },
