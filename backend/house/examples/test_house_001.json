@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "project": { "name": "Test House 001 - simple one-storey timber house" },
+
+  "levels": [
+    { "id": "GF", "elevation": 0.0, "height": 2.5, "name": "Stueplan" }
+  ],
+
+  "walls": [
+    { "id": "W01", "start": [0.0, 0.0], "end": [8.4, 0.0],
+      "wall_type": "WT01", "load_bearing": true, "stabilising": true },
+    { "id": "W02", "start": [8.4, 0.0], "end": [8.4, 6.0],
+      "wall_type": "WT01", "load_bearing": true, "stabilising": true },
+    { "id": "W03", "start": [8.4, 6.0], "end": [0.0, 6.0],
+      "wall_type": "WT01", "load_bearing": true, "stabilising": true },
+    { "id": "W04", "start": [0.0, 6.0], "end": [0.0, 0.0],
+      "wall_type": "WT01", "load_bearing": true, "stabilising": true },
+    { "id": "W05", "start": [0.0, 3.0], "end": [3.6, 3.0],
+      "wall_type": "WT02", "load_bearing": true, "stabilising": false,
+      "exterior": false }
+  ],
+
+  "openings": [
+    { "id": "O01", "host": "W01", "position": 1.2, "width": 1.8,
+      "height": 1.2, "sill_height": 0.9, "kind": "window" },
+    { "id": "O02", "host": "W01", "position": 5.4, "width": 1.2,
+      "height": 1.2, "sill_height": 0.9, "kind": "window" },
+    { "id": "O03", "host": "W03", "position": 3.0, "width": 0.9,
+      "height": 2.1, "sill_height": 0.0, "kind": "door" }
+  ],
+
+  "beams": [
+    { "id": "B01", "start": [3.6, 3.0], "end": [8.4, 3.0],
+      "material": "timber", "grade": "C24", "continuity": "simple",
+      "role": "main_beam" }
+  ],
+
+  "columns": [],
+
+  "roofs": [
+    { "id": "R01",
+      "outline": [[0.0, 0.0], [8.4, 0.0], [8.4, 6.0], [0.0, 6.0], [0.0, 0.0]],
+      "kind": "pitched", "pitch": 25.0, "span_direction": [0.0, 1.0],
+      "g_k": 0.8, "s_k": 0.8 }
+  ],
+
+  "floors": [
+    { "id": "D01",
+      "outline": [[0.0, 0.0], [8.4, 0.0], [8.4, 6.0], [0.0, 6.0], [0.0, 0.0]],
+      "kind": "slab_on_grade", "g_k": 3.5, "q_k": 2.0 }
+  ],
+
+  "foundations": [
+    { "id": "F01", "kind": "strip", "supports": "W01", "width": 0.4 },
+    { "id": "F02", "kind": "strip", "supports": "W02", "width": 0.4 },
+    { "id": "F03", "kind": "strip", "supports": "W03", "width": 0.4 },
+    { "id": "F04", "kind": "strip", "supports": "W04", "width": 0.4 },
+    { "id": "F05", "kind": "strip", "supports": "W05", "width": 0.3 }
+  ],
+
+  "assumptions": {
+    "roof_diaphragm": "rigid",
+    "beam_joints": "pinned",
+    "default_timber_grade": "C24",
+    "service_class": 1,
+    "consequence_class": "CC2",
+    "lintel_bearing": 0.1
+  }
+}
