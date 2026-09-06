@@ -16,7 +16,22 @@ sudo -u "$APP_USER" "$APP_DIR/venv/bin/pip" install -r backend/requirements.txt
 echo "==> Rebuilding React frontend..."
 cd "$APP_DIR/app/frontend"
 npm ci
-npm run build
+
+# Rollup fejler af og til her med "handleInvalidResolvedId" paa et modul, den
+# bygger fint et oejeblik senere. Aarsagen er ikke fundet -- den kan ikke
+# fremprovokeres, og et npm ci + npm run build i haanden lige efter lykkes
+# hver gang. Indtil den er forstaaet, er et enkelt gentagelsesforsoeg bedre
+# end et roedt deploy paa noget, der ikke fejler.
+#
+# Andet forsoeg rydder node_modules helt, saa de to forsoeg ikke er ens.
+if ! npm run build; then
+    echo "==> Byg fejlede. Rydder node_modules og proever en gang til." >&2
+    rm -rf node_modules
+    npm ci
+    npm run build          # fejler den her igen, stopper deployet (set -e)
+    echo "==> Andet forsoeg lykkedes. Sig det hoejt: fejlen er stadig ikke forstaaet." >&2
+fi
+
 chown -R "$APP_USER:$APP_USER" dist
 
 echo "==> Restarting backend..."
