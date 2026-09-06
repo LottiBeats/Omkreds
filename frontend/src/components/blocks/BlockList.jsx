@@ -243,11 +243,18 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Stål  (EC3)',
-    types: ['steel_beam', 'beam_column'],
+    // beam_column er ude: den dumper sin egen referencetest. EN 1993-1-1
+    // lign. 6.61/6.62 giver 0,397 hvor Vayas et al. (Springer 2019, tabel
+    // 4.11) siger 0,426 — 7 % for lavt, altså på den forkerte side. Sæt den
+    // ind igen når tests/test_beam_column.py er grøn.
+    types: ['steel_beam'],
   },
   {
     label: 'Træ  (EC5)',
-    types: ['timber_beam', 'timber_column'],
+    // timber_column har ingen tests overhovedet. Ikke fordi den er forkert,
+    // men fordi ingen ved det. Sæt den ind igen når den er regnet efter mod
+    // et gennemregnet eksempel.
+    types: ['timber_beam'],
   },
   // Murværk (EC6) er ude af panelet indtil beregningen er færdig: modulet
   // kører, men skriver "Design parameters" og "Slenderness check" midt i en
