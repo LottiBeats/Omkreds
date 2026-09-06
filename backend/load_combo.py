@@ -18,6 +18,11 @@ Partial factors (Table A1.2(B+C), Combinations 1 + 2):
 
   K_FI  :  CC1 = 0.9  |  CC2 = 1.0  |  CC3 = 1.1
 
+Gunstig egenlast (γ_G,inf, samme tabel):
+  6.10a  →  1.0·G_k        6.10b  →  0.9·G_k
+Bemærk at γ_G,inf IKKE ganges med K_FI — tabellen skriver 1,2·K_FI i den
+ugunstige række og et bart 1,0 / 0,9 i den gunstige.
+
 ψ₀ for Snow (S) is context-dependent on the leading action:
   0.6 if lead is Cat. E or Temperature
   0.0 if lead is Wind
@@ -106,7 +111,7 @@ def load_combos(
     ))
 
     # ── Characteristic actions table ───────────────────────────────────────────
-    blocks.append(S("Characteristic actions"))
+    blocks.append(S("Karakteristiske laster"))
     psi0_base = [PSI_DK.get(l['category'].upper(), _DEFAULT_PSI)[0] for l in loads]
     has_ctx   = any(l['category'].upper() in ('S', 'W') for l in loads)
 
@@ -119,7 +124,7 @@ def load_combos(
     if A_d > 0:
         rows.append([f'A_d  ({accidental_type})', '—', f'{A_d:.3g}', '—', '—', '—'])
 
-    blocks.append(TBL(['Load', 'Cat.', f'Q_k  ({unit})', 'ψ₀', 'ψ₁', 'ψ₂'], rows))
+    blocks.append(TBL(['Last', 'Kat.', f'Q_k  ({unit})', 'ψ₀', 'ψ₁', 'ψ₂'], rows))
 
     if has_ctx:
         blocks.append(N(
@@ -128,20 +133,20 @@ def load_combos(
         ))
 
     # ── ULS ───────────────────────────────────────────────────────────────────
-    blocks.append(S("ULS — STR/GEO  (Table A1.2(B+C) DK NA)"))
+    blocks.append(S("Brudgrænsetilstand — STR/GEO  (tabel A1.2(B+C) DK NA)"))
 
     uls_vals: list[tuple] = []   # (name, formula, value, lead_idx)
 
     if n == 0:
         if method == '6.10ab':
-            Ed = 1.2 * KFI * G_k
-            uls_vals.append(("6.10a", f"1.2 · {KFI:.1f} · G_k", Ed, -1))
+            gamma_G_a = 1.0 if G_fav else 1.2 * KFI
+            uls_vals.append(("6.10a", f"{gamma_G_a:.2f} · G_k", gamma_G_a * G_k, -1))
         else:
-            Ed = 1.35 * KFI * G_k
-            uls_vals.append(("6.10", f"1.35 · {KFI:.1f} · G_k", Ed, -1))
+            gamma_G_a = 1.0 if G_fav else 1.35 * KFI
+            uls_vals.append(("6.10", f"{gamma_G_a:.2f} · G_k", gamma_G_a * G_k, -1))
 
     elif method == '6.10':
-        gamma_G = 1.35 * KFI
+        gamma_G = 1.0 if G_fav else 1.35 * KFI
         gamma_Q = 1.50 * KFI
         for lead in range(n):
             others  = [i for i in range(n) if i != lead]
@@ -155,11 +160,12 @@ def load_combos(
 
     else:  # 6.10a / 6.10b
         # 6.10a — permanent only (one row, regardless of number of variable loads)
-        Ed_a = 1.2 * KFI * G_k
-        uls_vals.append(("6.10a", f"1.2 · {KFI:.1f} · G_k", Ed_a, -1))
+        gamma_G_a = 1.0 if G_fav else 1.2 * KFI
+        Ed_a = gamma_G_a * G_k
+        uls_vals.append(("6.10a", f"{gamma_G_a:.2f} · G_k", Ed_a, -1))
 
         # 6.10b — one row per possible leading action
-        gamma_G = 1.0 * KFI
+        gamma_G = 0.9 if G_fav else 1.0 * KFI
         gamma_Q = 1.5 * KFI
         for lead in range(n):
             others  = [i for i in range(n) if i != lead]
@@ -169,7 +175,8 @@ def load_combos(
                     + gamma_Q * Q[lead]
                     + sum(gamma_Q * p0_oth[j] * Q[others[j]] for j in range(len(others))))
             uls_vals.append((f"6.10b — {loads[lead]['label']}",
-                             f"1.0·K + G + 1.5·K·Q₁ + Σψ₀·…", Ed_b, lead))
+                             f"{gamma_G:.2f}·G + 1.5·K_FI·Q₁ + Σ1.5·K_FI·ψ₀·Qᵢ",
+                             Ed_b, lead))
 
     for name, formula, val, _ in uls_vals:
         blocks.append(CALC_ROW(name, formula, f"{val:.3f}  {unit}"))
@@ -183,7 +190,7 @@ def load_combos(
         else _DURATION_MAP.get(loads[gov_lead]['category'].upper(), 'medium')
     )
 
-    blocks.append(CALC_ROW("E_d,ULS", "= max above", f"{E_d_uls:.3f}  {unit}"))
+    blocks.append(CALC_ROW("E_d,ULS", "= største af ovenstående", f"{E_d_uls:.3f}  {unit}"))
 
     if loads and gov_lead >= 0:
         gov_lbl = loads[gov_lead]['label']
@@ -193,7 +200,7 @@ def load_combos(
             f"→ load duration class: {governing_duration}"
         ))
     else:
-        blocks.append(N("Governing: 6.10a (permanent loads only)  →  load duration class: permanent"))
+        blocks.append(N("Dimensionsgivende: 6.10a (kun permanent last) → lastvarighed: permanent"))
 
     # ── ALS — Accidental ──────────────────────────────────────────────────────
     E_d_acc = None
@@ -229,7 +236,7 @@ def load_combos(
 
         gov_als  = max(als_vals, key=lambda x: x[2])
         E_d_acc  = gov_als[2]
-        blocks.append(CALC_ROW("E_d,ALS", "= max above", f"{E_d_acc:.3f}  {unit}"))
+        blocks.append(CALC_ROW("E_d,ALS", "= største af ovenstående", f"{E_d_acc:.3f}  {unit}"))
         blocks.append(N(
             f"ALS partial factors: γ_G = γ_Q = 1.0.  "
             f"{'Fire: ψ_1 for leading Q, ψ_2 for others.' if accidental_type == 'fire' else 'Other accident: ψ_2 for all variable actions.'}"
@@ -237,7 +244,7 @@ def load_combos(
         ))
 
     # ── SLS ───────────────────────────────────────────────────────────────────
-    blocks.append(S("SLS — Serviceability"))
+    blocks.append(S("Anvendelsesgrænsetilstand"))
 
     if n == 0:
         E_d_sls_char = E_d_sls_freq = G_k
@@ -256,12 +263,12 @@ def load_combos(
 
     E_d_sls_qp = G_k + sum(psi2[i] * Q[i] for i in range(n))
 
-    blocks.append(CALC_ROW("Characteristic",    "G_k + Q_1 + Σ ψ_0·Q_i",      f"{E_d_sls_char:.3f}  {unit}"))
-    blocks.append(CALC_ROW("Frequent",          "G_k + ψ_1·Q_1 + Σ ψ_2·Q_i",  f"{E_d_sls_freq:.3f}  {unit}"))
-    blocks.append(CALC_ROW("Quasi-permanent",   "G_k + Σ ψ_2·Q_i",            f"{E_d_sls_qp:.3f}   {unit}"))
+    blocks.append(CALC_ROW("Karakteristisk",    "G_k + Q_1 + Σ ψ_0·Q_i",      f"{E_d_sls_char:.3f}  {unit}"))
+    blocks.append(CALC_ROW("Hyppig",            "G_k + ψ_1·Q_1 + Σ ψ_2·Q_i",  f"{E_d_sls_freq:.3f}  {unit}"))
+    blocks.append(CALC_ROW("Kvasi-permanent",   "G_k + Σ ψ_2·Q_i",            f"{E_d_sls_qp:.3f}   {unit}"))
 
     # ── Summary ───────────────────────────────────────────────────────────────
-    blocks.append(S("Summary"))
+    blocks.append(S("Sammenfatning"))
     summary_rows = [
         ['ULS (governing)',      f'{E_d_uls:.3f}',      unit],
     ]
@@ -275,7 +282,7 @@ def load_combos(
         ['SLS frequent',        f'{E_d_sls_freq:.3f}', unit],
         ['SLS quasi-permanent', f'{E_d_sls_qp:.3f}',  unit],
     ]
-    blocks.append(TBL(['Combination', f'E_d', 'Unit'], summary_rows))
+    blocks.append(TBL(['Kombination', f'E_d', 'Enhed'], summary_rows))
 
     # Export every individual ULS combination with its load-duration class.
     # Timber checks must find the governing combination by comparing E_d / k_mod,
