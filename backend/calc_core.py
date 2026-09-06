@@ -293,6 +293,67 @@ def make_styles():
 # HANDCALC BLOCK RENDERER
 # ─────────────────────────────────────────────────────────────
 
+# ── Greek in the PDF ─────────────────────────────────────────────────────────
+# Helvetica has no Greek glyphs and drops them without a word, so a PDF printed
+# "= k_mod*f_m,k / M" where the formula reads gamma_M, and the bending check
+# compared "m,d" against "f_m,d". A symbol that vanishes from a calculation is
+# worse than an ugly one.
+#
+# The base-14 Symbol font looked like the free fix, but pdfium - the engine
+# Chrome's PDF viewer uses - renders it as blank space, which is the same
+# failure wearing a different hat. So a real Unicode face is registered for the
+# Greek letters only: matplotlib is already a dependency and ships DejaVuSans,
+# so nothing new is vendored and the font is present wherever the backend runs.
+# The rest of the document stays Helvetica; only the letter itself changes face.
+_GREEK = 'αβγδεζηθικλμνξοπρςστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ'
+
+# Spelled out, the same convention pdf_builder._TEXT_CHAR_MAP uses. Only
+# reached if the font cannot be registered - never silently dropped.
+_GREEK_NAMES = {
+    'α': 'alpha', 'β': 'beta', 'γ': 'gamma', 'δ': 'delta', 'ε': 'epsilon',
+    'ζ': 'zeta', 'η': 'eta', 'θ': 'theta', 'ι': 'iota', 'κ': 'kappa',
+    'λ': 'lambda', 'μ': 'my', 'ν': 'ny', 'ξ': 'xi', 'ο': 'o', 'π': 'pi',
+    'ρ': 'rho', 'ς': 'sigma', 'σ': 'sigma', 'τ': 'tau', 'υ': 'ypsilon',
+    'φ': 'phi', 'χ': 'chi', 'ψ': 'psi', 'ω': 'omega',
+    'Α': 'Alpha', 'Β': 'Beta', 'Γ': 'Gamma', 'Δ': 'Delta', 'Ε': 'Epsilon',
+    'Ζ': 'Zeta', 'Η': 'Eta', 'Θ': 'Theta', 'Ι': 'Iota', 'Κ': 'Kappa',
+    'Λ': 'Lambda', 'Μ': 'My', 'Ν': 'Ny', 'Ξ': 'Xi', 'Ο': 'O', 'Π': 'Pi',
+    'Ρ': 'Rho', 'Σ': 'Sigma', 'Τ': 'Tau', 'Υ': 'Ypsilon', 'Φ': 'Phi',
+    'Χ': 'Chi', 'Ψ': 'Psi', 'Ω': 'Omega',
+}
+
+
+def _register_greek_font():
+    """Register DejaVuSans with ReportLab; return its name, or None."""
+    try:
+        import os
+        import matplotlib
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont as _RLTTFont
+
+        ttf = os.path.join(matplotlib.get_data_path(), 'fonts', 'ttf')
+        for name, filename in (('OmkredsGreek',      'DejaVuSans.ttf'),
+                               ('OmkredsGreek-Bold', 'DejaVuSans-Bold.ttf')):
+            path = os.path.join(ttf, filename)
+            if not os.path.exists(path):
+                return None
+            pdfmetrics.registerFont(_RLTTFont(name, path))
+        return 'OmkredsGreek'
+    except Exception:
+        return None
+
+
+_GREEK_FONT = _register_greek_font()
+_GREEK_RE = re.compile('[' + _GREEK + ']+')
+
+
+def _greek(mo) -> str:
+    run = mo.group()
+    if _GREEK_FONT:
+        return f'<font name="{_GREEK_FONT}">{run}</font>'
+    return ''.join(_GREEK_NAMES.get(c, c) for c in run)
+
+
 def _fmt(s):
     """
     Sanitise text for ReportLab Paragraph rendering with Helvetica.
@@ -324,6 +385,11 @@ def _fmt(s):
     # e.g. combining macron U+0304 in λ̄ (U+03BB + U+0304) → λ
     # Helvetica has no glyphs for combining chars; they render as ■
     s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+
+    # ── Greek ──────────────────────────────────────────────────────────────
+    # Before the subscript rule below, so that a spelled-out fallback such as
+    # "gamma_M" still gets its subscript.
+    s = _GREEK_RE.sub(_greek, s)
 
     # ── _sub and ^sup ASCII notation ───────────────────────────────────────
     s = re.sub(r'\^\(([^)]+)\)', r'<super>\1</super>', s)
