@@ -20,6 +20,7 @@ import ImageBlock        from './ImageBlock.jsx'
 import PythonBlock       from './PythonBlock.jsx'
 import CustomCalcBlock   from './CustomCalcBlock.jsx'
 import SteelBeamBlock    from './SteelBeamBlock.jsx'
+import SteelColumnBlock  from './SteelColumnBlock.jsx'
 import RCBeamBlock       from './RCBeamBlock.jsx'
 import RCColumnBlock     from './RCColumnBlock.jsx'
 import RCSlabBlock       from './RCSlabBlock.jsx'
@@ -74,6 +75,11 @@ const BLOCK_TYPES = [
                span_m: 5.0, load_type: 'udl', trib_width_m: 1.0, g_k_kNm: 5.0, q_k_kNm: 3.0,
                gamma_M0: 1.0, gamma_M1: 1.0,
                ltb_restrained: false, buck_y_restrained: false, buck_x_restrained: false, _result: null } },
+  { type: 'steel_column',  label: 'Stålsøjle',         icon: 'SC',  color: '#1e3a5f', component: SteelColumnBlock,
+    default: { title: 'Stålsøjle', label: 'S1', section: 'HEB200', grade: 'S355',
+               length_m: 3.0, N_Ed_kN: 500.0, M_y_Ed_kNm: 0.0, M_z_Ed_kNm: 0.0,
+               k_y: 1.0, k_z: 1.0, gamma_M0: 1.0, gamma_M1: 1.2,
+               ltb_restrained: true, _result: null } },
   { type: 'rc_beam',       label: 'Betonbjælke',       icon: 'RCB', color: '#374151', component: RCBeamBlock,
     default: { title: 'RC Beam Check', label: 'B1', span_m: 5.0, b_mm: 300, h_mm: 500,
                d_mm: 450, g_k_kNm: 10.0, q_k_kNm: 6.0, f_ck_MPa: 30, f_yk_MPa: 500,
@@ -243,11 +249,11 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Stål  (EC3)',
-    // beam_column er ude: den dumper sin egen referencetest. EN 1993-1-1
-    // lign. 6.61/6.62 giver 0,397 hvor Vayas et al. (Springer 2019, tabel
-    // 4.11) siger 0,426 — 7 % for lavt, altså på den forkerte side. Sæt den
+    // beam_column er stadig ude: den dumper sin egen referencetest. EN 1993-1-1
+    // lign. 6.61/6.62 giver 0,432 hvor Vayas et al. (Springer 2019, tabel
+    // 4.11) siger 0,460 — 6 % for lavt, altså på den forkerte side. Sæt den
     // ind igen når tests/test_beam_column.py er grøn.
-    types: ['steel_beam'],
+    types: ['steel_beam', 'steel_column'],
   },
   {
     label: 'Træ  (EC5)',

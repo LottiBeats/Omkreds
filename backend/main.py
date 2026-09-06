@@ -864,6 +864,95 @@ def _timber_governing_combo(uls_combinations: list, service_class: int) -> dict:
 
 # ── EN 1993-1-1 — Steel beam ──────────────────────────────────────────────────
 
+# ── EN 1993-1-1 §6.3 — Stålsøjle ─────────────────────────────────────────────
+# steel_column.py har ligget her hele tiden med hele eftervisningen i sig.
+# Endpointet blev bare aldrig skrevet, så /calc/steel-column svarede 404 og
+# blokkens fem tests har været røde siden de blev skrevet.
+
+class SteelColumnInput(BaseModel):
+    label:      str   = "SC1"
+    section:    str   = "HEB200"
+    grade:      str   = "S355"
+    length_m:   float = 3.0
+    N_Ed_kN:    float = 500.0
+    M_y_Ed_kNm: float = 0.0
+    M_z_Ed_kNm: float = 0.0
+    # Søjlelængdefaktorer: 1,0 = leddet i begge ender, 0,7 = leddet/indspændt,
+    # 2,0 = indspændt/fri.
+    k_y:        float = 1.0
+    k_z:        float = 1.0
+    gamma_M0:   float = 1.0
+    # DS/EN 1993-1-1 DK NA bruger 1,2 til bæreevne mod instabilitet.
+    gamma_M1:   float = 1.2
+    ltb_restrained: bool = True
+    L_LTB_m:    float | None = None
+    C_1:        float = 1.0
+
+
+@protected.post("/calc/steel-column", tags=["Calculations"])
+def calc_steel_column(data: SteelColumnInput):
+    """EN 1993-1-1 §6.3.1 søjleeftervisning (tryk, bøjning, søjlevirkning)."""
+    try:
+        from steel_column import steel_column_check
+        from section_catalog import column_properties
+        from calc_core import N as NOTE
+
+        try:
+            p = column_properties(data.section)
+        except KeyError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Profilen {data.section!r} findes ikke i kataloget.")
+
+        # f_y efter flangetykkelsen (EN 10025 / EN 1993-1-1 tabel 3.1).
+        nominal = {"S235": 235.0, "S275": 275.0, "S355": 355.0, "S420": 420.0,
+                   "S460": 460.0}.get(data.grade.upper())
+        if nominal is None:
+            raise HTTPException(status_code=422,
+                                detail=f"Ukendt stålkvalitet: {data.grade!r}")
+        f_y = nominal - 20.0 if p["tf_mm"] > 40.0 else nominal
+
+        blocks = steel_column_check(
+            label      = data.label,
+            section    = p["designation"],
+            grade      = data.grade,
+            length_m   = data.length_m,
+            N_Ed_kN    = data.N_Ed_kN,
+            A_cm2      = p["A_cm2"],
+            Iy_cm4     = p["Iy_cm4"],
+            Iz_cm4     = p["Iz_cm4"],
+            h_mm       = p["h_mm"],
+            b_mm       = p["b_mm"],
+            tf_mm      = p["tf_mm"],
+            tw_mm      = p["tw_mm"],
+            W_pl_y_cm3 = p.get("Wply_cm3"),
+            M_y_Ed_kNm = data.M_y_Ed_kNm,
+            M_z_Ed_kNm = data.M_z_Ed_kNm,
+            f_y_MPa    = f_y,
+            gamma_M0   = data.gamma_M0,
+            gamma_M1   = data.gamma_M1,
+            k_y        = data.k_y,
+            k_z        = data.k_z,
+            ltb_restrained = data.ltb_restrained,
+            L_LTB_m    = data.L_LTB_m,
+            C_1        = data.C_1,
+        )
+
+        # Hvor tallene kommer fra hører med i dokumentet. A og I_z står ikke i
+        # kataloget og er udledt; det skal læseren kunne se.
+        blocks.append(NOTE(
+            f"Tværsnitsdata for {p['designation']} ({p.get('source', 'katalog')}): "
+            f"h, b, t_w, t_f, W_pl,y og I_y er katalogværdier. "
+            f"A = {p['A_cm2']:.2f} cm² er udledt {p['A_source']}. "
+            f"I_z = {p['Iz_cm4']:.1f} cm⁴ er udledt {p['Iz_source']}."))
+        return blocks
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 class SteelBeamInput(BaseModel):
     label:              str   = "S1"
     section:            str   = "IPE300"

@@ -282,7 +282,7 @@ def steel_column_check(
     ))
 
     # ── Design parameters ────────────────────────────────────────────────────
-    blocks.append(S("Design parameters"))
+    blocks.append(S("Beregningsforudsætninger"))
     blocks.append(T(
         f"Hot-rolled steel column / beam-column check to EN 1993-1-1 §6.3.  "
         f"Section {section}, grade {grade}.  "
@@ -291,48 +291,48 @@ def steel_column_check(
         f"{'LTB restrained — χ_LT = 1.0.' if ltb_restrained else 'LTB unrestrained — M_cr and χ_LT computed.'}"
     ))
     blocks.extend([
-        CALC_ROW("Section",  "profile",                    section),
-        CALC_ROW("Grade",    "steel grade",                grade),
-        CALC_ROW("L",        "column length",              f"{length_m:.2f} m"),
-        CALC_ROW("k_y",      "eff.-length factor y–y",    f"{k_y:.2f}"),
-        CALC_ROW("k_z",      "eff.-length factor z–z",    f"{k_z:.2f}"),
-        CALC_ROW("N_Ed",     "design axial compression",  f"{N_Ed_kN:.1f} kN"),
+        CALC_ROW("Section",  "profil",                    section),
+        CALC_ROW("Grade",    "stålkvalitet",                grade),
+        CALC_ROW("L",        "søjlelængde",              f"{length_m:.2f} m"),
+        CALC_ROW("k_y",      "søjlelængdefaktor y–y",    f"{k_y:.2f}"),
+        CALC_ROW("k_z",      "søjlelængdefaktor z–z",    f"{k_z:.2f}"),
+        CALC_ROW("N_Ed",     "dimensionsgivende normalkraft, tryk",  f"{N_Ed_kN:.1f} kN"),
     ])
     if have_moments:
         blocks.extend([
-            CALC_ROW("M_y,Ed", "design moment — strong axis",  f"{M_y_Ed_kNm:.2f} kNm"),
-            CALC_ROW("M_z,Ed", "design moment — weak axis",    f"{M_z_Ed_kNm:.2f} kNm"),
-            CALC_ROW("C_my",   "uniform moment factor y",      f"{C_my:.2f}"),
-            CALC_ROW("C_mz",   "uniform moment factor z",      f"{C_mz:.2f}"),
+            CALC_ROW("M_y,Ed", "dimensionsgivende moment, stærk akse",  f"{M_y_Ed_kNm:.2f} kNm"),
+            CALC_ROW("M_z,Ed", "dimensionsgivende moment, svag akse",    f"{M_z_Ed_kNm:.2f} kNm"),
+            CALC_ROW("C_my",   "ækvivalent momentfaktor y",      f"{C_my:.2f}"),
+            CALC_ROW("C_mz",   "ækvivalent momentfaktor z",      f"{C_mz:.2f}"),
         ])
         if not ltb_restrained:
-            blocks.append(CALC_ROW("C_mLT", "equiv. moment factor LTB", f"{C_mLT:.2f}"))
+            blocks.append(CALC_ROW("C_mLT", "ækvivalent momentfaktor, kipning", f"{C_mLT:.2f}"))
     blocks.extend([
-        CALC_ROW("γ_M0",  "partial factor — cross-section",   str(gamma_M0)),
-        CALC_ROW("γ_M1",  "partial factor — member buckling", str(gamma_M1)),
+        CALC_ROW("γ_M0",  "partialkoefficient, tværsnit",   str(gamma_M0)),
+        CALC_ROW("γ_M1",  "partialkoefficient, instabilitet", str(gamma_M1)),
     ])
 
     # ── Section properties ───────────────────────────────────────────────────
-    blocks.append(S("Section properties  — EN 1993-1-1 §6.1"))
+    blocks.append(S("Tværsnitsdata — EN 1993-1-1 §6.1"))
     blocks.extend([
-        CALC_ROW("A",      "gross area",                f"{A_cm2:.2f} cm²"),
-        CALC_ROW("I_y",    "2nd moment — strong axis",  f"{Iy_cm4:.1f} cm⁴"),
-        CALC_ROW("I_z",    "2nd moment — weak axis",    f"{Iz_cm4:.1f} cm⁴"),
+        CALC_ROW("A",      "bruttoareal",                f"{A_cm2:.2f} cm²"),
+        CALC_ROW("I_y",    "inertimoment, stærk akse",  f"{Iy_cm4:.1f} cm⁴"),
+        CALC_ROW("I_z",    "inertimoment, svag akse",    f"{Iz_cm4:.1f} cm⁴"),
         CALC_ROW("i_y",    "= √(I_y / A)",              f"{iy:.1f} mm"),
         CALC_ROW("i_z",    "= √(I_z / A)",              f"{iz:.1f} mm"),
         CALC_ROW("W_pl,y", f"{'(elastic W_el,y used for Class 3)' if use_elastic_y else 'plastic modulus — y'}",
                            f"{W_bnd_y:.1f} cm³"),
         CALC_ROW("W_pl,z", f"{'(elastic W_el,z used for Class 3)' if use_elastic_z else 'plastic modulus — z'}",
                            f"{W_bnd_z:.1f} cm³" if W_bnd_z is not None else "—"),
-        CALC_ROW("f_y",    "yield strength",             f"{fy:.0f} MPa"),
+        CALC_ROW("f_y",    "flydespænding",             f"{fy:.0f} MPa"),
     ])
     if I_T_cm4 is not None:
-        blocks.append(CALC_ROW("I_T", "St. Venant torsion constant", f"{I_T_cm4:.2f} cm⁴"))
+        blocks.append(CALC_ROW("I_T", "vridningskonstant (St. Venant)", f"{I_T_cm4:.2f} cm⁴"))
     if I_w_cm6 is not None:
-        blocks.append(CALC_ROW("I_w", "warping constant", f"{I_w_cm6:.0f} cm⁶"))
+        blocks.append(CALC_ROW("I_w", "hvælvningskonstant", f"{I_w_cm6:.0f} cm⁶"))
 
     # ── Cross-section classification ─────────────────────────────────────────
-    blocks.append(S("Cross-section classification  — EC3 §5.5.2 / Table 5.2"))
+    blocks.append(S("Tværsnitsklasse — EN 1993-1-1 §5.5.2 / tabel 5.2"))
     if section_class is not None:
         blocks.append(T(
             f"ε = √(235 / f_y) = {eps:.3f}  |  "
@@ -341,23 +341,23 @@ def steel_column_check(
             f"α = {alpha_cls:.3f}"
         ))
         cls_label = f"Class {section_class}"
-        blocks.append(CALC_ROW("Section class", "governing (max of flange, web)", cls_label))
+        blocks.append(CALC_ROW("Section class", "dimensionsgivende (største af flange og krop)", cls_label))
 
         if section_class == 3:
             if W_el_y_cm3 is None:
                 blocks.append(N(
-                    "Class 3 section — provide W_el_y_cm3 (and W_el_z_cm3) to use "
+                    "Tværsnitsklasse 3 — angiv W_el_y_cm3 (og W_el_z_cm3) for at bruge "
                     "elastic modulus in bending checks. W_pl is used as a conservative "
                     "approximation until W_el is supplied."
                 ))
             else:
                 blocks.append(N(
-                    f"Class 3 section — elastic modulus W_el,y = {W_el_y_cm3:.1f} cm³ "
+                    f"Tværsnitsklasse 3 — elastisk modstandsmoment W_el,y = {W_el_y_cm3:.1f} cm³ "
                     "used for bending resistance."
                 ))
         if section_class == 4:
             blocks.append(N(
-                "Class 4 section — effective cross-section properties required per "
+                "Tværsnitsklasse 4 — der kræves effektive tværsnitsdata efter "
                 "EN 1993-1-5. This check is not performed here; results are unconservative."
             ))
     else:
@@ -367,7 +367,7 @@ def steel_column_check(
         ))
 
     # ── Slenderness ──────────────────────────────────────────────────────────
-    blocks.append(S("Slenderness  — EN 1993-1-1 §6.3.1.3"))
+    blocks.append(S("Slankhed — EN 1993-1-1 §6.3.1.3"))
     blocks += [
         CALC_ROW("λ₁",     "= π·√(E/f_y)",                               f"{lambda_1:.2f}"),
         CALC_ROW("L_cr,y", f"= k_y·L = {k_y:.2f} × {length_m:.2f} m",   f"{L_cr_y/1000:.3f} m"),
@@ -377,56 +377,56 @@ def steel_column_check(
     ]
 
     # ── Flexural buckling resistance ─────────────────────────────────────────
-    blocks.append(S("Flexural buckling resistance  — EN 1993-1-1 §6.3.1.2"))
+    blocks.append(S("Bæreevne for søjlevirkning — EN 1993-1-1 §6.3.1.2"))
     blocks.append(T(
-        f"Buckling curves per EC3 Table 6.2 (hot-rolled I/H section, "
+        f"Buckningskurver efter EN 1993-1-1 tabel 6.2 (varmvalset I-/H-profil, "
         f"h/b = {h_mm/b_mm:.2f}, t_f = {tf_mm:.1f} mm):  "
-        f"y–y → curve {curve_y.upper()} (α = {_ALPHA[curve_y]}),  "
-        f"z–z → curve {curve_z.upper()} (α = {_ALPHA[curve_z]})."
+        f"y–y → kurve {curve_y.upper()} (α = {_ALPHA[curve_y]}),  "
+        f"z–z → kurve {curve_z.upper()} (α = {_ALPHA[curve_z]})."
     ))
     blocks += [
-        CALC_ROW("χ_y",      f"= curve {curve_y.upper()}, λ̄_y = {lam_y:.3f}",  f"{chi_y:.3f}"),
-        CALC_ROW("χ_z",      f"= curve {curve_z.upper()}, λ̄_z = {lam_z:.3f}",  f"{chi_z:.3f}"),
+        CALC_ROW("χ_y",      f"= kurve {curve_y.upper()}, λ̄_y = {lam_y:.3f}",  f"{chi_y:.3f}"),
+        CALC_ROW("χ_z",      f"= kurve {curve_z.upper()}, λ̄_z = {lam_z:.3f}",  f"{chi_z:.3f}"),
         CALC_ROW("N_pl,Rd",  "= A·f_y / γ_M0",                                   f"{N_pl_Rd:.1f} kN"),
         CALC_ROW("N_b,y,Rd", "= χ_y·A·f_y / γ_M1",                              f"{N_b_y_Rd:.1f} kN"),
         CALC_ROW("N_b,z,Rd", "= χ_z·A·f_y / γ_M1",                              f"{N_b_z_Rd:.1f} kN"),
     ]
 
     # ── Axial-only verification ───────────────────────────────────────────────
-    blocks.append(S("Axial verification  — EN 1993-1-1 §6.2.4 / §6.3.1"))
+    blocks.append(S("Eftervisning for normalkraft — EN 1993-1-1 §6.2.4 / §6.3.1"))
     eta_cs  = N_Ed_kN / N_pl_Rd
     eta_b_y = N_Ed_kN / N_b_y_Rd
     eta_b_z = N_Ed_kN / N_b_z_Rd
     blocks += [
         CALC_ROW("η_cs",  "= N_Ed / N_pl,Rd",   f"{eta_cs:.3f}"),
-        chk.check("Cross-section  §6.2.4",        eta_cs,  1.0),
+        chk.check("Tværsnit §6.2.4",        eta_cs,  1.0),
         CALC_ROW("η_b,y", "= N_Ed / N_b,y,Rd",  f"{eta_b_y:.3f}"),
-        chk.check("Flexural buckling y–y  §6.3.1", eta_b_y, 1.0),
+        chk.check("Søjlevirkning y–y §6.3.1", eta_b_y, 1.0),
         CALC_ROW("η_b,z", "= N_Ed / N_b,z,Rd",  f"{eta_b_z:.3f}"),
-        chk.check("Flexural buckling z–z  §6.3.1", eta_b_z, 1.0),
+        chk.check("Søjlevirkning z–z §6.3.1", eta_b_z, 1.0),
     ]
 
     # ── Combined bending + compression ───────────────────────────────────────
     if have_moments:
 
         # ── LTB ──────────────────────────────────────────────────────────────
-        blocks.append(S("Lateral-torsional buckling  — EN 1993-1-1 §6.3.2.2"))
+        blocks.append(S("Kipning — EN 1993-1-1 §6.3.2.2"))
         if ltb_restrained:
             blocks.append(T("Lateral restraint provided throughout — LTB not critical."))
-            blocks.append(CALC_ROW("χ_LT", "= 1.0  (restrained)", "1.000"))
+            blocks.append(CALC_ROW("χ_LT", "= 1,0  (fastholdt)", "1.000"))
         else:
             ltb_curve_name = ltb_curve_hot_rolled(h_mm, b_mm)
             blocks += [
-                CALC_ROW("L_LTB",    "unbraced LTB length",
+                CALC_ROW("L_LTB",    "ikke-fastholdt længde ved kipning",
                          f"{(L_LTB_m if L_LTB_m else k_z * length_m):.3f} m"),
-                CALC_ROW("C₁",       "moment gradient factor",          f"{C_1:.2f}"),
-                CALC_ROW("M_cr",     "elastic critical moment",         f"{M_cr_kNm:.2f} kNm"),
+                CALC_ROW("C₁",       "momentfordelingsfaktor",          f"{C_1:.2f}"),
+                CALC_ROW("M_cr",     "elastisk kritisk moment",         f"{M_cr_kNm:.2f} kNm"),
                 CALC_ROW("λ̄_LT",    "= √(W_y · f_y / M_cr)",           f"{lam_LT:.3f}"),
                 CALC_ROW("χ_LT",     f"LTB curve {ltb_curve_name.upper()} — general method",
                          f"{chi_LT:.3f}"),
             ]
             blocks.append(N(
-                "M_cr uses the two-term formula without load-height correction.  "
+                "M_cr er regnet med to-ledsformlen uden korrektion for lastens angrebshøjde.  "
                 "C₁ = 1.0 (uniform moment) is conservative; for non-uniform diagrams "
                 "use Table 6.4 (e.g. UDL ≈ 1.13, triangular ≈ 1.29)."
             ))
@@ -436,7 +436,7 @@ def steel_column_check(
         M_cs_z_Rd = ((W_bnd_z * fy / gamma_M0 / 1_000.0)
                      if W_bnd_z is not None else None)
 
-        blocks.append(S("Combined cross-section resistance  — EN 1993-1-1 §6.2.1(7)"))
+        blocks.append(S("Samlet tværsnitsbæreevne — EN 1993-1-1 §6.2.1(7)"))
         blocks.append(T(
             "Conservative linear interaction:  "
             "N_Ed/N_Rd + M_y,Ed/M_y,Rd + M_z,Ed/M_z,Rd ≤ 1.0"
@@ -467,14 +467,14 @@ def steel_column_check(
 
         blocks.append(S(f"Interaction factors  — Annex B Table {table_ref} ({susceptible_txt})"))
         blocks.append(N(
-            "Annex B Method 2 — Class 1 and 2 cross-sections.  "
+            "Bilag B, metode 2 — tværsnitsklasse 1 og 2.  "
             "C_my = C_mz = 1.0 is conservative (uniform moment diagram); "
             "refer to Table B.3 for non-uniform diagrams."
         ))
         if lam_y > 1.0:
-            blocks.append(N(f"λ̄_y = {lam_y:.3f} > 1.0 — capped at 1.0 in k-factor formula."))
+            blocks.append(N(f"λ̄_y = {lam_y:.3f} > 1,0 — sat til 1,0 i udtrykket for k-faktorerne."))
         if lam_z > 1.0:
-            blocks.append(N(f"λ̄_z = {lam_z:.3f} > 1.0 — capped at 1.0 in k-factor formula."))
+            blocks.append(N(f"λ̄_z = {lam_z:.3f} > 1,0 — sat til 1,0 i udtrykket for k-faktorerne."))
 
         blocks.append(TBL(
             ["Factor", "Formula", "Value"],
@@ -502,7 +502,7 @@ def steel_column_check(
         util_eq1 = n_y + k_yy * m_y / chi_LT + k_yz * m_z
         util_eq2 = n_z + k_zy * m_y / chi_LT + k_zz * m_z
 
-        blocks.append(S("Interaction equations  — EC3 §6.3.3 Eq. 6.61 and 6.62"))
+        blocks.append(S("Samvirke — EN 1993-1-1 §6.3.3, lign. 6.61 og 6.62"))
         blocks += [
             CALC_ROW("M_pl,y,Rd", f"= {'W_el' if use_elastic_y else 'W_pl'},y·f_y / γ_M1",
                      f"{M_pl_y_Rd:.2f} kNm"),

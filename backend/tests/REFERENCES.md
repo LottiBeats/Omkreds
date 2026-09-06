@@ -186,3 +186,47 @@ is the obvious way to get this wrong and it errs unconservatively.
 The module takes N_Ed and M_Ed as given, so it does not choose a load
 combination — the k_mod question that governs `timber.py`'s closed form belongs
 to whatever produced the actions.
+
+---
+
+## Steel Column (EN 1993-1-1 §6.3.1)  — second, independent case
+
+The `/calc/steel-column` endpoint did not exist until 2026-09-06: `steel_column.py`
+held the whole verification, `SteelColumnBlock.jsx` and `calcSteelColumn()` were
+both written, and nothing connected them. The five tests in
+`test_steel_column.py` had therefore been failing on a 404 since the day they
+were written.
+
+| Test | Source |
+|------|--------|
+| HEB120, S355, L = 3.0 m, N_Ed = 369.3 kN, γ_M1 = 1.2 | https://www.structuralbasics.com/steel-column-design/ — worked example. Every line re-derived from EN 1993-1-1 Eq. 6.47, 6.49, 6.50 and Tables 6.1/6.2 before use. |
+
+| | Example | Omkreds |
+|---|---|---|
+| λ₁ = π√(E/f_y) | 76.41 | 76.41 |
+| λ̄_y | 0.78 | 0.779 |
+| χ_y (curve b, α = 0.34) | 0.74 | 0.737 |
+| N_b,y,Rd | 741.8 kN | 741.9 kN |
+| λ̄_z | 1.28 | 1.286 |
+| χ_z (curve c, α = 0.49) | 0.40 | 0.395 |
+| N_b,z,Rd | 398.5 kN | 397.2 kN |
+| η (z–z governs) | 0.927 | 0.930 |
+
+**Two things worth recording about that source.** It renders χ for the z-axis
+as `1/(Φ + √(Φ² + λ̄²))` — a plus under the root — but the number it prints
+(0.40) is what the minus of Eq. 6.49 gives; the plus would give 0.275. The
+formula is a typo on the page, the arithmetic is right. And it uses γ_M1 = 1.2,
+which is the Danish NA value, not the Eurocode's recommended 1.0.
+
+**Why the weak axis differs by 0.3 %.** `steel_profiles.csv` carries h, b, t_w,
+t_f, W_pl,y, I_y and the weight — but no A and no I_z. `section_catalog.column_properties()`
+derives A from the weight (A = m/ρ, ρ = 7850 kg/m³), which reproduces the
+catalogue exactly (HEB120 → 3401 mm²), and I_z from the dimensions, which
+ignores the root fillets and lands a few per mille low. For a column that is the
+safe side: smaller I_z → smaller i_z → higher slenderness → lower resistance. A
+test asserts the direction, not just the magnitude.
+
+**Do not use `section_resolver.resolve_steel()` for this.** It sets
+`Iz_cm4 = Iy_cm4` — correct for the 2D frame, where "Iz" means the inertia about
+the axis being bent about, i.e. the strong one. Reused as a weak axis it would
+make a column four to six times too stiff.
