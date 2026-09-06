@@ -93,7 +93,8 @@ def _project():
     return {"id": "t", "metadata": {"project_name": "Symboltest"}, "documents": {}}
 
 
-@pytest.mark.parametrize("symbol", ["γ", "σ", "τ", "λ", "μ", "α", "Δ", "≤"])
+@pytest.mark.parametrize("symbol", ["γ", "σ", "τ", "λ", "μ", "α", "Δ",
+                                   "≤", "⊥", "∅", "√", "±", "‰"])
 def test_symbol_survives_into_the_pdf(symbol):
     blocks = [{
         "type": "timber_beam",

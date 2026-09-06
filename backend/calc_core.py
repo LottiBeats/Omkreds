@@ -312,7 +312,12 @@ _GREEK = 'αβγδεζηθικλμνξοπρςστυφχψωΑΒΓΔΕΖΗΘΙΚ
 # note came out. Latin-1 symbols (° ² ³ · × ±) are deliberately NOT here:
 # Helvetica draws them correctly and matching the surrounding metrics is
 # better than switching face for them.
-_MATHS = '≤≥≠≈√∑∞→←↔⇒‰−∂∫'
+# Tegn uden for Latin-1 der bruges i statiske beregninger. Et tegn, der
+# ikke staar her, bliver droppet lydloest af Helvetica -- "g_k,⊥"
+# blev til "g_k," i et rigtigt dokument, uden en fejl nogen steder.
+# Latin-1-tegnene (° · × ± ² ³) staar med vilje IKKE her: dem tegner
+# Helvetica selv, og de passer bedre til teksten omkring dem.
+_MATHS = '≤≥≠≈√∑∏∞→←↔⇒‰−∂∫⊥∥∅≡∈∀∇′″⌀◊'
 
 # Spelled out, the same convention pdf_builder._TEXT_CHAR_MAP uses. Only
 # reached if the font cannot be registered - never silently dropped.
@@ -358,8 +363,10 @@ _UNICODE_RE = re.compile('[' + _GREEK + _MATHS + ']+')
 # never dropped.
 _MATHS_NAMES = {
     '≤': '<=', '≥': '>=', '≠': '!=', '≈': '~', '√': 'sqrt', '∑': 'sum',
-    '∞': 'uendelig', '→': '->', '←': '<-', '↔': '<->', '⇒': '=>',
-    '‰': 'promille', '−': '-', '∂': 'd', '∫': 'int',
+    '∏': 'prod', '∞': 'uendelig', '→': '->', '←': '<-', '↔': '<->', '⇒': '=>',
+    '‰': 'promille', '−': '-', '∂': 'd', '∫': 'int', '⊥': 'vinkelret',
+    '∥': 'parallel', '∅': 'diam', '⌀': 'diam', '≡': '==', '∈': 'i',
+    '∀': 'for alle', '∇': 'nabla', '′': "'", '″': '"', '◊': '',
 }
 
 
