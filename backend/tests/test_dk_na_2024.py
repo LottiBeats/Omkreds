@@ -149,3 +149,63 @@ def test_partial_factors_are_all_unity_in_an_accident(client):
                 return float(b["result"].split()[0])
         raise AssertionError("ingen ALS-række")
     assert als("CC1") == pytest.approx(als("CC3"))
+
+
+# ── Anneks F (10): γ_M = 1,0 i en ulykke ────────────────────────────────────
+# "Ved undersøgelser af ulykkesdimensioneringstilfælde og seismiske
+#  dimensioneringstilfælde anvendes partialkoefficienten γ_M = 1,0, medmindre
+#  andet er anført i DS/EN 1992-DS/EN 1999 serien."
+#
+# load_combo regnede E_d for ulykken rigtigt — alle laster med 1,0 — men
+# materialesiden fulgte ikke med. Føres et ALS-resultat ind i en eftervisning,
+# blev der stadig regnet med γ_M = 1,3.
+
+BJAELKE = {
+    "label": "T1", "span_m": 4.0, "b_mm": 45, "h_mm": 245,
+    "timber_grade": "C24", "g_k_kNm": 0.862, "q_k_kNm": 0.720,
+    "service_class": 1, "load_duration": "short", "gamma_M": 1.3,
+}
+
+
+def _bjaelke(client, **kw):
+    r = client.post("/calc/timber-beam", json={**BJAELKE, **kw})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _row(blocks, navn):
+    for b in blocks:
+        if b.get("type") == "calc_row" and b.get("name") == navn:
+            return float(b["result"].split()[0])
+    raise AssertionError(f"ingen række {navn!r}")
+
+
+def test_material_factor_is_unity_in_an_accident(client):
+    normal = _row(_bjaelke(client), "f_m,d")
+    ulykke = _row(_bjaelke(client, design_situation="accidental"), "f_m,d")
+    assert ulykke == pytest.approx(normal * 1.3, rel=0.005), \
+        "γ_M skal falde fra 1,30 til 1,00, altså 30 % mere bæreevne"
+
+
+def test_the_document_says_why(client):
+    """En læser skal kunne se, at 1,0 er et valg med en kilde, ikke en fejl."""
+    blocks = _bjaelke(client, design_situation="accidental")
+    noter = " ".join(b.get("content", "") for b in blocks if b.get("type") == "note")
+    assert "1,0" in noter and "anneks F" in noter
+
+
+def test_persistent_is_the_default(client):
+    """Den, der ikke tager stilling, skal få den normale situation."""
+    assert _row(_bjaelke(client), "γ_M") == pytest.approx(1.30)
+
+
+def test_the_column_follows_the_same_rule(client):
+    def f_c0d(situation):
+        r = client.post("/calc/timber-column", json={
+            "label": "S1", "length_m": 4.81, "N_Ed_kN": 53.94,
+            "b_mm": 140, "h_mm": 140, "timber_grade": "GL28h",
+            "service_class": 1, "gamma_M": 1.25, "load_duration": "short",
+            "design_situation": situation})
+        assert r.status_code == 200, r.text
+        return _row(r.json(), "f_c,0,d")
+    assert f_c0d("accidental") == pytest.approx(f_c0d("persistent") * 1.25, rel=0.005)

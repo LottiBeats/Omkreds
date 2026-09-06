@@ -64,6 +64,7 @@ def timber_beam(
     load_duration="medium",
     gamma_M=1.3,
     K_FI=1.0,
+    design_situation="persistent",   # "persistent" | "accidental"
     # Anvendelsesgrænsetilstand, EN 1995-1-1 §7.2
     check_deflection=True,
     psi_1=0.2,              # ψ₁ for den variable last (DK NA tabel A1.1)
@@ -114,6 +115,18 @@ def timber_beam(
     if support_material == "solid_timber" and grade_data is not None:
         support_material = grade_data["support_material"]
 
+    # DS/EN 1990 DK NA:2024, anneks F punkt (10): "Ved undersoegelser af
+    # ulykkesdimensioneringstilfaelde og seismiske dimensioneringstilfaelde
+    # anvendes partialkoefficienten gamma_M = 1,0, medmindre andet er anfoert i
+    # DS/EN 1992-DS/EN 1999 serien."
+    #
+    # load_combo regner E_d for ulykken rigtigt -- alle laster med 1,0 -- men
+    # materialesiden fulgte ikke med. Foeres et ALS-resultat ind i en
+    # eftervisning, blev der stadig regnet med gamma_M = 1,3.
+    if design_situation == "accidental":
+        _gamma_M_normal = gamma_M
+        gamma_M = 1.0
+
     # k_mod kan ikke vælges her endnu. I den lukkede form afhænger den af
     # hvilken lastkombination der viser sig at være dimensionsgivende, og det
     # afgøres længere nede. Med importerede snitkræfter er varigheden allerede
@@ -151,6 +164,13 @@ def timber_beam(
             f"Anvendelsesklasse {service_class}, lastvarighed: {_varighed}. "
             f"k_mod = {kmod:.2f}, γ_M = {gamma_M:.2f}."
         ))
+
+    if design_situation == "accidental":
+        blocks.append(N(
+            f"Ulykkesdimensioneringstilfælde: γ_M sættes til 1,0 i stedet for "
+            f"{_gamma_M_normal:.2f} (DS/EN 1990 DK NA:2024, anneks F punkt 10). "
+            f"Lasterne regnes med 1,0 i lastkombinationen, og materialesiden "
+            f"følger med."))
 
     _params = [CALC_ROW("L", "spænd", _u(span, m, "m"))]
     if beam_results is None:

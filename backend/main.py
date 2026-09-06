@@ -1235,6 +1235,10 @@ class TimberBeamInput(BaseModel):
     K_FI:           float = 1.0
 
     # Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2
+    # "persistent" | "accidental" — ved ulykke sættes γ_M til 1,0,
+    # DS/EN 1990 DK NA:2024 anneks F (10).
+    design_situation: str   = "persistent"
+
     check_deflection: bool  = True
     psi_1:            float = 0.2    # DK NA tabel A1.1, se test_dk_na_2024.py
     psi_2:            float = 0.0
@@ -1280,6 +1284,7 @@ def calc_timber_beam(data: TimberBeamInput):
             load_duration = data.load_duration,
             gamma_M       = data.gamma_M,
             K_FI          = data.K_FI,
+            design_situation = data.design_situation,
             check_deflection = data.check_deflection,
             psi_1         = data.psi_1,
             psi_2         = data.psi_2,
@@ -1370,6 +1375,7 @@ class TimberColumnInput(BaseModel):
     gamma_M:                 float = 1.3
     effective_length_factor: float = 1.0
     l_ef_ltb_m:              float | None = None
+    design_situation:        str = "persistent"   # ved ulykke: γ_M = 1,0
 
     # Brand — EN 1995-1-2. For en søjle er den strengere end for en bjælke:
     # det afbrændte tværsnit er ikke bare svagere, det er også slankere.
@@ -1413,6 +1419,7 @@ def calc_timber_column(data: TimberColumnInput):
             service_class           = data.service_class,
             load_duration           = load_duration,
             gamma_M                 = data.gamma_M,
+            design_situation        = data.design_situation,
             effective_length_factor = data.effective_length_factor,
         )
         if data.l_ef_ltb_m is not None:

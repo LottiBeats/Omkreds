@@ -79,6 +79,7 @@ def timber_column_bending_and_axial(
     service_class=1,
     load_duration="medium",
     gamma_M=1.3,
+    design_situation="persistent",   # "persistent" | "accidental"
     k_m=0.70,
     material_type="solid_timber",
     effective_length_factor=1.0,
@@ -107,6 +108,18 @@ def timber_column_bending_and_axial(
     if material_type == "solid_timber" and grade_data is not None:
         material_type = grade_data["material_type"]
 
+    # DS/EN 1990 DK NA:2024, anneks F punkt (10): "Ved undersoegelser af
+    # ulykkesdimensioneringstilfaelde og seismiske dimensioneringstilfaelde
+    # anvendes partialkoefficienten gamma_M = 1,0, medmindre andet er anfoert i
+    # DS/EN 1992-DS/EN 1999 serien."
+    #
+    # load_combo regner E_d for ulykken rigtigt -- alle laster med 1,0 -- men
+    # materialesiden fulgte ikke med. Foeres et ALS-resultat ind i en
+    # eftervisning, blev der stadig regnet med gamma_M = 1,3.
+    if design_situation == "accidental":
+        _gamma_M_normal = gamma_M
+        gamma_M = 1.0
+
     kmod   = KMOD.get((service_class, load_duration), 0.80)
     beta_c = _BETA_C.get(material_type, _BETA_C["solid_timber"])
     cc     = CheckContext()
@@ -132,6 +145,13 @@ def timber_column_bending_and_axial(
     # ------------------------------------------------------------------
     # Design parameters
     # ------------------------------------------------------------------
+    if design_situation == "accidental":
+        blocks.append(N(
+            f"Ulykkesdimensioneringstilfælde: γ_M sættes til 1,0 i stedet for "
+            f"{_gamma_M_normal:.2f} (DS/EN 1990 DK NA:2024, anneks F punkt 10). "
+            f"Lasterne regnes med 1,0 i lastkombinationen, og materialesiden "
+            f"følger med."))
+
     blocks.append(S("Beregningsforudsætninger"))
     _mat = grade_data["description"] if grade_data else "manuelt indtastede styrker"
     _mat = _mat[:1].lower() + _mat[1:]

@@ -267,3 +267,32 @@ consequence class must not move an accidental combination. A test pins that.
   applies 0.9 for CC1 unconditionally.
 - Seismic (6.12a/b). Not relevant in Denmark for ordinary buildings, and the
   NA states seismic and wind are never combined.
+
+**Anneks F (10) — γ_M in an accidental design situation.** "Ved undersøgelser
+af ulykkesdimensioneringstilfælde og seismiske dimensioneringstilfælde anvendes
+partialkoefficienten γ_M = 1,0, medmindre andet er anført i DS/EN 1992-DS/EN
+1999 serien." `load_combo` computed E_d for the accident correctly — every load
+at 1.0 — but the material side did not follow: feeding an ALS result into a
+member check still used γ_M = 1.3. `design_situation="accidental"` now sets it
+to 1.0 on both the timber beam and the timber column, and the document says
+where the 1.0 comes from.
+
+---
+
+## DS/EN 1990/A1 DK NA:2017 Annex A2 — bridges, NOT buildings
+
+Niels also supplied the bridge annex (Vejdirektoratet / Banedanmark). Its
+**Table A2.5 DK NA** governs accidental combinations for bridges and is *not*
+the one that applies to a building:
+
+| | Permanent | Prestress | Accidental | Leading variable | Others |
+|---|---|---|---|---|---|
+| A1.3 (buildings), fire | G_kj,sup/inf | — | A_d | **ψ₁,₁·Q_k,₁** | ψ₂,ᵢ·Q_k,ᵢ |
+| A1.3 (buildings), other | G_kj,sup/inf | — | A_d | **ψ₂,₁·Q_k,₁** | ψ₂,ᵢ·Q_k,ᵢ |
+| **A2.5 (bridges)** | G_kj,sup/inf | **P** | A_d | **ψ₂,₁·Q_k,₁** | ψ₂,ᵢ·Q_k,ᵢ |
+
+Two differences that matter: bridges carry prestressing P as its own column, and
+a footnote sets ψ₂,₁ = ψ₁,₁ for the traffic load groups (gr1, gr1a, LM71 incl.
+α). Omkreds implements the **building** table. It has no prestressing, no
+traffic load models and no fatigue partial factors, so it is not a bridge tool —
+using A1.3 values on a bridge, or A2.5 values on a house, would both be wrong.
