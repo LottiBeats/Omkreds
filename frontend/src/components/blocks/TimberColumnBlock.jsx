@@ -98,7 +98,7 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
       runDisabled={source === 'combo' && !comboReady}
     >
       {/* ── Load source selector ── */}
-      <Field label="Load source" style={{ gridColumn: '1/-1' }}>
+      <Field label="Lastkilde" style={{ gridColumn: '1/-1' }}>
         <div style={{ display: 'flex', gap: 16, padding: '2px 0' }}>
           {['direct', 'combo'].map(opt => (
             <label key={opt} style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -113,7 +113,7 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
 
       {/* ── Combo picker ── */}
       {source === 'combo' && (
-        <Field label="Combo block" style={{ gridColumn: '1/-1' }}>
+        <Field label="Lastkombinationsblok" style={{ gridColumn: '1/-1' }}>
           {comboBlocks.length === 0 ? (
             <span style={{ fontSize: 12, color: '#e67e22' }}>
               No load combo blocks in this document yet — add one first.
@@ -146,42 +146,42 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
       )}
 
       {/* ── Label + geometry (always shown) ── */}
-      <Field label="Label">
+      <Field label="Betegnelse">
         <input style={s} value={d.label ?? 'C1'}
           onChange={e => update({ label: e.target.value })} />
       </Field>
-      <Field label="Length (m)">
+      <Field label="Længde (m)">
         <NumericInput style={s} value={d.length_m ?? 3.0}
           onChange={v => update({ length_m: v })} />
       </Field>
 
       {/* ── N_Ed — only when source = direct ── */}
       {source === 'direct' && (
-        <Field label="N_Ed (kN)" hint="Axial compression">
+        <Field label="N_Ed (kN)" hint="Normalkraft, tryk">
           <NumericInput style={s} value={d.N_Ed_kN ?? 50.0}
             onChange={v => update({ N_Ed_kN: v })} />
         </Field>
       )}
 
-      <Field label="M_Ed (kNm)" hint="Bending, strong axis">
+      <Field label="M_Ed (kNm)" hint="Bøjning om stærk akse">
         <NumericInput style={s} value={d.M_Ed_kNm ?? 0.0}
           onChange={v => update({ M_Ed_kNm: v })} />
       </Field>
-      <Field label="Width b (mm)">
+      <Field label="Bredde b (mm)">
         <NumericInput style={s} value={d.b_mm ?? 120}
           onChange={v => update({ b_mm: v })} />
       </Field>
-      <Field label="Depth h (mm)">
+      <Field label="Højde h (mm)">
         <NumericInput style={s} value={d.h_mm ?? 120}
           onChange={v => update({ h_mm: v })} />
       </Field>
-      <Field label="Timber grade">
+      <Field label="Styrkeklasse">
         <select style={s} value={d.timber_grade ?? 'C24'}
           onChange={e => update({ timber_grade: e.target.value })}>
           {GRADES.map(g => <option key={g}>{g}</option>)}
         </select>
       </Field>
-      <Field label="Service class">
+      <Field label="Anvendelsesklasse">
         <select style={s} value={d.service_class ?? 1}
           onChange={e => update({ service_class: Number(e.target.value) })}>
           {SERVICE_CLASSES.map(c => (
@@ -192,7 +192,7 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
 
       {/* ── Load duration — only when source = direct ── */}
       {source === 'direct' && (
-        <Field label="Load duration">
+        <Field label="Lastvarighed">
           <select style={s} value={d.load_duration ?? 'medium'}
             onChange={e => update({ load_duration: e.target.value })}>
             {LOAD_DURATIONS.map(dur => (
@@ -202,7 +202,7 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
         </Field>
       )}
 
-      <Field label="Eff. length factor μ" hint="1.0=pin-pin, 0.7=pin-fixed">
+      <Field label="Søjlelængdefaktor μ" hint="1,0 = leddet i begge ender · 0,7 = leddet/indspændt">
         <NumericInput style={s} value={d.effective_length_factor ?? 1.0}
           onChange={v => update({ effective_length_factor: v })} />
       </Field>
@@ -210,7 +210,7 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
         <NumericInput style={s} value={d.gamma_M ?? 1.3}
           onChange={v => update({ gamma_M: v })} />
       </Field>
-      <Field label="l_ef,LTB (m)" hint="optional — enables LTB check">
+      <Field label="l_ef,LTB (m)" hint="valgfri — slår kipningseftervisningen til">
         <input style={s} inputMode="decimal"
           value={d.l_ef_ltb_m ?? ''}
           placeholder="leave blank to skip"

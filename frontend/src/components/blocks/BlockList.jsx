@@ -251,10 +251,7 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Træ  (EC5)',
-    // timber_column har ingen tests overhovedet. Ikke fordi den er forkert,
-    // men fordi ingen ved det. Sæt den ind igen når den er regnet efter mod
-    // et gennemregnet eksempel.
-    types: ['timber_beam'],
+    types: ['timber_beam', 'timber_column'],
   },
   // Murværk (EC6) er ude af panelet indtil beregningen er færdig: modulet
   // kører, men skriver "Design parameters" og "Slenderness check" midt i en

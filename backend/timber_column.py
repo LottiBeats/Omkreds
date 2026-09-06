@@ -103,7 +103,7 @@ def timber_column_bending_and_axial(
     # ------------------------------------------------------------------
     # Design parameters
     # ------------------------------------------------------------------
-    blocks.append(S("Design parameters"))
+    blocks.append(S("Beregningsforudsætninger"))
     blocks.append(T(
         f"Rectangular timber beam-column, grade "
         f"{grade_data['description'] if grade_data else 'manual'}. "
@@ -116,8 +116,8 @@ def timber_column_bending_and_axial(
         CALC_ROW("L",       "column length",          str(length)),
         CALC_ROW("N_Ed",    "design axial force",     str(N_Ed)),
         CALC_ROW("M_y,Ed",  "design bending moment",  str(M_Ed)),
-        CALC_ROW("b",       "width",                  str(_b_display)),
-        CALC_ROW("h",       "depth",                  str(_h_display)),
+        CALC_ROW("b",       "bredde",                  str(_b_display)),
+        CALC_ROW("h",       "højde",                  str(_h_display)),
         CALC_ROW("Grade",   "",                       grade_key if grade_key else "manual"),
         CALC_ROW("f_c,0,k", "compression strength",   str(f_c0k)),
         CALC_ROW("f_m,k",   "bending strength",       str(f_mk)),
@@ -130,7 +130,7 @@ def timber_column_bending_and_axial(
     # ------------------------------------------------------------------
     # Section properties
     # ------------------------------------------------------------------
-    blocks.append(S("Section properties"))
+    blocks.append(S("Tværsnitsdata"))
 
     if section_properties is None:
         A   = b * h
@@ -180,7 +180,7 @@ def timber_column_bending_and_axial(
     # ------------------------------------------------------------------
     # Design material strengths
     # ------------------------------------------------------------------
-    blocks.append(S("Design material strengths"))
+    blocks.append(S("Regningsmæssige styrker"))
 
     f_c0d = kmod * f_c0k / gamma_M
     f_md  = kmod * f_mk  / gamma_M
@@ -192,7 +192,7 @@ def timber_column_bending_and_axial(
     # ------------------------------------------------------------------
     # Section stresses
     # ------------------------------------------------------------------
-    blocks.append(S("Section stresses"))
+    blocks.append(S("Spændinger i tværsnittet"))
 
     sigma_c0d = N_Ed / A
     sigma_m1d = M_Ed / W_y
@@ -207,29 +207,29 @@ def timber_column_bending_and_axial(
     # ------------------------------------------------------------------
     # Section check – no buckling reduction (eqs. 6.19 and 6.20)
     # ------------------------------------------------------------------
-    blocks.append(S("Section check – EN 1995-1-1 eqs. 6.19 and 6.20"))
+    blocks.append(S("Tværsnitseftervisning — EN 1995-1-1 lign. 6.19 og 6.20"))
 
     eta_6_2 = sigma_c0d / f_c0d
     blocks.append(CALC_ROW("η_6.2", "= σ_c,0,d / f_c,0,d", f"{float(eta_6_2):.3f}"))
-    blocks.append(cc.check("Compression eq. 6.2", float(eta_6_2), 1.0))
+    blocks.append(cc.check("Tryk, lign. 6.2", float(eta_6_2), 1.0))
 
     eta_19 = (sigma_c0d / f_c0d)**2 + sigma_m1d / f_md + k_m * sigma_m2d / f_md
     blocks.append(CALC_ROW("η_6.19",
         "= (σ_c,0,d / f_c,0,d)² + σ_m,1,d / f_m,d + k_m·σ_m,2,d / f_m,d",
         f"{float(eta_19):.3f}"))
-    blocks.append(cc.check("Section eq. 6.19", float(eta_19), 1.0))
+    blocks.append(cc.check("Tværsnit, lign. 6.19", float(eta_19), 1.0))
 
     eta_20 = (sigma_c0d / f_c0d)**2 + k_m * sigma_m1d / f_md + sigma_m2d / f_md
     blocks.append(CALC_ROW("η_6.20",
         "= (σ_c,0,d / f_c,0,d)² + k_m·σ_m,1,d / f_m,d + σ_m,2,d / f_m,d",
         f"{float(eta_20):.3f}"))
-    blocks.append(cc.check("Section eq. 6.20", float(eta_20), 1.0))
+    blocks.append(cc.check("Tværsnit, lign. 6.20", float(eta_20), 1.0))
 
     # ------------------------------------------------------------------
     # Flexural buckling – axis 1 (strong) – cl. 6.3.2
     # ------------------------------------------------------------------
     if check_buckling_axis_1:
-        blocks.append(S("Flexural buckling – axis 1 (strong) – EN 1995-1-1 cl. 6.3.2"))
+        blocks.append(S("Søjlevirkning om akse 1 (stærk) — EN 1995-1-1 pkt. 6.3.2"))
 
         l_eff_1      = effective_length_factor * length
         lambda_1     = l_eff_1 / i_1
@@ -243,7 +243,7 @@ def timber_column_bending_and_axial(
         if lambda_rel_1 <= 0.3:
             k_c1 = 1.0
             blocks.append(N(
-                "λ_rel,1 ≤ 0.3: no flexural-buckling reduction about the strong axis (k_c,1 = 1.0)."
+                "λ_rel,1 ≤ 0,3 — ingen reduktion for søjlevirkning om den stærke akse (k_c,1 = 1,0)."
             ))
         else:
             k_1_val = 0.5 * (1.0 + beta_c * (lambda_rel_1 - 0.3) + lambda_rel_1**2)
@@ -254,13 +254,13 @@ def timber_column_bending_and_axial(
             ])
     else:
         k_c1 = 1.0
-        blocks.append(N("Beam is restrained against buckling about axis 1; k_c,1 = 1.0."))
+        blocks.append(N("Søjlen er fastholdt mod udbøjning om akse 1; k_c,1 = 1,0."))
 
     # ------------------------------------------------------------------
     # Flexural buckling – axis 2 (weak) – cl. 6.3.2
     # ------------------------------------------------------------------
     if check_buckling_axis_2:
-        blocks.append(S("Flexural buckling – axis 2 (weak) – EN 1995-1-1 cl. 6.3.2"))
+        blocks.append(S("Søjlevirkning om akse 2 (svag) — EN 1995-1-1 pkt. 6.3.2"))
 
         l_eff_2      = effective_length_factor * length
         lambda_2     = l_eff_2 / i_2
@@ -274,7 +274,7 @@ def timber_column_bending_and_axial(
         if lambda_rel_2 <= 0.3:
             k_c2 = 1.0
             blocks.append(N(
-                "λ_rel,2 ≤ 0.3: no flexural-buckling reduction about the weak axis (k_c,2 = 1.0)."
+                "λ_rel,2 ≤ 0,3 — ingen reduktion for søjlevirkning om den svage akse (k_c,2 = 1,0)."
             ))
         else:
             k_2_val = 0.5 * (1.0 + beta_c * (lambda_rel_2 - 0.3) + lambda_rel_2**2)
@@ -285,35 +285,35 @@ def timber_column_bending_and_axial(
             ])
     else:
         k_c2 = 1.0
-        blocks.append(N("Beam is restrained against buckling about axis 2; k_c,2 = 1.0."))
+        blocks.append(N("Søjlen er fastholdt mod udbøjning om akse 2; k_c,2 = 1,0."))
 
     # ------------------------------------------------------------------
     # Interaction – strong-axis buckling governs (eq. 6.23)
     # ------------------------------------------------------------------
     if check_buckling_axis_1:
-        blocks.append(S("Interaction check – eq. 6.23 (axis 1 buckling)"))
+        blocks.append(S("Samvirke — lign. 6.23 (søjlevirkning om akse 1)"))
         eta_23 = sigma_c0d / (k_c1 * f_c0d) + sigma_m1d / f_md + k_m * sigma_m2d / f_md
         blocks.append(CALC_ROW("η_6.23",
             "= σ_c,0,d / (k_c,1·f_c,0,d) + σ_m,1,d / f_m,d + k_m·σ_m,2,d / f_m,d",
             f"{float(eta_23):.3f}"))
-        blocks.append(cc.check("Interaction eq. 6.23 (axis 1 buckling)", float(eta_23), 1.0))
+        blocks.append(cc.check("Samvirke, lign. 6.23 (akse 1)", float(eta_23), 1.0))
 
     # ------------------------------------------------------------------
     # Interaction – weak-axis buckling governs (eq. 6.24)
     # ------------------------------------------------------------------
     if check_buckling_axis_2:
-        blocks.append(S("Interaction check – eq. 6.24 (axis 2 buckling)"))
+        blocks.append(S("Samvirke — lign. 6.24 (søjlevirkning om akse 2)"))
         eta_24 = sigma_c0d / (k_c2 * f_c0d) + k_m * sigma_m1d / f_md + sigma_m2d / f_md
         blocks.append(CALC_ROW("η_6.24",
             "= σ_c,0,d / (k_c,2·f_c,0,d) + k_m·σ_m,1,d / f_m,d + σ_m,2,d / f_m,d",
             f"{float(eta_24):.3f}"))
-        blocks.append(cc.check("Interaction eq. 6.24 (axis 2 buckling)", float(eta_24), 1.0))
+        blocks.append(cc.check("Samvirke, lign. 6.24 (akse 2)", float(eta_24), 1.0))
 
     # ------------------------------------------------------------------
     # Lateral-torsional buckling – cl. 6.3.3
     # ------------------------------------------------------------------
     if check_ltb and l_ef_ltb is not None:
-        blocks.append(S("Lateral-torsional buckling – EN 1995-1-1 cl. 6.3.3"))
+        blocks.append(S("Kipning — EN 1995-1-1 pkt. 6.3.3"))
         blocks.append(T(
             "LTB is relevant when the compression edge is unrestrained over the member length. "
             f"Effective length for LTB: l_ef = {l_ef_ltb}."
@@ -350,7 +350,7 @@ def timber_column_bending_and_axial(
         lrm = lambda_rel_m
         if lrm <= 0.75:
             k_crit = 1.0
-            blocks.append(N("λ_rel,m ≤ 0.75: no LTB reduction (k_crit = 1.0, eq. 6.34)."))
+            blocks.append(N("λ_rel,m ≤ 0,75 — ingen reduktion for kipning (k_crit = 1,0, lign. 6.34)."))
         elif lrm <= 1.4:
             k_crit = 1.56 - 0.75 * lrm
             blocks.append(CALC_ROW("k_crit", "= 1.56 − 0.75·λ_rel,m  (0.75 < λ ≤ 1.4)", f"{k_crit:.3f}"))

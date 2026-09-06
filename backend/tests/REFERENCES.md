@@ -155,3 +155,34 @@ it is bare in the table where the unfavourable row is multiplied.
 
 `G_fav` was accepted by the API, passed into `load_combos()` and never read: the
 checkbox did nothing. Fixed and pinned by four tests.
+
+---
+
+## Timber Column (EN 1995-1-1 §6.2.4, §6.3.2, §6.3.3)
+
+| Test | Source |
+|------|--------|
+| λ, λ_rel, k, k_c, eqs. 6.19/6.20 and 6.23/6.24 | EN 1995-1-1 Eq. 6.19, 6.20, 6.21, 6.23–6.29. β_c = 0.20 solid / 0.10 glulam (Eq. 6.29). C24 per EN 338:2016: f_c,0,k = 21 MPa, E_0,05 = 7400 MPa. k_c recomputed independently in `test_timber_column.k_c()`. |
+
+**Reference case — 100×100 mm C24, L = 3.0 m, β = 1.0, N_Ed = 30 kN, M_Ed = 0,
+service class 1, medium term, γ_M = 1.3:**
+
+| | |
+|---|---|
+| i = h/√12 | 28.868 mm |
+| λ = 3000/28.868 | 103.92 |
+| λ_rel = (λ/π)·√(21/7400) | 1.762 |
+| k = 0.5·(1 + 0.2·(λ_rel − 0.3) + λ_rel²) | 2.199 |
+| k_c = 1/(k + √(k² − λ_rel²)) | 0.2846 |
+| f_c,0,d = 0.80·21/1.3 | 12.923 MPa |
+| σ_c,0,d = 30000/10000 | 3.000 MPa |
+| η (6.24) | 0.816 |
+| η (6.19), M = 0 | 0.054 |
+
+The compression term in 6.19/6.20 is **squared** — at M = 0 the section check
+is 0.054, not 0.232. A test pins that specifically, because dropping the square
+is the obvious way to get this wrong and it errs unconservatively.
+
+The module takes N_Ed and M_Ed as given, so it does not choose a load
+combination — the k_mod question that governs `timber.py`'s closed form belongs
+to whatever produced the actions.
