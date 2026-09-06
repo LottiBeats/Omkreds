@@ -307,6 +307,13 @@ def make_styles():
 # The rest of the document stays Helvetica; only the letter itself changes face.
 _GREEK = 'αβγδεζηθικλμνξοπρςστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ'
 
+# The same problem, same fix: maths symbols outside Latin-1. A '<=' that
+# rendered as a stray double quote is how EN 1995-1-1's shape-coefficient
+# note came out. Latin-1 symbols (° ² ³ · × ±) are deliberately NOT here:
+# Helvetica draws them correctly and matching the surrounding metrics is
+# better than switching face for them.
+_MATHS = '≤≥≠≈√∑∞→←↔⇒‰−∂∫'
+
 # Spelled out, the same convention pdf_builder._TEXT_CHAR_MAP uses. Only
 # reached if the font cannot be registered - never silently dropped.
 _GREEK_NAMES = {
@@ -344,14 +351,23 @@ def _register_greek_font():
 
 
 _GREEK_FONT = _register_greek_font()
-_GREEK_RE = re.compile('[' + _GREEK + ']+')
+_UNICODE_RE = re.compile('[' + _GREEK + _MATHS + ']+')
 
 
-def _greek(mo) -> str:
+# Reached only when the font cannot be registered. Spelled out or transcribed,
+# never dropped.
+_MATHS_NAMES = {
+    '≤': '<=', '≥': '>=', '≠': '!=', '≈': '~', '√': 'sqrt', '∑': 'sum',
+    '∞': 'uendelig', '→': '->', '←': '<-', '↔': '<->', '⇒': '=>',
+    '‰': 'promille', '−': '-', '∂': 'd', '∫': 'int',
+}
+
+
+def _unicode_run(mo) -> str:
     run = mo.group()
     if _GREEK_FONT:
         return f'<font name="{_GREEK_FONT}">{run}</font>'
-    return ''.join(_GREEK_NAMES.get(c, c) for c in run)
+    return ''.join(_GREEK_NAMES.get(c) or _MATHS_NAMES.get(c, c) for c in run)
 
 
 def _fmt(s):
@@ -386,10 +402,10 @@ def _fmt(s):
     # Helvetica has no glyphs for combining chars; they render as ■
     s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
 
-    # ── Greek ──────────────────────────────────────────────────────────────
+    # ── Greek and maths symbols ────────────────────────────────────────────
     # Before the subscript rule below, so that a spelled-out fallback such as
     # "gamma_M" still gets its subscript.
-    s = _GREEK_RE.sub(_greek, s)
+    s = _UNICODE_RE.sub(_unicode_run, s)
 
     # ── _sub and ^sup ASCII notation ───────────────────────────────────────
     s = re.sub(r'\^\(([^)]+)\)', r'<super>\1</super>', s)
@@ -762,8 +778,8 @@ def build_story(all_blocks, styles):
 
             # Minimal header: title left, subtitle right, colored bottom rule
             tbl = Table(
-                [[Paragraph(b["title"],    styles["mod_title"]),
-                  Paragraph(b["subtitle"], styles["mod_sub"])]],
+                [[Paragraph(_para_fmt(b["title"]),    styles["mod_title"]),
+                  Paragraph(_para_fmt(b["subtitle"]), styles["mod_sub"])]],
                 colWidths=[115*mm, 55*mm], rowHeights=[8.5*mm]
             )
             tbl.setStyle(TableStyle([
@@ -783,7 +799,10 @@ def build_story(all_blocks, styles):
         elif t == "section":
             story.append(_TocAnchor(2, b["content"]))
             story.append(Spacer(1, 2*mm))
-            story.append(Paragraph(_para_fmt(b["content"]).upper(), styles["section"]))
+            # Upper-cased before formatting: .upper() on the formatted string
+            # would upper-case the markup too, and <FONT NAME="OMKREDSGREEK">
+            # names a font that was never registered.
+            story.append(Paragraph(_para_fmt(b["content"].upper()), styles["section"]))
             story.append(HRFlowable(width="100%", thickness=0.3,
                 color=C["rule_mid"], spaceAfter=1.5))
 

@@ -2641,7 +2641,7 @@ def calc_roof_dead_load(data: RoofDeadLoadInput):
 
         blocks = []
         blocks.append(MH(
-            f"{data.label} — Roof Dead Load  (EN 1991-1-1)",
+            f"{data.label} — Tagets egenlast  (EN 1991-1-1)",
             f"α = {data.alpha_deg:.1f}°  ·  cos α = {cos_a:.4f}  ·  a = {data.a_m:.2f} m",
             "general",
         ))
@@ -2657,7 +2657,7 @@ def calc_roof_dead_load(data: RoofDeadLoadInput):
         blocks.append(S("Omregning til vandret projektion per spær"))
         blocks += [
             CALC_ROW("cos α",      f"cos({data.alpha_deg:.1f}°)",                   f"{cos_a:.4f}"),
-            CALC_ROW("a",          "Spærafstand (tværafstand)",                      f"{data.a_m:.2f} m"),
+            CALC_ROW("a",          "spærafstand",                                    f"{data.a_m:.2f} m"),
             CALC_ROW("g_tag,proj", "= g_tag / cos α × a",                           f"{g_cladding:.3f} kN/m"),
         ]
 
@@ -2665,7 +2665,7 @@ def calc_roof_dead_load(data: RoofDeadLoadInput):
         blocks.append(S("Spær egenlast"))
         blocks += [
             CALC_ROW("b × h",      f"{data.b_mm:.0f} × {data.h_mm:.0f} mm",         f"{data.b_mm/1000*data.h_mm/1000*1e6:.0f} mm²"),
-            CALC_ROW("ρ",          "Rumvægt",                                        f"{data.rho_kgm3:.0f} kg/m³  =  {rho_kNm3:.4f} kN/m³"),
+            CALC_ROW("ρ",          "densitet",                                       f"{data.rho_kgm3:.0f} kg/m³  =  {rho_kNm3:.4f} kN/m³"),
             CALC_ROW("g_spær",     "= b · h · ρ / cos α  (vandret projektion)",     f"{g_rafter:.3f} kN/m"),
         ]
 

@@ -13,10 +13,10 @@ from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext
 
 # ── Terrain category parameters (EC1-1-4 Table 4.1) ──────────────────────────
 _TERRAIN = {
-    'I':   {'z0': 0.01, 'z_min': 1.0,  'label': 'Sea / open water'},
-    'II':  {'z0': 0.05, 'z_min': 2.0,  'label': 'Open terrain (fields, grassland)'},
-    'III': {'z0': 0.30, 'z_min': 5.0,  'label': 'Suburban / forest'},
-    'IV':  {'z0': 1.00, 'z_min': 10.0, 'label': 'Urban / city centres'},
+    'I':   {'z0': 0.01, 'z_min': 1.0,  'label': 'Hav og åbent vand'},
+    'II':  {'z0': 0.05, 'z_min': 2.0,  'label': 'Åbent terræn (marker, græsland)'},
+    'III': {'z0': 0.30, 'z_min': 5.0,  'label': 'Forstad eller skov'},
+    'IV':  {'z0': 1.00, 'z_min': 10.0, 'label': 'By og bymidte'},
 }
 
 # Reference terrain for kr formula: category II, z0,II = 0.05 m
@@ -85,24 +85,24 @@ def wind_load(
 
     # ── output blocks ──────────────────────────────────────────────────────────
     blocks.append(MH(
-        f"{label} — Wind Load  EN 1991-1-4 + DK NA",
-        f"Terrain {tc}: {ter['label']}  ·  v_b0 = {v_b0_ms:.1f} m/s  ·  z_ref = {z_ref_m:.1f} m",
+        f"{label} — Vindlast  EN 1991-1-4 + DK NA",
+        f"Terrænkategori {tc}: {ter['label']}  ·  v_b,0 = {v_b0_ms:.1f} m/s  ·  z_ref = {z_ref_m:.1f} m",
         "general",
     ))
 
-    blocks.append(S("Site parameters"))
+    blocks.append(S("Stedsforhold"))
     blocks += [
-        CALC_ROW("Terrain cat.",    tc,                           ter['label']),
-        CALC_ROW("z₀",             "Roughness length",           f"{z0:.3f} m"),
-        CALC_ROW("z_min",          "Min. height EC1 Table 4.1",  f"{z_min:.1f} m"),
-        CALC_ROW("v_b,0",          "Basic wind speed (DK NA)",   f"{v_b0_ms:.1f} m/s"),
-        CALC_ROW("c_dir",          "Directional factor",         f"{c_dir:.2f}"),
-        CALC_ROW("c_season",       "Season factor",              f"{c_season:.2f}"),
-        CALC_ROW("v_b",            "= c_dir · c_season · v_b,0", f"{v_b:.2f} m/s"),
-        CALC_ROW("q_b",            "= 0.5·ρ·v_b²",              f"{q_b:.3f} kN/m²"),
+        CALC_ROW("Terrænkategori", tc,                                ter['label']),
+        CALC_ROW("z₀",            "ruhedslængde",                     f"{z0:.3f} m"),
+        CALC_ROW("z_min",         "mindstehøjde, EN 1991-1-4 tab. 4.1", f"{z_min:.1f} m"),
+        CALC_ROW("v_b,0",         "basisvindhastighed (DK NA)",       f"{v_b0_ms:.1f} m/s"),
+        CALC_ROW("c_dir",         "retningsfaktor",                   f"{c_dir:.2f}"),
+        CALC_ROW("c_season",      "årstidsfaktor",                    f"{c_season:.2f}"),
+        CALC_ROW("v_b",           "= c_dir · c_season · v_b,0",       f"{v_b:.2f} m/s"),
+        CALC_ROW("q_b",           "= 0,5·ρ·v_b²",                     f"{q_b:.3f} kN/m²"),
     ]
 
-    blocks.append(S("Roughness & turbulence  (EC1-1-4 §4.3–4.5)"))
+    blocks.append(S("Ruhed og turbulens  (EN 1991-1-4 §4.3–4.5)"))
     blocks += [
         CALC_ROW("z",      f"= max(z_ref, z_min) = {z:.1f} m",    f"{z:.1f} m"),
         CALC_ROW("k_r",    "= 0.19·(z₀/z₀,II)^0.07",            f"{kr:.4f}"),
@@ -111,31 +111,32 @@ def wind_load(
         CALC_ROW("v_m(z)", "= c_r · c₀ · v_b",                   f"{v_m:.2f} m/s"),
     ]
 
-    blocks.append(S("Peak velocity pressure  (EC1-1-4 §4.5)"))
+    blocks.append(S("Peakhastighedstryk  (EN 1991-1-4 §4.5)"))
     blocks += [
         CALC_ROW("q_p(z)", "= (1 + 7·I_v) · 0.5·ρ·v_m²",       f"{q_p:.3f} kN/m²"),
         CALC_ROW("c_e(z)", "= q_p / q_b",                         f"{c_e:.2f}"),
     ]
 
-    blocks.append(S("Building geometry"))
+    blocks.append(S("Bygningsgeometri"))
     blocks += [
-        CALC_ROW("h",   "Building height",             f"{h_m:.2f} m"),
-        CALC_ROW("b",   "Breadth (crosswind)",         f"{b_m:.2f} m"),
-        CALC_ROW("d",   "Depth (along wind)",          f"{d_m:.2f} m"),
-        CALC_ROW("h/d", "Height / depth ratio",        f"{hd:.2f}"),
+        CALC_ROW("h",   "bygningshøjde",              f"{h_m:.2f} m"),
+        CALC_ROW("b",   "bredde (på tværs af vinden)", f"{b_m:.2f} m"),
+        CALC_ROW("d",   "dybde (langs vinden)",        f"{d_m:.2f} m"),
+        CALC_ROW("h/d", "forhold højde/dybde",         f"{hd:.2f}"),
     ]
 
-    blocks.append(S("Wall pressures  (EC1-1-4 §7.2)"))
+    blocks.append(S("Vindtryk på vægge  (EN 1991-1-4 §7.2)"))
     blocks += [
-        CALC_ROW("c_pe,ww",   "Windward wall",          f"{c_pe_windward:+.2f}"),
-        CALC_ROW("c_pe,lw",   "Leeward wall",           f"{c_pe_leeward:+.2f}"),
-        CALC_ROW("c_pi",      "Internal pressure",      f"{c_pi:+.2f}"),
-        T("Net wall pressure: w = c_pe · q_p − c_pi · q_p  (positive = pressure inward)"),
-        CALC_ROW("w_windward", "= (c_pe,ww − c_pi) · q_p",
+        CALC_ROW("c_pe,los",  "vægformfaktor, luvside",  f"{c_pe_windward:+.2f}"),
+        CALC_ROW("c_pe,læ",   "vægformfaktor, læside",   f"{c_pe_leeward:+.2f}"),
+        CALC_ROW("c_pi",      "indvendigt tryk",         f"{c_pi:+.2f}"),
+        T("Resulterende vindtryk: w = c_pe · q_p − c_pi · q_p "
+          "(positiv = tryk ind mod fladen)."),
+        CALC_ROW("w_los",     "= (c_pe,los − c_pi) · q_p",
                  f"{w_windward:.3f} kN/m²"),
-        CALC_ROW("w_leeward",  "= (c_pe,lw + c_pi) · q_p",
+        CALC_ROW("w_læ",      "= (c_pe,læ + c_pi) · q_p",
                  f"{w_leeward:.3f} kN/m²"),
-        CALC_ROW("w_net,total","= (c_pe,ww − c_pe,lw) · q_p  (total horiz.)",
+        CALC_ROW("w_i alt",   "= (c_pe,los − c_pe,læ) · q_p  (samlet vandret)",
                  f"{w_net_total:.3f} kN/m²"),
     ]
 
