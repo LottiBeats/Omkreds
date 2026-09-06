@@ -235,7 +235,11 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Laster  (EN 1990)',
-    types: ['load_combo', 'frame_load_cases'],
+    // Egenlast, sne og vind kunne kun komme ind i et dokument via en skabelon.
+    // De blokke virker; de stod bare ikke i panelet, så et A2 skrevet i hånden
+    // manglede sit lastgrundlag.
+    types: ['roof_dead_load', 'snow_load', 'wind_load',
+            'load_combo', 'frame_load_cases'],
   },
   {
     label: 'Stål  (EC3)',
@@ -245,13 +249,18 @@ const PANEL_GROUPS = [
     label: 'Træ  (EC5)',
     types: ['timber_beam', 'timber_column'],
   },
-  {
-    label: 'Murværk  (EC6)',
-    types: ['masonry_wall'],
-  },
+  // Murværk (EC6) er ude af panelet indtil beregningen er færdig: modulet
+  // kører, men skriver "Design parameters" og "Slenderness check" midt i en
+  // dansk statisk dokumentation. Sæt 'masonry_wall' ind her igen når teksten
+  // er oversat og eftervist. Eksisterende blokke renderes uændret.
   {
     label: 'Analyse',
-    types: ['beam_fem', 'general_frame_fem', 'portal_frame_fem'],
+    // Én rammeberegning, ikke tre. beam_fem og portal_frame_fem er de gamle
+    // moduler: de fik aldrig fortegnsrettelsen på lasterne eller
+    // validate_model, så de kan stadig regne videre på en mekanisme og
+    // returnere grønne tal. De er ude af panelet, ikke ude af TYPE_MAP —
+    // eksisterende blokke i gamle dokumenter tegnes og eksporteres som før.
+    types: ['general_frame_fem'],
   },
   {
     label: 'Brugerdefineret',
