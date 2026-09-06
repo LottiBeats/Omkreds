@@ -1233,6 +1233,28 @@ class TimberBeamInput(BaseModel):
     # Bruges kun i den lukkede form; kommer lasten fra en lastkombinationsblok
     # eller en rammeberegning, er den allerede ganget på der.
     K_FI:           float = 1.0
+
+    # Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2
+    check_deflection: bool  = True
+    psi_1:            float = 0.2    # DK NA tabel A1.1, se test_dk_na_2024.py
+    psi_2:            float = 0.0
+    w_c_mm:           float | None = None   # opbygget pilhøjde
+    limit_inst:       int   = 400    # w_inst ≤ L/limit_inst
+    limit_net_fin:    int   = 300    # w_net,fin ≤ L/limit_net_fin
+
+    # Brand — EN 1995-1-2, reduceret tværsnitsmetode. Beregningen har ligget i
+    # timber.py hele tiden; den kunne bare ikke naas herfra.
+    fire_t_min:          float | None = None   # brandvarighed; None = ingen brandeftervisning
+    fire_beta_n_mm:      float = 0.7           # nominel indbrændingshastighed [mm/min]
+    fire_d0_mm:          float = 7.0           # nulstyrkelag
+    fire_k0:             float = 1.0
+    fire_gamma_M_fi:     float = 1.0
+    fire_kmod_fi:        float = 1.0
+    fire_exposed_sides:  int   = 2
+    fire_exposed_bottom: bool  = True
+    fire_exposed_top:    bool  = False
+    fire_eta_fi:         float | None = None   # None = udledes af lasterne
+
     compression_edge_restrained:     bool = True
     torsional_restraint_at_supports: bool = True
     support_length_mm: float | None = None   # bearing length at each support → enables ⊥ grain check
@@ -1258,11 +1280,31 @@ def calc_timber_beam(data: TimberBeamInput):
             load_duration = data.load_duration,
             gamma_M       = data.gamma_M,
             K_FI          = data.K_FI,
+            check_deflection = data.check_deflection,
+            psi_1         = data.psi_1,
+            psi_2         = data.psi_2,
+            w_c           = None if data.w_c_mm is None else data.w_c_mm * mm,
+            limit_inst    = data.limit_inst,
+            limit_net_fin = data.limit_net_fin,
             compression_edge_restrained     = data.compression_edge_restrained,
             torsional_restraint_at_supports = data.torsional_restraint_at_supports,
         )
         if data.support_length_mm is not None:
             kwargs_tb["support_length"] = data.support_length_mm * mm
+
+        if data.fire_t_min is not None:
+            kwargs_tb["fire_design"] = {
+                "t_fire":         data.fire_t_min,
+                "beta_n":         data.fire_beta_n_mm * mm,
+                "d0":             data.fire_d0_mm * mm,
+                "k0":             data.fire_k0,
+                "gamma_M_fi":     data.fire_gamma_M_fi,
+                "kmod_fi":        data.fire_kmod_fi,
+                "exposed_sides":  data.fire_exposed_sides,
+                "exposed_bottom": data.fire_exposed_bottom,
+                "exposed_top":    data.fire_exposed_top,
+                "eta_fi":         data.fire_eta_fi,
+            }
 
         # Load source override priority: FEM > combo > direct g_k/q_k
         if data.M_Ed_kNm_direct is not None and data.V_Ed_kN_direct is not None:

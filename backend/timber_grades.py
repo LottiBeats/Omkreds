@@ -66,3 +66,49 @@ def get_timber_grade(grade):
         available = ", ".join(sorted(TIMBER_GRADE_DATA))
         raise ValueError(f"Unknown timber grade '{grade}'. Available grades: {available}")
     return key, TIMBER_GRADE_DATA[key]
+
+
+# ── E_0,mean til nedbøjning ──────────────────────────────────────────────────
+# Tabellen har kun 5 %-fraktilen, som bruges til bæreevne. Nedbøjning regnes
+# med middelværdien (EN 1995-1-1 §2.2.3), og den udledes her af standardernes
+# egne forhold mellem de to:
+#
+#   EN 338 §5   nåletræ (C):   E_0,05 = 0,67 · E_0,mean
+#   EN 338 §5   løvtræ  (D):   E_0,05 = 0,84 · E_0,mean
+#   EN 14080    limtræ  (GL):  E_0,g,05 = 0,85 · E_0,g,mean
+#
+# Kontrol mod de tabellerede middelværdier: C24 giver 11 045 mod 11 000 MPa,
+# C30 11 940 mod 12 000, D30 11 310 mod 11 000, GL28h 11 882 mod 12 600. De tre
+# første ligger inden for en halv procent til knap tre; limtræet lander knap
+# 6 % LAVT, hvilket for en nedbøjning er den sikre side.
+#
+# Skal det være helt nøjagtigt, skal de tabellerede middelværdier skrives ind
+# pr. klasse. Indtil da står forholdet og dets kilde i dokumentet, så læseren
+# kan se hvad tallet er.
+_E05_TIL_EMEAN = {
+    "solid_timber": 0.67,   # ændres til 0,84 for D-klasser nedenfor
+    "glulam":       0.85,
+}
+
+
+def E_0_mean(grade_key: str):
+    """
+    Middelværdien af elasticitetsmodulet for en styrkeklasse.
+
+    Returnerer en forallpeople-størrelse som resten af tabellen, plus det
+    forhold og den kilde, den er udledt af.
+    """
+    key, data = get_timber_grade(grade_key)
+    mtype = data["material_type"]
+    if mtype == "glulam":
+        forhold, kilde = 0.85, "EN 14080 (E_0,g,05 = 0,85 · E_0,g,mean)"
+    elif key.upper().startswith("D"):
+        forhold, kilde = 0.84, "EN 338 §5, løvtræ (E_0,05 = 0,84 · E_0,mean)"
+    else:
+        forhold, kilde = 0.67, "EN 338 §5, nåletræ (E_0,05 = 0,67 · E_0,mean)"
+    return data["E_0_05"] / forhold, forhold, kilde
+
+
+# k_def, EN 1995-1-1 tabel 3.2 — konstruktionstræ, limtræ og LVL.
+# Plader har andre værdier; de er ikke i denne tabel.
+K_DEF = {1: 0.60, 2: 0.80, 3: 2.00}

@@ -95,6 +95,22 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         compression_edge_restrained:     d.compression_edge_restrained ?? true,
         torsional_restraint_at_supports: d.torsional_restraint_at_supports ?? true,
         support_length_mm: d.support_length_mm ?? null,
+
+        // Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2
+        check_deflection: d.check_deflection ?? true,
+        psi_1:            d.psi_1            ?? 0.2,
+        psi_2:            d.psi_2            ?? 0.0,
+        w_c_mm:           d.w_c_mm           ?? null,
+        limit_inst:       d.limit_inst       ?? 400,
+        limit_net_fin:    d.limit_net_fin    ?? 300,
+
+        // Brand — EN 1995-1-2. Uden en varighed springes afsnittet over.
+        fire_t_min:          d.fire_t_min          ?? null,
+        fire_beta_n_mm:      d.fire_beta_n_mm      ?? 0.7,
+        fire_d0_mm:          d.fire_d0_mm          ?? 7.0,
+        fire_exposed_sides:  d.fire_exposed_sides  ?? 2,
+        fire_exposed_bottom: d.fire_exposed_bottom ?? true,
+        fire_exposed_top:    d.fire_exposed_top    ?? false,
       }
 
       if (source === 'actions') {
@@ -265,7 +281,7 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
 
       {/* ── Load duration ── */}
       {(source === 'direct' || source === 'actions' || source === 'fem') && (
-        <Field label="Load duration"
+        <Field label="Lastvarighed"
           hint={source === 'fem' && selElem?.M_duration
             ? `Auto from FEM: "${selElem.M_duration}" (governing combination)`
             : source === 'fem' ? 'Set manually (run FEM first for auto-detection)'
@@ -285,29 +301,29 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
       )}
 
       {/* ── Section / geometry (always shown) ── */}
-      <Field label="Label">
+      <Field label="Betegnelse">
         <input style={s} value={d.label ?? 'T1'}
           onChange={e => update({ label: e.target.value })} />
       </Field>
-      <Field label="Span (m)" hint={source === 'fem' ? 'used for deflection limit only' : undefined}>
+      <Field label="Spænd (m)" hint={source === 'fem' ? 'bruges kun til nedbøjningsgrænsen' : undefined}>
         <NumericInput style={s} value={d.span_m ?? 4.0}
           onChange={v => update({ span_m: v })} />
       </Field>
-      <Field label="Width b (mm)">
+      <Field label="Bredde b (mm)">
         <NumericInput style={s} value={d.b_mm ?? 90}
           onChange={v => update({ b_mm: v })} />
       </Field>
-      <Field label="Depth h (mm)">
+      <Field label="Højde h (mm)">
         <NumericInput style={s} value={d.h_mm ?? 220}
           onChange={v => update({ h_mm: v })} />
       </Field>
-      <Field label="Timber grade">
+      <Field label="Styrkeklasse">
         <select style={s} value={d.timber_grade ?? 'C24'}
           onChange={e => update({ timber_grade: e.target.value })}>
           {GRADES.map(g => <option key={g}>{g}</option>)}
         </select>
       </Field>
-      <Field label="Service class">
+      <Field label="Anvendelsesklasse">
         <select style={s} value={d.service_class ?? 1}
           onChange={e => update({ service_class: Number(e.target.value) })}>
           {SERVICE_CLASSES.map(c => (
@@ -321,17 +337,67 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         <NumericInput style={s} value={d.gamma_M ?? 1.3}
           onChange={v => update({ gamma_M: v })} />
       </Field>
-      <Field label="Comp. edge restrained" hint="prevents LTB / kipning">
+      <Field label="Trykzone fastholdt" hint="udelukker kipning">
         <input type="checkbox"
           checked={d.compression_edge_restrained ?? true}
           onChange={e => update({ compression_edge_restrained: e.target.checked })} />
       </Field>
-      <Field label="Torsional restraint at supports">
+      <Field label="Vridningsfastholdt ved understøtning">
         <input type="checkbox"
           checked={d.torsional_restraint_at_supports ?? true}
           onChange={e => update({ torsional_restraint_at_supports: e.target.checked })} />
       </Field>
-      <Field label="Support length (mm)" hint="Bearing length → enables compression ⊥ grain check">
+      <div style={{ gridColumn: '1/-1', fontSize: 11, fontWeight: 700,
+                    color: '#6b7280', letterSpacing: '.06em',
+                    textTransform: 'uppercase', marginTop: 8 }}>
+        Nedbøjning — EN 1995-1-1 §7.2
+      </div>
+      <Field label="Eftervis nedbøjning">
+        <input type="checkbox" checked={d.check_deflection ?? true}
+          onChange={e => update({ check_deflection: e.target.checked })} />
+      </Field>
+      <Field label="ψ₂ variabel last" hint="DK NA tab. A1.1 · sne og vind 0 · kat. A 0,2">
+        <NumericInput style={s.input} value={d.psi_2 ?? 0.0}
+          onChange={v => update({ psi_2: v })} />
+      </Field>
+      <Field label="Grænse w_inst" hint="L / dette tal · EN tab. 7.2: 300–500">
+        <NumericInput style={s.input} value={d.limit_inst ?? 400}
+          onChange={v => update({ limit_inst: v })} />
+      </Field>
+      <Field label="Grænse w_net,fin" hint="L / dette tal · EN tab. 7.2: 250–350">
+        <NumericInput style={s.input} value={d.limit_net_fin ?? 300}
+          onChange={v => update({ limit_net_fin: v })} />
+      </Field>
+      <Field label="Pilhøjde w_c (mm)" hint="opbygget modpil — valgfri">
+        <input style={s.input} type="number" step="1"
+          value={d.w_c_mm ?? ''}
+          onChange={e => update({ w_c_mm: e.target.value ? parseFloat(e.target.value) : null })} />
+      </Field>
+
+      <div style={{ gridColumn: '1/-1', fontSize: 11, fontWeight: 700,
+                    color: '#6b7280', letterSpacing: '.06em',
+                    textTransform: 'uppercase', marginTop: 8 }}>
+        Brand — EN 1995-1-2
+      </div>
+      <Field label="Brandvarighed (min)" hint="tom = ingen brandeftervisning">
+        <input style={s.input} type="number" step="15"
+          value={d.fire_t_min ?? ''}
+          onChange={e => update({ fire_t_min: e.target.value ? parseFloat(e.target.value) : null })} />
+      </Field>
+      <Field label="Brandpåvirkede sider" hint="β_n = 0,7 mm/min · d₀ = 7 mm">
+        <NumericInput style={s.input} value={d.fire_exposed_sides ?? 2}
+          onChange={v => update({ fire_exposed_sides: v })} />
+      </Field>
+      <Field label="Underside udsat" hint="et gipsloft beskytter undersiden">
+        <input type="checkbox" checked={d.fire_exposed_bottom ?? true}
+          onChange={e => update({ fire_exposed_bottom: e.target.checked })} />
+      </Field>
+      <Field label="Overside udsat">
+        <input type="checkbox" checked={d.fire_exposed_top ?? false}
+          onChange={e => update({ fire_exposed_top: e.target.checked })} />
+      </Field>
+
+      <Field label="Vederlagslængde (mm)" hint="slår eftervisning for tryk ⊥ fibre til">
         <input style={s} inputMode="decimal"
           placeholder="e.g. 100 — leave blank to skip"
           value={d.support_length_mm ?? ''}

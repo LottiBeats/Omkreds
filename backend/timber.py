@@ -36,7 +36,7 @@ def _u(qty, unit=None, label="", dec=2):
         return str(qty)
 
 from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext, FIG
-from timber_grades import get_timber_grade
+from timber_grades import get_timber_grade, E_0_mean, K_DEF
 
 KMOD = {
     (1, "permanent"): 0.60, (1, "long"): 0.70, (1, "medium"): 0.80,
@@ -64,6 +64,13 @@ def timber_beam(
     load_duration="medium",
     gamma_M=1.3,
     K_FI=1.0,
+    # Anvendelsesgrænsetilstand, EN 1995-1-1 §7.2
+    check_deflection=True,
+    psi_1=0.2,              # ψ₁ for den variable last (DK NA tabel A1.1)
+    psi_2=0.0,              # ψ₂ for den variable last (DK NA tabel A1.1)
+    w_c=None,               # opbygget pilhøjde
+    limit_inst=400,         # w_inst ≤ L/limit_inst
+    limit_net_fin=300,      # w_net,fin ≤ L/limit_net_fin
     beam_results=None,
     fire_design=None,
     l_ef=None,
@@ -398,6 +405,85 @@ def timber_beam(
         blocks.append(cc.check("Vederlag: σ_c,90,d / (k_c,90·f_c,90,d)", sigma_c_90_d, k_c_90 * f_c_90_d))
         blocks.append(cc.check("Vederlag: F_c,90,Ed / F_c,90,Rd", bearing_force, F_c_90_Rd))
 
+    # ── Nedbøjning ────────────────────────────────────────────────────────────
+    # EN 1995-1-1 §7.2 med krybningen efter §2.2.3(5). Den er tit
+    # dimensionsgivende for en træbjælke, og den manglede helt indtil nu.
+    if check_deflection and beam_results is None:
+        blocks.append(S("Nedbøjning — EN 1995-1-1 §7.2"))
+
+        E_mean, _forhold, _kilde = E_0_mean(grade_key) if grade_key else (
+            E_0_05 / 0.67, 0.67, "EN 338 §5, nåletræ (antaget)")
+        k_def = K_DEF.get(service_class, 0.80)
+        I_y = b * h**3 / 12
+
+        # Karakteristisk kombination: lasterne står som de er, uden
+        # partialkoefficienter (EN 1990 §6.5.3).
+        w_inst_G = 5 * g_k * span**4 / (384 * E_mean * I_y)
+        w_inst_Q = 5 * q_k * span**4 / (384 * E_mean * I_y)
+        w_inst   = w_inst_G + w_inst_Q
+
+        # §2.2.3(5): den permanente del kryber fuldt, den variable kun med sin
+        # kvasi-permanente andel.
+        w_fin_G = w_inst_G * (1 + k_def)
+        w_fin_Q = w_inst_Q * (1 + psi_2 * k_def)
+        w_fin   = w_fin_G + w_fin_Q
+        _w_c    = w_c if w_c is not None else 0 * mm
+        w_net   = w_fin - _w_c
+
+        blocks.append(T(
+            f"Nedbøjningen regnes med middelværdien af elasticitetsmodulet, "
+            f"ikke 5 %-fraktilen. E_0,mean er udledt af {_kilde} og bliver "
+            f"{_u(E_mean, MPa, 'MPa', 0)}."))
+        blocks.extend([
+            CALC_ROW("E_0,mean", f"= E_0,05 / {_forhold:.2f}", _u(E_mean, MPa, "MPa", 0)),
+            CALC_ROW("I_y",      "= b·h³/12", f"{float(I_y / _cm**4):.0f} cm⁴"),
+            CALC_ROW("k_def",    f"anvendelsesklasse {service_class} (tabel 3.2)",
+                     f"{k_def:.2f}"),
+            CALC_ROW("ψ₂",       "for den variable last (DK NA tabel A1.1)",
+                     f"{psi_2:.2f}"),
+        ])
+        blocks.append(S("Øjeblikkelig nedbøjning"))
+        blocks.extend([
+            CALC_ROW("w_inst,G", "= 5·g_k·L⁴ / (384·E_0,mean·I_y)", _u(w_inst_G, mm, "mm", 1)),
+            CALC_ROW("w_inst,Q", "= 5·q_k·L⁴ / (384·E_0,mean·I_y)", _u(w_inst_Q, mm, "mm", 1)),
+            CALC_ROW("w_inst",   "= w_inst,G + w_inst,Q",           _u(w_inst, mm, "mm", 1)),
+        ])
+        blocks.append(S("Slutnedbøjning med krybning — §2.2.3(5)"))
+        blocks.extend([
+            CALC_ROW("w_fin,G",   "= w_inst,G·(1 + k_def)",         _u(w_fin_G, mm, "mm", 1)),
+            CALC_ROW("w_fin,Q",   "= w_inst,Q·(1 + ψ₂·k_def)",      _u(w_fin_Q, mm, "mm", 1)),
+            CALC_ROW("w_fin",     "= w_fin,G + w_fin,Q",            _u(w_fin, mm, "mm", 1)),
+        ])
+        if w_c is not None:
+            blocks.append(CALC_ROW("w_c", "opbygget pilhøjde", _u(_w_c, mm, "mm", 1)))
+        blocks.append(CALC_ROW("w_net,fin", "= w_fin − w_c", _u(w_net, mm, "mm", 1)))
+
+        gr_inst = span / limit_inst
+        gr_net  = span / limit_net_fin
+        blocks.extend([
+            CALC_ROW(f"L/{limit_inst}", "grænse for w_inst",     _u(gr_inst, mm, "mm", 1)),
+            CALC_ROW(f"L/{limit_net_fin}", "grænse for w_net,fin", _u(gr_net, mm, "mm", 1)),
+        ])
+        blocks.append(cc.check(f"Nedbøjning: w_inst / (L/{limit_inst})", w_inst, gr_inst))
+        blocks.append(cc.check(f"Nedbøjning: w_net,fin / (L/{limit_net_fin})", w_net, gr_net))
+        blocks.append(N(
+            "Grænserne er et valg. EN 1995-1-1 tabel 7.2 angiver L/300 til "
+            "L/500 for w_inst og L/250 til L/350 for w_net,fin for en bjælke "
+            "på to understøtninger; skærp eller lemp efter det nationale "
+            "anneks og aftalen med bygherren."))
+
+    elif check_deflection and beam_results is not None:
+        blocks.append(S("Nedbøjning — EN 1995-1-1 §7.2"))
+        _d = beam_results.get("delta_max")
+        if _d is not None:
+            blocks.append(CALC_ROW("δ_max", "øjeblikkelig, fra rammeberegningen",
+                                   _u(_d, mm, "mm", 1)))
+        blocks.append(N(
+            "Snitkræfterne er importeret, og krybningen efter §2.2.3(5) kræver "
+            "at den permanente og den variable del holdes hver for sig. Den "
+            "opdeling følger ikke med fra rammeberegningen, så w_fin og "
+            "w_net,fin er ikke eftervist her."))
+
     # ── Fire design ───────────────────────────────────────────────────────────
     if fire_design:
         blocks.append(S("Brand — EN 1995-1-2"))
@@ -422,8 +508,26 @@ def timber_beam(
             if V_Ed_fi is None:
                 V_Ed_fi = eta_fi * V_Ed
 
+        if eta_fi is None and M_Ed_fi is None and beam_results is None:
+            # η_fi er forholdet mellem lastvirkningen i brand og i
+            # brudgrænsetilstanden (EN 1995-1-2 §2.4.2). Brandkombinationen er
+            # G + A_d + ψ₁·Q₁ (DK NA tabel A1.3), og A_d er nul her: branden
+            # virker gennem det reducerede tværsnit, ikke som en ydre last.
+            # Så η_fi = (g_k + ψ₁·q_k) / w_Ed, og det kan udledes frem for at
+            # blive tastet.
+            _w_fi   = g_k + psi_1 * q_k
+            eta_fi  = float(_w_fi / w_Ed)
+            M_Ed_fi = eta_fi * M_Ed
+            V_Ed_fi = eta_fi * V_Ed
+            blocks.append(N(
+                f"η_fi er udledt af lasterne: (g_k + ψ₁·q_k) / w_Ed = "
+                f"({_u(g_k, kN / m, 'kN/m')} + {psi_1:.2f}·{_u(q_k, kN / m, 'kN/m')}) / "
+                f"{_u(w_Ed, kN / m, 'kN/m')} = {eta_fi:.3f}. Brandkombinationen er "
+                f"G + A_d + ψ₁·Q₁ (DK NA tabel A1.3), og A_d er nul: branden "
+                f"virker gennem det reducerede tværsnit, ikke som en ydre last."))
+
         if M_Ed_fi is None or V_Ed_fi is None:
-            raise ValueError("fire_design requires M_Ed and V_Ed, or eta_fi to derive them.")
+            raise ValueError("fire_design kræver M_Ed og V_Ed, eller eta_fi at udlede dem af.")
 
         blocks.append(T(
             f"Reduceret tværsnitsmetode. Brandvarighed = {t_fire}. "
@@ -444,6 +548,24 @@ def timber_beam(
         d_char_n = beta_n * t_fire + k0 * d0
         b_fi     = b - exposed_sides * d_char_n
         h_fi     = h - int(exposed_bottom) * d_char_n - int(exposed_top) * d_char_n
+
+        # Bliver der ingenting tilbage, er der ikke en eftervisning at lave.
+        # Uden dette gav et 45 mm spaer paa to sider i 30 minutter b_fi =
+        # -11 mm, et negativt modstandsmoment og et forhold paa -0,971, der
+        # blev trykt som OK.
+        if float(b_fi / mm) <= 0 or float(h_fi / mm) <= 0:
+            blocks.append(N(
+                f"Tværsnittet brænder igennem: d_char,n = "
+                f"{_u(d_char_n, mm, 'mm', 1)} på hver brandpåvirket side giver "
+                f"b_fi = {_u(b_fi, mm, 'mm', 1)} og h_fi = {_u(h_fi, mm, 'mm', 1)}. "
+                f"Der er intet resttværsnit at eftervise. Enten skal "
+                f"tværsnittet være større, eller også skal brændbarheden "
+                f"begrænses af en beklædning — et spær bag et gipsloft er "
+                f"ikke brandpåvirket på undersiden."))
+            blocks.append(cc.check_bool(
+                "Brand: resttværsnit", False,
+                fail_text="tværsnittet er brændt igennem"))
+            return blocks
         A_fi     = b_fi * h_fi
         W_y_fi   = (b_fi * h_fi**2) / 6
         f_md_fi  = kmod_fi * f_mk / gamma_M_fi

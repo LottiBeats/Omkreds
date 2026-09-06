@@ -154,6 +154,17 @@ class CheckContext:
             ratio = float(demand / capacity)
         except Exception:
             ratio = 999
+
+        # En negativ udnyttelse er ikke en lav udnyttelse -- den betyder at en
+        # af de to stoerrelser har skiftet fortegn, og det er der ingen gyldig
+        # grund til i en eftervisning. Et 45 mm spaer brandpaavirket paa to
+        # sider i 30 minutter gav b_fi = -11 mm, en negativ modstandsevne og et
+        # forhold paa -0,971, som blev trykt som "OK".
+        if ratio < 0:
+            return {"type": "check", "label": label, "passes": False,
+                    "value": "negativt forhold — tvaersnittet eller lasten "
+                             "har skiftet fortegn",
+                    "ratio": 999}
         ratio  = round(ratio, 3)
         passes = ratio <= 1.0
         status = f"{ratio:.3f} < 1.0   OK" if passes else f"{ratio:.3f} > 1.0   FAIL"
