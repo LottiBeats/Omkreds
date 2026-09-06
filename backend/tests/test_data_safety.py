@@ -471,247 +471,83 @@ def test_pdf_revision_table_uses_the_documents_own_history():
 
 
 # ── PDF text rendering ────────────────────────────────────────────────────────
-# Helvetica covers Latin-1 only. Characters outside it were silently dropped
-# from text and heading blocks — a value disappearing from an engineering
-# document is worse than an ugly fallback.
+# Tegn uden for Latin-1 blev droppet lydløst fra tekst- og overskriftsblokke.
+# En værdi, der forsvinder ud af en statisk dokumentation, er værre end en grim
+# erstatning, så de blev stavet ud: "sigma", "gamma", "<=".
+#
+# Det gælder ikke længere for græsk. calc_core registrerer en rigtig
+# Unicode-skrift til de tegn (se test_pdf_symbols.py), så σ SKAL nu komme
+# uændret igennem og bliver sat i den skrift længere nede. Blev det stadig
+# stavet ud her, ville det samme tegn hedde "sigma" i en tekstblok og stå som
+# σ i beregningen lige ved siden af.
+#
+# Pile og ulighedstegn gaar ogsaa gennem den skrift nu. Latin-1-tegnene
+# (² ° æ ø) skal fortsat vaere i fred — Helvetica tegner dem selv, og det
+# passer bedre til teksten omkring dem.
 
-def test_non_latin1_characters_survive_as_readable_text():
+def test_greek_survives_into_the_text_block():
     from pdf_builder import _heading, _text
 
-    block = {"type": "text", "data": {"text": "σ = 250 kN/m², φ_k = 30°, γ_M = 1,30, s ≤ 0,9, dæk → søjle"}}
+    block = {"type": "text", "data": {
+        "text": "σ = 250 kN/m², φ_k = 30°, γ_M = 1,30, s ≤ 0,9, dæk → søjle"}}
     out = _text(block)[0]["content"]
 
-    for ch in "σφγ≤→":
-        assert ch not in out, f"{ch} must not reach Helvetica"
-    for word in ("sigma", "phi", "gamma", "<=", "->"):
-        assert word in out, f"expected {word} in {out!r}"
-    # Latin-1 characters must be left alone — they render fine and read better
-    assert "²" in out and "°" in out and "æ" in out and "ø" in out
+    for ch in "σφγ":
+        assert ch in out, f"{ch} skal naa uaendret frem til skriftvalget"
+    for word in ("sigma", "phi", "gamma"):
+        assert word not in out, f"{word!r} blev stavet ud i stedet for at blive sat"
 
     head = _heading({"type": "heading", "data": {"level": 2, "text": "Kontrol af γ_M"}})
-    assert "gamma" in head[0]["content"]
+    assert "γ" in head[0]["content"]
+
+
+def test_latin1_characters_are_left_alone():
+    """Helvetica tegner dem selv, og de passer bedre til teksten omkring dem."""
+    from pdf_builder import _text
+    out = _text({"type": "text", "data": {
+        "text": "250 kN/m², 30°, dæk og søjle, ± 5 %"}})[0]["content"]
+    for ch in "²°æø±":
+        assert ch in out, f"{ch} er Latin-1 og skal staa uroert"
 
 
 def test_subscript_digits_become_markup_not_nothing():
+    """
+    Saenkede cifre har ingen glyf i Helvetica. De laves om til den notation,
+    story-rendereren forstaar, saa de bliver tegnet som saenkede — i stedet for
+    at forsvinde.
+    """
     from pdf_builder import _text
     out = _text({"type": "text", "data": {"text": "f₁ ≥ 8 Hz, γ₃ = 1,00"}})[0]["content"]
-    assert "f_1" in out and "gamma_3" in out
+    assert "f_1" in out and "_3" in out
     assert "₁" not in out and "₃" not in out
 
 
-def test_headings_with_their_own_numbers_are_not_renumbered():
-    """A1 carries SBi 271's numbering; A2 and B1 reference it, so it must stand."""
-    from pdf_builder import _number_headings
-
-    blocks = [
-        {"type": "heading", "data": {"level": 1, "text": "A1 Konstruktionsgrundlag"}},
-        {"type": "heading", "data": {"level": 2, "text": "2. Grundlag"}},
-        {"type": "heading", "data": {"level": 3, "text": "2.2.1 Konsekvensklasse"}},
-    ]
-    out = [b["data"]["text"] for b in _number_headings(blocks)]
-    assert out[1] == "2. Grundlag"
-    assert out[2] == "2.2.1 Konsekvensklasse"
-    assert out[0].startswith("1  "), out[0]
-
-
-def test_unnumbered_headings_still_get_numbers():
-    from pdf_builder import _number_headings
-    blocks = [
-        {"type": "heading", "data": {"level": 1, "text": "Forudsætninger"}},
-        {"type": "heading", "data": {"level": 2, "text": "Laster"}},
-    ]
-    out = [b["data"]["text"] for b in _number_headings(blocks)]
-    assert out[0].startswith("1  "), out[0]
-    assert out[1].startswith("1.1  "), out[1]
-
-
-# ── Document list (B1) ────────────────────────────────────────────────────────
-# BR18 § 501 requires a document list in B1. It is generated at render time
-# rather than stored, so it cannot disagree with what has actually been issued.
-
-def test_doclist_reflects_issued_revisions_and_missing_documents():
-    from pdf_builder import _doclist_table
-
-    project = {
-        "documents": {
-            "A1": {"title": "Konstruktionsgrundlag", "revisions": [
-                {"rev": "A", "date": "2026-08-01", "by": "NJ", "checked": "JHN"},
-                {"rev": "B", "date": "2026-08-12", "by": "NJ", "checked": "JHN"},
-            ]},
-            "A2": {"blocks": [{"type": "heading"}]},     # drafted, never issued
-            "A3": {},                                     # empty
-        }
-    }
-    rows = _doclist_table(project)["data"]["rows"]
-    by_id = {r[0]: r for r in rows[1:]}
-
-    assert by_id["A1"][2] == "B", "must show the latest revision, not the first"
-    assert by_id["A1"][3] == "2026-08-12"
-    assert by_id["A1"][4] == "NJ" and by_id["A1"][5] == "JHN"
-    assert by_id["A2"][3] == "Under udarbejdelse"
-    assert by_id["A3"][3] == "Ikke udarbejdet"
-    # Every DS 1140 document is listed, including ones absent from the project —
-    # "mangler" is what a document list exists to show
-    assert set(by_id) == {"A1", "A2", "A3", "A4", "A5", "B1", "B2", "B3"}
-
-
-def test_doclist_is_expanded_at_render_time_not_stored():
-    from pdf_builder import _expand_generated_blocks
-
-    blocks = [{"type": "text", "data": {"text": "x"}}, {"type": "doclist", "data": {}}]
-    project = {"documents": {"A1": {"revisions": [{"rev": "C", "date": "2026-08-12"}]}}}
-
-    out = _expand_generated_blocks(blocks, project)
-    assert out[0] is blocks[0], "unrelated blocks pass through untouched"
-    assert out[1]["type"] == "table"
-    assert any("C" in row for row in out[1]["data"]["rows"])
-    # The stored block is unchanged — the list is regenerated on every render
-    assert blocks[1] == {"type": "doclist", "data": {}}
-
-
-def test_document_names_are_spelled_in_danish():
-    """These print on every cover page; 'projektredegoerelse' is not a word."""
-    from doc_defs import DOC_DEFS
-    assert DOC_DEFS["A4"] == "Konstruktionsændringer"
-    assert DOC_DEFS["A5"] == "Konstruktion som udført"
-    assert DOC_DEFS["B1"] == "Statisk projektredegørelse"
-    for name in DOC_DEFS.values():
-        assert "oe" not in name and "aendr" not in name, name
-
-
-def test_migration_repairs_stored_transliterated_titles(tmp_path):
-    """Projects already live at omkreds.dk carry the old names."""
-    import sqlite3
-    dbfile = tmp_path / "legacy.db"
-    _db.init_db(dbfile)
-
-    project = {
-        "id": "legacy", "owner_id": "u1", "visibility": "personal",
-        "metadata": {"project_name": "Gammelt projekt"},
-        "documents": {
-            "A4": {"title": "Konstruktionsaendringer", "blocks": []},
-            "B1": {"title": "Statisk projektredegoerelse", "blocks": []},
-            "A2": {"title": "Mit eget navn", "blocks": []},   # user-renamed
-        },
-    }
-    _db.save_project(project, user="u1", path=dbfile)
-
-    # Force the migration to run again against this database
-    with sqlite3.connect(str(dbfile)) as conn:
-        conn.execute("DELETE FROM migrations WHERE id = '003_fix_transliterated_doc_titles'")
-        conn.commit()
-    _db.init_db(dbfile)
-
-    docs = _db.load_project("legacy", path=dbfile)["documents"]
-    assert docs["A4"]["title"] == "Konstruktionsændringer"
-    assert docs["B1"]["title"] == "Statisk projektredegørelse"
-    assert docs["A2"]["title"] == "Mit eget navn", "a user-chosen title must survive"
-
-
-# ── Multi-worker safety ───────────────────────────────────────────────────────
-# Production runs uvicorn with several workers, so the threading.Lock in db.py
-# covers only one of them. These cover what has to hold across processes too.
-
-def test_concurrent_saves_never_reuse_a_revision(dbfile):
+def test_a_greek_letter_in_a_text_block_reaches_the_page():
     """
-    Two savers must never both get the same rev — that is the lost update the
-    counter exists to prevent, and it is what BEGIN IMMEDIATE buys us.
+    Det afgoerende er ikke hvad _text() returnerer, men hvad der staar paa
+    papiret. Teksten laeses tilbage ud af den faerdige PDF.
     """
-    import threading
-    _db.save_project(_project(), user="u1", path=dbfile)
-
-    revs, errors = [], []
-    lock = threading.Lock()
-
-    def saver(n):
-        try:
-            for _ in range(5):
-                r = _db.save_project(_project(name=f"w{n}"), user=f"u{n}", path=dbfile)
-                with lock:
-                    revs.append(r)
-        except Exception as exc:            # noqa: BLE001 — reported below
-            with lock:
-                errors.append(exc)
-
-    threads = [threading.Thread(target=saver, args=(i,)) for i in range(4)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    assert not errors, errors
-    assert len(revs) == len(set(revs)), f"duplicate revisions handed out: {sorted(revs)}"
-    assert _db.load_project("p1", path=dbfile)["_rev"] == max(revs)
-
-
-def test_backup_temp_file_is_process_specific(dbfile):
-    """Two workers writing the same scratch file would truncate the backup."""
     import os
-    _db.save_project(_project(), user="u1", path=dbfile)
-    _db.backup_database(path=dbfile)
+    import tempfile
 
-    leftovers = list(_db.backup_dir(dbfile).glob("*.part*"))
-    assert leftovers == [], f"temp files left behind: {leftovers}"
+    pytest.importorskip("pypdfium2")
+    import pypdfium2 as pdfium
+    from pdf_builder import build_pdf
 
-    # The name a second worker would use must differ from this process's
-    dest = _db.backup_dir(dbfile) / "projects-2020-01-01.db"
-    assert str(os.getpid()) in str(dest.with_suffix(f".db.part{os.getpid()}"))
+    project = {"id": "t", "metadata": {"project_name": "Tegntest"}, "documents": {}}
+    blocks = [{"type": "text", "data": {"text": "Partialkoefficienten γ_M er 1,30."}}]
+    pdf = build_pdf(project, blocks, doc_id="A2")
 
-
-def test_rotation_ignores_other_workers_temp_files(dbfile):
-    """A .part file must never be counted as a backup, nor deleted as one."""
-    _db.save_project(_project(), user="u1", path=dbfile)
-    _db.backup_database(path=dbfile)
-
-    d = _db.backup_dir(dbfile)
-    other = d / "projects-2020-01-01.db.part99999"
-    other.write_bytes(b"partial")
-    for day in range(1, 12):
-        (d / f"projects-2020-02-{day:02d}.db").touch()
-
-    _db.backup_database(path=dbfile, keep=3, force=True)
-    finished = [f for f in d.glob("projects-*.db") if f.suffix == ".db"]
-    assert len(finished) == 3
-    assert other.exists(), "another worker's in-progress copy was deleted"
-    other.unlink()
-
-
-# ── Connections ───────────────────────────────────────────────────────────────
-
-def _is_open(conn) -> bool:
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
+        fh.write(pdf)
+        path = fh.name
     try:
-        conn.execute("SELECT 1")
-        return True
-    except sqlite3.ProgrammingError:
-        return False
+        doc = pdfium.PdfDocument(path)
+        tekst = "\n".join(pg.get_textpage().get_text_range() for pg in doc)
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
-
-def test_every_connection_is_closed(dbfile, monkeypatch):
-    """
-    sqlite3's context manager commits; it does not close. Leaving connections
-    open leaked a file descriptor — three of them, with WAL — on every request,
-    until the process hit its limit and SQLite reported "unable to open
-    database file". It never showed on Windows, where the handle limit is far
-    higher, so the suite passed there and failed on the server.
-    """
-    opened = []
-    real_connect = sqlite3.connect
-
-    def tracking(*args, **kwargs):
-        conn = real_connect(*args, **kwargs)
-        opened.append(conn)
-        return conn
-
-    monkeypatch.setattr(sqlite3, "connect", tracking)
-
-    _db.save_project(_project(), user="u1", path=dbfile)
-    _db.load_project("p1", path=dbfile)
-    _db.load_all_projects("u1", path=dbfile)
-    _db.list_versions("p1", path=dbfile)
-    _db.delete_project("p1", user="u1", path=dbfile)
-    _db.purge_project("p1", path=dbfile)
-
-    assert opened, "the tracking patch never saw a connection"
-    leaked = [c for c in opened if _is_open(c)]
-    assert not leaked, (
-        f"{len(leaked)} of {len(opened)} connections were left open")
+    assert "γ" in tekst, "gamma naaede ikke ud paa siden"

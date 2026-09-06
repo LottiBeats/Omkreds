@@ -36,7 +36,7 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER
 
 def _heading(block: dict) -> list:
     level = block["data"].get("level", 1)
-    text  = _pdf_text(block["data"].get("text", ""))
+    text  = _pdf_text(block["data"].get("text", ""), keep_greek=True)
     if level == 1:
         return H1(text)          # H1() already returns a list — don't wrap it again
     else:
@@ -44,7 +44,12 @@ def _heading(block: dict) -> list:
 
 
 def _text(block: dict) -> list:
-    text = _pdf_text(block["data"].get("text", "")).strip()
+    # _pdf_text staver graeske bogstaver ud ("alpha"), fordi Helvetica ikke har
+    # dem. Det goer calc_core._fmt ikke laengere -- den saetter dem i en rigtig
+    # Unicode-skrift. Resultatet var at det samme tegn blev til "alfa" i en
+    # tekstblok og til alpha i beregningen ved siden af. Graesk holdes derfor
+    # udenfor her og haandteres nede i _fmt som alle andre steder.
+    text = _pdf_text(block["data"].get("text", ""), keep_greek=True).strip()
     if not text:
         return []
     return [T(text)]
@@ -344,8 +349,21 @@ _PDF_CHAR_MAP = str.maketrans(
 )
 
 def _pdf(s) -> str:
-    """Make a string safe for Helvetica-encoded PDF cells."""
-    return str(s).translate(_PDF_CHAR_MAP)
+    """
+    Gør en tabelcelle klar til PDF'en.
+
+    Tidligere fladede den ·, × og ≤ ud til ., * og <, og droppede græsk helt —
+    "45 × 195 mm" blev til "45 * 195 mm" og en kolonne med overskriften
+    "Udnyttelse η" mistede sit η. To af de tegn er endda Latin-1, som
+    Helvetica tegner udmærket.
+
+    Cellerne er Paragraph-objekter, så de kan bruge nøjagtig samme vej som
+    brødtekst og beregningsrækker: græsk og de matematiske tegn sættes i
+    Unicode-skriften, Latin-1 bliver hvor det er, og sænkede tegn bliver til
+    markup i stedet for at forsvinde. Ét sted i stedet for tre.
+    """
+    from calc_core import _para_fmt
+    return _para_fmt(s)
 
 
 # Text and heading blocks take a different route than table cells: the story
@@ -377,9 +395,14 @@ for _i, _sup in enumerate('⁰¹²³⁴⁵⁶⁷⁸⁹'):
         _TEXT_CHAR_MAP[ord(_sup)] = f'^{_i}'
 
 
-def _pdf_text(s) -> str:
+_TEXT_CHAR_MAP_KEEP_GREEK = {k: v for k, v in _TEXT_CHAR_MAP.items()
+                             if not (0x0370 <= k <= 0x03FF)}
+
+
+def _pdf_text(s, keep_greek: bool = False) -> str:
     """Make prose safe for the PDF story renderer without flattening sub/superscripts."""
-    return str(s).translate(_TEXT_CHAR_MAP)
+    table = _TEXT_CHAR_MAP_KEEP_GREEK if keep_greek else _TEXT_CHAR_MAP
+    return str(s).translate(table)
 
 
 # ── Editable table block ─────────────────────────────────────────────────────
@@ -858,7 +881,11 @@ _CALC_TYPES = {
     "timber_beam", "timber_column",
     "masonry_wall",
     "custom_calc",
-    "wind_load", "snow_load",
+    # roof_dead_load manglede her indtil 2026-09-06. Blokken blev droppet
+    # lydloest i eksporten -- overskriften stod i dokumentet, indholdet ikke --
+    # og den ligger i A2-skabelonen for tagkonstruktioner, saa hvert A2 derfra
+    # er eksporteret uden sit egenlastafsnit. Se test_pdf_block_coverage.py.
+    "wind_load", "snow_load", "roof_dead_load",
     "foundation",
     "load_combo",
     "bolt_group", "fillet_weld",

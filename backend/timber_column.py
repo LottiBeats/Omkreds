@@ -40,6 +40,29 @@ KMOD = {
 
 _BETA_C = {"solid_timber": 0.20, "glulam": 0.10}
 
+_cm = 10 * mm
+
+VARIGHED_DK = {
+    "permanent": "permanent", "long": "lang", "medium": "middel",
+    "short": "kort", "instant": "øjeblikkelig",
+}
+
+
+def _u(qty, unit=None, label="", dec=2):
+    """
+    Skriv en størrelse i den enhed, dokumentet skal vise den i.
+
+    Uden dette valgte forallpeople selv, og et 115 mm tværsnit stod som
+    "115.000 mm", et inertimoment som "14575052.083 mm⁴" og et moment paa nul
+    som "0.000 Pa". Se det samme i timber.py.
+    """
+    if unit is None:
+        return str(qty)
+    try:
+        return f"{float(qty / unit):.{dec}f} {label}"
+    except Exception:
+        return str(qty)
+
 
 def timber_column_bending_and_axial(
     label,
@@ -86,10 +109,14 @@ def timber_column_bending_and_axial(
     beta_c = _BETA_C.get(material_type, _BETA_C["solid_timber"])
     cc     = CheckContext()
     blocks = []
+    # b og h er forallpeople-stoerrelser, saa f"{b}x{h}" gav
+    # "115.000 mmx115.000 mm" i modulhovedet og i indholdsfortegnelsen.
+    _b_mm_lbl = int(round(b / mm))
+    _h_mm_lbl = int(round(h / mm))
     section_label = (
         section_properties.get("section_label")
         if section_properties is not None and section_properties.get("section_label")
-        else f"{b}x{h}"
+        else f"{_b_mm_lbl}×{_h_mm_lbl} mm"
     )
 
     # ------------------------------------------------------------------
@@ -97,33 +124,35 @@ def timber_column_bending_and_axial(
     # ------------------------------------------------------------------
     _b_mm = int(round(b / mm))
     _h_mm = int(round(h / mm))
-    blocks.append(MH(f"Timber column — {section_label or f'{_b_mm}×{_h_mm} mm'}",
+    blocks.append(MH(f"Træsøjle — {section_label}",
                      f"{label}  |  EN 1995-1-1", material="timber"))
 
     # ------------------------------------------------------------------
     # Design parameters
     # ------------------------------------------------------------------
     blocks.append(S("Beregningsforudsætninger"))
+    _mat = grade_data["description"] if grade_data else "manuelt indtastede styrker"
+    _mat = _mat[:1].lower() + _mat[1:]
     blocks.append(T(
-        f"Rectangular timber beam-column, grade "
-        f"{grade_data['description'] if grade_data else 'manual'}. "
-        f"Service class {service_class}, load duration: {load_duration}, "
-        f"k_mod = {kmod}, γ_M = {gamma_M}."
+        f"Rektangulær træsøjle i {_mat}, påvirket af normalkraft og bøjning. "
+        f"Anvendelsesklasse {service_class}, lastvarighed: "
+        f"{VARIGHED_DK.get(load_duration, load_duration)}. "
+        f"k_mod = {kmod:.2f}, γ_M = {gamma_M:.2f}."
     ))
     _b_display = b if section_properties is None else section_properties.get("width_total", b)
     _h_display = h if section_properties is None else section_properties.get("height_total", h)
     blocks.extend([
-        CALC_ROW("L",       "column length",          str(length)),
-        CALC_ROW("N_Ed",    "design axial force",     str(N_Ed)),
-        CALC_ROW("M_y,Ed",  "design bending moment",  str(M_Ed)),
+        CALC_ROW("L",       "søjlelængde",          str(length)),
+        CALC_ROW("N_Ed",    "dimensionsgivende normalkraft",     _u(N_Ed, kN, "kN")),
+        CALC_ROW("M_y,Ed",  "dimensionsgivende moment",  _u(M_Ed, kN * m, "kNm")),
         CALC_ROW("b",       "bredde",                  str(_b_display)),
         CALC_ROW("h",       "højde",                  str(_h_display)),
         CALC_ROW("Grade",   "",                       grade_key if grade_key else "manual"),
-        CALC_ROW("f_c,0,k", "compression strength",   str(f_c0k)),
-        CALC_ROW("f_m,k",   "bending strength",       str(f_mk)),
-        CALC_ROW("E_0,05",  "5-percentile E-modulus", str(E_0_05)),
-        CALC_ROW("G_0,05",  "5-percentile G-modulus", str(G_0_05)),
-        CALC_ROW("μ",  "eff. length factor",     str(effective_length_factor)),
+        CALC_ROW("f_c,0,k", "kar. trykstyrke i fiberretning",   _u(f_c0k, MPa, "MPa", 1)),
+        CALC_ROW("f_m,k",   "kar. bøjningsstyrke",       _u(f_mk, MPa, "MPa", 1)),
+        CALC_ROW("E_0,05",  "5 %-fraktil elasticitetsmodul", _u(E_0_05, MPa, "MPa", 0)),
+        CALC_ROW("G_0,05",  "5 %-fraktil forskydningsmodul", _u(G_0_05, MPa, "MPa", 0)),
+        CALC_ROW("μ",  "søjlelængdefaktor",     str(effective_length_factor)),
         CALC_ROW("Model",   "",                       material_type),
     ])
 
@@ -140,16 +169,16 @@ def timber_column_bending_and_axial(
         i_1 = (I_1 / A) ** 0.5
         i_2 = (I_2 / A) ** 0.5
         blocks.extend([
-            CALC_ROW("A",   "= b·h",      str(A)),
-            CALC_ROW("W_y", "= b·h²/6",   str(W_y)),
-            CALC_ROW("I_1", "= b·h³/12",  str(I_1)),
-            CALC_ROW("I_2", "= h·b³/12",  str(I_2)),
-            CALC_ROW("i_1", "= √(I_1/A)", str(i_1)),
-            CALC_ROW("i_2", "= √(I_2/A)", str(i_2)),
+            CALC_ROW("A",   "= b·h",      f"{float(A / _cm**2):.1f} cm²"),
+            CALC_ROW("W_y", "= b·h²/6",   f"{float(W_y / _cm**3):.1f} cm³"),
+            CALC_ROW("I_1", "= b·h³/12",  f"{float(I_1 / _cm**4):.0f} cm⁴"),
+            CALC_ROW("I_2", "= h·b³/12",  f"{float(I_2 / _cm**4):.0f} cm⁴"),
+            CALC_ROW("i_1", "= √(I_1/A)", _u(i_1, mm, "mm", 1)),
+            CALC_ROW("i_2", "= √(I_2/A)", _u(i_2, mm, "mm", 1)),
         ])
         blocks.append(N(
-            "Axis 1 = strong axis (major): bending in the h-direction, i_1 = h/√12. "
-            "Axis 2 = weak axis (minor): buckling in the b-direction, i_2 = b/√12."
+            "Akse 1 er den stærke: bøjning i h-retningen, i_1 = h/√12. "
+            "Akse 2 er den svage: udbøjning i b-retningen, i_2 = b/√12."
         ))
     else:
         required_keys = ("A", "W_y", "I_1", "I_2", "i_1", "i_2")
@@ -165,12 +194,12 @@ def timber_column_bending_and_axial(
         i_2 = section_properties["i_2"]
 
         blocks.extend([
-            CALC_ROW("A",   "imported from section", str(A)),
-            CALC_ROW("W_y", "imported from section", str(W_y)),
-            CALC_ROW("I_1", "strong axis (imported)", str(I_1)),
-            CALC_ROW("I_2", "weak axis (imported)",   str(I_2)),
-            CALC_ROW("i_1", "imported from section",  str(i_1)),
-            CALC_ROW("i_2", "imported from section",  str(i_2)),
+            CALC_ROW("A",   "fra profilet", f"{float(A / _cm**2):.1f} cm²"),
+            CALC_ROW("W_y", "fra profilet", f"{float(W_y / _cm**3):.1f} cm³"),
+            CALC_ROW("I_1", "stærk akse (fra profilet)", f"{float(I_1 / _cm**4):.0f} cm⁴"),
+            CALC_ROW("I_2", "svag akse (fra profilet)",   f"{float(I_2 / _cm**4):.0f} cm⁴"),
+            CALC_ROW("i_1", "fra profilet",  _u(i_1, mm, "mm", 1)),
+            CALC_ROW("i_2", "fra profilet",  _u(i_2, mm, "mm", 1)),
         ])
         blocks.append(N(
             "Section properties are imported from a custom composite section. "
@@ -185,8 +214,8 @@ def timber_column_bending_and_axial(
     f_c0d = kmod * f_c0k / gamma_M
     f_md  = kmod * f_mk  / gamma_M
     blocks.extend([
-        CALC_ROW("f_c,0,d", "= k_mod·f_c,0,k / γ_M", str(f_c0d)),
-        CALC_ROW("f_m,d",   "= k_mod·f_m,k / γ_M",   str(f_md)),
+        CALC_ROW("f_c,0,d", "= k_mod·f_c,0,k / γ_M", _u(f_c0d, MPa, "MPa")),
+        CALC_ROW("f_m,d",   "= k_mod·f_m,k / γ_M",   _u(f_md, MPa, "MPa")),
     ])
 
     # ------------------------------------------------------------------
@@ -199,9 +228,9 @@ def timber_column_bending_and_axial(
     sigma_m2d = 0 * sigma_m1d
     sigma_md  = sigma_m1d
     blocks.extend([
-        CALC_ROW("σ_c,0,d", "= N_Ed / A",   str(sigma_c0d)),
-        CALC_ROW("σ_m,1,d", "= M_Ed / W_y", str(sigma_m1d)),
-        CALC_ROW("σ_m,2,d", "= 0",          str(sigma_m2d)),
+        CALC_ROW("σ_c,0,d", "= N_Ed / A",   _u(sigma_c0d, MPa, "MPa")),
+        CALC_ROW("σ_m,1,d", "= M_Ed / W_y", _u(sigma_m1d, MPa, "MPa")),
+        CALC_ROW("σ_m,2,d", "= 0",          _u(sigma_m2d, MPa, "MPa")),
     ])
 
     # ------------------------------------------------------------------
@@ -235,7 +264,7 @@ def timber_column_bending_and_axial(
         lambda_1     = l_eff_1 / i_1
         lambda_rel_1 = (float(lambda_1) / pi) * float((f_c0k / E_0_05) ** 0.5)
         blocks.extend([
-            CALC_ROW("l_eff,1",   "= μ·L",                   str(l_eff_1)),
+            CALC_ROW("l_eff,1",   "= μ·L",                   _u(l_eff_1, m, "m")),
             CALC_ROW("λ_1",       "= l_eff,1 / i_1",         f"{float(lambda_1):.2f}"),
             CALC_ROW("λ_rel,1",   "= (λ_1/π)·√(f_c,0,k/E)", f"{lambda_rel_1:.3f}"),
         ])
@@ -266,7 +295,7 @@ def timber_column_bending_and_axial(
         lambda_2     = l_eff_2 / i_2
         lambda_rel_2 = (float(lambda_2) / pi) * float((f_c0k / E_0_05) ** 0.5)
         blocks.extend([
-            CALC_ROW("l_eff,2",   "= μ·L",                   str(l_eff_2)),
+            CALC_ROW("l_eff,2",   "= μ·L",                   _u(l_eff_2, m, "m")),
             CALC_ROW("λ_2",       "= l_eff,2 / i_2",         f"{float(lambda_2):.2f}"),
             CALC_ROW("λ_rel,2",   "= (λ_2/π)·√(f_c,0,k/E)", f"{lambda_rel_2:.3f}"),
         ])
