@@ -89,6 +89,8 @@ def timber_column_bending_and_axial(
     buckling_axis=None,
     section_properties=None,
     I_t=None,
+    # Brand — EN 1995-1-2, reduceret tværsnitsmetode.
+    fire_design=None,
 ):
     # ------------------------------------------------------------------
     # Grade data
@@ -403,9 +405,112 @@ def timber_column_bending_and_axial(
 
     elif l_ef_ltb is not None and not check_ltb:
         blocks.append(N(
-            "Beam compression edge is restrained against lateral-torsional buckling; "
-            "LTB check not required."
+            "Trykzonen er fastholdt mod kipning; kipningseftervisning er ikke "
+            "nødvendig."
         ))
+
+    # ── Brand ────────────────────────────────────────────────────────────────
+    # Reduceret tværsnitsmetode, EN 1995-1-2 pkt. 4.2.2. For en søjle er den
+    # strengere end for en bjælke: det afbrændte tværsnit er ikke bare svagere,
+    # det er også slankere. i = b/√12 falder med bredden, så λ vokser og k_c
+    # falder — bæreevnen tabes hurtigere end arealet.
+    if fire_design:
+        blocks.append(S("Brand — EN 1995-1-2 pkt. 4.2.2"))
+
+        t_fire     = fire_design["t_fire"]
+        beta_n     = fire_design.get("beta_n", 0.7 * mm)
+        d0         = fire_design.get("d0", 7 * mm)
+        k0         = fire_design.get("k0", 1.0)
+        gamma_M_fi = fire_design.get("gamma_M_fi", 1.0)
+        kmod_fi    = fire_design.get("kmod_fi", 1.0)
+        exp_b      = int(fire_design.get("exposed_b", 2))
+        exp_h      = int(fire_design.get("exposed_h", 2))
+        eta_fi     = fire_design.get("eta_fi")
+
+        if eta_fi is None:
+            eta_fi = 1.0
+            blocks.append(N(
+                "η_fi er ikke angivet, så der regnes med den fulde last i "
+                "brandsituationen (η_fi = 1,0). Det er på den sikre side. "
+                "Brandkombinationen G + A_d + ψ₁·Q₁ (DK NA tabel A1.3) giver "
+                "typisk 0,5 til 0,7 — angiv den, hvis den er regnet."))
+
+        d_char_n = beta_n * t_fire + k0 * d0
+        b_fi = b - exp_b * d_char_n
+        h_fi = h - exp_h * d_char_n
+
+        blocks.extend([
+            CALC_ROW("t_fi",     "brandvarighed",                     str(t_fire)),
+            CALC_ROW("β_n",      "nominel indbrændingshastighed",     _u(beta_n, mm, "mm", 2)),
+            CALC_ROW("d_0",      "nulstyrkelag",                      _u(d0, mm, "mm", 0)),
+            CALC_ROW("d_char,n", "= β_n·t_fi + k_0·d_0",              _u(d_char_n, mm, "mm", 1)),
+            CALC_ROW("b_fi",     f"= b − {exp_b}·d_char,n",           _u(b_fi, mm, "mm", 1)),
+            CALC_ROW("h_fi",     f"= h − {exp_h}·d_char,n",           _u(h_fi, mm, "mm", 1)),
+            CALC_ROW("η_fi",     "lastvirkning i brand / ved normal temperatur",
+                     f"{eta_fi:.3f}"),
+        ])
+
+        if float(b_fi / mm) <= 0 or float(h_fi / mm) <= 0:
+            blocks.append(N(
+                f"Søjlen brænder igennem: der er {_u(b_fi, mm, 'mm', 1)} × "
+                f"{_u(h_fi, mm, 'mm', 1)} tilbage. Der er intet resttværsnit at "
+                f"eftervise. Enten skal tværsnittet være større, eller også "
+                f"skal antallet af brandpåvirkede sider begrænses — en søjle "
+                f"op ad en væg er ikke påvirket hele vejen rundt."))
+            blocks.append(cc.check_bool("Brand: resttværsnit", False,
+                                        fail_text="tværsnittet er brændt igennem"))
+            return blocks
+
+        A_fi   = b_fi * h_fi
+        W_y_fi = b_fi * h_fi**2 / 6
+        I_1_fi = b_fi * h_fi**3 / 12
+        I_2_fi = h_fi * b_fi**3 / 12
+        i_1_fi = (I_1_fi / A_fi) ** 0.5
+        i_2_fi = (I_2_fi / A_fi) ** 0.5
+
+        f_c0d_fi = kmod_fi * f_c0k / gamma_M_fi
+        f_md_fi  = kmod_fi * f_mk  / gamma_M_fi
+
+        sigma_c0d_fi = eta_fi * N_Ed / A_fi
+        sigma_m1d_fi = eta_fi * M_Ed / W_y_fi
+
+        blocks.extend([
+            CALC_ROW("A_fi",      "= b_fi·h_fi",   f"{float(A_fi / _cm**2):.1f} cm²"),
+            CALC_ROW("i_2,fi",    "= √(I_2,fi/A_fi)", _u(i_2_fi, mm, "mm", 1)),
+            CALC_ROW("f_c,0,d,fi", "= k_mod,fi·f_c,0,k / γ_M,fi", _u(f_c0d_fi, MPa, "MPa")),
+            CALC_ROW("σ_c,0,d,fi", "= η_fi·N_Ed / A_fi",          _u(sigma_c0d_fi, MPa, "MPa")),
+        ])
+
+        # Soejlevirkning om den svage akse med det reducerede tvaersnit.
+        lam_2_fi     = (effective_length_factor * length) / i_2_fi
+        lam_rel_2_fi = (float(lam_2_fi) / pi) * float((f_c0k / E_0_05) ** 0.5)
+        if lam_rel_2_fi <= 0.3:
+            k_c2_fi = 1.0
+        else:
+            k2_fi   = 0.5 * (1.0 + beta_c * (lam_rel_2_fi - 0.3) + lam_rel_2_fi**2)
+            k_c2_fi = min(1.0 / (k2_fi + (k2_fi**2 - lam_rel_2_fi**2) ** 0.5), 1.0)
+
+        blocks.extend([
+            CALC_ROW("λ_2,fi",     "= l_eff,2 / i_2,fi",        f"{float(lam_2_fi):.2f}"),
+            CALC_ROW("λ_rel,2,fi", "= (λ_2,fi/π)·√(f_c,0,k/E)", f"{lam_rel_2_fi:.3f}"),
+            CALC_ROW("k_c,2,fi",   "= 1/(k + √(k²−λ_rel²))",    f"{k_c2_fi:.3f}"),
+        ])
+        blocks.append(N(
+            f"Det afbrændte tværsnit er ikke bare mindre, det er også "
+            f"slankere. Arealet falder til {float(A_fi / (b * h)) * 100:.0f} % "
+            f"og k_c fra {k_c2:.3f} til {k_c2_fi:.3f}. Bæreevnen er produktet "
+            f"af de to og falder til "
+            f"{float(A_fi / (b * h)) * k_c2_fi / k_c2 * 100:.0f} % — det er "
+            f"derfor brand rammer en søjle hårdere end en bjælke, hvor kun "
+            f"modstandsmomentet falder."))
+
+        eta_fire = float(sigma_c0d_fi / (k_c2_fi * f_c0d_fi)
+                         + sigma_m1d_fi / f_md_fi)
+        blocks.append(CALC_ROW(
+            "η_6.24,fi",
+            "= σ_c,0,d,fi / (k_c,2,fi·f_c,0,d,fi) + σ_m,1,d,fi / f_m,d,fi",
+            f"{eta_fire:.3f}"))
+        blocks.append(cc.check("Brand, lign. 6.24 (akse 2)", eta_fire, 1.0))
 
     return blocks
 

@@ -179,6 +179,9 @@ def timber_beam(
     blocks.extend(_params)
 
     # ── Loading ───────────────────────────────────────────────────────────────
+    # w_Ed saettes kun i den lukkede form. Brandafsnittet nedenfor bruger den
+    # til at udlede eta_fi, og skal kunne se at den ikke er der.
+    w_Ed = None
     if beam_results is None:
         blocks.append(S("Laster — brudgrænsetilstand"))
 
@@ -508,7 +511,7 @@ def timber_beam(
             if V_Ed_fi is None:
                 V_Ed_fi = eta_fi * V_Ed
 
-        if eta_fi is None and M_Ed_fi is None and beam_results is None:
+        if eta_fi is None and M_Ed_fi is None and w_Ed is not None:
             # η_fi er forholdet mellem lastvirkningen i brand og i
             # brudgrænsetilstanden (EN 1995-1-2 §2.4.2). Brandkombinationen er
             # G + A_d + ψ₁·Q₁ (DK NA tabel A1.3), og A_d er nul her: branden
@@ -525,6 +528,22 @@ def timber_beam(
                 f"{_u(w_Ed, kN / m, 'kN/m')} = {eta_fi:.3f}. Brandkombinationen er "
                 f"G + A_d + ψ₁·Q₁ (DK NA tabel A1.3), og A_d er nul: branden "
                 f"virker gennem det reducerede tværsnit, ikke som en ydre last."))
+
+        if eta_fi is None and M_Ed_fi is None:
+            # Kommer snitkræfterne udefra, er der ingen opdeling i permanent og
+            # variabel at udlede η_fi af. Før stoppede beregningen her med en
+            # fejlmeddelelse, hvilket er en blindgyde for den der bare vil have
+            # sit brandafsnit. Regn i stedet med den fulde last og sig det.
+            eta_fi  = 1.0
+            M_Ed_fi = M_Ed
+            V_Ed_fi = V_Ed
+            blocks.append(N(
+                "η_fi kan ikke udledes her: snitkræfterne er hentet udefra, så "
+                "opdelingen i permanent og variabel last følger ikke med. Der "
+                "regnes med den fulde last i brandsituationen (η_fi = 1,0), "
+                "hvilket er på den sikre side. Brandkombinationen "
+                "G + A_d + ψ₁·Q₁ (DK NA tabel A1.3) giver typisk 0,5 til 0,7 — "
+                "angiv η_fi, hvis den er regnet."))
 
         if M_Ed_fi is None or V_Ed_fi is None:
             raise ValueError("fire_design kræver M_Ed og V_Ed, eller eta_fi at udlede dem af.")

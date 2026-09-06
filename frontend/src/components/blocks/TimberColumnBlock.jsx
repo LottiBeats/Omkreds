@@ -67,6 +67,12 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
         gamma_M:               d.gamma_M                ?? 1.3,
         effective_length_factor: d.effective_length_factor ?? 1.0,
         l_ef_ltb_m:            d.l_ef_ltb_m            ?? null,
+
+        // Brand — EN 1995-1-2. Uden en varighed springes afsnittet over.
+        fire_t_min:      d.fire_t_min      ?? null,
+        fire_exposed_b:  d.fire_exposed_b  ?? 2,
+        fire_exposed_h:  d.fire_exposed_h  ?? 2,
+        fire_eta_fi:     d.fire_eta_fi     ?? null,
       }
 
       if (source === 'combo' && exports_) {
@@ -212,6 +218,30 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
         <NumericInput style={s} value={d.gamma_M ?? 1.3}
           onChange={v => update({ gamma_M: v })} />
       </Field>
+      <div style={{ gridColumn: '1/-1', fontSize: 11, fontWeight: 700,
+                    color: '#6b7280', letterSpacing: '.06em',
+                    textTransform: 'uppercase', marginTop: 8 }}>
+        Brand — EN 1995-1-2
+      </div>
+      <Field label="Brandvarighed (min)" hint="tom = ingen brandeftervisning">
+        <input style={s.input} type="number" step="15"
+          value={d.fire_t_min ?? ''}
+          onChange={e => update({ fire_t_min: e.target.value ? parseFloat(e.target.value) : null })} />
+      </Field>
+      <Field label="η_fi" hint="tom = 1,0 (fuld last, på den sikre side)">
+        <input style={s.input} type="number" step="0.05"
+          value={d.fire_eta_fi ?? ''}
+          onChange={e => update({ fire_eta_fi: e.target.value ? parseFloat(e.target.value) : null })} />
+      </Field>
+      <Field label="Udsatte b-flader" hint="2 = fritstående · 1 = op ad væg">
+        <NumericInput style={s.input} value={d.fire_exposed_b ?? 2}
+          onChange={v => update({ fire_exposed_b: v })} />
+      </Field>
+      <Field label="Udsatte h-flader">
+        <NumericInput style={s.input} value={d.fire_exposed_h ?? 2}
+          onChange={v => update({ fire_exposed_h: v })} />
+      </Field>
+
       <Field label="l_ef,LTB (m)" hint="valgfri — slår kipningseftervisningen til">
         <input style={s} inputMode="decimal"
           value={d.l_ef_ltb_m ?? ''}

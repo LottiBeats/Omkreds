@@ -1371,6 +1371,18 @@ class TimberColumnInput(BaseModel):
     effective_length_factor: float = 1.0
     l_ef_ltb_m:              float | None = None
 
+    # Brand — EN 1995-1-2. For en søjle er den strengere end for en bjælke:
+    # det afbrændte tværsnit er ikke bare svagere, det er også slankere.
+    fire_t_min:          float | None = None   # None = ingen brandeftervisning
+    fire_beta_n_mm:      float = 0.7
+    fire_d0_mm:          float = 7.0
+    fire_k0:             float = 1.0
+    fire_gamma_M_fi:     float = 1.0
+    fire_kmod_fi:        float = 1.0
+    fire_exposed_b:      int   = 2   # antal af de to b-flader der er udsatte
+    fire_exposed_h:      int   = 2
+    fire_eta_fi:         float | None = None   # None = 1,0, altså fuld last
+
 
 @protected.post("/calc/timber-column", tags=["Calculations"])
 def calc_timber_column(data: TimberColumnInput):
@@ -1405,6 +1417,20 @@ def calc_timber_column(data: TimberColumnInput):
         )
         if data.l_ef_ltb_m is not None:
             kwargs["l_ef_ltb"] = data.l_ef_ltb_m * m
+
+
+        if data.fire_t_min is not None:
+            kwargs["fire_design"] = {
+                "t_fire":     data.fire_t_min,
+                "beta_n":     data.fire_beta_n_mm * mm,
+                "d0":         data.fire_d0_mm * mm,
+                "k0":         data.fire_k0,
+                "gamma_M_fi": data.fire_gamma_M_fi,
+                "kmod_fi":    data.fire_kmod_fi,
+                "exposed_b":  data.fire_exposed_b,
+                "exposed_h":  data.fire_exposed_h,
+                "eta_fi":     data.fire_eta_fi,
+            }
 
         blocks = timber_column_bending_and_axial(**kwargs)
         return blocks

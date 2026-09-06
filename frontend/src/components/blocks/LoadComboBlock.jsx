@@ -95,23 +95,23 @@ export default function LoadComboBlock({ block, onChange }) {
       runLabel="▶  Beregn"
     >
       {/* Row 1: label, unit, method */}
-      <Field label="Label">
+      <Field label="Betegnelse">
         <input style={s.input} value={d.label ?? 'LC1'}
           onChange={e => update({ label: e.target.value })} />
       </Field>
-      <Field label="Unit">
+      <Field label="Enhed" hint="kN/m til en bjælke · kN til en søjle">
         <input style={s.input} value={d.unit ?? 'kN/m'}
           placeholder="kN/m"
           onChange={e => update({ unit: e.target.value })} />
       </Field>
-      <Field label="Method">
+      <Field label="Metode">
         <select style={s.input} value={d.method ?? '6.10ab'}
           onChange={e => update({ method: e.target.value })}>
           <option value="6.10ab">6.10a / 6.10b  (DK NA)</option>
-          <option value="6.10">6.10  (conservative)</option>
+          <option value="6.10">6.10  (konservativ, ikke dansk praksis)</option>
         </select>
       </Field>
-      <Field label="Consequence class" hint="K_FI">
+      <Field label="Konsekvensklasse" hint="K_FI: CC1 0,9 · CC2 1,0 · CC3 1,1">
         <select style={s.input} value={d.consequence_class ?? 'CC2'}
           onChange={e => update({ consequence_class: e.target.value })}>
           {CONSEQUENCE_CLASSES.map(c => (
@@ -121,42 +121,59 @@ export default function LoadComboBlock({ block, onChange }) {
       </Field>
 
       {/* Permanent load */}
-      <Field label="G_k  (permanent)" hint={d.unit ?? 'kN/m'}>
+      <Field label="G_k — egenlast" hint={d.unit ?? 'kN/m'}>
         <NumericInput style={s.input} value={d.G_k ?? 5.0}
           onChange={v => update({ G_k: v })} />
       </Field>
-      <Field label="G favourable?">
+      <Field label="Gunstig egenlast?"
+             hint="γ_G,inf: 1,0 i 6.10a og 0,9 i 6.10b — DK NA tabel A1.2(B+C)">
         <label style={s.checkLabel}>
           <input type="checkbox" checked={!!d.G_fav}
             onChange={e => update({ G_fav: e.target.checked })} />
-          {' '}Use γ_G = 1.0
+          {' '}Egenlasten virker gunstigt
         </label>
       </Field>
 
-      {/* Accidental load */}
-      <Field label="A_d  (accidental)" hint={d.unit ?? 'kN/m'}>
-        <NumericInput style={s.input} value={d.A_d ?? 0.0}
-          onChange={v => update({ A_d: v })} />
+      {/* Ulykke og brand — DK NA tabel A1.3, formel 6.11a/b.
+          Afsnittet stod her i forvejen, men hed "A_d (accidental)" og
+          typevælgeren dukkede først op, når man havde tastet et tal. Så var
+          det ikke til at finde. */}
+      <div style={{ gridColumn: '1/-1', fontSize: 11, fontWeight: 700,
+                    color: '#6b7280', letterSpacing: '.06em',
+                    textTransform: 'uppercase', marginTop: 8 }}>
+        Ulykke og brand — DK NA tabel A1.3 (6.11a/b)
+      </div>
+      <Field label="Type ulykke">
+        <select style={s.input} value={d.accidental_type ?? 'none'}
+          onChange={e => update({ accidental_type: e.target.value })}>
+          <option value="none">Ingen — kun ULS og SLS</option>
+          <option value="fire">Brand — ψ₁ på den dominerende last</option>
+          <option value="other">Anden ulykke — ψ₂ på alle</option>
+        </select>
       </Field>
-      {(d.A_d ?? 0) > 0 && (
-        <Field label="Accident type">
-          <select style={s.input} value={d.accidental_type ?? 'none'}
-            onChange={e => update({ accidental_type: e.target.value })}>
-            <option value="none">None</option>
-            <option value="fire">Fire  (ψ₁ for lead)</option>
-            <option value="other">Other accident  (ψ₂ for all)</option>
-          </select>
+      {(d.accidental_type ?? 'none') !== 'none' && (
+        <Field label="A_d — ulykkeslast" hint={`${d.unit ?? 'kN/m'} · 0 ved brand`}>
+          <NumericInput style={s.input} value={d.A_d ?? 0.0}
+            onChange={v => update({ A_d: v })} />
         </Field>
+      )}
+      {(d.accidental_type ?? 'none') === 'fire' && (
+        <div style={{ gridColumn: '1/-1', fontSize: 11, color: '#6b7280',
+                      lineHeight: 1.5 }}>
+          Ved brand er A_d som regel 0: branden virker gennem det reducerede
+          tværsnit, ikke som en ydre last. Sæt brandvarigheden i den blok, der
+          skal eftervises, så regnes indbrændingen der.
+        </div>
       )}
 
       {/* Variable loads table */}
       <div style={{ gridColumn: '1/-1' }}>
-        <div style={s.loadSectionLabel}>Variable actions</div>
+        <div style={s.loadSectionLabel}>Variable laster</div>
 
         {(d.loads ?? []).length > 0 && (
           <div style={s.loadTable}>
             <div style={s.loadHeader}>
-              {['Label', 'Q_k', 'Category', ''].map(h => (
+              {['Betegnelse', 'Q_k', 'Kategori', ''].map(h => (
                 <div key={h} style={s.loadHeaderCell}>{h}</div>
               ))}
             </div>
