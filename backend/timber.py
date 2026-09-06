@@ -11,6 +11,30 @@ import forallpeople as si
 si.environment('structural', top_level=True)
 _cm = 10 * mm   # cm not in structural env — needed for cm³/cm⁴ display
 
+JA, NEJ = "ja", "nej"
+
+VARIGHED_DK = {
+    "permanent": "permanent", "long": "lang", "medium": "middel",
+    "short": "kort", "instant": "øjeblikkelig",
+}
+
+
+def _u(qty, unit=None, label="", dec=2):
+    """
+    Format a quantity in the unit the document should show it in.
+
+    forallpeople chooses the unit itself, and not the same one from row to row:
+    a 0.9 kN/m line load prints as "900.000 N/m" two rows above an f_m,d in
+    MPa. In a statisk dokumentation the unit is part of the sentence, so it is
+    chosen here rather than left to whatever the magnitude happens to be.
+    """
+    if unit is None:
+        return str(qty)
+    try:
+        return f"{float(qty / unit):.{dec}f} {label}"
+    except Exception:
+        return str(qty)
+
 from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext, FIG
 from timber_grades import get_timber_grade
 
@@ -88,84 +112,108 @@ def timber_beam(
 
     _b_mm = int(round(b / mm))
     _h_mm = int(round(h / mm))
-    blocks.append(MH(f"Timber beam — {_b_mm}×{_h_mm} mm",
+    blocks.append(MH(f"Træbjælke — {_b_mm}×{_h_mm} mm",
                      f"{label}  |  EN 1995-1-1", material="timber"))
 
     # ── Design parameters ─────────────────────────────────────────────────────
-    blocks.append(S("Design parameters"))
-    blocks.append(T(
-        f"Simply supported {(grade_data['description'] if grade_data is not None else 'C24 solid timber')} beam, span {span}. "
-        f"Service class {service_class}, load duration: {load_duration}. "
-        f"k_mod = {kmod}, gamma_M = {gamma_M}."
-    ))
-    blocks.extend([
-        CALC_ROW("L",        "span",                        str(span)),
-        CALC_ROW("g_k",      "permanent load",              str(g_k)),
-        CALC_ROW("q_k",      "variable load",               str(q_k)),
-        CALC_ROW("b",        "width",                       str(b)),
-        CALC_ROW("h",        "depth",                       str(h)),
-        CALC_ROW("Grade",    "",                            grade_key if grade_key is not None else "manual"),
-        CALC_ROW("f_m,k",    "char. bending strength",      str(f_mk)),
-        CALC_ROW("f_v,k",    "char. shear strength",        str(f_vk)),
-        CALC_ROW("E_0,05",   "5th-percentile modulus",      str(E_0_05)),
-        CALC_ROW("G_0,05",   "5th-percentile shear mod.",   str(G_0_05)),
-        CALC_ROW("f_c,90,k", "perp-grain bearing strength", str(f_c_90_k)),
-        CALC_ROW("k_mod",    "modification factor",         f"{kmod:.2f}"),
-        CALC_ROW("γ_M",      "partial factor",              f"{gamma_M:.2f}"),
-    ])
+    blocks.append(S("Beregningsforudsætninger"))
+    # The grade descriptions are written as headings ("Konstruktionstræ C24");
+    # here the phrase sits mid-sentence.
+    _materiale = grade_data["description"] if grade_data is not None else "Konstruktionstræ C24"
+    _materiale = _materiale[:1].lower() + _materiale[1:]
+    _varighed  = VARIGHED_DK.get(load_duration, load_duration)
+    if beam_results is None:
+        blocks.append(T(
+            f"Simpelt understøttet bjælke i {_materiale}, spænd {_u(span, m, 'm')}. "
+            f"Anvendelsesklasse {service_class}, lastvarighed: {_varighed}. "
+            f"k_mod = {kmod:.2f}, γ_M = {gamma_M:.2f}."
+        ))
+    else:
+        # The statisk system and the loads belong to the analysis the actions
+        # came from. Repeating "simply supported, g_k = …" here described a
+        # beam that was not the one being checked.
+        blocks.append(T(
+            f"Bjælke i {_materiale}, {_b_mm}×{_h_mm} mm. Snitkræfterne er hentet "
+            f"fra rammeberegningen — statisk system og laster fremgår dér. "
+            f"Anvendelsesklasse {service_class}, lastvarighed: {_varighed}. "
+            f"k_mod = {kmod:.2f}, γ_M = {gamma_M:.2f}."
+        ))
+
+    _params = [CALC_ROW("L", "spænd", _u(span, m, "m"))]
+    if beam_results is None:
+        # Only the closed-form path uses these; with imported actions they are
+        # not what the check is run on.
+        _params += [
+            CALC_ROW("g_k", "karakteristisk egenlast",   _u(g_k, kN / m, "kN/m")),
+            CALC_ROW("q_k", "karakteristisk variabel last", _u(q_k, kN / m, "kN/m")),
+        ]
+    _params += [
+        CALC_ROW("b",        "bredde",                          _u(b, mm, "mm", 0)),
+        CALC_ROW("h",        "højde",                           _u(h, mm, "mm", 0)),
+        CALC_ROW("Styrkeklasse", "",                            grade_key if grade_key is not None else "manuelt indtastet"),
+        CALC_ROW("f_m,k",    "kar. bøjningsstyrke",             _u(f_mk, MPa, "MPa", 1)),
+        CALC_ROW("f_v,k",    "kar. forskydningsstyrke",         _u(f_vk, MPa, "MPa", 1)),
+        CALC_ROW("E_0,05",   "5 %-fraktil elasticitetsmodul",   _u(E_0_05, MPa, "MPa", 0)),
+        CALC_ROW("G_0,05",   "5 %-fraktil forskydningsmodul",   _u(G_0_05, MPa, "MPa", 0)),
+        CALC_ROW("f_c,90,k", "kar. trykstyrke vinkelret på fibrene", _u(f_c_90_k, MPa, "MPa", 1)),
+        CALC_ROW("k_mod",    "modifikationsfaktor (tab. 3.1)",  f"{kmod:.2f}"),
+        CALC_ROW("γ_M",      "partialkoefficient",              f"{gamma_M:.2f}"),
+    ]
+    blocks.extend(_params)
 
     # ── Loading ───────────────────────────────────────────────────────────────
     if beam_results is None:
-        blocks.append(S("ULS loading"))
+        blocks.append(S("Laster — brudgrænsetilstand"))
 
         w_Ed = 1.35 * g_k + 1.5 * q_k
         M_Ed = (w_Ed * span**2) / 8
         V_Ed = (w_Ed * span) / 2
 
         blocks.extend([
-            CALC_ROW("w_Ed", "= 1.35·g_k + 1.5·q_k",  str(w_Ed)),
-            CALC_ROW("M_Ed", "= w_Ed·L²/8",             str(M_Ed)),
-            CALC_ROW("V_Ed", "= w_Ed·L/2",              str(V_Ed)),
+            CALC_ROW("w_Ed", "= 1.35·g_k + 1.5·q_k", _u(w_Ed, kN / m, "kN/m")),
+            CALC_ROW("M_Ed", "= w_Ed·L²/8",             _u(M_Ed, kN * m, "kNm")),
+            CALC_ROW("V_Ed", "= w_Ed·L/2",              _u(V_Ed, kN, "kN")),
         ])
-        blocks.append(N("Closed-form actions used: simply supported beam under full-span UDL."))
+        blocks.append(N("Snitkræfter beregnet i lukket form: simpelt understøttet "
+                        "bjælke med jævnt fordelt last over hele spændet."))
 
     else:
-        blocks.append(S("Imported beam analysis actions"))
+        blocks.append(S("Snitkræfter fra rammeberegningen"))
         source    = beam_results.get("source", "Beam analysis")
         case_name = beam_results.get("case_name", "")
         if case_name:
-            blocks.append(T(f"Moment and shear imported from {source}: {case_name}."))
+            blocks.append(T(f"Moment og forskydning er hentet fra {source}: {case_name}."))
         else:
-            blocks.append(T(f"Moment and shear imported from {source}."))
+            blocks.append(T(f"Moment og forskydning er hentet fra {source}."))
 
         M_Ed = beam_results["M_Ed"]
         V_Ed = beam_results["V_Ed"]
 
         blocks.extend([
-            CALC_ROW("M_Ed", "imported design moment", str(M_Ed)),
-            CALC_ROW("V_Ed", "imported design shear",  str(V_Ed)),
+            CALC_ROW("M_Ed", "dimensionsgivende moment (importeret)",     _u(M_Ed, kN * m, "kNm")),
+            CALC_ROW("V_Ed", "dimensionsgivende forskydning (importeret)", _u(V_Ed, kN, "kN")),
         ])
 
         delta_max = beam_results.get("delta_max")
         if delta_max is not None:
-            blocks.append(CALC_ROW("δ_max", "imported max deflection", str(delta_max)))
+            blocks.append(CALC_ROW("δ_max", "største nedbøjning (importeret)", _u(delta_max, mm, "mm", 1)))
 
         x_M = beam_results.get("x_M_Ed")
         x_V = beam_results.get("x_V_Ed")
         loc_parts = []
         if x_M is not None:
-            loc_parts.append(f"|M| max at x = {x_M}")
+            loc_parts.append(f"|M| er størst ved x = {_u(x_M, m, 'm')}")
         if x_V is not None:
-            loc_parts.append(f"|V| max at x = {x_V}")
+            loc_parts.append(f"|V| er størst ved x = {_u(x_V, m, 'm')}")
         if loc_parts:
             blocks.append(N(" ; ".join(loc_parts)))
 
     if figure_path:
-        blocks.append(S("Beam analysis diagram"))
-        blocks.append(FIG(figure_path, figure_caption or "Moment, shear and deflection overlays from beam analysis."))
+        blocks.append(S("Snitkraftkurver"))
+        blocks.append(FIG(figure_path, figure_caption or "Moment, forskydning og deformation fra rammeberegningen."))
 
     # ── Bending resistance ────────────────────────────────────────────────────
-    blocks.append(S("Bending resistance — EN 1995-1-1 cl. 6.1.6"))
+    blocks.append(S("Bøjning — EN 1995-1-1 pkt. 6.1.6"))
 
     W_y    = (b * h**2) / 6
     f_md   = kmod * f_mk / gamma_M
@@ -173,30 +221,30 @@ def timber_beam(
 
     blocks.extend([
         CALC_ROW("W_y",    "= b·h²/6",            f"{float(W_y / _cm**3):.1f} cm³"),
-        CALC_ROW("f_m,d",  "= k_mod·f_m,k / γ_M", str(f_md)),
-        CALC_ROW("σ_m,d",  "= M_Ed / W_y",         str(sigma_md)),
+        CALC_ROW("f_m,d",  "= k_mod·f_m,k / γ_M", _u(f_md, MPa, "MPa")),
+        CALC_ROW("σ_m,d",  "= M_Ed / W_y",         _u(sigma_md, MPa, "MPa")),
     ])
-    blocks.append(cc.check("Bending: σ_m,d / f_m,d", sigma_md, f_md))
+    blocks.append(cc.check("Bøjning: σ_m,d / f_m,d", sigma_md, f_md))
 
     # ── Lateral buckling (kipning) ────────────────────────────────────────────
-    blocks.append(S("Lateral buckling / kipning — EN 1995-1-1 cl. 6.3.3"))
+    blocks.append(S("Kipning — EN 1995-1-1 pkt. 6.3.3"))
 
     if compression_edge_restrained and torsional_restraint_at_supports:
         k_crit = 1.0
         blocks.append(N(
-            "Compression edge is restrained throughout and torsional rotation is prevented at supports. "
-            "k_crit = 1.0 — lateral buckling is neglected."
+            "Trykzonen er fastholdt i hele bjælkens længde, og vridning er "
+            "forhindret ved understøtningerne. k_crit = 1,0 — kipning kan ses bort fra."
         ))
     else:
         if l_ef is None:
             l_ef = 0.9 * span + 2 * h
             blocks.append(N(
-                "No effective buckling length provided. "
-                "Using l_ef = 0.9·L + 2h for a simply supported beam under UDL "
-                "(EN 1995-1-1 Table 6.1)."
+                "Ingen effektiv kiplængde er angivet. Der regnes med "
+                "l_ef = 0,9·L + 2h for en simpelt understøttet bjælke med jævnt "
+                "fordelt last (EN 1995-1-1 tabel 6.1)."
             ))
         else:
-            blocks.append(N(f"Effective buckling length: l_ef = {l_ef}."))
+            blocks.append(N(f"Effektiv kiplængde: l_ef = {_u(l_ef, m, 'm')}."))
 
         # Section constants for a solid rectangular cross-section
         # I_z  = h·b³/12  (2nd moment of area about weak axis)
@@ -211,11 +259,11 @@ def timber_beam(
         lambda_rel_m = float(f_mk / sigma_m_crit) ** 0.5
 
         blocks.extend([
-            CALC_ROW("l_ef",      "effective buckling length",              str(l_ef)),
-            CALC_ROW("I_z",       "= h·b³/12  [weak-axis 2nd moment]",     f"{float(I_z_ltb / _cm**4):.2f} cm⁴"),
-            CALC_ROW("I_T",       "= h·b³/3   [torsion constant, rect.]",  f"{float(I_T_ltb / _cm**4):.2f} cm⁴"),
-            CALC_ROW("M_crit",    "= π·√(E_0,05·I_z·G_0,05·I_T) / l_ef", str(M_crit)),
-            CALC_ROW("σ_m,crit",  "= M_crit / W_y",                        str(sigma_m_crit)),
+            CALC_ROW("l_ef",      "effektiv kiplængde",                       _u(l_ef, m, "m")),
+            CALC_ROW("I_z",       "= h·b³/12  [inertimoment om svag akse]",  f"{float(I_z_ltb / _cm**4):.2f} cm⁴"),
+            CALC_ROW("I_T",       "= h·b³/3   [vridningskonstant, rektangel]", f"{float(I_T_ltb / _cm**4):.2f} cm⁴"),
+            CALC_ROW("M_crit",    "= π·√(E_0,05·I_z·G_0,05·I_T) / l_ef",   _u(M_crit, kN * m, "kNm")),
+            CALC_ROW("σ_m,crit",  "= M_crit / W_y",                          _u(sigma_m_crit, MPa, "MPa", 1)),
             CALC_ROW("λ_rel,m",   "= √(f_m,k / σ_m,crit)",                f"{lambda_rel_m:.3f}"),
         ])
 
@@ -232,7 +280,7 @@ def timber_beam(
     blocks.append(cc.check("Kipning: σ_m,d / (k_crit·f_m,d)", sigma_md, k_crit * f_md))
 
     # ── Shear resistance ──────────────────────────────────────────────────────
-    blocks.append(S("Shear resistance — EN 1995-1-1 cl. 6.1.7"))
+    blocks.append(S("Forskydning — EN 1995-1-1 pkt. 6.1.7"))
 
     A     = b * h
     f_vd  = kmod * f_vk / gamma_M
@@ -240,42 +288,44 @@ def timber_beam(
 
     blocks.extend([
         CALC_ROW("A",     "= b·h",               f"{float(A / _cm**2):.2f} cm²"),
-        CALC_ROW("f_v,d", "= k_mod·f_v,k / γ_M", str(f_vd)),
-        CALC_ROW("τ_d",   "= 1.5·V_Ed / A",       str(tau_d)),
+        CALC_ROW("f_v,d", "= k_mod·f_v,k / γ_M", _u(f_vd, MPa, "MPa")),
+        CALC_ROW("τ_d",   "= 1.5·V_Ed / A",       _u(tau_d, MPa, "MPa")),
     ])
-    blocks.append(cc.check("Shear: τ_d / f_v,d", tau_d, f_vd))
+    blocks.append(cc.check("Forskydning: τ_d / f_v,d", tau_d, f_vd))
 
     # ── Bearing at support ────────────────────────────────────────────────────
     if support_length is not None:
-        blocks.append(S("Bearing at support / vederlag — EN 1995-1-1 cl. 6.1.5"))
+        blocks.append(S("Vederlag — EN 1995-1-1 pkt. 6.1.5"))
 
         if bearing_force is None:
             bearing_force = V_Ed
-            blocks.append(N("No bearing force provided — using support reaction from V_Ed."))
+            blocks.append(N("Ingen vederlagskraft angivet — der regnes med reaktionen V_Ed."))
         else:
-            blocks.append(N(f"Bearing force provided: F_c,90,Ed = {bearing_force}."))
+            blocks.append(N(f"Angivet vederlagskraft: F_c,90,Ed = {_u(bearing_force, kN, 'kN')}."))
 
         if k_c_90 is None:
             if load_near_support:
                 k_c_90 = 1.0
-                blocks.append(N("Load close to support → k_c,90 = 1.0."))
+                blocks.append(N("Lasten ligger tæt ved understøtningen → k_c,90 = 1,0."))
             else:
                 k_c_90 = 1.75 if support_material == "glulam" else 1.5
+                _mat_dk = {"glulam": "limtræ", "solid_timber": "konstruktionstræ"}.get(
+                    support_material, support_material)
                 blocks.append(N(
-                    f"Load away from support; k_c,90 = {k_c_90} for {support_material}."
+                    f"Lasten ligger væk fra understøtningen; k_c,90 = {k_c_90} for {_mat_dk}."
                 ))
         else:
-            blocks.append(N(f"Bearing factor provided: k_c,90 = {k_c_90}."))
+            blocks.append(N(f"Angivet vederlagsfaktor: k_c,90 = {k_c_90}."))
 
         if end_distance is None:
             add_length = 30 * mm
-            blocks.append(N("No end distance provided — A_ef = b·(l + 30 mm)."))
+            blocks.append(N("Ingen endeafstand angivet — A_ef = b·(l + 30 mm)."))
         elif end_distance >= 30 * mm:
             add_length = 60 * mm
-            blocks.append(N("End distance ≥ 30 mm → A_ef = b·(l + 60 mm)."))
+            blocks.append(N("Endeafstand ≥ 30 mm → A_ef = b·(l + 60 mm)."))
         else:
             add_length = 30 * mm
-            blocks.append(N("End distance < 30 mm → A_ef = b·(l + 30 mm)."))
+            blocks.append(N("Endeafstand < 30 mm → A_ef = b·(l + 30 mm)."))
 
         f_c_90_d   = kmod * f_c_90_k / gamma_M
         A_ef       = b * (support_length + add_length)
@@ -283,14 +333,14 @@ def timber_beam(
         F_c_90_Rd  = k_c_90 * f_c_90_d * A_ef
 
         blocks.extend([
-            CALC_ROW("l_sup",       "support length",                   str(support_length)),
-            CALC_ROW("f_c,90,d",    "= k_mod·f_c,90,k / γ_M",          str(f_c_90_d)),
-            CALC_ROW("A_ef",        "= b·(l_sup + add)",                str(A_ef)),
-            CALC_ROW("σ_c,90,d",    "= F / A_ef",                       str(sigma_c_90_d)),
-            CALC_ROW("F_c,90,Rd",   "= k_c,90·f_c,90,d·A_ef",          str(F_c_90_Rd)),
+            CALC_ROW("l_sup",       "vederlagslængde",                 _u(support_length, mm, "mm", 0)),
+            CALC_ROW("f_c,90,d",    "= k_mod·f_c,90,k / γ_M",           _u(f_c_90_d, MPa, "MPa")),
+            CALC_ROW("A_ef",        "= b·(l_sup + tillæg)",             f"{float(A_ef / _cm**2):.1f} cm²"),
+            CALC_ROW("σ_c,90,d",    "= F / A_ef",                       _u(sigma_c_90_d, MPa, "MPa")),
+            CALC_ROW("F_c,90,Rd",   "= k_c,90·f_c,90,d·A_ef",           _u(F_c_90_Rd, kN, "kN")),
         ])
-        blocks.append(cc.check("Bearing: σ_c,90,d / (k_c,90·f_c,90,d)", sigma_c_90_d, k_c_90 * f_c_90_d))
-        blocks.append(cc.check("Bearing: F_c,90,Ed / F_c,90,Rd", bearing_force, F_c_90_Rd))
+        blocks.append(cc.check("Vederlag: σ_c,90,d / (k_c,90·f_c,90,d)", sigma_c_90_d, k_c_90 * f_c_90_d))
+        blocks.append(cc.check("Vederlag: F_c,90,Ed / F_c,90,Rd", bearing_force, F_c_90_Rd))
 
     # ── Fire design ───────────────────────────────────────────────────────────
     if fire_design:
@@ -320,17 +370,19 @@ def timber_beam(
             raise ValueError("fire_design requires M_Ed and V_Ed, or eta_fi to derive them.")
 
         blocks.append(T(
-            f"Reduced cross-section method. Fire duration = {t_fire}. "
-            f"Exposed sides = {exposed_sides}, bottom = {exposed_bottom}, top = {exposed_top}."
+            f"Reduceret tværsnitsmetode. Brandvarighed = {t_fire}. "
+            f"Brandpåvirkede sider = {exposed_sides}, underside = "
+            f"{JA if exposed_bottom else NEJ}, overside = "
+            f"{JA if exposed_top else NEJ}."
         ))
         blocks.extend([
-            CALC_ROW("t_fi",      "fire duration",          str(t_fire)),
-            CALC_ROW("β_n",       "notional charring rate", str(beta_n)),
-            CALC_ROW("d_0",       "zero-strength layer",    str(d0)),
-            CALC_ROW("M_Ed,fi",   "fire design moment",     str(M_Ed_fi)),
-            CALC_ROW("V_Ed,fi",   "fire design shear",      str(V_Ed_fi)),
-            CALC_ROW("k_mod,fi",  "k_mod in fire",          f"{kmod_fi:.2f}"),
-            CALC_ROW("γ_M,fi",    "partial factor in fire", f"{gamma_M_fi:.2f}"),
+            CALC_ROW("t_fi",      "brandvarighed",                          str(t_fire)),
+            CALC_ROW("β_n",       "nominel indbrændingshastighed",          _u(beta_n, mm, "mm", 2)),
+            CALC_ROW("d_0",       "nulstyrkelag",                           _u(d0, mm, "mm", 0)),
+            CALC_ROW("M_Ed,fi",   "dimensionsgivende moment ved brand",     _u(M_Ed_fi, kN * m, "kNm")),
+            CALC_ROW("V_Ed,fi",   "dimensionsgivende forskydning ved brand", _u(V_Ed_fi, kN, "kN")),
+            CALC_ROW("k_mod,fi",  "k_mod ved brand",                        f"{kmod_fi:.2f}"),
+            CALC_ROW("γ_M,fi",    "partialkoefficient ved brand",           f"{gamma_M_fi:.2f}"),
         ])
 
         d_char_n = beta_n * t_fire + k0 * d0
@@ -344,21 +396,21 @@ def timber_beam(
         tau_d_fi     = (1.5 * V_Ed_fi) / A_fi
 
         blocks.extend([
-            CALC_ROW("d_char,n",   "= β_n·t_fi + k_0·d_0",         str(d_char_n)),
-            CALC_ROW("b_fi",       "= b − sides·d_char,n",           str(b_fi)),
-            CALC_ROW("h_fi",       "= h − (bot+top)·d_char,n",       str(h_fi)),
-            CALC_ROW("A_fi",       "= b_fi·h_fi",                    str(A_fi)),
-            CALC_ROW("W_y,fi",     "= b_fi·h_fi²/6",                 str(W_y_fi)),
-            CALC_ROW("f_m,d,fi",   "= k_mod,fi·f_m,k / γ_M,fi",     str(f_md_fi)),
-            CALC_ROW("f_v,d,fi",   "= k_mod,fi·f_v,k / γ_M,fi",     str(f_vd_fi)),
-            CALC_ROW("σ_m,d,fi",   "= M_Ed,fi / W_y,fi",             str(sigma_m_d_fi)),
-            CALC_ROW("τ_d,fi",     "= 1.5·V_Ed,fi / A_fi",           str(tau_d_fi)),
+            CALC_ROW("d_char,n",   "= β_n·t_fi + k_0·d_0",           _u(d_char_n, mm, "mm", 1)),
+            CALC_ROW("b_fi",       "= b − sider·d_char,n",           _u(b_fi, mm, "mm", 1)),
+            CALC_ROW("h_fi",       "= h − (under+over)·d_char,n",    _u(h_fi, mm, "mm", 1)),
+            CALC_ROW("A_fi",       "= b_fi·h_fi",                     f"{float(A_fi / _cm**2):.1f} cm²"),
+            CALC_ROW("W_y,fi",     "= b_fi·h_fi²/6",                  f"{float(W_y_fi / _cm**3):.1f} cm³"),
+            CALC_ROW("f_m,d,fi",   "= k_mod,fi·f_m,k / γ_M,fi",      _u(f_md_fi, MPa, "MPa")),
+            CALC_ROW("f_v,d,fi",   "= k_mod,fi·f_v,k / γ_M,fi",      _u(f_vd_fi, MPa, "MPa")),
+            CALC_ROW("σ_m,d,fi",   "= M_Ed,fi / W_y,fi",              _u(sigma_m_d_fi, MPa, "MPa")),
+            CALC_ROW("τ_d,fi",     "= 1.5·V_Ed,fi / A_fi",            _u(tau_d_fi, MPa, "MPa")),
         ])
 
         blocks.append(N(
-            "Reduced cross-section method (EN 1995-1-2 cl. 4.2.2). "
-            "Fire actions from the fire load combination. "
-            "If eta_fi is supplied, ambient actions are scaled to derive M_Ed,fi and V_Ed,fi."
+            "Reduceret tværsnitsmetode (EN 1995-1-2 pkt. 4.2.2). Snitkræfterne "
+            "stammer fra brandlastkombinationen. Er η_fi angivet, skaleres "
+            "snitkræfterne ved normal temperatur til M_Ed,fi og V_Ed,fi."
         ))
         blocks.append(cc.check("Brand bøjning: σ_m,d,fi / f_m,d,fi", sigma_m_d_fi, f_md_fi))
         blocks.append(cc.check("Brand forskydning: τ_d,fi / f_v,d,fi", tau_d_fi, f_vd_fi))

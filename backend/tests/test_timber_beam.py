@@ -59,7 +59,7 @@ def test_timber_beam_A_bending_fails(client):
     η = 1.315 (confirmed by PDF output and hand calc).
     """
     blocks = client.post("/calc/timber-beam", json=BASE_A).json()
-    chk = find_check(blocks, "bending") or find_check(blocks, "flexure")
+    chk = find_check(blocks, "bøjning")
     assert chk is not None, "No bending check found"
     assert not passes(chk), "90×220 C24 at 4m should FAIL bending"
     assert_eta(chk, 1.315)
@@ -68,7 +68,7 @@ def test_timber_beam_A_bending_fails(client):
 def test_timber_beam_A_shear_passes(client):
     """Shear is well within limits: η = 0.434."""
     blocks = client.post("/calc/timber-beam", json=BASE_A).json()
-    chk = find_check(blocks, "shear")
+    chk = find_check(blocks, "forskydning")
     assert chk is not None, "No shear check found"
     assert passes(chk), f"Shear check failed: {chk['value']}"
     assert_eta(chk, 0.434)
@@ -79,7 +79,7 @@ def test_timber_beam_B_bending_passes(client):
     blocks = client.post("/calc/timber-beam", json={
         **BASE_A, "b_mm": 150.0, "h_mm": 300.0,
     }).json()
-    chk = find_check(blocks, "bending") or find_check(blocks, "flexure")
+    chk = find_check(blocks, "bøjning")
     assert chk is not None
     assert passes(chk), f"150×300 should PASS bending: {chk['value']}"
     assert_eta(chk, 0.424)
@@ -92,8 +92,8 @@ def test_timber_beam_service_class_reduces_capacity(client):
     """
     blocks_sc1 = client.post("/calc/timber-beam", json={**BASE_A, "h_mm": 300.0, "b_mm": 150.0, "service_class": 1}).json()
     blocks_sc3 = client.post("/calc/timber-beam", json={**BASE_A, "h_mm": 300.0, "b_mm": 150.0, "service_class": 3}).json()
-    chk1 = find_check(blocks_sc1, "bending") or find_check(blocks_sc1, "flexure")
-    chk3 = find_check(blocks_sc3, "bending") or find_check(blocks_sc3, "flexure")
+    chk1 = find_check(blocks_sc1, "bøjning")
+    chk3 = find_check(blocks_sc3, "bøjning")
     if chk1 and chk3:
         from conftest import eta
         assert eta(chk3) > eta(chk1), \
@@ -104,8 +104,8 @@ def test_timber_beam_c30_stronger_than_c24(client):
     """C30 has higher f_m,k (30 MPa) → lower utilisation than C24 (24 MPa)."""
     blocks_c24 = client.post("/calc/timber-beam", json=BASE_A).json()
     blocks_c30 = client.post("/calc/timber-beam", json={**BASE_A, "timber_grade": "C30"}).json()
-    chk24 = find_check(blocks_c24, "bending") or find_check(blocks_c24, "flexure")
-    chk30 = find_check(blocks_c30, "bending") or find_check(blocks_c30, "flexure")
+    chk24 = find_check(blocks_c24, "bøjning")
+    chk30 = find_check(blocks_c30, "bøjning")
     if chk24 and chk30:
         from conftest import eta
         assert eta(chk30) < eta(chk24), \
