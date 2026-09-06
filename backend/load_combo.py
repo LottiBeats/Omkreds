@@ -88,14 +88,15 @@ def load_combos(
     method:            str  = '6.10ab',
     G_fav:             bool = False,
     consequence_class: str  = 'CC2',
-    A_d:               float = 0.0,
+    A_d:               float = 0.0,   # valgfri ulykkeslast; 0 ved brand
     accidental_type:   str  = 'none',   # 'none' | 'fire' | 'other'
 ) -> tuple:
     """
     Returns (blocks, exports).
 
     exports contains:
-      E_d_uls, E_d_acc (if A_d > 0), E_d_sls_char, E_d_sls_freq, E_d_sls_qp,
+      E_d_uls, E_d_acc (naar accidental_type != 'none'), E_d_sls_char,
+      E_d_sls_freq, E_d_sls_qp,
       governing_duration, unit, K_FI, consequence_class
     """
     blocks = []
@@ -206,13 +207,31 @@ def load_combos(
     else:
         blocks.append(N("Dimensionsgivende: 6.10a (kun permanent last) → lastvarighed: permanent"))
 
-    # ── ALS — Accidental ──────────────────────────────────────────────────────
+    # ── Ulykke — 6.11a/b ──────────────────────────────────────────────────────
+    # En ulykke er en DIMENSIONERINGSSITUATION, ikke en last man paasaetter.
+    # Kombinationen blev foer kun regnet naar A_d > 0, altsaa kun hvis man
+    # tastede en ulykkeslast ind. Det betoed at brandkombinationen aldrig kunne
+    # komme ud af blokken: ved brand ER A_d nul -- branden virker gennem det
+    # reducerede tvaersnit, ikke som en ydre kraft. Man skulle taste et falsk
+    # tal for at faa den rigtige kombination.
+    #
+    # Nu afgoer situationen om der regnes, og A_d er en valgfri ekstra last i
+    # den -- stoed, eksplosion -- som oftest er nul.
     E_d_acc = None
-    if A_d > 0 and accidental_type in ('fire', 'other'):
+    if accidental_type in ('fire', 'other'):
         blocks.append(S(
-            f"ALS — Accidental  (Table A1.3 DK NA)  |  "
-            f"{'Fire (6.11a/b)' if accidental_type == 'fire' else 'Other accident (6.11a/b)'}"
+            "Ulykke — brand (formel 6.11a/b, DK NA tabel A1.3)"
+            if accidental_type == 'fire' else
+            "Ulykke — øvrig (formel 6.11a/b, DK NA tabel A1.3)"
         ))
+        if A_d == 0:
+            blocks.append(N(
+                "A_d = 0. Ulykken er en dimensioneringssituation, ikke en last: "
+                "lasterne er de samme, men de kombineres med ψ i stedet for "
+                "partialkoefficienter, og γ_M sættes til 1,0 (anneks F, 10). "
+                "Ved brand er A_d altid nul — branden virker gennem det "
+                "reducerede tværsnit. Er der derimod tale om stød eller "
+                "eksplosion, angives den kraft som A_d."))
         # γ = 1.0 for all loads in ALS
         # Fire:  leading uses ψ₁,  others use ψ₂
         # Other: all variable uses ψ₂
@@ -221,19 +240,19 @@ def load_combos(
 
         if n == 0:
             Ed_als = G_k + A_d
-            als_vals.append(("ALS", "G_k + A_d", Ed_als, -1))
+            als_vals.append(("Ulykke", "G_k + A_d", Ed_als, -1))
         elif accidental_type == 'fire':
             for lead in range(n):
                 others = [i for i in range(n) if i != lead]
                 Ed_als = (G_k + A_d
                           + psi1[lead] * Q[lead]
                           + sum(psi2[i] * Q[i] for i in others))
-                als_vals.append((f"ALS fire — {loads[lead]['label']}",
-                                 f"G + A_d + ψ_1·Q_1 + Σ ψ_2·…", Ed_als, lead))
+                als_vals.append((f"Brand — {loads[lead]['label']}",
+                                 "G_k + A_d + ψ₁·Q₁ + Σ ψ₂·Qᵢ", Ed_als, lead))
         else:  # other accident
             Ed_als = G_k + A_d + sum(psi2[i] * Q[i] for i in range(n))
-            als_vals.append(("ALS other",
-                             "G + A_d + Σ ψ₂·Q_i", Ed_als, -1))
+            als_vals.append(("Øvrig ulykke",
+                             "G_k + A_d + Σ ψ₂·Qᵢ", Ed_als, -1))
 
         for name, formula, val, _ in als_vals:
             blocks.append(CALC_ROW(name, formula, f"{val:.3f}  {unit}"))
@@ -242,10 +261,12 @@ def load_combos(
         E_d_acc  = gov_als[2]
         blocks.append(CALC_ROW("E_d,ALS", "= største af ovenstående", f"{E_d_acc:.3f}  {unit}"))
         blocks.append(N(
-            f"ALS partial factors: γ_G = γ_Q = 1.0.  "
-            f"{'Fire: ψ_1 for leading Q, ψ_2 for others.' if accidental_type == 'fire' else 'Other accident: ψ_2 for all variable actions.'}"
-            f"  (DS/EN 1990 DK NA Table A1.3)"
-        ))
+            "Alle laster regnes med 1,0 — tabel A1.3 har hverken "
+            "partialkoefficienter eller K_FI. "
+            + ("Brand: ψ₁ på den dominerende variable last, ψ₂ på de øvrige."
+               if accidental_type == 'fire' else
+               "Øvrig ulykke: ψ₂ på alle variable laster.")
+            + " Materialesiden følger med: γ_M = 1,0 (anneks F, punkt 10)."))
 
     # ── SLS ───────────────────────────────────────────────────────────────────
     blocks.append(S("Anvendelsesgrænsetilstand"))
@@ -304,6 +325,11 @@ def load_combos(
         })
 
     exports = {
+        # Saa en eftervisningsblok kan saette gamma_M = 1,0 af sig selv i
+        # stedet for at brugeren skal vide det.
+        'accidental_type':    accidental_type,
+        'design_situation':   'accidental' if accidental_type in ('fire', 'other')
+                              else 'persistent',
         'E_d_uls':            round(E_d_uls,       4),
         'E_d_sls_char':       round(E_d_sls_char,  4),
         'E_d_sls_freq':       round(E_d_sls_freq,  4),

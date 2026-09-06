@@ -143,26 +143,30 @@ export default function LoadComboBlock({ block, onChange }) {
                     textTransform: 'uppercase', marginTop: 8 }}>
         Ulykke og brand — DK NA tabel A1.3 (6.11a/b)
       </div>
-      <Field label="Type ulykke">
+      <Field label="Dimensioneringssituation">
         <select style={s.input} value={d.accidental_type ?? 'none'}
           onChange={e => update({ accidental_type: e.target.value })}>
-          <option value="none">Ingen — kun ULS og SLS</option>
-          <option value="fire">Brand — ψ₁ på den dominerende last</option>
-          <option value="other">Anden ulykke — ψ₂ på alle</option>
+          <option value="none">Vedvarende / midlertidig — kun 6.10a/b og SLS</option>
+          <option value="fire">Brand — 6.11a/b med ψ₁ på den dominerende last</option>
+          <option value="other">Øvrig ulykke — 6.11a/b med ψ₂ på alle</option>
         </select>
       </Field>
       {(d.accidental_type ?? 'none') !== 'none' && (
-        <Field label="A_d — ulykkeslast" hint={`${d.unit ?? 'kN/m'} · 0 ved brand`}>
+        <Field label="A_d — stød eller eksplosion"
+               hint={`${d.unit ?? 'kN/m'} · valgfri · 0 ved brand`}>
           <NumericInput style={s.input} value={d.A_d ?? 0.0}
             onChange={v => update({ A_d: v })} />
         </Field>
       )}
-      {(d.accidental_type ?? 'none') === 'fire' && (
+      {(d.accidental_type ?? 'none') !== 'none' && (
         <div style={{ gridColumn: '1/-1', fontSize: 11, color: '#6b7280',
                       lineHeight: 1.5 }}>
-          Ved brand er A_d som regel 0: branden virker gennem det reducerede
-          tværsnit, ikke som en ydre last. Sæt brandvarigheden i den blok, der
-          skal eftervises, så regnes indbrændingen der.
+          En ulykke er en <em>situation</em>, ikke en last. Lasterne er de
+          samme; de kombineres bare med ψ i stedet for partialkoefficienter, og
+          γ_M sættes til 1,0 (DK NA anneks F, punkt 10). A_d er en valgfri
+          ekstra kraft — stød eller eksplosion — og er nul ved brand, hvor
+          branden virker gennem det reducerede tværsnit. Sæt brandvarigheden i
+          den blok, der skal eftervises.
         </div>
       )}
 

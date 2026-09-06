@@ -97,6 +97,11 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         support_length_mm: d.support_length_mm ?? null,
 
         // Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2
+        // Kommer lasten fra en ulykkeskombination, foelger materialesiden med
+        // af sig selv -- brugeren skal ikke vide at gamma_M ogsaa aendrer sig.
+        design_situation: (source === 'combo' && exports_?.design_situation)
+                          || d.design_situation || 'persistent',
+
         check_deflection: d.check_deflection ?? true,
         psi_1:            d.psi_1            ?? 0.2,
         psi_2:            d.psi_2            ?? 0.0,

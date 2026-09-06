@@ -209,3 +209,52 @@ def test_the_column_follows_the_same_rule(client):
         assert r.status_code == 200, r.text
         return _row(r.json(), "f_c,0,d")
     assert f_c0d("accidental") == pytest.approx(f_c0d("persistent") * 1.25, rel=0.005)
+
+
+def test_fire_is_computed_without_an_accidental_load(client):
+    """
+    En ulykke er en dimensioneringssituation, ikke en last. Kombinationen blev
+    før kun regnet når A_d > 0 — så brandkombinationen kunne aldrig komme ud af
+    blokken, for ved brand ER A_d nul: branden virker gennem det reducerede
+    tværsnit, ikke som en ydre kraft. Man skulle taste et falsk tal.
+
+    G + ψ₁·Q₁ + Σψ₂·Qᵢ = 5 + 0,3·4 + 0·2 = 6,20
+    """
+    r = client.post("/calc/load-combo", json={
+        "label": "LC", "unit": "kN/m", "G_k": 5.0,
+        "loads": [{"label": "Nytte", "Q_k": 4.0, "category": "A"},
+                  {"label": "Sne", "Q_k": 2.0, "category": "S"}],
+        "method": "6.10ab", "consequence_class": "CC2",
+        "A_d": 0.0, "accidental_type": "fire"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body[0]["exports"]["E_d_acc"] == pytest.approx(6.20, abs=1e-6)
+
+
+def test_the_situation_is_exported_so_gamma_m_can_follow(client):
+    """
+    Materialesiden skal ikke afhænge af, at brugeren husker det. Kombinationen
+    fortæller hvilken situation den er, og eftervisningsblokken sætter γ_M = 1,0.
+    """
+    def eksport(typ):
+        r = client.post("/calc/load-combo", json={
+            "label": "LC", "unit": "kN/m", "G_k": 5.0,
+            "loads": [{"label": "Nytte", "Q_k": 4.0, "category": "A"}],
+            "method": "6.10ab", "consequence_class": "CC2",
+            "accidental_type": typ})
+        return r.json()[0]["exports"]["design_situation"]
+    assert eksport("none")  == "persistent"
+    assert eksport("fire")  == "accidental"
+    assert eksport("other") == "accidental"
+
+
+def test_an_accidental_load_still_adds_to_the_combination(client):
+    """A_d er ikke fjernet — stød og eksplosion er stadig laster i situationen."""
+    def E_acc(A_d):
+        r = client.post("/calc/load-combo", json={
+            "label": "LC", "unit": "kN/m", "G_k": 5.0,
+            "loads": [{"label": "Nytte", "Q_k": 4.0, "category": "A"}],
+            "method": "6.10ab", "consequence_class": "CC2",
+            "A_d": A_d, "accidental_type": "other"})
+        return r.json()[0]["exports"]["E_d_acc"]
+    assert E_acc(10.0) == pytest.approx(E_acc(0.0) + 10.0, abs=1e-6)
