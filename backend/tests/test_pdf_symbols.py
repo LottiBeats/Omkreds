@@ -66,7 +66,25 @@ def test_maths_symbols_are_wrapped():
 def test_subscripts_still_work_around_greek():
     """The font run must not swallow the subscript rule that follows it."""
     assert "<sub>M</sub>" in _fmt("γ_M")
-    assert "<sub>rel</sub>" in _fmt("λ_rel,m")
+    assert "<sub>rel,m</sub>" in _fmt("λ_rel,m")
+
+
+@pytest.mark.parametrize("source,expected", [
+    # A Eurocode subscript is full of commas and all of it belongs below the
+    # line. _(\w+) stopped at the first one: "E_0,05" printed as E<sub>0</sub>,05.
+    ("E_0,05",   "E<sub>0,05</sub>"),
+    ("f_c,90,k", "f<sub>c,90,k</sub>"),
+    ("f_m,d",    "f<sub>m,d</sub>"),
+    ("M_Ed",     "M<sub>Ed</sub>"),
+    # ... but a comma that ends a clause is not part of the subscript.
+    ("ved f_c,90,d, som", "ved f<sub>c,90,d</sub>, som"),
+    # ... and the rule still stops at operators and brackets, which is what
+    # the narrower pattern was introduced to fix in the first place.
+    ("n_y-0.2",  "n<sub>y</sub>-0.2"),
+    ("N_Ed/A",   "N<sub>Ed</sub>/A"),
+])
+def test_subscript_spans_the_whole_index(source, expected):
+    assert _fmt(source) == expected
 
 
 # ── What actually lands on the page ──────────────────────────────────────────

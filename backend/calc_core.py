@@ -370,6 +370,23 @@ def _unicode_run(mo) -> str:
     return ''.join(_GREEK_NAMES.get(c) or _MATHS_NAMES.get(c, c) for c in run)
 
 
+# Everything after "_" up to an operator, a bracket or a space — commas
+# included, because "0,05" and "c,90,k" are one subscript each.
+_SUB_RE = re.compile(r'_([^\s_^<>=+\-−*/×÷·()\[\]{}]+)')
+_SUB_TRAILING = ',.;:'
+
+
+def _subscript(mo) -> str:
+    body = mo.group(1)
+    tail = ''
+    while body and body[-1] in _SUB_TRAILING:
+        tail = body[-1] + tail
+        body = body[:-1]
+    if not body:
+        return mo.group(0)
+    return f'<sub>{body}</sub>{tail}'
+
+
 def _fmt(s):
     """
     Sanitise text for ReportLab Paragraph rendering with Helvetica.
@@ -380,12 +397,17 @@ def _fmt(s):
       3. Strip Unicode combining characters (e.g. combining overbar in λ̄ → λ)
       4. Convert _sub / ^sup ASCII notation to ReportLab XML tags
 
-    Subscript rule: only \w+ (letters, digits, underscore) is subscripted.
-    The old pattern _([^ <]+) was too greedy — it subscripted everything after
-    the underscore including operators and parentheses, e.g.
+    Subscript rule: everything up to an operator, a bracket or a space.
+
+    _([^ <]+) was too greedy — it swallowed operators and parentheses:
       C_my·(1+(λ_y-0.2)·n_y)  →  C<sub>my·(1+(λ_y-0.2)·n_y)</sub>   ← WRONG
-    With _(\w+):
-      C_my·(1+(λ_y-0.2)·n_y)  →  C<sub>my</sub>·(1+(λ<sub>y</sub>-0.2)·n<sub>y</sub>)  ← correct
+    _(\w+) then went too far the other way, because it stops at the comma,
+    and a Eurocode subscript is full of them:
+      E_0,05  →  E<sub>0</sub>,05      f_c,90,k  →  f<sub>c</sub>,90,k   ← WRONG
+    The whole of "0,05" and "c,90,k" belongs below the line. The character
+    class is the one CalcResultView.jsx already uses on screen, so the PDF and
+    the editor agree; a trailing comma or full stop is pushed back out, so
+    "ved f_c,90,d, som ..." does not sink the comma that ends the clause.
     """
     s = str(s)
 
@@ -410,7 +432,7 @@ def _fmt(s):
     # ── _sub and ^sup ASCII notation ───────────────────────────────────────
     s = re.sub(r'\^\(([^)]+)\)', r'<super>\1</super>', s)
     s = re.sub(r'\^(\w+)',       r'<super>\1</super>', s)
-    s = re.sub(r'_(\w+)',        r'<sub>\1</sub>', s)
+    s = _SUB_RE.sub(_subscript, s)
     return s
 
 

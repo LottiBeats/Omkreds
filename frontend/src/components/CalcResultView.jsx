@@ -323,9 +323,18 @@ function fmtCalcText(text) {
   // Exclusion set: whitespace, operators (+, -, −(U+2212), *, /, ×, ÷, ·),
   // comparison signs, brackets, and the control chars _^<>= so that
   // e.g. λ̄_y−0.2 only subscripts "y", stopping at the Unicode minus sign.
+  // A comma inside a subscript belongs to it (E_0,05 · f_c,90,k), but one that
+  // ends a clause does not — "ved f_c,90,d, som ..." must not sink it. Same
+  // rule as calc_core._subscript on the PDF side, so screen and print agree.
+  const script = (tag) => (_m, body) => {
+    const trail = body.match(/[,.;:]+$/)
+    if (!trail) return `<${tag}>${body}</${tag}>`
+    const stem = body.slice(0, -trail[0].length)
+    return stem ? `<${tag}>${stem}</${tag}>${trail[0]}` : _m
+  }
   let s = text
-    .replace(/_([^\s_^<>=+\-−*/×÷·()[\]{}]+)/g, '<sub>$1</sub>')
-    .replace(/\^([^\s_^<>=+\-−*/×÷·()[\]{}]+)/g, '<sup>$1</sup>')
+    .replace(/_([^\s_^<>=+\-−*/×÷·()[\]{}]+)/g, script('sub'))
+    .replace(/\^([^\s_^<>=+\-−*/×÷·()[\]{}]+)/g, script('sup'))
   // 2. Extract leading "= " so it stays outside the fraction
   const eqMatch = s.match(/^(=\s*)/)
   const prefix = eqMatch ? eqMatch[1] : ''
