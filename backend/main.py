@@ -235,11 +235,34 @@ def _visible_template(template_id: str, user: dict) -> dict:
 
 # ── Health check (unprotected) ────────────────────────────────────────────────
 
+def _running_commit() -> str:
+    """
+    The commit this process is actually running.
+
+    "Deployed successfully" is otherwise only the deploy script's opinion: the
+    server has sat two commits behind before without anything saying so. With
+    this, a deploy can be verified from outside rather than trusted.
+    """
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).resolve().parent, capture_output=True,
+            text=True, timeout=5, check=True,
+        )
+        return out.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+_RUNNING_COMMIT = _running_commit()
+
+
 @app.get("/", tags=["Health"])
 @app.get("/health", tags=["Health"])
 def health():
-    """Quick check that the server is running."""
-    return {"status": "ok", "version": "2.0"}
+    """Quick check that the server is running, and on what."""
+    return {"status": "ok", "version": "2.0", "commit": _RUNNING_COMMIT}
 
 
 # ── Protected router ──────────────────────────────────────────────────────────
