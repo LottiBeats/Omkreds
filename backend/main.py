@@ -1268,9 +1268,11 @@ def calc_timber_beam(data: TimberBeamInput):
         if data.M_Ed_kNm_direct is not None and data.V_Ed_kN_direct is not None:
             # FEM results: use actual M_Ed and V_Ed from FEM analysis.
             # load_duration is set manually by the user (FEM has no duration info).
+            # source og case_name kom begge fra fem_label, saa prosaen skrev
+            # kilden to gange: "hentet fra FEM: Rammeberegning: Rammeberegning."
             kwargs_tb["beam_results"] = {
-                "source":    f"FEM: {data.fem_label or 'Beam FEM Analysis'}",
-                "case_name": data.fem_label or "FEM",
+                "source":    data.fem_label or "rammeberegningen",
+                "case_name": "",
                 "M_Ed":      data.M_Ed_kNm_direct * kN * m,
                 "V_Ed":      data.V_Ed_kN_direct  * kN,
             }
