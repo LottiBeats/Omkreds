@@ -242,15 +242,44 @@ def _running_commit() -> str:
     "Deployed successfully" is otherwise only the deploy script's opinion: the
     server has sat two commits behind before without anything saying so. With
     this, a deploy can be verified from outside rather than trusted.
+
+    Read out of .git by hand rather than by calling git. The first version
+    shelled out to `git rev-parse`, which reported "unknown" in production for
+    a reason that has nothing to do with the commit: deploy.sh pulls as root,
+    the service runs as structcalc, and git refuses to touch a repository owned
+    by someone else ("dubious ownership"). A check that fails for reasons of
+    its own is worse than no check, because it looks like a failed deploy.
     """
-    import subprocess
     try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=Path(__file__).resolve().parent, capture_output=True,
-            text=True, timeout=5, check=True,
-        )
-        return out.stdout.strip() or "unknown"
+        git_dir = Path(__file__).resolve().parent.parent / ".git"
+
+        # A worktree's .git is a file pointing at the real directory.
+        if git_dir.is_file():
+            pointer = git_dir.read_text(encoding="utf-8").strip()
+            if not pointer.startswith("gitdir:"):
+                return "unknown"
+            git_dir = Path(pointer.split(":", 1)[1].strip())
+
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+        if not head.startswith("ref: "):
+            return head[:7] or "unknown"     # detached HEAD
+
+        ref = head[5:].strip()
+        loose = git_dir / ref
+        if loose.exists():
+            return loose.read_text(encoding="utf-8").strip()[:7] or "unknown"
+
+        # Packed refs: "<sha> refs/heads/master" per line, ^ lines are peeled
+        # tags and # lines are the header.
+        packed = git_dir / "packed-refs"
+        if packed.exists():
+            for line in packed.read_text(encoding="utf-8").splitlines():
+                if not line or line[0] in "#^":
+                    continue
+                parts = line.split(None, 1)
+                if len(parts) == 2 and parts[1].strip() == ref:
+                    return parts[0][:7]
+        return "unknown"
     except Exception:
         return "unknown"
 
