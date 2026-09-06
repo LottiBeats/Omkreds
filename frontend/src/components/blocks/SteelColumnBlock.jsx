@@ -29,7 +29,7 @@ const CM_OPTIONS = [
   { value: 0.4,  label: 'C = 0.40 — antisymmetric (ψ=−1)' },
 ]
 
-export default function SteelColumnBlock({ block, onChange }) {
+export default function SteelColumnBlock({ block, onChange, blocks = [] }) {
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
@@ -42,7 +42,12 @@ export default function SteelColumnBlock({ block, onChange }) {
     setRunning(true)
     setError(null)
     try {
-      const blocks = await calcSteelColumn({
+      const comboBlocks = blocks.filter(b => b.type === 'load_combo')
+      const selCombo = comboBlocks.find(b => b.data.label === d.combo_label)
+      const exports_ = selCombo?.data?._exports
+      const fromCombo = d.load_source === 'combo' && exports_
+
+      const result = await calcSteelColumn({
         label:          d.label          ?? 'SC1',
         section:        d.section        ?? 'HEB200',
         grade:          d.grade          ?? 'S355',
@@ -51,14 +56,19 @@ export default function SteelColumnBlock({ block, onChange }) {
         k_y:            d.k_y            ?? 1.0,
         k_z:            d.k_z            ?? 1.0,
         gamma_M0:       d.gamma_M0       ?? 1.0,
-        gamma_M1:       d.gamma_M1       ?? 1.0,
+        gamma_M1:       d.gamma_M1       ?? 1.2,
+        ...(fromCombo ? {
+          N_Ed_kN:     exports_.E_d_uls,
+          combo_label: selCombo.data.label,
+          combo_unit:  exports_.unit,
+        } : {}),
         M_y_Ed_kNm:     d.M_y_Ed_kNm    ?? 0.0,
         M_z_Ed_kNm:     d.M_z_Ed_kNm    ?? 0.0,
         C_my:           d.C_my           ?? 1.0,
         C_mz:           d.C_mz           ?? 1.0,
         ltb_restrained: d.ltb_restrained ?? true,
       })
-      update({ _result: blocks })
+      update({ _result: result })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -76,17 +86,45 @@ export default function SteelColumnBlock({ block, onChange }) {
       error={error}
       result={d._result ?? null}
     >
-      <Field label="Label">
+      {/* Lastkilde. Staal har ingen k_mod, saa den dimensionsgivende
+          kombination er ganske enkelt den stoerste E_d — det er E_d_uls.
+          Enheden sendes med, saa backend kan afvise en linjelast brugt som
+          normalkraft. */}
+      <Field label="Lastkilde" style={{ gridColumn: '1/-1' }}>
+        <select style={s.input} value={d.load_source ?? 'direct'}
+          onChange={e => update({ load_source: e.target.value })}>
+          <option value="direct">Indtastet N_Ed</option>
+          <option value="combo">Fra lastkombination</option>
+        </select>
+      </Field>
+      {(d.load_source ?? 'direct') === 'combo' && (
+        <Field label="Lastkombinationsblok" style={{ gridColumn: '1/-1' }}>
+          <select style={s.input} value={d.combo_label ?? ''}
+            onChange={e => update({ combo_label: e.target.value })}>
+            <option value="">— vælg —</option>
+            {blocks.filter(b => b.type === 'load_combo').map(b => (
+              <option key={b.id} value={b.data.label}>
+                {b.data.label}
+                {b.data._exports
+                  ? `  (E_d = ${b.data._exports.E_d_uls} ${b.data._exports.unit})`
+                  : '  (ikke kørt)'}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      <Field label="Betegnelse">
         <input style={s.input} value={d.label ?? 'SC1'}
           onChange={e => update({ label: e.target.value })} />
       </Field>
-      <Field label="Section">
+      <Field label="Profil">
         <select style={s.input} value={d.section ?? 'HEB200'}
           onChange={e => update({ section: e.target.value })}>
           {SECTIONS.map(sec => <option key={sec}>{sec}</option>)}
         </select>
       </Field>
-      <Field label="Grade">
+      <Field label="Stålkvalitet">
         <select style={s.input} value={d.grade ?? 'S355'}
           onChange={e => update({ grade: e.target.value })}>
           {GRADES.map(g => <option key={g}>{g}</option>)}

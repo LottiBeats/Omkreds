@@ -869,6 +869,35 @@ def _timber_governing_combo(uls_combinations: list, service_class: int) -> dict:
 # Endpointet blev bare aldrig skrevet, så /calc/steel-column svarede 404 og
 # blokkens fem tests har været røde siden de blev skrevet.
 
+_FORCE_UNITS = {"kn", "n", "mn"}
+
+
+def _require_force_unit(unit: str | None, combo_label: str | None) -> None:
+    """
+    En soejles normalkraft er en kraft. En lastkombinationsblok regner i den
+    enhed, brugeren har sat den til, og den er som standard kN/m.
+
+    Uden denne kontrol blev en linjelast paa 8,0 kN/m til en normalkraft paa
+    8,0 kN uden en lyd, og resten af eftervisningen saa fuldstaendig rigtig ud.
+    Det er ikke noget, der kan ses i dokumentet bagefter -- kun paa at tallet
+    er for lille.
+
+    En kombination i kN/m er ikke forkert; den er bare ikke en soejlelast. Skal
+    den bruges, ganges den med sit lastareal foerst, og det er en beslutning,
+    ingeniooren skal tage.
+    """
+    if combo_label is None:
+        return
+    u = (unit or "").strip().lower()
+    if u not in _FORCE_UNITS:
+        raise HTTPException(
+            status_code=422,
+            detail=(f"Lastkombinationen {combo_label!r} regner i {unit or 'ukendt enhed'}, "
+                    f"og en normalkraft skal vaere en kraft (kN, N, MN). "
+                    f"Gang lasten med sit lastareal og indtast resultatet, "
+                    f"eller saet kombinationsblokkens enhed til kN."))
+
+
 class SteelColumnInput(BaseModel):
     label:      str   = "SC1"
     section:    str   = "HEB200"
@@ -887,6 +916,12 @@ class SteelColumnInput(BaseModel):
     ltb_restrained: bool = True
     L_LTB_m:    float | None = None
     C_1:        float = 1.0
+    # Lastkilde: naar N_Ed kommer fra en lastkombinationsblok, foelger dens
+    # navn og enhed med, saa enheden kan kontrolleres og kilden staa i
+    # dokumentet. Staal har ingen k_mod, saa den dimensionsgivende kombination
+    # er ganske enkelt den stoerste E_d -- det er allerede E_d_uls.
+    combo_label: str | None = None
+    combo_unit:  str | None = None
 
 
 @protected.post("/calc/steel-column", tags=["Calculations"])
@@ -911,6 +946,8 @@ def calc_steel_column(data: SteelColumnInput):
             raise HTTPException(status_code=422,
                                 detail=f"Ukendt stålkvalitet: {data.grade!r}")
         f_y = nominal - 20.0 if p["tf_mm"] > 40.0 else nominal
+
+        _require_force_unit(data.combo_unit, data.combo_label)
 
         blocks = steel_column_check(
             label      = data.label,
@@ -940,6 +977,11 @@ def calc_steel_column(data: SteelColumnInput):
 
         # Hvor tallene kommer fra hører med i dokumentet. A og I_z står ikke i
         # kataloget og er udledt; det skal læseren kunne se.
+        if data.combo_label:
+            blocks.append(NOTE(
+                f"N_Ed er hentet fra lastkombinationen {data.combo_label!r} "
+                f"({data.combo_unit})."))
+
         blocks.append(NOTE(
             f"Tværsnitsdata for {p['designation']} ({p.get('source', 'katalog')}): "
             f"h, b, t_w, t_f, W_pl,y og I_y er katalogværdier. "
@@ -1275,6 +1317,7 @@ class TimberColumnInput(BaseModel):
     h_mm:                    float = 120.0
     # Load source: when combo is used, frontend overrides N_Ed_kN directly
     combo_label:      str  | None = None  # label of the source combo block (for display)
+    combo_unit:       str  | None = None  # dens enhed — kontrolleres, se _require_force_unit
     uls_combinations: list | None = None  # all ULS combos [{name,E_d,duration}] — used to find
                                           # timber-governing combo via max(E_d/k_mod)
     timber_grade:            str   = "C24"
@@ -1290,6 +1333,8 @@ def calc_timber_column(data: TimberColumnInput):
     """EN 1995-1-1 timber column check (axial + bending + buckling)."""
     try:
         from timber_column import timber_column_bending_and_axial
+
+        _require_force_unit(data.combo_unit, data.combo_label)
 
         # If all ULS combinations are available, find the one that truly governs
         # timber design: max(E_d / k_mod) — not simply max(E_d).

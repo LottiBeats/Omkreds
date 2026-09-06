@@ -72,6 +72,8 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
       if (source === 'combo' && exports_) {
         payload.N_Ed_kN          = exports_.E_d_uls
         payload.combo_label      = selCombo?.data?.label ?? ''
+        // Enheden med, saa backend kan afvise en linjelast brugt som normalkraft.
+        payload.combo_unit       = exports_.unit ?? null
         // Pass all ULS combinations so the backend can find the truly governing one
         // via max(E_d / k_mod) — not just max(E_d). EN 1995-1-1 §2.2.3.
         payload.uls_combinations = exports_.uls_combinations ?? null
