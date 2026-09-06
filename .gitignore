@@ -26,6 +26,9 @@ Thumbs.db
 
 # Deploy-nøgler hører aldrig i repoet — den private del ligger i ~/.ssh
 # og i GitHub Secrets, ikke her.
+# Kun de private halvdele. Wildcards her tog også .pub-filerne, og
+# deploy/omkreds_deploy.pub SKAL med — den er offentlig, og serveren henter
+# den derfra. git add sprang den bare over uden at sige noget.
 *.pem
-id_ed25519*
-omkreds_deploy*
+id_ed25519
+omkreds_deploy
