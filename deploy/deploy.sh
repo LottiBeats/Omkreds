@@ -28,9 +28,37 @@ cd "$APP_DIR/app/frontend"
 # finde ud af, at de to ting var den samme.
 #
 # rm -rf gor det, npm ikke kan, og saa har npm ci ingenting at rydde.
-rm -rf node_modules
-npm ci
-npm run build
+install_deps() {
+    rm -rf node_modules
+    npm ci
+}
+
+install_deps
+
+# npm paa denne maskine fejler paa mindst tre maader: ENOTEMPTY naar den selv
+# skal rydde node_modules, en enkelt gang ENOENT, og en gang et traea hvor
+# npm ci returnerede 0 men vite manglede -- saa faldt byggeriet med
+# "vite: not found". Ingen af dem kan fremprovokeres, og alle er vaek ved
+# naeste forsoeg.
+#
+# rm -rf fjerner den foerste. De to andre kan kun opdages bagefter, saa der
+# tjekkes at vaerktoejet faktisk er der, og der proeves én gang til. Fejler
+# det ogsaa anden gang, stopper deployet.
+if [ ! -x node_modules/.bin/vite ]; then
+    echo "==> npm ci gav et ufuldstaendigt traea (vite mangler). Proever igen." >&2
+    install_deps
+fi
+[ -x node_modules/.bin/vite ] || {
+    echo "vite mangler stadig efter to forsoeg -- stopper." >&2
+    exit 1
+}
+
+if ! npm run build; then
+    echo "==> Byg fejlede. Rydder node_modules og proever en gang til." >&2
+    install_deps
+    npm run build
+    echo "==> Andet forsoeg lykkedes. Det er npm der driller, ikke koden." >&2
+fi
 
 chown -R "$APP_USER:$APP_USER" dist
 
