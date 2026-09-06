@@ -2637,6 +2637,19 @@ def calc_snow_load(data: SnowLoadInput):
 class RoofLayerIn(BaseModel):
     description: str   = ""
     g_kNm2:      float = 0.0   # load per m² of roof surface [kN/m²]
+    # Et lag kan i stedet angives som materiale + tykkelse; så slås densiteten
+    # op i EN 1991-1-1 bilag A og g = γ·t regnes ud. density_kNm3 tilsidesætter
+    # opslaget for de rækker, hvor standarden giver et interval.
+    material:     str | None   = None
+    thickness_mm: float | None = None
+    density_kNm3: float | None = None
+
+
+@protected.get("/materials/densities", tags=["Calculations"])
+def list_material_densities():
+    """Nominelle densiteter fra DS/EN 1991-1-1 bilag A, grupperet pr. tabel."""
+    from material_densities import groups
+    return {"groups": groups()}
 
 class RoofDeadLoadInput(BaseModel):
     title:      str              = "Roof Dead Load"
@@ -2658,7 +2671,28 @@ def calc_roof_dead_load(data: RoofDeadLoadInput):
         cos_a = math.cos(math.radians(data.alpha_deg))
 
         # ── Cladding layers ───────────────────────────────────────────────────
-        g_tag = sum(l.g_kNm2 for l in data.layers)
+        # Et lag er enten en fladelast direkte, eller et materiale og en
+        # tykkelse. Det sidste er det, der kan efterprøves af en læser: en
+        # densitet med en tabelhenvisning slår et tal uden ophav.
+        from material_densities import area_load_kNm2
+
+        resolved = []
+        for l in data.layers:
+            if l.material and l.thickness_mm is not None:
+                r = area_load_kNm2(l.material, l.thickness_mm, l.density_kNm3)
+                resolved.append({
+                    "description": l.description or r["material"],
+                    "g_kNm2": r["g_kNm2"],
+                    "detail": (f"{r['thickness_mm']:.0f} mm · "
+                               f"{r['density_kNm3']:.1f} kN/m³"
+                               + ("" if r["density_was_overridden"]
+                                  else f"  ({r['table']})")),
+                })
+            else:
+                resolved.append({"description": l.description,
+                                 "g_kNm2": l.g_kNm2, "detail": ""})
+
+        g_tag = sum(r["g_kNm2"] for r in resolved)
         # Convert kN/m² (roof surface) → kN/m (horizontal projection, per rafter)
         g_cladding = g_tag / cos_a * data.a_m
 
@@ -2677,9 +2711,10 @@ def calc_roof_dead_load(data: RoofDeadLoadInput):
 
         # Layer table
         blocks.append(S("Tagopbygning — karakteristiske værdier per m² tagflade"))
-        headers = ["Lag", "g_k  [kN/m²]"]
-        rows    = [[l.description, f"{l.g_kNm2:.3f}"] for l in data.layers]
-        rows.append(["Total  g_tag", f"{g_tag:.3f}"])
+        headers = ["Lag", "Densitet og tykkelse", "g_k  [kN/m²]"]
+        rows    = [[r["description"], r["detail"], f"{r['g_kNm2']:.3f}"]
+                   for r in resolved]
+        rows.append(["Total  g_tag", "", f"{g_tag:.3f}"])
         blocks.append(TBL(headers, rows))
 
         # Conversion to horizontal projection, per rafter

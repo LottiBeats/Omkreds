@@ -4,8 +4,8 @@
  * Computes g_k per rafter [kN/m, horizontal projection] from a user-defined
  * layer table (kN/m² on roof surface) plus rafter self-weight.
  */
-import React, { useState } from 'react'
-import { calcRoofDeadLoad } from '../../api/client.js'
+import React, { useState, useEffect } from 'react'
+import { calcRoofDeadLoad, fetchMaterialDensities } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
@@ -25,6 +25,46 @@ export default function RoofDeadLoadBlock({ block, onChange }) {
   const [error,   setError]   = useState(null)
 
   const layers = d.layers ?? DEFAULT_LAYERS
+
+  // EN 1991-1-1 bilag A. Hentes én gang; feltet virker uden den, man skriver
+  // bare fladelasten selv som før.
+  const [materials, setMaterials] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetchMaterialDensities()
+      .then(res => { if (alive) setMaterials(res.groups) })
+      .catch(() => { if (alive) setMaterials([]) })
+    return () => { alive = false }
+  }, [])
+
+  const byKey = {}
+  for (const g of materials ?? []) for (const m of g.materials) byKey[m.key] = m
+
+  // g = γ·t. Regnes også her, så totalen nedenfor er rigtig før man kører.
+  function layerLoad(l) {
+    if (l.material && l.thickness_mm != null) {
+      const m = byKey[l.material]
+      const gamma = l.density_kNm3 ?? m?.default_kNm3
+      if (gamma != null) return gamma * l.thickness_mm / 1000
+    }
+    return l.g_kNm2 ?? 0
+  }
+
+  function pickMaterial(i, key) {
+    if (!key) {
+      // Tilbage til direkte indtastning — behold det tal, der stod.
+      updateLayer(i, { material: null, thickness_mm: null, density_kNm3: null,
+                       g_kNm2: layerLoad(layers[i]) })
+      return
+    }
+    const m = byKey[key]
+    updateLayer(i, {
+      material: key,
+      thickness_mm: layers[i].thickness_mm ?? 0,
+      density_kNm3: null,
+      description: layers[i].description || m?.name || '',
+    })
+  }
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
@@ -65,7 +105,7 @@ export default function RoofDeadLoadBlock({ block, onChange }) {
     }
   }
 
-  const g_tag = layers.reduce((s, l) => s + (l.g_kNm2 ?? 0), 0)
+  const g_tag = layers.reduce((s, l) => s + layerLoad(l), 0)
 
   return (
     <CalcBlockShell
@@ -95,40 +135,78 @@ export default function RoofDeadLoadBlock({ block, onChange }) {
       {/* Layer table */}
       <div style={s.tableWrap}>
         <div style={s.tableHeader}>
-          <span style={{ flex: 3 }}>Layer description</span>
+          <span style={{ flex: 3 }}>Lag</span>
+          <span style={{ flex: 3 }}>Materiale (EN 1991-1-1 bilag A)</span>
+          <span style={{ width: 74, textAlign: 'right' }}>t (mm)</span>
           <span style={{ flex: 1, textAlign: 'right' }}>g_k (kN/m²)</span>
           <span style={{ width: 28 }} />
         </div>
-        {layers.map((l, i) => (
-          <div key={i} style={s.tableRow}>
-            <input
-              style={{ ...s.input, flex: 3 }}
-              value={l.description}
-              placeholder="e.g. Tegltagsten"
-              onChange={e => updateLayer(i, { description: e.target.value })}
-            />
-            <NumericInput
-              style={{ ...s.input, flex: 1, textAlign: 'right' }}
-              value={l.g_kNm2}
-              onChange={v => updateLayer(i, { g_kNm2: v })}
-            />
-            <button style={s.removeBtn} onClick={() => removeLayer(i)}>✕</button>
-          </div>
-        ))}
+        {layers.map((l, i) => {
+          const chosen = l.material ? byKey[l.material] : null
+          return (
+            <div key={i} style={s.tableRow}>
+              <input
+                style={{ ...s.input, flex: 3 }}
+                value={l.description}
+                placeholder="fx tagsten"
+                onChange={e => updateLayer(i, { description: e.target.value })}
+              />
+              <select
+                style={{ ...s.input, flex: 3 }}
+                value={l.material ?? ''}
+                onChange={e => pickMaterial(i, e.target.value)}
+              >
+                <option value="">— indtast last selv —</option>
+                {(materials ?? []).map(g => (
+                  <optgroup key={g.table} label={`Tabel ${g.table} — ${g.title}`}>
+                    {g.materials.map(m => (
+                      <option key={m.key} value={m.key}>
+                        {m.name} · {m.is_range
+                          ? `${m.min_kNm3}–${m.max_kNm3}`
+                          : m.default_kNm3} kN/m³
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <NumericInput
+                style={{ ...s.input, width: 74, textAlign: 'right',
+                         opacity: chosen ? 1 : 0.4 }}
+                value={l.thickness_mm ?? 0}
+                disabled={!chosen}
+                onChange={v => updateLayer(i, { thickness_mm: v })}
+              />
+              {chosen ? (
+                <span style={{ flex: 1, textAlign: 'right', fontSize: 12,
+                               color: '#374151', alignSelf: 'center' }}
+                      title={`${l.density_kNm3 ?? chosen.default_kNm3} kN/m³ · ${chosen.table}`}>
+                  {layerLoad(l).toFixed(3)}
+                </span>
+              ) : (
+                <NumericInput
+                  style={{ ...s.input, flex: 1, textAlign: 'right' }}
+                  value={l.g_kNm2}
+                  onChange={v => updateLayer(i, { g_kNm2: v })}
+                />
+              )}
+              <button style={s.removeBtn} onClick={() => removeLayer(i)}>✕</button>
+            </div>
+          )
+        })}
         <div style={s.tableRow}>
           <span style={{ flex: 3, fontWeight: 600, fontSize: 12, color: '#374151' }}>
-            Total g_tag
+            I alt  g_tag
           </span>
           <span style={{ flex: 1, textAlign: 'right', fontWeight: 600, fontSize: 12 }}>
             {g_tag.toFixed(3)} kN/m²
           </span>
           <span style={{ width: 28 }} />
         </div>
-        <button style={s.addBtn} onClick={addLayer}>+ Add layer</button>
+        <button style={s.addBtn} onClick={addLayer}>+ Tilføj lag</button>
       </div>
 
       {/* Rafter self-weight */}
-      <div style={s.sectionLabel}>Rafter self-weight</div>
+      <div style={s.sectionLabel}>Spærets egenlast</div>
       <div style={s.row}>
         <Field label="b (mm)">
           <NumericInput style={s.input} value={d.b_mm ?? 45.0}

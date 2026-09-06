@@ -374,6 +374,19 @@ export const calcSnowLoad = (data) =>
 export const calcRoofDeadLoad = (data) =>
   request('POST', '/calc/roof-dead-load', data)
 
+// Nominelle densiteter fra EN 1991-1-1 bilag A. Listen ændrer sig kun når
+// standarden gør, så den hentes én gang og genbruges.
+let _densityCache = null
+export const fetchMaterialDensities = async () => {
+  if (!_densityCache) _densityCache = request('GET', '/materials/densities')
+  try {
+    return await _densityCache
+  } catch (err) {
+    _densityCache = null      // en fejlet hentning må ikke cementeres
+    throw err
+  }
+}
+
 /**
  * Run an EN 1997-1 Annex D spread footing bearing capacity check.
  */
