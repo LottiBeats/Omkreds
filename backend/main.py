@@ -44,6 +44,12 @@ from auth import get_current_user
 # ── forallpeople — inject SI units into this module's globals ─────────────────
 # All calc modules (steel.py, concrete.py, etc.) do the same at their top level.
 # After this call, kN, m, mm, MPa, N etc. are available as globals here too.
+# The names Python ships with, captured BEFORE forallpeople runs. si.environment()
+# injects its unit objects (kN, m, MPa, ...) into builtins, so once it has run
+# there is no way to tell a unit from a builtin by inspecting builtins alone.
+# _UNIT_NS below used to try exactly that, and came back with no units at all.
+_STD_BUILTIN_NAMES = frozenset(dir(_builtins))
+
 import forallpeople as si
 si.environment("structural", top_level=True)
 
@@ -61,16 +67,13 @@ _SAFE_BUILTINS = {"abs", "min", "max", "round", "pow", "sum",
                   "bool", "int", "float", "len"}
 
 _UNIT_NS: dict = {
-    # forallpeople unit objects injected by si.environment() —
-    # these are NOT standard builtins so they won't appear in a fresh
-    # Python session; si.environment() creates them at import time.
+    # The whitelisted safe builtins, plus every name si.environment() added to
+    # builtins — that is, the forallpeople unit objects. The membership test is
+    # against the snapshot taken before that call; testing against builtins as
+    # it stands now excludes the units, because they are in there too.
     k: v for k, v in vars(_builtins).items()
     if not k.startswith("_")
-    and k in _SAFE_BUILTINS  # only whitelisted safe builtins …
-    or (
-        not k.startswith("_")  # … plus all forallpeople units
-        and k not in dir(__import__("builtins"))  # (not a standard builtin)
-    )
+    and (k in _SAFE_BUILTINS or k not in _STD_BUILTIN_NAMES)
 }
 _UNIT_NS.update({
     "pi": math.pi, "e": math.e,

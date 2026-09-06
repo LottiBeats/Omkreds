@@ -141,6 +141,15 @@ def CALC_ROW(name, formula="", result="", label=""):
 
 class CheckContext:
     def check(self, label, demand, capacity):
+        # A demand and a capacity that are not the same kind of quantity cannot
+        # be compared, and the failure is not loud: forallpeople divides them
+        # happily, so 4 m / 10 kN comes back as 0.0004, rounds to 0.000, and
+        # the check reports OK on nonsense. Caught here rather than in each
+        # caller, because every module in the app funnels through this one.
+        if getattr(demand, "dimensions", None) != getattr(capacity, "dimensions", None):
+            return {"type": "check", "label": label, "passes": False,
+                    "value": "kan ikke sammenlignes — forskellige enheder",
+                    "ratio": 999}
         try:
             ratio = float(demand / capacity)
         except Exception:
