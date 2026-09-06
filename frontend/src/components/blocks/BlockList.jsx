@@ -317,6 +317,12 @@ const mkBadge = ok => ({
 //                          those figures with it, so it has to be re-run.
 const CALC_REVISION = {
   general_frame_fem: 3,
+  // 2: den lukkede form regnede 1,35·g + 1,5·q med den varighed brugeren
+  // valgte. 1,35 findes ikke i DK NA, og én fast kombination kan ikke være
+  // dimensionsgivende for både et let og et tungt tag — k_mod afgør hvilken
+  // (EN 1995-1-1 §2.2.3). Gemte resultater er regnet på det gamle og skal
+  // markeres forældet, selv om inddata ikke har flyttet sig.
+  timber_beam: 2,
 }
 
 function calcRevision(type) {

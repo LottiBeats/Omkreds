@@ -63,6 +63,7 @@ def timber_beam(
     service_class=1,
     load_duration="medium",
     gamma_M=1.3,
+    K_FI=1.0,
     beam_results=None,
     fire_design=None,
     l_ef=None,
@@ -106,6 +107,10 @@ def timber_beam(
     if support_material == "solid_timber" and grade_data is not None:
         support_material = grade_data["support_material"]
 
+    # k_mod kan ikke vælges her endnu. I den lukkede form afhænger den af
+    # hvilken lastkombination der viser sig at være dimensionsgivende, og det
+    # afgøres længere nede. Med importerede snitkræfter er varigheden allerede
+    # bestemt af den kombination, de kom fra.
     kmod = KMOD.get((service_class, load_duration), 0.80)
     cc = CheckContext()
     blocks = []
@@ -125,8 +130,9 @@ def timber_beam(
     if beam_results is None:
         blocks.append(T(
             f"Simpelt understøttet bjælke i {_materiale}, spænd {_u(span, m, 'm')}. "
-            f"Anvendelsesklasse {service_class}, lastvarighed: {_varighed}. "
-            f"k_mod = {kmod:.2f}, γ_M = {gamma_M:.2f}."
+            f"Anvendelsesklasse {service_class}. Lasterne kombineres efter "
+            f"DS/EN 1990 DK NA tabel A1.2(B+C), og den dimensionsgivende "
+            f"kombination findes på w/k_mod — se nedenfor. γ_M = {gamma_M:.2f}."
         ))
     else:
         # The statisk system and the loads belong to the analysis the actions
@@ -156,23 +162,73 @@ def timber_beam(
         CALC_ROW("E_0,05",   "5 %-fraktil elasticitetsmodul",   _u(E_0_05, MPa, "MPa", 0)),
         CALC_ROW("G_0,05",   "5 %-fraktil forskydningsmodul",   _u(G_0_05, MPa, "MPa", 0)),
         CALC_ROW("f_c,90,k", "kar. trykstyrke vinkelret på fibrene", _u(f_c_90_k, MPa, "MPa", 1)),
-        CALC_ROW("k_mod",    "modifikationsfaktor (tab. 3.1)",  f"{kmod:.2f}"),
         CALC_ROW("γ_M",      "partialkoefficient",              f"{gamma_M:.2f}"),
     ]
+    if beam_results is not None:
+        # Med importerede snitkraefter er varigheden bestemt af den kombination,
+        # de kom fra, saa k_mod er kendt her.
+        _params.insert(-1, CALC_ROW("k_mod", "modifikationsfaktor (tab. 3.1)",
+                                    f"{kmod:.2f}"))
     blocks.extend(_params)
 
     # ── Loading ───────────────────────────────────────────────────────────────
     if beam_results is None:
         blocks.append(S("Laster — brudgrænsetilstand"))
 
-        w_Ed = 1.35 * g_k + 1.5 * q_k
+        # DS/EN 1990 DK NA:2019 tabel A1.2(B+C):
+        #   6.10a  1,2·K_FI·G_k                    (kun permanent last)
+        #   6.10b  1,0·K_FI·G_k + 1,5·K_FI·Q_k
+        #
+        # Og så EN 1995-1-1 §2.2.3: for træ er den dimensionsgivende
+        # kombination IKKE den med den største E_d, men den med det største
+        # E_d/k_mod. 6.10a har kun permanent last og dermed k_mod = 0,60, hvor
+        # 6.10b typisk er kortvarig med k_mod = 0,90. På et tungt tag med let
+        # sne vinder 6.10a, selv om lasten er mindre.
+        #
+        # Modulet regnede før 1,35·g + 1,5·q med den varighed brugeren valgte:
+        # en faktor der ikke findes i DK NA, ganget på én kombination der ikke
+        # nødvendigvis er den dimensionsgivende. På 2,5 / 0,2 kN/m gav det et
+        # snit 18 % under det rigtige — i den forkerte retning.
+        _kandidater = [
+            ("6.10a", "= 1,2·K_FI·g_k", 1.2 * K_FI * g_k, "permanent"),
+            ("6.10b", "= 1,0·K_FI·g_k + 1,5·K_FI·q_k",
+             1.0 * K_FI * g_k + 1.5 * K_FI * q_k, load_duration),
+        ]
+
+        _vurderet = []
+        for navn, formel, w, dur in _kandidater:
+            k = KMOD.get((service_class, dur), 0.80)
+            _vurderet.append({"navn": navn, "formel": formel, "w": w,
+                              "dur": dur, "kmod": k, "styrende": w / k})
+
+        _gov = max(_vurderet, key=lambda c: c["styrende"])
+        w_Ed = _gov["w"]
+        kmod = _gov["kmod"]
+        load_duration = _gov["dur"]
+
         M_Ed = (w_Ed * span**2) / 8
         V_Ed = (w_Ed * span) / 2
 
+        # k_mod og w/k_mod hører til i formelkolonnen: resultatkolonnen er
+        # 36 mm bred, og tre tal i den vælter ned over tre linjer.
+        for c in _vurderet:
+            blocks.append(CALC_ROW(
+                c["navn"],
+                f"{c['formel']}   →   k_mod = {c['kmod']:.2f}"
+                f"   →   w/k_mod = {float(c['w'] / (kN / m)) / c['kmod']:.3f}",
+                _u(c["w"], kN / m, "kN/m")))
+
+        blocks.append(N(
+            f"Dimensionsgivende: {_gov['navn']} med lastvarighed "
+            f"{VARIGHED_DK.get(_gov['dur'], _gov['dur'])} og k_mod = "
+            f"{_gov['kmod']:.2f}. For træ afgøres det af det største w/k_mod "
+            "og ikke af den største last (EN 1995-1-1 §2.2.3), fordi k_mod "
+            "følger lastens varighed."))
+
         blocks.extend([
-            CALC_ROW("w_Ed", "= 1.35·g_k + 1.5·q_k", _u(w_Ed, kN / m, "kN/m")),
-            CALC_ROW("M_Ed", "= w_Ed·L²/8",             _u(M_Ed, kN * m, "kNm")),
-            CALC_ROW("V_Ed", "= w_Ed·L/2",              _u(V_Ed, kN, "kN")),
+            CALC_ROW("w_Ed", f"= {_gov['navn']}",      _u(w_Ed, kN / m, "kN/m")),
+            CALC_ROW("M_Ed", "= w_Ed·L²/8",            _u(M_Ed, kN * m, "kNm")),
+            CALC_ROW("V_Ed", "= w_Ed·L/2",             _u(V_Ed, kN, "kN")),
         ])
         blocks.append(N("Snitkræfter beregnet i lukket form: simpelt understøttet "
                         "bjælke med jævnt fordelt last over hele spændet."))

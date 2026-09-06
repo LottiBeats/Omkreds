@@ -1098,6 +1098,10 @@ class TimberBeamInput(BaseModel):
     service_class:  int   = 1
     load_duration:  str   = "medium"
     gamma_M:        float = 1.3
+    # K_FI efter DS/EN 1990 DK NA: CC1 = 0,9 · CC2 = 1,0 · CC3 = 1,1.
+    # Bruges kun i den lukkede form; kommer lasten fra en lastkombinationsblok
+    # eller en rammeberegning, er den allerede ganget på der.
+    K_FI:           float = 1.0
     compression_edge_restrained:     bool = True
     torsional_restraint_at_supports: bool = True
     support_length_mm: float | None = None   # bearing length at each support → enables ⊥ grain check
@@ -1122,6 +1126,7 @@ def calc_timber_beam(data: TimberBeamInput):
             service_class = data.service_class,
             load_duration = data.load_duration,
             gamma_M       = data.gamma_M,
+            K_FI          = data.K_FI,
             compression_edge_restrained     = data.compression_edge_restrained,
             torsional_restraint_at_supports = data.torsional_restraint_at_supports,
         )
