@@ -179,7 +179,7 @@ const BLOCK_TYPES = [
                C_e: 1.0, C_t: 1.0, roof_span_m: 8.0, eave_height_m: 3.0,
                gamma_s: 1.5, a_m: 0.0, _result: null } },
   { type: 'roof_dead_load', label: 'Tagets egenlast', icon: 'RDL', color: '#0369a1', component: RoofDeadLoadBlock,
-    default: { title: 'Roof Dead Load', label: 'G1', alpha_deg: 30.0, a_m: 1.0,
+    default: { title: 'Tagets egenlast', label: 'G1', alpha_deg: 30.0, a_m: 1.0,
                layers: [
                  { description: 'Tegltagsten (monier)',        g_kNm2: 0.55 },
                  { description: 'Lægte + kontralägte (38 mm)', g_kNm2: 0.04 },

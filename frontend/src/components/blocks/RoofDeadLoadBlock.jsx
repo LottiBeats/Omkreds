@@ -150,9 +150,11 @@ export default function RoofDeadLoadBlock({ block, onChange }) {
                 />
                 <button style={s.removeBtn} onClick={() => removeLayer(i)}>✕</button>
               </div>
-              <div style={s.tableRow}>
+              {/* Materialevaelgeren faar sin egen linje. Ved siden af to
+                  talfelter i et 320 px panel bliver den klemt til en pil
+                  uden tekst, og saa kan man ikke se hvad man har valgt. */}
               <select
-                style={{ ...s.input, flex: 1, minWidth: 0 }}
+                style={{ ...s.input, width: '100%', marginBottom: 4 }}
                 value={l.material ?? ''}
                 onChange={e => pickMaterial(i, e.target.value)}
               >
@@ -169,34 +171,37 @@ export default function RoofDeadLoadBlock({ block, onChange }) {
                   </optgroup>
                 ))}
               </select>
+              <div style={s.tableRow}>
+                {chosen ? (
+                  <>
+                    <span style={s.enhed}>t</span>
+                    <NumericInput
+                      style={{ ...s.input, width: 62, textAlign: 'right' }}
+                      value={l.thickness_mm ?? 0}
+                      onChange={v => updateLayer(i, { thickness_mm: v })}
+                    />
+                    <span style={s.enhed}>mm</span>
+                    <span style={s.lig}>=</span>
+                    <span style={s.derived}>{layerLoad(l).toFixed(3)}</span>
+                    <span style={s.enhed}>kN/m²</span>
+                  </>
+                ) : (
+                  <>
+                    <span style={s.enhed}>g_k</span>
+                    <NumericInput
+                      style={{ ...s.input, width: 78, textAlign: 'right' }}
+                      value={l.g_kNm2}
+                      onChange={v => updateLayer(i, { g_kNm2: v })}
+                    />
+                    <span style={s.enhed}>kN/m² af tagfladen</span>
+                  </>
+                )}
+              </div>
               {chosen && (
-                <NumericInput
-                  style={{ ...s.input, width: 68, textAlign: 'right' }}
-                  value={l.thickness_mm ?? 0}
-                  title="Tykkelse i mm"
-                  onChange={v => updateLayer(i, { thickness_mm: v })}
-                />
+                <div style={s.layerHint}>
+                  {`${l.density_kNm3 ?? chosen.default_kNm3} kN/m³ · ${chosen.table}`}
+                </div>
               )}
-              {chosen ? (
-                <span style={s.derived}
-                      title={`${l.density_kNm3 ?? chosen.default_kNm3} kN/m³ · ${chosen.table}`}>
-                  {layerLoad(l).toFixed(3)}
-                </span>
-              ) : (
-                <NumericInput
-                  style={{ ...s.input, width: 88, textAlign: 'right' }}
-                  value={l.g_kNm2}
-                  title="kN/m² af tagfladen"
-                  onChange={v => updateLayer(i, { g_kNm2: v })}
-                />
-              )}
-              </div>
-              <div style={s.layerHint}>
-                {chosen
-                  ? `${l.thickness_mm ?? 0} mm · ${l.density_kNm3 ?? chosen.default_kNm3} kN/m³ `
-                    + `= ${layerLoad(l).toFixed(3)} kN/m²  (${chosen.table})`
-                  : 'kN/m² af tagfladen — indtastet direkte'}
-              </div>
             </div>
           )
         })}
@@ -249,10 +254,11 @@ const s = {
     border: '1px solid #eee', borderRadius: 4, padding: '6px 6px 4px',
     marginBottom: 6,
   },
-  layerHint: { fontSize: 10, color: '#6b7280', paddingTop: 2 },
+  layerHint: { fontSize: 10, color: '#6b7280', paddingTop: 3 },
+  enhed: { fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap' },
+  lig:   { fontSize: 12, color: '#9ca3af', padding: '0 2px' },
   derived: {
-    width: 88, textAlign: 'right', fontSize: 12, color: '#374151',
-    alignSelf: 'center', fontWeight: 600,
+    fontSize: 12, color: '#111827', fontWeight: 600, whiteSpace: 'nowrap',
   },
   removeBtn: {
     width: 22, height: 22, border: 'none', background: 'none',
