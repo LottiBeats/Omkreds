@@ -23,3 +23,9 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Deploy-nøgler hører aldrig i repoet — den private del ligger i ~/.ssh
+# og i GitHub Secrets, ikke her.
+*.pem
+id_ed25519*
+omkreds_deploy*

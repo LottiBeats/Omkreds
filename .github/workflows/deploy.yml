@@ -1,0 +1,58 @@
+name: Deploy til omkreds.dk
+
+# Alt der lander på master bliver deployet. Det er hele pointen: så er det
+# ligegyldigt, om ændringen kom fra laptoppen, fra en cloud-session eller fra
+# telefonen — der er kun én vej til serveren, og den er den samme hver gang.
+#
+# Arbejd på en gren og merge til master, når det skal ud. Et push til master
+# er en beslutning om at gå live.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:      # knappen i Actions-fanen, til at deploye på ny
+
+# To deploys ad gangen ville trække i det samme arbejdsbibliotek på serveren.
+concurrency:
+  group: deploy-omkreds
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Hent repoet (for known_hosts)
+        uses: actions/checkout@v4
+
+      - name: Klargør SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Værtsnøglen ligger i repoet og er offentlig. Den er der, så runneren
+          # ikke bare accepterer hvad som helst, der svarer på adressen.
+          cp deploy/known_hosts ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Kør deploy.sh på serveren
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=15 root@omkreds.dk \
+              'bash /opt/structuralcalc/app/deploy/deploy.sh'
+
+      - name: Verificér at serveren faktisk kører denne commit
+        run: |
+          # deploy.sh's sidste linje beviser kun, at scriptet nåede til ende.
+          # Serveren har stået to commits bagud før, uden at noget sagde det.
+          want="${GITHUB_SHA:0:7}"
+          for _ in $(seq 1 20); do
+            got=$(curl -fsS --max-time 10 https://omkreds.dk/api/health 2>/dev/null \
+                  | sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            if [ "$got" = "$want" ]; then
+              echo "OK — omkreds.dk kører $got"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::/api/health melder '${got:-intet svar}', ikke $want" >&2
+          exit 1

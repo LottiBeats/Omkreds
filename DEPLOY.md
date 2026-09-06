@@ -216,3 +216,37 @@ Before going live:
 - Copy the production publishable key into `frontend/.env.local`.
 - Confirm `CLERK_ISSUER` matches the production Clerk issuer.
 - Re-run `deploy.sh` after changing frontend environment variables.
+
+## Automatisk deploy (GitHub Actions)
+
+Alt der lander på `master` bliver deployet af `.github/workflows/deploy.yml`.
+Workflowet SSH'er ind, kører `deploy/deploy.sh` og spørger bagefter
+`/api/health`, om serveren rent faktisk kører den commit — deploy-scriptets
+sidste linje beviser kun, at scriptet nåede til ende.
+
+Det gør det ligegyldigt, hvor ændringen kom fra: laptop, cloud-session eller
+telefon. Arbejd på en gren; et push til `master` er beslutningen om at gå live.
+
+### Opsætning (én gang)
+
+1. **Læg deploy-nøglen på serveren.** Den offentlige del af nøgleparret i
+   `~/.ssh/omkreds_deploy`:
+
+   ```bash
+   mkdir -p ~/.ssh && chmod 700 ~/.ssh
+   echo '<indhold af ~/.ssh/omkreds_deploy.pub>' >> ~/.ssh/authorized_keys
+   chmod 600 ~/.ssh/authorized_keys
+   ```
+
+2. **Læg den private del i GitHub Secrets** som `DEPLOY_SSH_KEY`
+   (Settings → Secrets and variables → Actions → New repository secret).
+   Hele filen `~/.ssh/omkreds_deploy`, inklusive BEGIN- og END-linjerne.
+
+Værtsnøglen ligger i `deploy/known_hosts` og er committet med vilje — den er
+offentlig, og den er der, så runneren ikke accepterer hvad som helst, der
+svarer på adressen.
+
+### Manuelt deploy
+
+`bash deploy/push.sh` gør det samme fra en maskine med SSH-adgang, og
+`bash deploy/push.sh status` svarer på "hvad kører serveren lige nu".
