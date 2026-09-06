@@ -230,3 +230,40 @@ test asserts the direction, not just the magnitude.
 `Iz_cm4 = Iy_cm4` — correct for the 2D frame, where "Iz" means the inertia about
 the axis being bent about, i.e. the strong one. Reused as a weak axis it would
 make a column four to six times too stiff.
+
+---
+
+## DS/EN 1990 DK NA:2024 — verified against the standard itself
+
+Niels supplied the PDF (Social- og Boligstyrelsen, rev. 2023-12-19). `load_combo.py`
+cited the 2019 edition; the values are unchanged, but they are now checked rather
+than assumed. `tests/test_dk_na_2024.py` transcribes:
+
+**Table A1.1 — ψ-factors.** All eleven rows (ψ₀, ψ₁, ψ₂), plus the three
+context-dependent splits: snow takes ψ₀ = 0.6 when category E or temperature
+leads, **0 when wind leads**, 0.3 otherwise; wind takes 0.6 when category E
+leads, 0.3 otherwise.
+
+**Table A1.2(B+C) — partial factors.** Combination 1 (6.10a) 1.2·K_FI
+unfavourable / 1.0 favourable, variables 0. Combination 2 (6.10b) 1.0·K_FI /
+0.9, leading variable 1.5·K_FI, others 1.5·ψ₀·K_FI. Identical to the 2019 table.
+
+**Table A1.3 — accidental and seismic.**
+
+| | Permanent | Accidental action | Leading variable | Others |
+|---|---|---|---|---|
+| Fire (6.11a/b) | G_kj,sup / G_kj,inf | A_d | **ψ₁,₁·Q_k,₁** | ψ₂,ᵢ·Q_k,ᵢ |
+| Other accident (6.11a/b) | G_kj,sup / G_kj,inf | A_d | **ψ₂,₁·Q_k,₁** | ψ₂,ᵢ·Q_k,ᵢ |
+| Seismic (6.12a/b) | | A_d | ψ₂,ᵢ·Q_k,ᵢ | |
+
+No partial factors and no K_FI appear in A1.3 — everything is 1.0 — so the
+consequence class must not move an accidental combination. A test pins that.
+
+**Not implemented, and now documented rather than unknown:**
+- Combinations 3, 4 and 5 (geotechnical). Combination 5 carries a factor
+  **1.2·K_FI on the material partial coefficient** for structural materials in
+  geotechnical constructions — the app has no path for that.
+- K_FI = 1.0 for CC1 in geotechnical constructions (note 4, p. 6); the app
+  applies 0.9 for CC1 unconditionally.
+- Seismic (6.12a/b). Not relevant in Denmark for ordinary buildings, and the
+  NA states seismic and wind are never combined.

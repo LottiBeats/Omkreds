@@ -3,7 +3,11 @@ load_combo.py — EN 1990 load combination calculator (Danish NA)
 
 Computes ULS, ALS and SLS design action effects.
 
-Reference: DS/EN 1990 DK NA:2019 rev. 2019-09-09
+Reference: DS/EN 1990 DK NA:2024, rev. 2023-12-19
+  (Social- og Boligstyrelsen. Tabel A1.1, A1.2(B+C) og A1.3 er
+   efterproevet mod selve standarden -- se tests/test_dk_na_2024.py.
+   Vaerdierne er uaendrede fra 2019-udgaven, men det er kontrolleret
+   og ikke antaget.)
   • Table A1.1 DK NA  — ψ-factors for buildings
   • Table A1.2(B+C) DK NA  — partial factors STR/GEO (set B+C)
   • Table A1.3 DK NA  — accidental / fire combinations
