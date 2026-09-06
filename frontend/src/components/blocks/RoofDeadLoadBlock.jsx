@@ -109,7 +109,7 @@ export default function RoofDeadLoadBlock({ block, onChange }) {
 
   return (
     <CalcBlockShell
-      title={d.title ?? 'Roof Dead Load'}
+      title={d.title ?? 'Tagets egenlast'}
       onTitleChange={t => update({ title: t })}
       onRun={handleRun}
       onClear={() => update({ _result: null })}
@@ -118,15 +118,15 @@ export default function RoofDeadLoadBlock({ block, onChange }) {
       result={d._result ?? null}
     >
       <div style={s.row}>
-        <Field label="Label">
+        <Field label="Betegnelse">
           <input style={s.input} value={d.label ?? 'G1'}
             onChange={e => update({ label: e.target.value })} />
         </Field>
-        <Field label="α (°)" hint="Roof pitch">
+        <Field label="Taghældning (°)" hint="α">
           <NumericInput style={s.input} value={d.alpha_deg ?? 30.0}
             onChange={v => update({ alpha_deg: v })} />
         </Field>
-        <Field label="a (m)" hint="Rafter spacing">
+        <Field label="Spærafstand (m)" hint="c/c">
           <NumericInput style={s.input} value={d.a_m ?? 1.0}
             onChange={v => update({ a_m: v })} />
         </Field>
@@ -135,24 +135,24 @@ export default function RoofDeadLoadBlock({ block, onChange }) {
       {/* Layer table */}
       <div style={s.tableWrap}>
         <div style={s.tableHeader}>
-          <span style={{ flex: 3 }}>Lag</span>
-          <span style={{ flex: 3 }}>Materiale (EN 1991-1-1 bilag A)</span>
-          <span style={{ width: 74, textAlign: 'right' }}>t (mm)</span>
-          <span style={{ flex: 1, textAlign: 'right' }}>g_k (kN/m²)</span>
-          <span style={{ width: 28 }} />
+          <span>Lag i tagopbygningen</span>
         </div>
         {layers.map((l, i) => {
           const chosen = l.material ? byKey[l.material] : null
           return (
-            <div key={i} style={s.tableRow}>
-              <input
-                style={{ ...s.input, flex: 3 }}
-                value={l.description}
-                placeholder="fx tagsten"
-                onChange={e => updateLayer(i, { description: e.target.value })}
-              />
+            <div key={i} style={s.layerCard}>
+              <div style={s.tableRow}>
+                <input
+                  style={{ ...s.input, flex: 1 }}
+                  value={l.description}
+                  placeholder="fx tegltagsten"
+                  onChange={e => updateLayer(i, { description: e.target.value })}
+                />
+                <button style={s.removeBtn} onClick={() => removeLayer(i)}>✕</button>
+              </div>
+              <div style={s.tableRow}>
               <select
-                style={{ ...s.input, flex: 3 }}
+                style={{ ...s.input, flex: 1, minWidth: 0 }}
                 value={l.material ?? ''}
                 onChange={e => pickMaterial(i, e.target.value)}
               >
@@ -169,27 +169,34 @@ export default function RoofDeadLoadBlock({ block, onChange }) {
                   </optgroup>
                 ))}
               </select>
-              <NumericInput
-                style={{ ...s.input, width: 74, textAlign: 'right',
-                         opacity: chosen ? 1 : 0.4 }}
-                value={l.thickness_mm ?? 0}
-                disabled={!chosen}
-                onChange={v => updateLayer(i, { thickness_mm: v })}
-              />
+              {chosen && (
+                <NumericInput
+                  style={{ ...s.input, width: 68, textAlign: 'right' }}
+                  value={l.thickness_mm ?? 0}
+                  title="Tykkelse i mm"
+                  onChange={v => updateLayer(i, { thickness_mm: v })}
+                />
+              )}
               {chosen ? (
-                <span style={{ flex: 1, textAlign: 'right', fontSize: 12,
-                               color: '#374151', alignSelf: 'center' }}
+                <span style={s.derived}
                       title={`${l.density_kNm3 ?? chosen.default_kNm3} kN/m³ · ${chosen.table}`}>
                   {layerLoad(l).toFixed(3)}
                 </span>
               ) : (
                 <NumericInput
-                  style={{ ...s.input, flex: 1, textAlign: 'right' }}
+                  style={{ ...s.input, width: 88, textAlign: 'right' }}
                   value={l.g_kNm2}
+                  title="kN/m² af tagfladen"
                   onChange={v => updateLayer(i, { g_kNm2: v })}
                 />
               )}
-              <button style={s.removeBtn} onClick={() => removeLayer(i)}>✕</button>
+              </div>
+              <div style={s.layerHint}>
+                {chosen
+                  ? `${l.thickness_mm ?? 0} mm · ${l.density_kNm3 ?? chosen.default_kNm3} kN/m³ `
+                    + `= ${layerLoad(l).toFixed(3)} kN/m²  (${chosen.table})`
+                  : 'kN/m² af tagfladen — indtastet direkte'}
+              </div>
             </div>
           )
         })}
@@ -208,15 +215,15 @@ export default function RoofDeadLoadBlock({ block, onChange }) {
       {/* Rafter self-weight */}
       <div style={s.sectionLabel}>Spærets egenlast</div>
       <div style={s.row}>
-        <Field label="b (mm)">
+        <Field label="Spær, bredde (mm)">
           <NumericInput style={s.input} value={d.b_mm ?? 45.0}
             onChange={v => update({ b_mm: v })} />
         </Field>
-        <Field label="h (mm)">
+        <Field label="Spær, højde (mm)">
           <NumericInput style={s.input} value={d.h_mm ?? 145.0}
             onChange={v => update({ h_mm: v })} />
         </Field>
-        <Field label="ρ (kg/m³)">
+        <Field label="Densitet (kg/m³)">
           <NumericInput style={s.input} value={d.rho_kgm3 ?? 380.0}
             onChange={v => update({ rho_kgm3: v })} />
         </Field>
@@ -238,6 +245,15 @@ const s = {
     padding: '2px 4px', borderBottom: '1px solid #e5e7eb', marginBottom: 2,
   },
   tableRow: { display: 'flex', gap: 6, alignItems: 'center', marginBottom: 3 },
+  layerCard: {
+    border: '1px solid #eee', borderRadius: 4, padding: '6px 6px 4px',
+    marginBottom: 6,
+  },
+  layerHint: { fontSize: 10, color: '#6b7280', paddingTop: 2 },
+  derived: {
+    width: 88, textAlign: 'right', fontSize: 12, color: '#374151',
+    alignSelf: 'center', fontWeight: 600,
+  },
   removeBtn: {
     width: 22, height: 22, border: 'none', background: 'none',
     cursor: 'pointer', color: '#9ca3af', fontSize: 12, padding: 0,
