@@ -181,10 +181,18 @@ def _row(blocks, navn):
 
 
 def test_material_factor_is_unity_in_an_accident(client):
+    """
+    To ting ændrer sig på materialesiden, ikke én. γ_M falder fra 1,30 til
+    1,00 (DK NA anneks F, punkt 10), OG lastvarigheden bliver øjeblikkelig,
+    så k_mod går fra 0,90 til 1,10 (EN 1995-1-1 tabel 3.1).
+
+        normal = 0,90 · 24 / 1,30 = 16,62 MPa
+        ulykke = 1,10 · 24 / 1,00 = 26,40 MPa
+    """
     normal = _row(_bjaelke(client), "f_m,d")
     ulykke = _row(_bjaelke(client, design_situation="accidental"), "f_m,d")
-    assert ulykke == pytest.approx(normal * 1.3, rel=0.005), \
-        "γ_M skal falde fra 1,30 til 1,00, altså 30 % mere bæreevne"
+    assert normal == pytest.approx(0.90 * 24 / 1.30, rel=0.01)
+    assert ulykke == pytest.approx(1.10 * 24 / 1.00, rel=0.01)
 
 
 def test_the_document_says_why(client):
@@ -208,7 +216,9 @@ def test_the_column_follows_the_same_rule(client):
             "design_situation": situation})
         assert r.status_code == 200, r.text
         return _row(r.json(), "f_c,0,d")
-    assert f_c0d("accidental") == pytest.approx(f_c0d("persistent") * 1.25, rel=0.005)
+    # 0,90 · 29 / 1,25 = 20,88 MPa   →   1,10 · 29 / 1,00 = 31,90 MPa
+    assert f_c0d("persistent") == pytest.approx(0.90 * 29 / 1.25, rel=0.01)
+    assert f_c0d("accidental") == pytest.approx(1.10 * 29 / 1.00, rel=0.01)
 
 
 def test_fire_is_computed_without_an_accidental_load(client):
@@ -258,3 +268,63 @@ def test_an_accidental_load_still_adds_to_the_combination(client):
             "A_d": A_d, "accidental_type": "other"})
         return r.json()[0]["exports"]["E_d_acc"]
     assert E_acc(10.0) == pytest.approx(E_acc(0.0) + 10.0, abs=1e-6)
+
+
+# ── Selve kombinationen i ulykkessituationen ────────────────────────────────
+
+def test_the_closed_form_uses_the_accidental_combination(client):
+    """
+    Aktionssiden skal følge med materialesiden. Før regnede den lukkede form
+    videre på 6.10a/6.10b — den vedvarende situations laster — med ulykkens
+    materialefaktorer. To situationer blandet i én eftervisning.
+
+        Brand:        w = g_k + ψ₁·q_k = 0,862 + 0,20·0,720 = 1,006 kN/m
+        Øvrig ulykke: w = g_k + ψ₂·q_k = 0,862 + 0,00·0,720 = 0,862 kN/m
+        Brudgrænse:   w = 1,0·g_k + 1,5·q_k                 = 1,942 kN/m
+    """
+    brand = _bjaelke(client, design_situation="accidental",
+                     accidental_type="fire", psi_1=0.2, psi_2=0.0)
+    oevrig = _bjaelke(client, design_situation="accidental",
+                      accidental_type="other", psi_1=0.2, psi_2=0.0)
+    assert _row(brand, "w_Ed")  == pytest.approx(1.006, abs=0.01)
+    assert _row(oevrig, "w_Ed") == pytest.approx(0.862, abs=0.01)
+    assert _row(_bjaelke(client), "w_Ed") == pytest.approx(1.942, abs=0.01)
+
+
+def test_no_persistent_combination_appears_in_an_accident(client):
+    """6.10a og 6.10b hører til den vedvarende situation og må ikke stå der."""
+    navne = [str(b.get("name", "")) for b in
+             _bjaelke(client, design_situation="accidental")
+             if b.get("type") == "calc_row"]
+    assert not any(n.startswith("6.10") for n in navne)
+    assert any(n.startswith("6.11") for n in navne)
+
+
+def test_the_accident_is_lighter_than_the_ultimate_limit_state(client):
+    """
+    Begge lempelser trækker samme vej: mindre last og større materialestyrke.
+    Derfor er en ulykke sjældent dimensionsgivende for en bjælke — men den
+    skal regnes, før man ved det.
+    """
+    from conftest import find_check, eta
+    normal = eta(find_check(_bjaelke(client), "Bøjning"))
+    ulykke = eta(find_check(
+        _bjaelke(client, design_situation="accidental"), "Bøjning"))
+    assert ulykke < normal
+
+
+def test_the_combination_exports_an_instantaneous_duration(client):
+    """
+    En træeftervisning, der henter sin last fra en ulykkeskombination, skal
+    have varigheden med — ellers vælger den k_mod efter den normale situation.
+    """
+    def varighed(typ):
+        r = client.post("/calc/load-combo", json={
+            "label": "LC", "unit": "kN/m", "G_k": 5.0,
+            "loads": [{"label": "Nytte", "Q_k": 4.0, "category": "A"}],
+            "method": "6.10ab", "consequence_class": "CC2",
+            "accidental_type": typ})
+        return r.json()[0]["exports"]["governing_duration"]
+    assert varighed("fire")  == "instant"
+    assert varighed("other") == "instant"
+    assert varighed("none")  != "instant"

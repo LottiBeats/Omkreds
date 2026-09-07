@@ -358,7 +358,12 @@ def load_combos(
         'E_d_sls_char':       round(E_d_sls_char,  4),
         'E_d_sls_freq':       round(E_d_sls_freq,  4),
         'E_d_sls_qp':         round(E_d_sls_qp,   4),
-        'governing_duration': governing_duration,
+        # Er situationen en ulykke, er lasten oejeblikkelig (EN 1995-1-1
+        # tabel 3.1), og en traeeftervisning skal bruge den varighed og ikke
+        # den normale kombinations.
+        'governing_duration': ('instant'
+                               if accidental_type in ('fire', 'other')
+                               else governing_duration),
         'uls_combinations':   uls_combinations,   # all combos + durations for timber
         'unit':               unit,
         'K_FI':               KFI,

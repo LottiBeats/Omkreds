@@ -119,6 +119,8 @@ def timber_column_bending_and_axial(
     if design_situation == "accidental":
         _gamma_M_normal = gamma_M
         gamma_M = 1.0
+        _varighed_normal = load_duration
+        load_duration = "instant"     # EN 1995-1-1 tabel 3.1
 
     kmod   = KMOD.get((service_class, load_duration), 0.80)
     beta_c = _BETA_C.get(material_type, _BETA_C["solid_timber"])
@@ -148,9 +150,10 @@ def timber_column_bending_and_axial(
     if design_situation == "accidental":
         blocks.append(N(
             f"Ulykkesdimensioneringstilfælde: γ_M sættes til 1,0 i stedet for "
-            f"{_gamma_M_normal:.2f} (DS/EN 1990 DK NA:2024, anneks F punkt 10). "
-            f"Lasterne regnes med 1,0 i lastkombinationen, og materialesiden "
-            f"følger med."))
+            f"{_gamma_M_normal:.2f} (DS/EN 1990 DK NA:2024, anneks F punkt 10), "
+            f"og lastvarigheden er øjeblikkelig i stedet for "
+            f"{VARIGHED_DK.get(_varighed_normal, _varighed_normal)} "
+            f"(EN 1995-1-1 tabel 3.1)."))
 
     blocks.append(S("Beregningsforudsætninger"))
     _mat = grade_data["description"] if grade_data else "manuelt indtastede styrker"

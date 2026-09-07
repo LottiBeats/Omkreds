@@ -65,6 +65,7 @@ def timber_beam(
     gamma_M=1.3,
     K_FI=1.0,
     design_situation="persistent",   # "persistent" | "accidental"
+    accidental_type="fire",          # "fire" | "other" — kun ved ulykke
     # Anvendelsesgrænsetilstand, EN 1995-1-1 §7.2
     check_deflection=True,
     psi_1=0.2,              # ψ₁ for den variable last (DK NA tabel A1.1)
@@ -126,6 +127,14 @@ def timber_beam(
     if design_situation == "accidental":
         _gamma_M_normal = gamma_M
         gamma_M = 1.0
+        # EN 1995-1-1 tabel 3.1: en ulykkeslast er OEJEBLIKKELIG. Uden dette
+        # blev k_mod taget fra den normale kombinations varighed, saa
+        # baereevnen var for lav i den ene situation hvor traeet faktisk maa
+        # regnes staerkere. Brand er undtagelsen og haandteres for sig: der
+        # bruges k_mod,fi = 1,0 sammen med det reducerede tvaersnit
+        # (EN 1995-1-2 pkt. 2.3), ikke den oejeblikkelige vaerdi.
+        _varighed_normal = load_duration
+        load_duration = "instant"
 
     # k_mod kan ikke vælges her endnu. I den lukkede form afhænger den af
     # hvilken lastkombination der viser sig at være dimensionsgivende, og det
@@ -167,10 +176,14 @@ def timber_beam(
 
     if design_situation == "accidental":
         blocks.append(N(
-            f"Ulykkesdimensioneringstilfælde: γ_M sættes til 1,0 i stedet for "
-            f"{_gamma_M_normal:.2f} (DS/EN 1990 DK NA:2024, anneks F punkt 10). "
-            f"Lasterne regnes med 1,0 i lastkombinationen, og materialesiden "
-            f"følger med."))
+            f"Ulykkesdimensioneringstilfælde. To ting ændrer sig på "
+            f"materialesiden: γ_M sættes til 1,0 i stedet for "
+            f"{_gamma_M_normal:.2f} (DS/EN 1990 DK NA:2024, anneks F punkt 10), "
+            f"og lastvarigheden er øjeblikkelig i stedet for "
+            f"{VARIGHED_DK.get(_varighed_normal, _varighed_normal)}, så k_mod "
+            f"bliver {KMOD.get((service_class, 'instant'), 1.10):.2f} "
+            f"(EN 1995-1-1 tabel 3.1). Lasterne er allerede reduceret med ψ i "
+            f"lastkombinationen."))
 
     _params = [CALC_ROW("L", "spænd", _u(span, m, "m"))]
     if beam_results is None:
@@ -219,11 +232,26 @@ def timber_beam(
         # en faktor der ikke findes i DK NA, ganget på én kombination der ikke
         # nødvendigvis er den dimensionsgivende. På 2,5 / 0,2 kN/m gav det et
         # snit 18 % under det rigtige — i den forkerte retning.
-        _kandidater = [
-            ("6.10a", "= 1,2·K_FI·g_k", 1.2 * K_FI * g_k, "permanent"),
-            ("6.10b", "= 1,0·K_FI·g_k + 1,5·K_FI·q_k",
-             1.0 * K_FI * g_k + 1.5 * K_FI * q_k, load_duration),
-        ]
+        if design_situation == "accidental":
+            # 6.11a/b, DK NA tabel A1.3: ingen partialkoefficienter og intet
+            # K_FI -- alt regnes med 1,0 -- og den variable last reduceres med
+            # ψ₁ ved brand og ψ₂ ved øvrig ulykke. Uden dette regnede den
+            # lukkede form videre på 6.10a/6.10b, altså den vedvarende
+            # situations laster med ulykkens materialefaktorer. To situationer
+            # blandet i én eftervisning.
+            _psi = psi_1 if accidental_type == "fire" else psi_2
+            _navn = "6.11a/b — brand" if accidental_type == "fire" \
+                    else "6.11a/b — øvrig ulykke"
+            _sym = "ψ₁" if accidental_type == "fire" else "ψ₂"
+            _kandidater = [
+                (_navn, f"= g_k + {_sym}·q_k", g_k + _psi * q_k, "instant"),
+            ]
+        else:
+            _kandidater = [
+                ("6.10a", "= 1,2·K_FI·g_k", 1.2 * K_FI * g_k, "permanent"),
+                ("6.10b", "= 1,0·K_FI·g_k + 1,5·K_FI·q_k",
+                 1.0 * K_FI * g_k + 1.5 * K_FI * q_k, load_duration),
+            ]
 
         _vurderet = []
         for navn, formel, w, dur in _kandidater:
@@ -248,12 +276,19 @@ def timber_beam(
                 f"   →   w/k_mod = {float(c['w'] / (kN / m)) / c['kmod']:.3f}",
                 _u(c["w"], kN / m, "kN/m")))
 
-        blocks.append(N(
-            f"Dimensionsgivende: {_gov['navn']} med lastvarighed "
-            f"{VARIGHED_DK.get(_gov['dur'], _gov['dur'])} og k_mod = "
-            f"{_gov['kmod']:.2f}. For træ afgøres det af det største w/k_mod "
-            "og ikke af den største last (EN 1995-1-1 §2.2.3), fordi k_mod "
-            "følger lastens varighed."))
+        if len(_vurderet) > 1:
+            blocks.append(N(
+                f"Dimensionsgivende: {_gov['navn']} med lastvarighed "
+                f"{VARIGHED_DK.get(_gov['dur'], _gov['dur'])} og k_mod = "
+                f"{_gov['kmod']:.2f}. For træ afgøres det af det største "
+                "w/k_mod og ikke af den største last (EN 1995-1-1 §2.2.3), "
+                "fordi k_mod følger lastens varighed."))
+        else:
+            blocks.append(N(
+                f"Ulykkessituationen har én kombination, {_gov['navn']}, med "
+                f"lastvarighed {VARIGHED_DK.get(_gov['dur'], _gov['dur'])} og "
+                f"k_mod = {_gov['kmod']:.2f}. Der er ikke to at vælge imellem "
+                "som i brudgrænsetilstanden."))
 
         blocks.extend([
             CALC_ROW("w_Ed", f"= {_gov['navn']}",      _u(w_Ed, kN / m, "kN/m")),

@@ -1238,6 +1238,7 @@ class TimberBeamInput(BaseModel):
     # "persistent" | "accidental" — ved ulykke sættes γ_M til 1,0,
     # DS/EN 1990 DK NA:2024 anneks F (10).
     design_situation: str   = "persistent"
+    accidental_type:  str   = "fire"     # "fire" | "other" — kun ved ulykke
 
     check_deflection: bool  = True
     psi_1:            float = 0.2    # DK NA tabel A1.1, se test_dk_na_2024.py
@@ -1285,6 +1286,7 @@ def calc_timber_beam(data: TimberBeamInput):
             gamma_M       = data.gamma_M,
             K_FI          = data.K_FI,
             design_situation = data.design_situation,
+            accidental_type  = data.accidental_type,
             check_deflection = data.check_deflection,
             psi_1         = data.psi_1,
             psi_2         = data.psi_2,
