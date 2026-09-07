@@ -388,6 +388,17 @@ def _unicode_run(mo) -> str:
     return ''.join(_GREEK_NAMES.get(c) or _MATHS_NAMES.get(c, c) for c in run)
 
 
+# Sænkede bogstaver har hver sit kodepunkt spredt over tre Unicode-blokke.
+# De der faktisk optræder i en statisk beregning: indeks i og j, og de latinske
+# der findes som sænkede overhovedet.
+_SUB_LETTERS = {
+    'ᵢ': 'i', 'ⱼ': 'j', 'ₐ': 'a', 'ₑ': 'e', 'ₒ': 'o', 'ₓ': 'x', 'ₕ': 'h',
+    'ₖ': 'k', 'ₗ': 'l', 'ₘ': 'm', 'ₙ': 'n', 'ₚ': 'p', 'ₛ': 's', 'ₜ': 't',
+    'ᵣ': 'r', 'ᵤ': 'u', 'ᵥ': 'v',
+}
+_SUPER_LETTERS = {'ⁱ': 'i', 'ⁿ': 'n'}
+
+
 # Everything after "_" up to an operator, a bracket or a space — commas
 # included, because "0,05" and "c,90,k" are one subscript each.
 _SUB_RE = re.compile(r'_([^\s_^<>=+\-−*/×÷·()\[\]{}]+)')
@@ -436,6 +447,15 @@ def _fmt(s):
     # ── Unicode subscript digits ───────────────────────────────────────────
     for uc, n in zip('₀₁₂₃₄₅₆₇₈₉', '0123456789'):
         s = s.replace(uc, f'<sub>{n}</sub>')
+
+    # ── Sænkede og hævede bogstaver ────────────────────────────────────────
+    # "Σ 1,5·K_FI·ψ₀·Qᵢ" trykte en sort kasse hvor det sænkede i skulle stå.
+    # Cifrene var med fra begyndelsen, bogstaverne ikke — og et ᵢ i en
+    # sum-formel er lige så almindeligt som et ₁.
+    for uc, n in _SUB_LETTERS.items():
+        s = s.replace(uc, f'<sub>{n}</sub>')
+    for uc, n in _SUPER_LETTERS.items():
+        s = s.replace(uc, f'<super>{n}</super>')
 
     # ── Strip combining characters (Unicode category Mn) ──────────────────
     # e.g. combining macron U+0304 in λ̄ (U+03BB + U+0304) → λ

@@ -70,6 +70,16 @@ _DURATION_MAP = {
 _DEFAULT_PSI = (0.6, 0.4, 0.2)
 
 
+# Lastvarighedsklasserne som de hedder paa dansk. KMOD-opslaget bruger de
+# engelske noegler, men dokumentet skal ikke.
+_VARIGHED_DK = {
+    'permanent': 'permanent', 'long': 'lang', 'medium': 'middel',
+    'short': 'kort', 'instant': 'øjeblikkelig',
+}
+
+_ULYKKE_DK = {'fire': 'brand', 'other': 'øvrig ulykke'}
+
+
 def _psi0(category: str, lead_category: str) -> float:
     """Context-dependent ψ₀ for a non-leading action (DK NA Table A1.1)."""
     c, lead = category.upper(), lead_category.upper()
@@ -201,8 +211,9 @@ def load_combos(
         gov_lbl = loads[gov_lead]['label']
         gov_cat = loads[gov_lead]['category'].upper()
         blocks.append(N(
-            f"Governing: {gov_entry[0]}  —  lead = {gov_lbl} (Cat. {gov_cat})  "
-            f"→ load duration class: {governing_duration}"
+            f"Dimensionsgivende: {gov_entry[0]} — dominerende last er {gov_lbl} "
+            f"(kategori {gov_cat}) → lastvarighed: "
+            f"{_VARIGHED_DK.get(governing_duration, governing_duration)}"
         ))
     else:
         blocks.append(N("Dimensionsgivende: 6.10a (kun permanent last) → lastvarighed: permanent"))
@@ -295,19 +306,32 @@ def load_combos(
     # ── Summary ───────────────────────────────────────────────────────────────
     blocks.append(S("Sammenfatning"))
     summary_rows = [
-        ['ULS (governing)',      f'{E_d_uls:.3f}',      unit],
+        ['Brudgrænse (dimensionsgivende)', f'{E_d_uls:.3f}', unit],
     ]
     if E_d_acc is not None:
         summary_rows.append([
-            f'ALS ({accidental_type})',
+            f'Ulykke — {_ULYKKE_DK.get(accidental_type, accidental_type)}',
             f'{E_d_acc:.3f}', unit,
         ])
+    else:
+        # Fraværet af en ulykkessituation er en oplysning, ikke en stilhed. Et
+        # dokument, der ikke nævner den, kan ikke skelnes fra et, hvor den blev
+        # glemt.
+        summary_rows.append(['Ulykke', 'ikke eftervist', '—'])
     summary_rows += [
-        ['SLS characteristic',  f'{E_d_sls_char:.3f}', unit],
-        ['SLS frequent',        f'{E_d_sls_freq:.3f}', unit],
-        ['SLS quasi-permanent', f'{E_d_sls_qp:.3f}',  unit],
+        ['Anvendelse — karakteristisk',  f'{E_d_sls_char:.3f}', unit],
+        ['Anvendelse — hyppig',          f'{E_d_sls_freq:.3f}', unit],
+        ['Anvendelse — kvasi-permanent', f'{E_d_sls_qp:.3f}',  unit],
     ]
-    blocks.append(TBL(['Kombination', f'E_d', 'Enhed'], summary_rows))
+    blocks.append(TBL(['Dimensioneringssituation', 'E_d', 'Enhed'], summary_rows))
+
+    if E_d_acc is None:
+        blocks.append(N(
+            "Ulykkessituationen er ikke eftervist. Den er ikke altid relevant, "
+            "men fraværet skal være et valg og ikke en forglemmelse — vælg "
+            "brand eller øvrig ulykke i blokken, hvis den skal med. "
+            "Lasterne er de samme; de kombineres blot med ψ i stedet for "
+            "partialkoefficienter, og γ_M sættes til 1,0 (DK NA anneks F, 10)."))
 
     # Export every individual ULS combination with its load-duration class.
     # Timber checks must find the governing combination by comparing E_d / k_mod,

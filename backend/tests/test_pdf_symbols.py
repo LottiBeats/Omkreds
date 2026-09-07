@@ -63,6 +63,35 @@ def test_maths_symbols_are_wrapped():
     assert "≤" in _fmt("α ≤ 30°")
 
 
+def test_subscript_letters_become_markup_not_boxes():
+    """
+    "Σ 1,5·K_FI·ψ₀·Qᵢ" trykte en sort kasse hvor det sænkede i skulle stå:
+    Helvetica har ingen glyf for U+1D62, og tegnet var hverken i ciffertabellen
+    eller blandt de matematiske. Cifrene var med fra begyndelsen, bogstaverne
+    ikke — og et ᵢ i en sum-formel er lige så almindeligt som et ₁.
+    """
+    assert _fmt("Qᵢ")  == "Q<sub>i</sub>"
+    assert _fmt("Σ ψ₂·Qᵢ").endswith("Q<sub>i</sub>")
+    assert _fmt("aⁿ")  == "a<super>n</super>"
+    for ch in "ᵢⱼₐₑₒₓₕₖₗₘₙₚₛₜᵣᵤᵥⁱⁿ":
+        assert ch not in _fmt(f"x{ch}"), f"{ch!r} naaede uændret frem til Helvetica"
+
+
+def test_no_unrenderable_characters_reach_the_page():
+    """
+    En bred sikring: alt uden for Latin-1 skal enten være håndteret eller
+    findes i den Unicode-skrift, der er registreret. Ellers bliver det en
+    sort kasse, og den slags opdages kun ved at kigge.
+    """
+    import calc_core as cc
+    kendt = (set(cc._GREEK + cc._MATHS) | set(cc._SUB_LETTERS)
+             | set(cc._SUPER_LETTERS) | set("₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹"))
+    # WinAnsi dækker em-dash, en-dash og citationstegn.
+    winansi = set("—–''“”…")
+    for ch in "γσταμλ≤⊥∅Qᵢ":
+        assert ch in kendt or ch in winansi or ord(ch) < 256,             f"{ch!r} har ingen vej til papiret"
+
+
 def test_subscripts_still_work_around_greek():
     """The font run must not swallow the subscript rule that follows it."""
     assert "<sub>M</sub>" in _fmt("γ_M")
