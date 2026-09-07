@@ -1,0 +1,45 @@
+{
+  "manufacturer": {
+    "id": "simpson-strong-tie",
+    "name": "Simpson Strong-Tie"
+  },
+  "sourceDomains": ["strongtie.dk", "pim.strongtie.eu"],
+  "products": [
+    {
+      "family": "ABR",
+      "category": "angle_bracket",
+      "sourceUrl": "https://www.strongtie.dk/da-DK/produkter/vinkelbeslag-med-noglehulsribbe-abr",
+      "variants": [
+        { "sku": "ABR7015", "asset": "c-abr7015-2do-cad-mult-prod.dxf" },
+        { "sku": "ABR9020", "asset": "c-abr9020-2do-cad-mult-prod.dxf" },
+        { "sku": "ABR10525", "asset": "c-abr10525-2do-cad-mult-prod.dxf" }
+      ]
+    },
+    {
+      "family": "EWH",
+      "category": "joist_hanger",
+      "sourceUrl": "https://www.strongtie.dk/da-DK/produkter/bjaelkesko-til-i-bjaelker-ewh",
+      "variants": [
+        { "sku": "EWH195/47", "asset": "c-ewh195-47-2do-cad-mult-prod.dxf" }
+      ]
+    },
+    {
+      "family": "PB/PBL/PBK/PBE",
+      "category": "post_base",
+      "sourceUrl": "https://www.strongtie.dk/da-DK/produkter/stolpesko-pb-og-pbl-pb-pbl-pbk-pbe",
+      "variants": [
+        { "sku": "PB70G-R", "asset": "pb70g-r-2d.dwg" },
+        { "sku": "PBL4540", "asset": "pbl4540-2d.dwg" },
+        { "sku": "PBK60G", "asset": "pbk60g-2d.dwg" }
+      ]
+    },
+    {
+      "family": "NP",
+      "category": "plates",
+      "sourceUrl": "https://www.strongtie.dk/da-DK/produkter/hulplader-np",
+      "variants": [
+        { "sku": "NP15/100/140", "asset": "c-np15-100-140-2do-cad-mult-prod.dxf" }
+      ]
+    }
+  ]
+}

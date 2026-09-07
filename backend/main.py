@@ -32,11 +32,11 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Body, APIRouter, Depends
+from fastapi import FastAPI, HTTPException, Body, APIRouter, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
-from auth import get_current_user
+from auth import get_current_user, verify_clerk_token
 
 # ── Import the existing calculation modules ───────────────────────────────────
 # These are copied unchanged from the Streamlit deploy app.
@@ -292,6 +292,46 @@ _RUNNING_COMMIT = _running_commit()
 def health():
     """Quick check that the server is running, and on what."""
     return {"status": "ok", "version": "2.0", "commit": _RUNNING_COMMIT}
+
+
+# ── Adgangskontrol til tegneprogrammet ────────────────────────────────────────
+# Tegneprogrammet er en statisk side, der ligger uden for React-appen. Den kan
+# derfor ikke bruge <SignedIn> til at gemme sig selv, og den har ingen Bearer-
+# token at sende: en browser, der henter /tegning/index.html, sender kun cookies.
+#
+# Nginx spoerger her, foer den udleverer en eneste fil (auth_request). Clerk
+# koerer paa clerk.omkreds.dk, altsaa samme registrerbare domaene som selve
+# siden, saa __session-cookien foelger med anmodningen. Den er en JWT, signeret
+# med de samme noegler som Bearer-tokenet, saa den kan verificeres med det, der
+# allerede staar i auth.py.
+#
+# Svaret har ingen krop med vilje. Nginx bruger kun statuskoden, og alt andet
+# ville bare vaere noget, der skulle vedligeholdes.
+
+@app.get("/auth/gate", tags=["Auth"], include_in_schema=False)
+def tegning_gate(request: Request):
+    """204 hvis anmodningen kommer fra en indlogget bruger, ellers 401."""
+    token = request.cookies.get("__session")
+    if not token:
+        # Grunden staar i en header og ikke i en krop, saa den kan laeses i
+        # nginx' log uden at blive udleveret til den, der bliver afvist.
+        raise HTTPException(status_code=401, detail="ingen session",
+                            headers={"X-Gate-Reason": "cookie mangler"})
+
+    try:
+        payload = verify_clerk_token(token)
+    except HTTPException as exc:
+        raise HTTPException(status_code=401, detail="ugyldig session",
+                            headers={"X-Gate-Reason":
+                                     "token afvist: %s" % exc.detail})
+
+    if _ALLOWED_EMAILS:
+        email = (payload.get("email") or "").strip().lower()
+        if email not in _ALLOWED_EMAILS:
+            raise HTTPException(status_code=403, detail="ikke tilladt",
+                                headers={"X-Gate-Reason": "e-mail ikke paa listen"})
+
+    return Response(status_code=204)
 
 
 # ── Protected router ──────────────────────────────────────────────────────────

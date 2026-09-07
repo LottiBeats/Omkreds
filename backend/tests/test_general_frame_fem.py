@@ -22,6 +22,7 @@ import math
 
 import pytest
 
+import fem_pynite
 import general_frame_fem as gf
 from general_frame_fem import ModelError, section_forces_2d
 
@@ -368,24 +369,40 @@ def test_non_finite_result_is_rejected():
 # 3. Closed-form solutions  (needs the compiled solver)
 # ══════════════════════════════════════════════════════════════════════════════
 
-ops_required = pytest.mark.skipif(
-    not gf._OPS_AVAILABLE,
-    reason='openseespy is not importable in this environment',
-)
+# Gruppe 3 koerte foer kun mod OpenSees, og OpenSees kan ikke importeres paa
+# Windows. Resultatet var, at hver eneste test der faktisk loeser en model blev
+# sprunget over paa udviklingsmaskinen: FEM-blokken kunne kun afproeves ved at
+# deploye. Nu koerer de samme tests mod hver tilgaengelig loeser, saa de siger
+# noget begge steder -- og saa de to svar kan holdes op mod hinanden, hvor
+# begge findes.
+_LOESERE = []
+if gf._OPS_AVAILABLE:
+    _LOESERE.append(pytest.param(gf.solve, id='opensees'))
+if fem_pynite._PYNITE_AVAILABLE:
+    _LOESERE.append(pytest.param(fem_pynite.solve, id='pynite'))
+if not _LOESERE:
+    _LOESERE.append(pytest.param(
+        None, id='ingen',
+        marks=pytest.mark.skip(reason='hverken openseespy eller PyNite kan importeres')))
+
+
+@pytest.fixture(params=_LOESERE)
+def loeser(request):
+    """Den loeser, testen skal koere imod. Kaldes som loeser()."""
+    return request.param
 
 E_GPA, A_CM2, IZ_CM4 = 210.0, 53.8, 8356.0     # IPE 300, S355
 EI = (E_GPA * 1e6) * (IZ_CM4 * 1e-8)           # kN·m²
 
 
-@ops_required
-def test_simply_supported_beam_matches_the_closed_form():
+def test_simply_supported_beam_matches_the_closed_form(loeser):
     """delta = 5wL^4/384EI at midspan, M = wL^2/8, reactions wL/2 each."""
     L, w = 6.0, 10.0
     nodes, elements, supports = simple_beam(n_elem=2, L=L)
     loads = [{'type': 'udl', 'elem_id': e['id'],
               'direction': 'vertical', 'value_kNm': w} for e in elements]
 
-    res = gf.solve(nodes, elements, supports, loads)
+    res = loeser(nodes, elements, supports, loads)
 
     delta = -res['node_disps'][2][1]            # node 2 is midspan
     assert delta == pytest.approx(5 * w * L**4 / (384 * EI), rel=0.01)
@@ -399,8 +416,7 @@ def test_simply_supported_beam_matches_the_closed_form():
     assert res['node_reactions'][3][1] == pytest.approx(w * L / 2, rel=0.01)
 
 
-@ops_required
-def test_cantilever_matches_the_closed_form():
+def test_cantilever_matches_the_closed_form(loeser):
     """delta = wL^4/8EI at the tip, M = wL^2/2 at the support."""
     L, w = 3.0, 5.0
     nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': L, 'y': 0}]
@@ -409,15 +425,14 @@ def test_cantilever_matches_the_closed_form():
     supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True}]
     loads = [{'type': 'udl', 'elem_id': 1, 'direction': 'vertical', 'value_kNm': w}]
 
-    res = gf.solve(nodes, elements, supports, loads)
+    res = loeser(nodes, elements, supports, loads)
 
     delta = -res['node_disps'][2][1]
     assert delta == pytest.approx(w * L**4 / (8 * EI), rel=0.01)
     assert abs(res['ele_forces'][1][2]) == pytest.approx(w * L**2 / 2, rel=0.01)
 
 
-@ops_required
-def test_design_moment_is_the_span_maximum_not_the_end_value():
+def test_design_moment_is_the_span_maximum_not_the_end_value(loeser):
     """
     One element, simply supported, full-span UDL. Both ends carry zero moment
     and midspan carries wL²/8 — so anything reading the end forces reports a
@@ -435,7 +450,7 @@ def test_design_moment_is_the_span_maximum_not_the_end_value():
                 {'node_id': 2, 'ux': False, 'uy': True, 'rz': False}]
     loads = [{'type': 'udl', 'elem_id': 1, 'direction': 'vertical', 'value_kNm': w}]
 
-    res = gf.solve(nodes, elements, supports, loads)
+    res = loeser(nodes, elements, supports, loads)
 
     f = res['ele_forces'][1]
     assert abs(f[2]) == pytest.approx(0.0, abs=1e-6), 'end i carries no moment'
@@ -453,8 +468,7 @@ def test_design_moment_is_the_span_maximum_not_the_end_value():
     assert summary['ele_force_table'][0]['M_max_kNm'] == pytest.approx(w * L**2 / 8, rel=0.001)
 
 
-@ops_required
-def test_element_forces_are_local_not_global():
+def test_element_forces_are_local_not_global(loeser):
     """
     A rafter carrying a vertical load. In global axes the end force is almost
     all vertical; resolved into the member's own axes it is part axial, part
@@ -471,7 +485,7 @@ def test_element_forces_are_local_not_global():
     supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True}]
     loads = [{'type': 'udl', 'elem_id': 1, 'direction': 'vertical', 'value_kNm': w}]
 
-    res = gf.solve(nodes, elements, supports, loads)
+    res = loeser(nodes, elements, supports, loads)
     N_i, V_i = res['ele_forces'][1][0], res['ele_forces'][1][1]
 
     # Total load on the member, resolved into its own axes
@@ -480,8 +494,7 @@ def test_element_forces_are_local_not_global():
     assert abs(V_i) == pytest.approx(W * math.cos(a), rel=0.01)
 
 
-@ops_required
-def test_buckling_table_reports_the_real_axial_force():
+def test_buckling_table_reports_the_real_axial_force(loeser):
     """
     A column carrying a point load. N_Ed in the buckling-length table was the
     average of the two end forces, which are equal and opposite on a member
@@ -494,15 +507,14 @@ def test_buckling_table_reports_the_real_axial_force():
     supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True}]
     loads = [{'type': 'nodal', 'node_id': 2, 'Fx_kN': 0.0, 'Fy_kN': -P, 'Mz_kNm': 0.0}]
 
-    res = gf.solve(nodes, elements, supports, loads)
+    res = loeser(nodes, elements, supports, loads)
     buck = gf.compute_buckling_lengths(nodes, elements, supports,
                                        res['ele_forces'], res['ele_extremes'])
 
     assert abs(buck[1]['N_Ed_kN']) == pytest.approx(P, rel=0.01)
 
 
-@ops_required
-def test_wind_pushes_the_column_downwind():
+def test_wind_pushes_the_column_downwind(loeser):
     """A positive 'horizontal' load must displace the column towards +X."""
     h, p = 4.0, 2.0
     nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 0, 'y': h}]
@@ -511,20 +523,49 @@ def test_wind_pushes_the_column_downwind():
     supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True}]
     loads = [{'type': 'udl', 'elem_id': 1, 'direction': 'horizontal', 'value_kNm': p}]
 
-    res = gf.solve(nodes, elements, supports, loads)
+    res = loeser(nodes, elements, supports, loads)
 
     assert res['node_disps'][2][0] == pytest.approx(p * h**4 / (8 * EI), rel=0.01)
     assert res['node_disps'][2][0] > 0
 
 
-@ops_required
-def test_solver_refuses_a_mechanism():
+def test_axial_sign_says_compression_not_tension(loeser):
+    """
+    En soejle med lasten nedad er trykket, og fortegnet skal sige det.
+
+    Findes fordi ingen af de andre normalkraft-tests kunne skelne: de
+    sammenligner alle med abs(). Da PyNite-loeseren blev skrevet, kom en soejle
+    med 120 kN nedad ud som +120 kN — altsaa traek — og hele suiten var groen.
+    Det er ikke en kosmetisk fejl: pdf_builder skriver "traek" eller "tryk" ud
+    fra netop dette fortegn, og en stav, der bliver laest som trukket, faar
+    ingen soejlevirkning.
+    """
+    h, P = 4.0, 120.0
+    nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 0, 'y': h}]
+    elements = [{'id': 1, 'ni': 1, 'nj': 2, 'type': 'beam', 'release': 'none',
+                 'E_GPa': E_GPA, 'A_cm2': A_CM2, 'Iz_cm4': IZ_CM4}]
+    supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True}]
+
+    tryk = loeser(nodes, elements, supports,
+                  [{'type': 'nodal', 'node_id': 2,
+                    'Fx_kN': 0.0, 'Fy_kN': -P, 'Mz_kNm': 0.0}])
+    N = tryk['ele_extremes'][1]['N_kN']
+    assert N == pytest.approx(-P, rel=0.01), \
+        'lasten peger nedad, saa soejlen er trykket og N skal vaere negativ'
+
+    traek = loeser(nodes, elements, supports,
+                   [{'type': 'nodal', 'node_id': 2,
+                     'Fx_kN': 0.0, 'Fy_kN': +P, 'Mz_kNm': 0.0}])
+    assert traek['ele_extremes'][1]['N_kN'] == pytest.approx(+P, rel=0.01)
+
+
+def test_solver_refuses_a_mechanism(loeser):
     """End to end: the model that produced 60 m of deflection is now rejected."""
     nodes, elements, _ = simple_beam()
     supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': False}]
     loads = [{'type': 'udl', 'elem_id': 1, 'direction': 'vertical', 'value_kNm': 2}]
     with pytest.raises(ModelError):
-        gf.solve(nodes, elements, supports, loads)
+        loeser(nodes, elements, supports, loads)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

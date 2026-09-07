@@ -18,3 +18,19 @@ reportlab
 pypdfium2
 openseespy      # 2D/3D FEM solver for frame_fem block
 opsvis          # OpenSeesPy visualisation (force diagrams)
+
+# PyNite — samme rammeberegning som openseespy, i ren Python.
+#
+# openseespy er en kompileret udvidelse, og den kan ikke importeres paa Windows
+# ("DLL load failed while importing opensees"). Konsekvensen var, at hver eneste
+# test, der faktisk loeser en model, blev sprunget over paa udviklingsmaskinen:
+# FEM-blokken kunne kun afproeves ved at deploye.
+#
+# fem_pynite.py er den samme loesning bag den samme kontrakt. Den staar her og
+# ikke kun i en dev-fil, fordi serveren er det ENESTE sted, hvor begge loesere
+# kan importeres -- og dermed det eneste sted, test_fem_solvers_agree.py kan
+# sammenligne dem. Uden den her linje springer sammenligningen over overalt.
+#
+# Traekker scipy ind (~115 MB).
+PyNiteFEA
+

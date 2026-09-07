@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Omkreds Tegnevaerktoej</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-open-panel="properties">
+    <svg class="icon-defs" aria-hidden="true" focusable="false">
+      <defs>
+        <symbol id="ic-select" viewBox="0 0 24 24"><path d="M6 3.5 18.5 12 12.6 13.2 15 19.4l-2.3.9-2.4-6.2L6 18.4z" /></symbol>
+        <symbol id="ic-line" viewBox="0 0 24 24"><path d="M5.5 18.5 18.5 5.5" class="s" /><circle cx="5.5" cy="18.5" r="2" /><circle cx="18.5" cy="5.5" r="2" /></symbol>
+        <symbol id="ic-arrow" viewBox="0 0 24 24"><path d="M4 20 17 7" class="s" /><path d="M19.5 4.5 12.7 6.1l5.2 5.2z" /></symbol>
+        <symbol id="ic-load" viewBox="0 0 24 24"><path d="M12 3v13" class="s" /><path d="M12 21.5 7.4 13.6h9.2z" /><path d="M4 3h16" class="s" /></symbol>
+        <symbol id="ic-leader" viewBox="0 0 24 24"><path d="M4 19 11 12l3.5 3.5" class="s" /><path d="M14 8h7" class="s" /><circle cx="4" cy="19" r="1.9" /></symbol>
+        <symbol id="ic-polyline" viewBox="0 0 24 24"><path d="M3 18 9 8l5 6 7-9" class="s" /><circle cx="3" cy="18" r="1.8" /><circle cx="9" cy="8" r="1.8" /><circle cx="14" cy="14" r="1.8" /><circle cx="21" cy="5" r="1.8" /></symbol>
+        <symbol id="ic-break" viewBox="0 0 24 24"><path d="M3 12h6l2.2-4 2.6 8 2.2-4h6" class="s" /></symbol>
+        <symbol id="ic-weld" viewBox="0 0 24 24"><path d="M3 17.5h18" class="s" /><path d="M6 17.5 9 11l3 6.5z" /><path d="M12.5 17.5 15.5 11l3 6.5z" /></symbol>
+        <symbol id="ic-measure" viewBox="0 0 24 24"><path d="M4 12h16M4 7.5v9M20 7.5v9" class="s" /><path d="M8.5 9.5v5M15.5 9.5v5" class="s thin" /></symbol>
+        <symbol id="ic-scale" viewBox="0 0 24 24"><rect x="2.5" y="8" width="19" height="8" rx="1.4" class="s" /><path d="M7 8v3.5M12 8v5M17 8v3.5" class="s thin" /></symbol>
+        <symbol id="ic-rect" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.2" class="s" /></symbol>
+        <symbol id="ic-hatch" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.2" class="s" /><path d="M6 16 10 8M10.5 16 14.5 8M15 16 19 8" class="s thin" /></symbol>
+        <symbol id="ic-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" class="s" /><circle cx="12" cy="12" r="1.4" /></symbol>
+        <symbol id="ic-trim" viewBox="0 0 24 24"><path d="M4 17 20 7" class="s" /><path d="M4 7l7 4.4" class="s thin" /><circle cx="13.4" cy="13.4" r="2.1" class="s thin" /><circle cx="13.4" cy="6.6" r="2.1" class="s thin" /></symbol>
+        <symbol id="ic-text" viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M9 19h6" class="s" /></symbol>
+        <symbol id="ic-undo" viewBox="0 0 24 24"><path d="M8 7H14a5.5 5.5 0 0 1 0 11h-4" class="s" /><path d="M4.5 7 9.5 3.6v6.8z" /></symbol>
+        <symbol id="ic-redo" viewBox="0 0 24 24"><path d="M16 7H10a5.5 5.5 0 0 0 0 11h4" class="s" /><path d="M19.5 7 14.5 3.6v6.8z" /></symbol>
+        <symbol id="ic-import" viewBox="0 0 24 24"><path d="M12 3.5v10" class="s" /><path d="M12 17 7.6 9.8h8.8z" /><path d="M4 19.5h16" class="s" /></symbol>
+        <symbol id="ic-save" viewBox="0 0 24 24"><path d="M5 4.5h11L19.5 8v11.5H5z" class="s" /><path d="M8.5 4.5v5h7v-5M8.5 19.5v-5h7v5" class="s thin" /></symbol>
+        <symbol id="ic-open" viewBox="0 0 24 24"><path d="M3.5 19V6.5h6l2 2.5h9V19z" class="s" /></symbol>
+        <symbol id="ic-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13" class="s" /></symbol>
+        <symbol id="ic-minus" viewBox="0 0 24 24"><path d="M5.5 12h13" class="s" /></symbol>
+        <symbol id="ic-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" class="s" /><rect x="9" y="9" width="6" height="6" rx="1" class="s thin" /></symbol>
+        <symbol id="ic-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" class="s" /><path d="M9.6 9.6a2.5 2.5 0 1 1 3.2 2.6c-.6.2-.8.7-.8 1.3v.5" class="s thin" /><circle cx="12" cy="17" r="1.1" /></symbol>
+        <symbol id="ic-theme" viewBox="0 0 24 24"><path d="M18 13.5A7 7 0 0 1 10 5.2 7.4 7.4 0 1 0 18 13.5" class="s" /></symbol>
+        <symbol id="ic-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="18.5" cy="12" r="1.7" /></symbol>
+      </defs>
+    </svg>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <strong>Omkreds</strong>
+        </div>
+
+        <input id="planImport" type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" hidden />
+        <input id="projectImport" type="file" accept="application/json" hidden />
+
+        <div class="topbar-group">
+          <button id="undoAction" class="icon-button" title="Fortryd (Ctrl+Z)" aria-label="Fortryd"><svg class="icon"><use href="#ic-undo" /></svg></button>
+          <button id="redoAction" class="icon-button" title="Gendan (Ctrl+Shift+Z)" aria-label="Gendan"><svg class="icon"><use href="#ic-redo" /></svg></button>
+        </div>
+
+        <div class="topbar-group">
+          <button id="importPlan" class="action-button" title="Importer PDF eller billede som underlag"><svg class="icon"><use href="#ic-import" /></svg><span>Importer</span></button>
+          <button id="saveProject" class="action-button" title="Gem projekt som JSON (Ctrl+S)"><svg class="icon"><use href="#ic-save" /></svg><span>Gem</span></button>
+          <button id="openProject" class="action-button" title="Aabn projekt (Ctrl+O)"><svg class="icon"><use href="#ic-open" /></svg><span>Aabn</span></button>
+        </div>
+
+        <div class="topbar-group export-menu">
+          <button id="exportPng" class="action-button primary" title="Eksporter PNG">PNG</button>
+          <button id="exportSvg" class="action-button" title="Eksporter SVG">SVG</button>
+          <button id="exportPdf" class="action-button" title="Eksporter PDF">PDF</button>
+        </div>
+
+        <div class="topbar-spacer"></div>
+
+        <div class="topbar-group">
+          <span id="selectionCount" class="status-pill">0 valgt</span>
+        </div>
+
+        <div class="zoom-controls" aria-label="Zoom">
+          <button id="zoomOut" title="Zoom ud (Ctrl+-)" aria-label="Zoom ud"><svg class="icon"><use href="#ic-minus" /></svg></button>
+          <button id="zoomLabel" class="zoom-label" title="Nulstil til 100%">100%</button>
+          <button id="zoomIn" title="Zoom ind (Ctrl++)" aria-label="Zoom ind"><svg class="icon"><use href="#ic-plus" /></svg></button>
+          <button id="zoomFit" title="Zoom til tegningen (Shift+F)" aria-label="Zoom til tegningen"><svg class="icon"><use href="#ic-fit" /></svg></button>
+        </div>
+
+        <div class="topbar-group">
+          <button id="themeToggle" class="icon-button" title="Skift lyst/moerkt tema" aria-label="Skift tema"><svg class="icon"><use href="#ic-theme" /></svg></button>
+          <button id="shortcutsButton" class="icon-button" title="Tastaturgenveje (?)" aria-label="Tastaturgenveje"><svg class="icon"><use href="#ic-help" /></svg></button>
+        </div>
+      </header>
+
+      <aside class="tool-rail" aria-label="Vaerktoejer">
+        <div class="rail-tools" role="group" aria-label="Tegnevaerktoejer">
+          <button class="tool-button" data-tool="select" data-shortcut="V" title="Vaelg (V)" aria-label="Vaelg"><svg class="icon"><use href="#ic-select" /></svg><span class="tool-label">Vaelg</span></button>
+          <hr class="rail-divider" />
+          <button class="tool-button" data-tool="line" data-shortcut="L" title="Linje (L)" aria-label="Linje"><svg class="icon"><use href="#ic-line" /></svg><span class="tool-label">Linje</span></button>
+          <button class="tool-button" data-tool="polyline" data-shortcut="P" title="Polylinje (P) - Enter afslutter, C lukker" aria-label="Polylinje"><svg class="icon"><use href="#ic-polyline" /></svg><span class="tool-label">Polylinje</span></button>
+          <button class="tool-button" data-tool="rect" data-shortcut="R" title="Rektangel (R)" aria-label="Rektangel"><svg class="icon"><use href="#ic-rect" /></svg><span class="tool-label">Flade</span></button>
+          <button class="tool-button" data-tool="circle" data-shortcut="E" title="Cirkel (E)" aria-label="Cirkel"><svg class="icon"><use href="#ic-circle" /></svg><span class="tool-label">Cirkel</span></button>
+          <button class="tool-button" data-tool="hatch" data-shortcut="H" title="Hatch (H)" aria-label="Hatch"><svg class="icon"><use href="#ic-hatch" /></svg><span class="tool-label">Hatch</span></button>
+          <button class="tool-button" data-tool="trim" data-shortcut="X" title="Trim / forlaeng (X)" aria-label="Trim"><svg class="icon"><use href="#ic-trim" /></svg><span class="tool-label">Trim</span></button>
+          <hr class="rail-divider" />
+          <button class="tool-button" data-tool="measure" data-shortcut="M" title="Maal (M)" aria-label="Maal"><svg class="icon"><use href="#ic-measure" /></svg><span class="tool-label">Maal</span></button>
+          <button class="tool-button" data-tool="calibrate" data-shortcut="K" title="Kalibrer skala (K)" aria-label="Kalibrer"><svg class="icon"><use href="#ic-scale" /></svg><span class="tool-label">Skala</span></button>
+          <hr class="rail-divider" />
+          <button class="tool-button" data-tool="arrow" data-shortcut="A" title="Pil (A)" aria-label="Pil"><svg class="icon"><use href="#ic-arrow" /></svg><span class="tool-label">Pil</span></button>
+          <button class="tool-button" data-tool="loadArrow" data-shortcut="F" title="Lastpil (F)" aria-label="Lastpil"><svg class="icon"><use href="#ic-load" /></svg><span class="tool-label">Last</span></button>
+          <button class="tool-button" data-tool="leader" data-shortcut="N" title="Leader note (N)" aria-label="Leader"><svg class="icon"><use href="#ic-leader" /></svg><span class="tool-label">Leader</span></button>
+          <button class="tool-button" data-tool="weld" data-shortcut="W" title="Svejsning (W)" aria-label="Svejsning"><svg class="icon"><use href="#ic-weld" /></svg><span class="tool-label">Svejs</span></button>
+          <button class="tool-button" data-tool="breakLine" data-shortcut="B" title="Brudlinje med maske (B)" aria-label="Brudlinje"><svg class="icon"><use href="#ic-break" /></svg><span class="tool-label">Brud</span></button>
+          <button class="tool-button" data-tool="text" data-shortcut="T" title="Tekst (T)" aria-label="Tekst"><svg class="icon"><use href="#ic-text" /></svg><span class="tool-label">Tekst</span></button>
+        </div>
+      </aside>
+
+
+      <main class="workspace">
+        <section class="tool-hud" id="toolHud" aria-label="Aktivt vaerktoej">
+          <div class="hud-copy">
+            <strong id="activeToolName">Ingen aktiv kommando</strong>
+            <span id="activeToolHint">Klik geometri for at markere. Vælg et værktøj for at tegne.</span>
+          </div>
+          <div class="hud-controls">
+            <label class="hud-field" title="Farve"><span>Farve</span><input id="strokeColor" type="color" value="#1a1a1a" /></label>
+            <label class="hud-field" title="Line weight"><span>Tykkelse <b id="strokeWidthValue">0,35 mm</b></span><input id="strokeWidth" type="range" min="0.13" max="2" step="0.01" value="0.35" list="penWeights" /><datalist id="penWeights"><option value="0.13"></option><option value="0.18"></option><option value="0.25"></option><option value="0.35"></option><option value="0.5"></option><option value="0.7"></option><option value="1"></option><option value="1.4"></option></datalist></label>
+            <label class="hud-field" title="Linjetype"><span>Linjetype</span><select id="lineTypeSelect"><option value="solid" selected>Continuous</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="dashdot">Dash-dot</option><option value="center">Centerline</option><option value="hidden">Hidden</option><option value="construction">Construction</option><option value="phantom">Phantom</option></select></label>
+            <label class="hud-field" title="Opacity"><span>Opacitet <b id="strokeOpacityValue">100%</b></span><input id="strokeOpacity" type="range" min="10" max="100" value="100" /></label>
+            <label class="hud-field" title="Style preset"><span>Preset</span><select id="stylePreset"><option value="outline" selected>Outline</option><option value="fine">Fine</option><option value="heavy">Heavy cut</option><option value="centerline">Centerline</option><option value="hidden">Hidden</option><option value="construction">Construction</option><option value="dimension">Dimension</option><option value="markup">Markup</option></select></label>
+          </div>
+        </section>
+        <section class="canvas-wrap" id="canvasWrap">
+          <svg id="drawingCanvas" width="100%" height="100%" viewBox="0 0 1400 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Tegneflade">
+            <defs>
+              <pattern id="dotGrid" width="25" height="25" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.45" fill="#c6ceda" /></pattern>
+              <pattern id="majorDotGrid" width="100" height="100" patternUnits="userSpaceOnUse"><rect width="100" height="100" fill="url(#dotGrid)" /><circle cx="2" cy="2" r="2.35" fill="#8f9bad" /></pattern>
+              <pattern id="hatch-masonry" width="48" height="24" patternUnits="userSpaceOnUse"><path d="M0 0 H48 M0 12 H48 M0 24 H48 M0 0 V12 M24 12 V24 M48 0 V12" stroke="currentColor" stroke-width="1.5" fill="none" /></pattern>
+              <pattern id="hatch-concrete" width="42" height="42" patternUnits="userSpaceOnUse"><path d="M7 30 L15 25 M25 10 L35 5 M25 34 L36 28 M5 12 L11 18" stroke="currentColor" stroke-width="1.2" /><path d="M18 18 l5 2 l-3 4 z M32 17 l4 -3 l3 5 z M9 36 l4 -2 l2 4 z" fill="currentColor" opacity="0.6" /><circle cx="8" cy="8" r="1.1" fill="currentColor" /><circle cx="21" cy="27" r="1" fill="currentColor" /></pattern>
+              <pattern id="hatch-steel" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0 V18 M9 0 V18" stroke="currentColor" stroke-width="1.2" /></pattern>
+              <pattern id="hatch-wood" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0 V12" stroke="currentColor" stroke-width="0.55" /></pattern>
+              <!-- Lamellinjer for limtrae. Deliberately NOT named hatch-* : refreshHatchScale
+                   rescales those with the plot scale because a section hatch is a PAPER
+                   convention, while a 40 mm lamella is a real dimension of the member. -->
+              <pattern id="lam-h" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M0 0 H40" stroke="currentColor" stroke-width="0.8" fill="none" opacity="0.75" /></pattern>
+              <pattern id="lam-v" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M0 0 V40" stroke="currentColor" stroke-width="0.8" fill="none" opacity="0.75" /></pattern>
+              <pattern id="hatch-insulation" width="28" height="18" patternUnits="userSpaceOnUse"><path d="M0 9 C7 -1 21 19 28 9" stroke="currentColor" stroke-width="1.2" fill="none" /></pattern>
+            </defs>
+            <rect class="sheet-shadow" x="0" y="0" width="1400" height="900" />
+            <rect class="paper-bg" width="1400" height="900" />
+            <rect class="grid-bg" width="1400" height="900" fill="url(#majorDotGrid)" />
+            <g id="underlayLayer"></g>
+            <g id="drawingLayer"></g>
+            <g id="previewLayer"></g>
+          </svg>
+
+          <div class="selection-bar" id="selectionBar" aria-label="Valgte objekter">
+            <div class="selection-group">
+              <button data-action="duplicate" title="Dupliker (Ctrl+D)">Dupliker</button>
+              <button data-action="copy-ref" title="Kopi med basepunkt">Kopi ref</button>
+              <button data-action="offset" title="Parallel kopi i afstand">Offset</button>
+              <button data-action="mirror" title="Spejl det valgte">Spejl</button>
+              <button data-action="move-by" title="Flyt med indtastet afstand">Flyt tal</button>
+              <button data-action="group" title="Grupper (Ctrl+G)">Grupper</button>
+              <button data-action="ungroup" title="Oploes gruppe (Ctrl+Shift+G)">Oploes</button>
+              <button data-action="lock" title="Laas valget">Laas</button>
+            </div>
+            <div class="selection-group">
+              <button data-action="bring-front" title="Forrest (Ctrl+Shift+])">Forrest</button>
+              <button data-action="send-back" title="Bagest (Ctrl+Shift+[)">Bagest</button>
+            </div>
+            <div class="selection-group">
+              <button data-action="align-left" title="Justér venstre">Just. V</button>
+              <button data-action="align-center" title="Justér centreret">Just. C</button>
+              <button data-action="align-top" title="Justér top">Just. T</button>
+            </div>
+            <div class="selection-group">
+              <button data-action="detail-polish" title="Giv valget teknisk lineweight-hierarki">Polish</button>
+              <button data-action="leader-label" title="Auto-label med leader">Auto label</button>
+            </div>
+            <div class="selection-overflow">
+              <button class="overflow-toggle" data-selection-more title="Flere handlinger"><svg class="icon"><use href="#ic-more" /></svg></button>
+              <div class="overflow-menu" hidden>
+                <button data-action="pick-style">Hent style</button>
+                <button data-action="apply-style">Brug aktiv style</button>
+                <button data-action="select-similar">Vaelg lignende</button>
+                <button data-action="isolate">Isoler valg</button>
+                <button data-action="show-all">Vis alt</button>
+                <button data-action="unlock">Laas op</button>
+                <button data-action="bring-forward">Et trin frem</button>
+                <button data-action="send-backward">Et trin tilbage</button>
+                <button data-action="distribute-h">Fordel vandret</button>
+                <button data-action="distribute-v">Fordel lodret</button>
+                <button data-action="rotate-90">Rotér 90</button>
+                <button data-action="mirror-h">Spejl vandret</button>
+                <button data-action="mirror-v">Spejl lodret</button>
+                <button data-action="offset">Offset</button>
+                <button data-action="array-linear">Linear array</button>
+                <button data-action="fastener-row">Fastener row</button>
+                <button data-action="array-polar">Polar array</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <footer class="status-bar" aria-label="Status">
+          <span id="statusText" class="status-message">Tegn direkte paa canvas. Klik geometri for at redigere.</span>
+          <span class="status-spacer"></span>
+          <span id="lengthReadout" class="status-chip" hidden></span>
+          <span id="snapReadout" class="status-chip">Snap</span>
+          <span id="autosaveStatus" class="status-chip subtle"></span>
+          <span id="cursorReadout" class="status-chip mono">0, 0</span>
+        </footer>
+      </main>
+
+      <aside class="inspector" id="inspector" aria-label="Kontekstpanel">
+        <nav class="inspector-tabs" aria-label="Paneler">
+          <button class="panel-toggle" data-panel-target="properties">Egenskaber</button>
+          <button class="panel-toggle" data-panel-target="project">Præcision</button>
+          <button class="panel-toggle" data-panel-target="components">Komponenter</button>
+          <button class="panel-toggle" data-panel-target="layers">Lag</button>
+          <button class="panel-toggle" data-panel-target="elements">Elementer</button>
+        </nav>
+        <button id="closePanel" class="panel-close" title="Tilbage til egenskaber">×</button>
+
+        <div class="inspector-body">
+          <section class="panel-section" data-panel="project">
+            <h2>Præcision</h2>
+            <div id="pdfControls" class="inline-grid" hidden>
+              <label>PDF-side<select id="pdfPageSelect"></select></label>
+              <label>Rotation<select id="pdfRotation"><option value="0" selected>0</option><option value="90">90</option><option value="180">180</option><option value="270">270</option></select></label>
+            </div>
+            <label class="checkbox-row"><input id="underlayLocked" type="checkbox" checked /> Laas underlag</label>
+            <label>Underlag <span id="underlayOpacityValue">55%</span><input id="underlayOpacity" type="range" min="10" max="100" value="55" /></label>
+            <label>Underlagsskala <span id="underlayScaleValue">100%</span><input id="underlayScale" type="range" min="50" max="200" value="100" /></label>
+            <div class="field-row">
+              <span class="field-label">Underlagets maalestok <b id="underlayScaleReadout">-</b></span>
+              <button id="calibrateUnderlay" class="action-button">Kalibrer underlag (2 punkter)</button>
+            </div>
+            <div class="field-row">
+              <span class="field-label">Underlag <b id="underlayNameReadout">Intet</b></span>
+              <button id="removeUnderlay" class="action-button subtle" disabled>Fjern underlag</button>
+            </div>
+            <label>Skala<select id="scaleFactor"><option value="1" selected>1 enhed = 1 mm</option><option value="5">1 enhed = 5 mm</option><option value="10">1 enhed = 10 mm</option><option value="100">1 enhed = 100 mm</option></select></label>
+            <p id="scaleStatus" class="microcopy">Ikke kalibreret</p>
+            <p id="geometryStatus" class="microcopy"></p>
+            <div class="inline-grid">
+              <label>Prikker<select id="gridSize"><option value="10">10</option><option value="25" selected>25</option><option value="50">50</option><option value="100">100</option></select></label>
+              <label class="checkbox-row snap-row"><input id="snapToggle" type="checkbox" checked /> Snap</label>
+            </div>
+            <div class="field-row">
+              <span class="field-label">Ark <b id="sheetSizeValue">1400 x 900</b></span>
+              <button id="sheetSizeButton" class="action-button">Skift arkstoerrelse</button>
+            </div>
+            <button id="clearAutosave" class="action-button subtle">Ryd autosave</button>
+          </section>
+
+          <section class="panel-section" data-panel="components">
+            <h2>Komponenter</h2>
+            <details open>
+              <summary>Sheet og detaljer</summary>
+              <button id="insertSheetFrame" class="action-button">Tegningsramme + titleblock</button>
+              <button id="insertDetailViewport" class="action-button">Detail viewport</button>
+              <button id="insertDetailTitle" class="action-button">Detailtitel</button>
+              <button id="insertTrussTemplate" class="action-button">Brace baseplate template</button>
+              <button id="insertBeamColumnTemplate" class="action-button">Beam-column bolt template</button>
+              <button id="insertPolishedConnectionTemplate" class="action-button primary">Flot samlingsdetalje</button>
+            </details>
+            <details open>
+              <summary>Samlinger</summary>
+              <p class="microcopy">Parametriske samlinger: beslag, skruer og maal fra biblioteket. Redigeres bagefter i Egenskaber.</p>
+              <button id="insertConnection" class="action-button primary">Soejlefod (trae paa beton)</button>
+            </details>
+            <details open>
+              <summary>Baeringsdetaljer</summary>
+              <p class="microcopy">Lastvejsdetaljer: trae med aarer, staal i graat, beton med skravering, brudlinjer og roede lastpile. Alt indsaettes som redigerbare objekter.</p>
+              <button id="insertBearingOnColumn" class="action-button">13-5 Bjaelke paa traesoejle</button>
+              <button id="insertBearingAngle" class="action-button">13-6 Bjaelke paa soejle med vinkel</button>
+              <button id="insertTopFlangeBearing" class="action-button">13-7 Overflange paa traesoejle</button>
+              <button id="insertKnifePlateSeat" class="action-button">9-11 Staalkonsol med knivplader</button>
+              <button id="insertNotchedColumnGirder" class="action-button">9-7 Klodser ved udskaaret soejle</button>
+              <button id="insertStandoffBase" class="action-button">15-3 Soejlefod paa standoff</button>
+            </details>
+            <details open>
+              <summary>Structural library</summary>
+              <label>Source<select id="componentSource"><option value="generic" selected>Generic</option><option value="manufacturer">Manufacturers</option></select></label>
+              <label>Manufacturer<select id="componentManufacturer"></select></label>
+              <label>Search<input id="componentSearch" type="text" placeholder="ABR, joist hanger, Simpson..." /></label>
+              <label>Kategori<select id="componentCategory"></select></label>
+              <label id="componentItemLabel">Komponent<select id="componentItem"></select></label>
+              <label id="componentVariantLabel">Variant<select id="componentVariant"></select></label>
+              <label>View<select id="componentView"><option value="symbol">Symbol</option><option value="top">Top</option><option value="side">Side</option><option value="section">Section</option><option value="elevation">Elevation</option></select></label>
+              <div id="componentBrowser" class="component-browser" aria-label="Komponent previews"></div>
+              <div id="componentPreview" class="component-preview">No component selected</div>
+              <button id="insertLibraryComponent" class="action-button primary">Indsaet komponent</button>
+            </details>
+            <details open>
+              <summary>Staal</summary>
+              <label>Profil<select id="profileSelect"><option value="IPE100">IPE 100</option><option value="IPE160">IPE 160</option><option value="IPE200" selected>IPE 200</option><option value="IPE300">IPE 300</option><option value="HEA100">HEA 100</option><option value="HEA200">HEA 200</option><option value="HEB200">HEB 200</option><option value="RHS100x50x5">RHS 100x50x5</option><option value="SHS100x100x5">SHS 100x100x5</option><option value="UPN160">UPN 160</option></select></label>
+              <button id="insertProfile" class="action-button">Placer profil</button>
+            </details>
+            <details>
+              <summary>Bolte</summary>
+              <div class="inline-grid"><label>Stoerrelse<select id="boltSelect"><option value="M8">M8</option><option value="M10">M10</option><option value="M12" selected>M12</option><option value="M16">M16</option><option value="M20">M20</option><option value="M24">M24</option><option value="M30">M30</option></select></label><label>Visning<select id="boltViewSelect"><option value="hole" selected>Hul + centerkryds</option><option value="head">Hul + hoved</option></select></label><label>Kvalitet<select id="boltGrade"><option value="8.8" selected>8.8</option><option value="10.9">10.9</option><option value="A4-70">A4-70</option></select></label></div>
+              <div class="inline-grid"><label>Hoved<select id="boltHeadForm"><option value="hex" selected>Sekskant</option><option value="socket">Indv. sekskant</option><option value="lowSocket">Lav socket</option><option value="button">Kalot</option><option value="coach">Braeddebolt</option><option value="countersunk">Undersaenket</option><option value="none">Uden hoved</option></select></label><label>Laengde mm<input id="boltLengthInput" type="number" min="1" step="5" placeholder="auto" /></label></div>
+              <div class="inline-grid"><label>Gevind mm<input id="boltThreadInput" type="number" min="0" step="5" placeholder="auto" /></label><label>Overstik mm<input id="boltExtensionInput" type="number" min="0" step="1" placeholder="0" /></label></div>
+              <div class="inline-grid">
+                <label class="checkbox-row"><input id="boltShowNut" type="checkbox" checked /> Moetrik</label>
+                <label class="checkbox-row"><input id="boltThinNut" type="checkbox" /> Lav moetrik</label>
+                <label class="checkbox-row"><input id="boltNutWasher" type="checkbox" checked /> Skive u. moetrik</label>
+                <label class="checkbox-row"><input id="boltHeadWasher" type="checkbox" /> Skive u. hoved</label>
+                <label class="checkbox-row"><input id="boltSpringWasher" type="checkbox" /> Fjederskive</label>
+                <label class="checkbox-row"><input id="boltShowShank" type="checkbox" checked /> Skaft</label>
+                <label class="checkbox-row"><input id="boltSymbolic" type="checkbox" /> Symbolsk</label>
+              </div>
+              <p class="microcopy">Tom laengde/gevind = automatisk (5d og 0,6L). Felterne aendrer ogsaa den markerede bolt.</p>
+              <button id="insertBolt" class="action-button">Placer bolt</button>
+              <button id="insertBoltSide" class="action-button">Bolt side-view</button>
+            </details>
+            <details>
+              <summary>Skruer</summary>
+              <label>Type<select id="screwFamilySelect"></select></label>
+              <label>Dimension<select id="screwSelect"></select></label>
+              <label>View<select id="screwViewSelect"><option value="top">Top / hulplan</option><option value="side" selected>Side-view</option></select></label>
+              <button id="insertScrew" class="action-button">Placer skrue</button>
+            </details>
+            <details>
+              <summary>Symboler og hatch</summary>
+              <div class="inline-grid"><label>Vinkel<input id="hatchAngleInput" type="number" step="5" value="0" /></label><label>Skala<input id="hatchScaleInput" type="number" step="0.1" min="0.1" value="1" /></label></div>
+              <label>Hatch<select id="hatchSelect"><option value="masonry" selected>Murvaerk</option><option value="concrete">Beton</option><option value="steel">Staal</option><option value="wood">Trae</option><option value="insulation">Isolering</option></select></label>
+              <div class="symbol-grid">
+                <button class="symbol-button" data-symbol="screw">Skrue</button>
+                <button class="symbol-button" data-symbol="weld">Svejs</button>
+                <button class="symbol-button" data-symbol="bracket">Beslag</button>
+                <button class="symbol-button" data-symbol="plate">Plade</button>
+                <button class="symbol-button" data-symbol="sectionCut">Snit A-A</button>
+                <button class="symbol-button" data-symbol="breakLine">Brudlinje</button>
+                <button class="symbol-button" data-symbol="centerMark">Centermark</button>
+                <button class="symbol-button" data-symbol="detailCallout">Detail callout</button>
+                <button class="symbol-button" data-symbol="revisionCloud">Rev cloud</button>
+                <button class="symbol-button" data-symbol="levelMarker">Kote</button>
+                <button class="symbol-button" data-symbol="fallArrow">Faldpil</button>
+              </div>
+            </details>
+          </section>
+
+          <section class="panel-section" data-panel="layers">
+            <h2>Lag</h2>
+            <label>Aktivt lag<select id="activeLayer"><option value="measure">Maal</option><option value="steel">Staal</option><option value="timber">Trae</option><option value="masonry">Beton/murvaerk</option><option value="notes">Noter</option><option value="revision">Revision</option></select></label>
+            <div id="layerList" class="layer-list"></div>
+          </section>
+
+          <section class="panel-section" data-panel="elements">
+            <h2>Elementer</h2>
+            <div class="element-browser-title">
+              <span>I tegningen</span>
+              <strong id="elementTotal">0</strong>
+            </div>
+            <div id="elementList" class="element-list"></div>
+          </section>
+
+          <section class="panel-section" data-panel="properties">
+            <h2>Egenskaber</h2>
+            <p id="propertyEmpty" class="microcopy">Marker et objekt.</p>
+            <div id="propertyForm" class="property-form" hidden>
+              <label>Type<input id="propType" type="text" readonly /></label>
+              <label>Dimension<input id="propDimension" type="text" /></label>
+              <label>Materiale<input id="propMaterial" type="text" placeholder="S235, S355, C24..." /></label>
+              <label>Manufacturer<input id="propManufacturer" type="text" readonly /></label>
+              <label>Family<input id="propFamily" type="text" readonly /></label>
+              <label>Product<input id="propProduct" type="text" readonly /></label>
+              <label>Source URL<input id="propSourceUrl" type="text" readonly /></label>
+              <label>Laengde<input id="propLength" type="text" readonly /></label>
+              <label>Rotation<input id="propRotation" type="number" value="0" /></label>
+              <label>Lineweight [mm]<input id="propStrokeWidth" type="number" min="0.13" max="2" step="0.01" value="0.35" /></label>
+              <label>Opacity<input id="propOpacity" type="number" min="10" max="100" value="100" /></label>
+              <label>Lag<select id="propLayer"><option value="measure">Maal</option><option value="steel">Staal</option><option value="timber">Trae</option><option value="masonry">Beton/murvaerk</option><option value="notes">Noter</option><option value="revision">Revision</option></select></label>
+              <label>Farve<input id="propColor" type="color" /></label>
+              <label>Linjetype<select id="propLineType"><option value="solid">Continuous</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="dashdot">Dash-dot</option><option value="center">Center</option><option value="hidden">Hidden</option><option value="construction">Construction</option><option value="phantom">Phantom</option></select></label>
+              <label>Maaltekst<input id="propMeasureText" type="text" /></label>
+              <label>Maaltype<select id="propMeasureMode"><option value="actual">Faktisk</option><option value="custom">Brugerdefineret</option></select></label>
+              <label>Maal-offset<input id="propMeasureOffset" type="number" value="24" /></label>
+            </div>
+            <div class="button-row"><button id="deleteSelection" class="action-button">Slet valgt</button><button id="clearCanvas" class="action-button danger">Ryd alt</button></div>
+          </section>
+        </div>
+      </aside>
+    </div>
+
+    <div class="command-palette" id="commandPalette" hidden>
+      <div class="command-box" role="dialog" aria-label="Kommandopalette">
+        <input id="commandPaletteInput" type="text" placeholder="Soeg efter en kommando, et vaerktoej eller et objekt..." autocomplete="off" spellcheck="false" />
+        <div class="command-list" id="commandPaletteList"></div>
+        <p class="command-foot">Enter koerer &middot; Pil op/ned vaelger &middot; Esc lukker</p>
+      </div>
+    </div>
+    <nav id="contextMenu" class="context-menu" hidden>
+      <button data-context-action="duplicate">Dupliker</button>
+      <button data-context-action="copy-ref">Kopi med basepunkt</button>
+      <button data-context-action="group">Grupper</button>
+      <button data-context-action="ungroup">Oploes gruppe</button>
+      <button data-context-action="lock">Laas</button>
+      <button data-context-action="unlock">Laas op</button>
+      <button data-context-action="select-similar">Vaelg lignende</button>
+      <button data-context-action="pick-style">Hent style</button>
+      <button data-context-action="apply-style">Brug aktiv style</button>
+      <button data-context-action="isolate">Isoler valg</button>
+      <button data-context-action="show-all">Vis alt</button>
+      <button data-context-action="flip-break">Vend brudlinje</button>
+      <button data-context-action="flip-break">Vend brudlinje</button>
+      <button data-context-action="bring-front">Forrest</button>
+      <button data-context-action="bring-forward">Et trin frem</button>
+      <button data-context-action="send-backward">Et trin tilbage</button>
+      <button data-context-action="send-back">Bagest</button>
+      <button data-context-action="delete">Slet</button>
+    </nav>
+
+    <div id="shortcutsOverlay" class="shortcuts-overlay" hidden>
+      <div class="shortcuts-card">
+        <header>
+          <h2>Tastaturgenveje</h2>
+          <button id="shortcutsClose" class="icon-button" aria-label="Luk">×</button>
+        </header>
+        <div class="shortcuts-grid">
+          <section>
+            <h3>Vaerktoejer</h3>
+            <dl>
+              <dt>V</dt><dd>Vaelg</dd>
+              <dt>L</dt><dd>Linje</dd>
+              <dt>R</dt><dd>Rektangel</dd>
+              <dt>E</dt><dd>Cirkel</dd>
+              <dt>H</dt><dd>Hatch</dd>
+              <dt>M</dt><dd>Maal</dd>
+              <dt>K</dt><dd>Kalibrer skala</dd>
+              <dt>A</dt><dd>Pil</dd>
+              <dt>F</dt><dd>Lastpil</dd>
+              <dt>N</dt><dd>Leader</dd>
+              <dt>W</dt><dd>Svejsning</dd>
+              <dt>T</dt><dd>Tekst</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>Navigation</h3>
+            <dl>
+              <dt>Mellemrum + traek</dt><dd>Panorer</dd>
+              <dt>Midterste musetast</dt><dd>Panorer</dd>
+              <dt>Hjul</dt><dd>Panorer op/ned</dd>
+              <dt>Shift + hjul</dt><dd>Panorer sidelaens</dd>
+              <dt>Ctrl + hjul</dt><dd>Zoom ved cursor</dd>
+              <dt>Ctrl + / Ctrl -</dt><dd>Zoom ind/ud</dd>
+              <dt>Shift + F</dt><dd>Zoom til tegningen</dd>
+              <dt>Shift + S</dt><dd>Zoom til valget</dd>
+              <dt>Ctrl + 0</dt><dd>Zoom 100%</dd>
+              <dt>Dobbeltklik</dt><dd>Rediger tekst / zoom</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>Redigering</h3>
+            <dl>
+              <dt>Ctrl + Z</dt><dd>Fortryd</dd>
+              <dt>Ctrl + Shift + Z</dt><dd>Gendan</dd>
+              <dt>Ctrl + C / V</dt><dd>Kopier / indsaet</dd>
+              <dt>Ctrl + D</dt><dd>Dupliker</dd>
+              <dt>Ctrl + G</dt><dd>Grupper</dd>
+              <dt>Ctrl + A</dt><dd>Vaelg alt</dd>
+              <dt>Ctrl + Shift + A</dt><dd>Vaelg lignende</dd>
+              <dt>Ctrl + I</dt><dd>Isoler valg</dd>
+              <dt>Piletaster</dt><dd>Nudge</dd>
+              <dt>Delete</dt><dd>Slet valg</dd>
+              <dt>Enter</dt><dd>Gentag sidste handling</dd>
+              <dt>Esc</dt><dd>Annuller</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>Praecision</h3>
+            <dl>
+              <dt>Shift under tegning</dt><dd>Laas vinkel til 45°</dd>
+              <dt>Alt under tegning</dt><dd>Slaa snap fra midlertidigt</dd>
+              <dt>Ctrl + B</dt><dd>Snap til/fra</dd>
+              <dt>Ctrl + S</dt><dd>Gem projekt</dd>
+              <dt>Ctrl + O</dt><dd>Aabn projekt</dd>
+              <dt>?</dt><dd>Denne oversigt</dd>
+            </dl>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script defer src="vendor/svg2pdf.umd.min.js"></script>
+    <!-- Packed manufacturer geometry: lossless re-encode of the DXF import,
+         97 parts in 0.5 MB instead of 8 MB. Regenerate with
+         tools/suppliers/pack-geometry.py; the raw import stays on disk as the
+         auditable source of truth. -->
+    <script defer src="component-library/manufacturers/simpson/geometry.packed.js"></script>
+    <script defer src="script.js"></script>
+  </body>
+</html>

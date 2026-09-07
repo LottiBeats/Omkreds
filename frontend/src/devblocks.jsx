@@ -27,6 +27,24 @@ import SteelBeamBlock    from './components/blocks/SteelBeamBlock.jsx'
 import SteelColumnBlock  from './components/blocks/SteelColumnBlock.jsx'
 import CustomCalcBlock   from './components/blocks/CustomCalcBlock.jsx'
 
+// En faerdigregnet lastkombination, som de blokke der henter fra en kombination
+// kan pege paa. Uden en soeskende i `blocks` er "Hent fra lastkombination"
+// tom, og saa er den sti aldrig blevet set -- det var praecis dér, traebjaelken
+// kaldte en variabel, der ikke fandtes. Tallene er dem 'Lastkombinationer'
+// ovenfor giver med sine startvaerdier.
+const KOMBI = {
+  id: 'dev-lc', type: 'load_combo',
+  data: {
+    title: 'Lastkombinationer', label: 'LC1', unit: 'kN/m',
+    _exports: {
+      E_d_uls: 9.75, E_d_brand: 5.40, E_d_oevrig: 5.00,
+      E_d_char: 7.00, E_d_freq: 5.40, E_d_qp: 5.00,
+      governing_duration: 'short', design_situation: 'persistent',
+      accidental_type: 'none', unit: 'kN/m',
+    },
+  },
+}
+
 const KATALOG = [
   ['Tagets egenlast', RoofDeadLoadBlock, 'roof_dead_load',
     { title: 'Tagets egenlast', label: 'G1', alpha_deg: 30, a_m: 0.9,
@@ -65,6 +83,8 @@ function Vaerksted() {
   React.useEffect(() => { setData(KATALOG[valgt][3]) }, [valgt])
 
   const block = { id: 'dev', type, data }
+  // Kombinationen ligger altid ved siden af, saa combo-kilden kan vaelges.
+  const naboer = type === 'load_combo' ? [block] : [KOMBI, block]
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', padding: 16 }}>
@@ -89,7 +109,7 @@ function Vaerksted() {
       <div style={{ width: bredde, border: '1px solid #ddd', borderRadius: 6,
                     padding: 10, background: '#fff', resize: 'horizontal',
                     overflow: 'auto' }}>
-        <Comp block={block} blocks={[block]}
+        <Comp block={block} blocks={naboer}
               onChange={b => setData(b.data)} />
       </div>
     </div>
