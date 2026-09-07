@@ -1201,6 +1201,12 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
   // Equal-DOF constraints
   const equalDofs = d.equal_dofs ?? []
+
+  // Blokken starter tom, saa "Koer FEM" kan trykkes paa ingenting. Serveren
+  // afviser det pent -- validate_model siger praecis hvad der mangler -- men
+  // en rundtur til serveren for at faa at vide, at man ikke har tegnet noget
+  // endnu, er ikke et svar, det er en forsinkelse.
+  const tomModel = nodes.length < 2 || elements.length === 0
   function updateEqDof(i, v) { const a = [...equalDofs]; a[i] = v; update({ equal_dofs: a }) }
   function addEqDof()        { update({ equal_dofs: [...equalDofs, { r_node: 1, c_node: 2, dofs: [1, 2] }] }) }
   function removeEqDof(i)    { update({ equal_dofs: equalDofs.filter((_, j) => j !== i) }) }
@@ -1581,10 +1587,14 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       {/* Actions */}
       <div style={s.actionRow}>
         <button style={{ ...s.btn, ...s.btnRun,
-                         opacity: (loadMode === 'load_cases' && !loadCasesReady) ? 0.5 : 1 }}
+                         opacity: (tomModel || (loadMode === 'load_cases' && !loadCasesReady)) ? 0.5 : 1 }}
           onClick={handleRun}
-          disabled={running || previewing || (loadMode === 'load_cases' && !loadCasesReady)}
-          title={loadMode === 'load_cases' && !loadCasesReady ? 'Kør lastkombinations-blokken først' : 'Ctrl+Enter'}>
+          disabled={running || previewing || tomModel
+                    || (loadMode === 'load_cases' && !loadCasesReady)}
+          title={tomModel
+                   ? 'Der er ingen model at regne på — vælg et statisk system, eller tilføj knuder og elementer'
+                   : loadMode === 'load_cases' && !loadCasesReady
+                     ? 'Kør lastkombinations-blokken først' : 'Ctrl+Enter'}>
           {running ? '⏳  Beregner…' : '▶  Kør FEM'}
         </button>
         {/* The sketch above is the working view; this renders the same model

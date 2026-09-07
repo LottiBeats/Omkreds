@@ -145,15 +145,17 @@ const BLOCK_TYPES = [
                ],
                _exports: null, _result: null } },
   { type: 'general_frame_fem', label: 'Rammeberegning (FEM)', icon: 'GF',  color: '#0f766e', component: GeneralFrameFemBlock,
+    // Blokken starter tom. Den plejede at komme med en staalportalramme: fire
+    // knuder, tre IPE-profiler og 20 kN/m paa rigelen. Det er en bestemt
+    // konstruktion, ikke et udgangspunkt -- og et sted at begynde, man skal
+    // huske at rydde op i, er vaerre end ingenting. En glemt understoetning
+    // eller en glemt last fra en portalramme, man troede man havde slettet,
+    // ligner ikke en fejl i dokumentet.
+    //
+    // Vejen ind er "Vaelg statisk system", eller knuderne og elementerne
+    // taste for taste. Modulet er generelt; det skal ogsaa starte generelt.
     default: { title: '2D Frame FEM',
-               nodes:    [{ id: 1, x: 0, y: 0 }, { id: 2, x: 0, y: 4 }, { id: 3, x: 6, y: 4 }, { id: 4, x: 6, y: 0 }],
-               elements: [
-                 { id: 1, ni: 1, nj: 2, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1, Iz_cm4: 3892 },
-                 { id: 2, ni: 2, nj: 3, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 53.8, Iz_cm4: 8356 },
-                 { id: 3, ni: 4, nj: 3, type: 'beam', release: 'none', E_GPa: 210, A_cm2: 39.1, Iz_cm4: 3892 },
-               ],
-               supports: [{ node_id: 1, ux: true, uy: true, rz: true }, { node_id: 4, ux: true, uy: true, rz: true }],
-               loads:    [{ type: 'udl', elem_id: 2, wy_kNm: 20, wx_kNm: 0 }],
+               nodes: [], elements: [], supports: [], loads: [], equal_dofs: [],
                _figs_b64: null, _summary: null, _result: null } },
   { type: 'portal_frame_fem', label: 'Portal Frame FEM',  icon: 'PF',  color: '#0f766e', component: PortalFrameFemBlock,
     default: { title: 'Portal Frame FEM', n_bays: 1, h_bay_m: 5.0, w_bay_m: 10.0,
