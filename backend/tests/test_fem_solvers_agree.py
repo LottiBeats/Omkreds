@@ -31,7 +31,7 @@ import general_frame_fem as gf
 
 _LOESERE = {}
 if gf._OPS_AVAILABLE:
-    _LOESERE['opensees'] = gf.solve
+    _LOESERE['opensees'] = gf.solve_opensees
 if fem_pynite._PYNITE_AVAILABLE:
     _LOESERE['pynite'] = fem_pynite.solve
 _LOESERE['direkte'] = fem_direkte.solve

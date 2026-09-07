@@ -26,7 +26,8 @@ Sign conventions
 - Nodal load Fx/Fy/Mz in global axes (x=right, y=up)
 - eleForce returns [N_i, V_i, M_i, N_j, V_j, M_j] local coords
 
-Dependencies: openseespy, opsvis, matplotlib
+Dependencies: numpy, matplotlib. openseespy kun hvis
+OMKREDS_FEM_LOESER=opensees -- se solve() laengere nede.
 """
 
 # Catch Exception, not ImportError: openseespy ships a compiled extension, and
@@ -45,6 +46,7 @@ except Exception:
 # model state, so this module no longer needs it at all.
 
 import math
+import os as _os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -358,13 +360,35 @@ def section_force_extremes(pl, L, wy=0.0, wx=0.0):
         if 0.0 < x_stat < L:
             xs.append(x_stat)
 
+    def _stoerre(ny, hidtil):
+        """
+        Er 'ny' stoerre end den hidtil stoerste -- med et slip, saa et uafgjort
+        ikke bliver afgjort af afrunding?
+
+        Der stod et simpelt > her, og det var ustabilt i praecis det mest
+        almindelige tilfaelde, der findes: en symmetrisk bjaelke med jaevnt
+        fordelt last har V(0) = -V(L). De to ender er lige store, saa hvilken
+        der "vinder", blev afgjort af den sidste bit -- og de to har modsat
+        fortegn. Den samme konstruktion kunne derfor give -13,404 kN i ét
+        dokument og +13,404 kN i det naeste.
+
+        Fundet, da to loesere, der var enige om hver endekraft til ni decimaler,
+        rapporterede modsat fortegn paa V_kN: den ene ende laa 7e-15 hoejere hos
+        den ene af dem.
+
+        Med et slip vinder den foerste kandidat et uafgjort, og xs begynder ved
+        x = 0. Stoerrelsen er den samme uanset; det er fortegnet og
+        placeringen, der nu ligger fast.
+        """
+        return abs(ny) > abs(hidtil) * (1.0 + 1e-9) + 1e-12
+
     best = {'N_kN': 0.0, 'V_kN': 0.0, 'M_kNm': 0.0,
             'x_N_m': 0.0, 'x_V_m': 0.0, 'x_M_m': 0.0}
     for x in xs:
         N, V, M = section_forces_2d(pl, x, wy, wx)
-        if abs(N) > abs(best['N_kN']):  best['N_kN'],  best['x_N_m'] = N, x
-        if abs(V) > abs(best['V_kN']):  best['V_kN'],  best['x_V_m'] = V, x
-        if abs(M) > abs(best['M_kNm']): best['M_kNm'], best['x_M_m'] = M, x
+        if _stoerre(N, best['N_kN']):  best['N_kN'],  best['x_N_m'] = N, x
+        if _stoerre(V, best['V_kN']):  best['V_kN'],  best['x_V_m'] = V, x
+        if _stoerre(M, best['M_kNm']): best['M_kNm'], best['x_M_m'] = M, x
     return best
 
 
@@ -639,7 +663,56 @@ def compute_alpha_cr(nodes, elements, supports, ele_forces, node_reactions,
     }
 
 
+# ---------------------------------------------------------------------------
+# Hvilken loeser der regner
+# ---------------------------------------------------------------------------
+# Der er tre implementationer af den samme kontrakt:
+#
+#   direkte    fem_direkte.py   stivhedsmatricerne her, kun numpy   (standard)
+#   opensees   nedenfor         kompileret C++, virker ikke paa Windows
+#   pynite     fem_pynite.py    ren Python, 3D bag en oversaettelse
+#
+# solve() vaelger mellem dem ét sted. Det er vigtigere, end det ser ud:
+# solve() kaldes tre steder -- fra endepunktet, fra solve_combinations() én gang
+# pr. lastkombination, og fra compute_alpha_cr() med proevelaster. Skiftede man
+# kun importen i main.py, ville eftervisningen koere én loeser og rammens
+# sidestivhed en anden, i det samme dokument. Her kan det ikke ske.
+#
+# OMKREDS_FEM_LOESER kan saette den om uden en ny udrulning -- kun en
+# genstart af tjenesten. Det er der, fordi det her er et vaerktoej, der bruges
+# til rigtigt arbejde: gaar noget galt en formiddag, skal det kunne rulles
+# tilbage uden at vente paa nogen.
+_VALGT_LOESER = _os.environ.get('OMKREDS_FEM_LOESER', 'direkte').strip().lower()
+
+
 def solve(nodes, elements, supports, loads, equal_dofs=None):
+    """
+    Loes den plane ramme med den valgte loeser.
+
+    Samme parametre og samme returvaerdi uanset hvilken. De tre er sammenlignet
+    tal for tal i tests/test_fem_solvers_agree.py, der hvor mere end én af dem
+    kan importeres.
+    """
+    if _VALGT_LOESER == 'opensees':
+        return solve_opensees(nodes, elements, supports, loads, equal_dofs)
+
+    # Importeres her og ikke i toppen: fem_direkte og fem_pynite henter selv
+    # validate_model og section_force_extremes fra dette modul, saa en import
+    # oppe i filen ville vaere cirkulaer. Efter foerste kald er det et opslag i
+    # sys.modules.
+    if _VALGT_LOESER == 'pynite':
+        from fem_pynite import solve as _loes
+    elif _VALGT_LOESER == 'direkte':
+        from fem_direkte import solve as _loes
+    else:
+        raise ValueError(
+            "OMKREDS_FEM_LOESER er sat til %r. Gyldige vaerdier er "
+            "'direkte', 'opensees' og 'pynite'." % _VALGT_LOESER)
+
+    return _loes(nodes, elements, supports, loads, equal_dofs)
+
+
+def solve_opensees(nodes, elements, supports, loads, equal_dofs=None):
     """
     Build and solve a 2D linear elastic frame/truss model.
 

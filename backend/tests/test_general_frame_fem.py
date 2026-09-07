@@ -378,7 +378,7 @@ def test_non_finite_result_is_rejected():
 # begge findes.
 _LOESERE = []
 if gf._OPS_AVAILABLE:
-    _LOESERE.append(pytest.param(gf.solve, id='opensees'))
+    _LOESERE.append(pytest.param(gf.solve_opensees, id='opensees'))
 if fem_pynite._PYNITE_AVAILABLE:
     _LOESERE.append(pytest.param(fem_pynite.solve, id='pynite'))
 # fem_direkte har ingen betingelse: den bruger kun numpy, som allerede er der.
@@ -631,3 +631,35 @@ def test_endpoint_returns_the_explanation_not_a_traceback(client, monkeypatch):
     detail = r.json()['detail']
     assert 'Knude 3 er ikke forbundet' in detail
     assert 'Traceback' not in detail
+
+
+def test_symmetrisk_forskydning_giver_altid_samme_fortegn():
+    """
+    En symmetrisk bjaelke har V(0) = -V(L). Hvilken ende der rapporteres, maa
+    ikke afhaenge af den sidste bit.
+
+    section_force_extremes brugte et simpelt >, saa den stoerste af to lige
+    store vandt paa afrunding -- og de to har modsat fortegn. Fundet da to
+    loesere, der var enige om hver endekraft til ni decimaler, rapporterede
+    -13,404 kN og +13,404 kN for det samme element: den ene ende laa 7e-15
+    hoejere hos den ene af dem.
+
+    Her tvinges det frem med vilje. Stoerrelsen er ligegyldig; det er
+    fortegnet, der skal ligge fast.
+    """
+    L, w = 6.0, 10.0
+    wy = -w
+    V_i = w * L / 2
+
+    # Nul stoej: den perfekte symmetri.
+    pl = [0.0, V_i, 0.0, 0.0, -V_i, 0.0]
+    ren = gf.section_force_extremes(pl, L, wy, 0.0)
+
+    # Og med den stoej, der faktisk opstaar, i begge retninger.
+    for stoej in (+1e-14, -1e-14, +7e-15, -7e-15):
+        forstyrret = gf.section_force_extremes(
+            [0.0, V_i + stoej, 0.0, 0.0, -V_i, 0.0], L, wy, 0.0)
+        assert forstyrret['V_kN'] == pytest.approx(ren['V_kN'], rel=1e-6), (
+            'stoej paa %g flyttede den rapporterede forskydning fra %.6f til '
+            '%.6f' % (stoej, ren['V_kN'], forstyrret['V_kN']))
+        assert forstyrret['x_V_m'] == pytest.approx(ren['x_V_m'], abs=1e-9)

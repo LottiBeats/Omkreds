@@ -324,6 +324,26 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         # topologien, ikke paa tallene. En ramme kan vaere afstivet af to
         # naesten parallelle staenger og dermed vaere naesten singulaer uden at
         # mangle noget.
+        #
+        # Konditionstallet tjekkes FOER der loeses. numpy.linalg.solve kaster
+        # kun ved en eksakt singulaer matrix; ved en naesten singulaer
+        # returnerer den tal -- store, meningsloese tal, uden at sige noget.
+        # check_results laengere nede fanger de groveste ("konstruktionen
+        # flyttede sig 60 m"), men ikke dem, der lander i et troværdigt
+        # interval.
+        #
+        # Fundet med de tilfaeldige rammer: PyNite afviste en model, som denne
+        # loeser regnede videre paa. At vaere mindre forsigtig end den loeser,
+        # man skal erstatte, er den forkerte retning at afvige i.
+        kond = np.linalg.cond(K_ff)
+        if not np.isfinite(kond) or kond > 1e12:
+            raise ModelError(
+                "Modellen kan ikke regnes: stivhedsmatricen er singulaer eller "
+                "naesten singulaer (konditionstal %.2e). Systemet er en "
+                "mekanisme, eller det er afstivet af staenger, der er saa naer "
+                "parallelle, at afstivningen ikke virker. Der mangler en "
+                "understoetning eller et element." % kond)
+
         try:
             D[fri] = np.linalg.solve(K_ff, F[fri])
         except np.linalg.LinAlgError:

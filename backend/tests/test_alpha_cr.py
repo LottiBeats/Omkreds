@@ -234,7 +234,23 @@ def test_returns_none_without_vertical_load(monkeypatch):
                                reactions(0.0, [1, 4])) is None
 
 
-def test_returns_none_when_the_solver_is_unavailable():
+def test_alpha_cr_afhaenger_ikke_af_at_openseespy_er_der():
+    """
+    Rammens sidestivhed skal regnes, uanset hvilken loeser der er valgt.
+
+    Testen stod foer som "returns None when the solver is unavailable" og
+    kraevede, at alpha_cr forsvandt, naar openseespy ikke kunne importeres.
+    Det var rigtigt, dengang der kun var én loeser. Nu er der tre, og
+    "openseespy mangler" betyder ikke laengere "der er ingen loeser" -- saa den
+    gamle opfoersel ville faa beregningen til at forsvinde stiltiende paa hver
+    eneste Windows-maskine, og igen den dag produktionen skiftede loeser.
+
+    En manglende stabilitetsberegning er ikke til at skelne fra en, der blev
+    glemt. Derfor kraeves der nu et tal.
+    """
     nodes, elements, supports = portal()
-    assert gf._OPS_AVAILABLE or gf.compute_alpha_cr(
-        nodes, elements, supports, {}, reactions(200.0, [1, 4])) is None
+    svar = gf.compute_alpha_cr(nodes, elements, supports, {},
+                               reactions(200.0, [1, 4]))
+    assert svar is not None, \
+        'alpha_cr skal regnes med den valgte loeser, ikke kun med openseespy'
+    assert svar['alpha_cr'] > 0
