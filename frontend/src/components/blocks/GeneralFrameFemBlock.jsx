@@ -20,6 +20,7 @@ import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
 import ModelSketch from './ModelSketch.jsx'
 import FemSystemModal from './FemSystemModal.jsx'
+import { FEM_SYSTEMS } from '../../templates/femSystems.js'
 
 // ── Section presets ───────────────────────────────────────────────────────────
 
@@ -1398,8 +1399,13 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         <button style={s.systemBtn} onClick={() => setSystemOpen(true)}>
           ✦ Vælg statisk system
         </button>
+        {/* Listen laeses ud af FEM_SYSTEMS. Den stod hardkodet som "Bjælke ·
+            udkraget · kontinuerlig · portalramme · hanebåndsramme", og da de
+            fire sidste systemer blev taget ud, blev teksten staaende og lovede
+            noget, knappen ikke kunne levere. En liste, der staar to steder,
+            gaar fra hinanden. */}
         <span style={s.systemHint}>
-          Bjælke · udkraget · kontinuerlig · portalramme · hanebåndsramme
+          {FEM_SYSTEMS.map(x => x.label).join(' · ')}
         </span>
       </div>
 

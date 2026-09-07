@@ -26,6 +26,7 @@ import TimberColumnBlock from './components/blocks/TimberColumnBlock.jsx'
 import SteelBeamBlock    from './components/blocks/SteelBeamBlock.jsx'
 import SteelColumnBlock  from './components/blocks/SteelColumnBlock.jsx'
 import CustomCalcBlock   from './components/blocks/CustomCalcBlock.jsx'
+import GeneralFrameFemBlock from './components/blocks/GeneralFrameFemBlock.jsx'
 
 // En faerdigregnet lastkombination, som de blokke der henter fra en kombination
 // kan pege paa. Uden en soeskende i `blocks` er "Hent fra lastkombination"
@@ -70,6 +71,9 @@ const KATALOG = [
   ['Stålsøjle', SteelColumnBlock, 'steel_column',
     { title: 'Stålsøjle', label: 'SC1', section: 'HEB200', grade: 'S355',
       length_m: 3, N_Ed_kN: 500, gamma_M1: 1.2 }],
+  ['Ramme-FEM', GeneralFrameFemBlock, 'general_frame_fem',
+    { title: '2D Frame FEM', label: 'F1', nodes: [], elements: [],
+      supports: [], loads: [], equal_dofs: [] }],
   ['Egen beregning', CustomCalcBlock, 'custom_calc',
     { title: 'Egen beregning', items: [] }],
 ]

@@ -4,7 +4,7 @@
  * Geometrien tegnes mens der skrues på målene, så man ser konstruktionen før
  * den indsættes — ikke en liste med knude 3 på (1,8 · 1,2).
  *
- * Tværsnittet vælges pr. gruppe (spær, hanebånd, søjler, rigel) og lægges på
+ * Tværsnittet vælges pr. gruppe og lægges på
  * som en *reference*. Det er den eneste grund til at gruppen findes: et element
  * med rå E/A/I har intet materiale, og eftervisningen der genereres fra det
  * falder tilbage på stål.
@@ -88,7 +88,12 @@ export default function FemSystemModal({ onInsert, onClose, hasModel = false }) 
   const bad = (system?.params ?? []).some(p =>
     p.type !== 'bool' && !Number.isFinite(Number(params[p.key])))
   const complaint = bad ? null : validateParams(key, params)
-  const blocked = bad || (complaint && complaint.startsWith('Hanebåndet skal'))
+  // Der stod en test paa hanebaandsrammens egen indsigelse her. Det system
+  // findes ikke mere, og ingen af de tilbagevaerende har en validate, saa
+  // complaint er altid null. Et system, der kommer til med en indsigelse,
+  // skal blokere indsaettelsen -- derfor spoerges der til complaint og ikke
+  // til en bestemt tekst.
+  const blocked = bad || !!complaint
 
   return (
     <div style={S.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -98,27 +103,34 @@ export default function FemSystemModal({ onInsert, onClose, hasModel = false }) 
           <div>
             <div style={S.title}>Statisk system</div>
             <div style={S.subtitle}>
-              Geometri, understøtninger og charnierer genereres ud fra målene
+              Geometri og understøtninger genereres ud fra målene
             </div>
           </div>
           <button style={S.closeBtn} onClick={onClose}>✕</button>
         </div>
 
         <div style={S.body}>
-          <div style={S.list}>
-            {FEM_SYSTEMS.map(s => {
-              const on = s.key === key
-              return (
-                <button key={s.key} onClick={() => pick(s.key)}
-                        style={{ ...S.card,
-                                 borderColor: on ? BRAND : '#e5e7eb',
-                                 background:  on ? '#fffaf8' : '#fff' }}>
-                  <div style={S.cardTitle}>{s.label}</div>
-                  <div style={S.cardHint}>{s.hint}</div>
-                </button>
-              )
-            })}
-          </div>
+          {/* Vælgeren vises kun, når der er noget at vælge imellem. Med ét
+              system er en spalte med ét kort, der altid er valgt, bare noget
+              der fylder — og målene får pladsen i stedet. Listen bliver
+              stående i koden, så et system, der kommer til, dukker op af sig
+              selv. */}
+          {FEM_SYSTEMS.length > 1 && (
+            <div style={S.list}>
+              {FEM_SYSTEMS.map(s => {
+                const on = s.key === key
+                return (
+                  <button key={s.key} onClick={() => pick(s.key)}
+                          style={{ ...S.card,
+                                   borderColor: on ? BRAND : '#e5e7eb',
+                                   background:  on ? '#fffaf8' : '#fff' }}>
+                    <div style={S.cardTitle}>{s.label}</div>
+                    <div style={S.cardHint}>{s.hint}</div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
           <div style={S.right}>
             <div style={S.params}>

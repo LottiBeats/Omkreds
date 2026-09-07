@@ -97,9 +97,9 @@ for (const sys of FEM_SYSTEMS) {
   const sections = Object.fromEntries(sys.groups.map(g => [g.key, SEC]))
   for (const [name, params] of cases(sys)) {
     checks++
-    // Measures the system refuses are the modal's business, not a fault here
+    // Mål systemet selv afviser er modalens sag, ikke en fejl her
     const refused = validateParams(sys.key, params)
-    if (refused && refused.startsWith('Hanebåndet skal')) {
+    if (refused) {
       report(true, `${name.padEnd(16)} afvist — ${refused}`)
       continue
     }
@@ -112,29 +112,14 @@ for (const sys of FEM_SYSTEMS) {
   }
 }
 
-// The collar roof replaces a template that was written out by hand; the
-// geometry it produced is the reference.
-console.log('\nHanebåndsramme — mod den håndskrevne skabelon')
+// Listen selv. Skabelonerne blev skaaret ned til én med vilje -- resten
+// genererede systemer, der ikke blev brugt. Kommer der en tilbage, eller
+// forsvinder den sidste, skal det ses her og ikke i en tom rullemenu.
+console.log('\nListen over systemer')
 checks++
-const roof = buildSystem('collar_roof', { L: 6, rise: 2, collar: 1.2, ridgeHinge: true }, {})
-const has = (x, y) => roof.nodes.some(n => Math.abs(n.x - x) < 1e-6 && Math.abs(n.y - y) < 1e-6)
-const ridge = roof.nodes.filter(n => Math.abs(n.x - 3) < 1e-6 && Math.abs(n.y - 2) < 1e-6)
-report(has(0, 0) && has(6, 0) && has(1.8, 1.2) && has(4.2, 1.2) && ridge.length === 2 &&
-       roof.equal_dofs.length === 1,
-  'murplade (0,0) og (6,0) · hanebånd (1,8 · 1,2) og (4,2 · 1,2) · to knuder i rygningen + equalDOF')
-
-checks++
-const noHinge = buildSystem('collar_roof', { ridgeHinge: false }, {})
-report(noHinge.equal_dofs.length === 0 && noHinge.nodes.length === roof.nodes.length - 1,
-  'uden charnier forsvinder både den ekstra knude og bindingen')
-
-console.log('\nHanebåndsramme — umulige mål afvises')
-checks++
-report(!!validateParams('collar_roof', { rise: 2, collar: 2.5 }),
-  'hanebånd over rygningen giver en indsigelse')
-checks++
-report(!validateParams('collar_roof', { rise: 2, collar: 1.2 }),
-  'almindelige mål giver ingen indsigelse')
+const noegler = FEM_SYSTEMS.map(s => s.key)
+report(noegler.length === 1 && noegler[0] === 'simple_beam',
+  `netop ét system, og det er den simpelt understøttede bjælke (fandt: ${noegler.join(', ') || 'ingen'})`)
 
 console.log(failed === 0
   ? `\nAlle ${checks} kontroller stemmer.\n`
