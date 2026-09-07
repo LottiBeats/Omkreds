@@ -96,7 +96,7 @@ def _als(client, accidental_type, A_d=10.0):
     assert r.status_code == 200, r.text
     for b in r.json():
         if (isinstance(b, dict) and b.get("type") == "calc_row"
-                and str(b.get("name", "")).startswith("E_d,ALS")):
+                and str(b.get("name", "")).startswith("E_d,ulykke")):
             return float(b["result"].split()[0])
     raise AssertionError("ingen ALS-række")
 
@@ -129,7 +129,7 @@ def test_no_accidental_action_means_no_als_row(client):
         "method": "6.10ab", "consequence_class": "CC2",
         "A_d": 0.0, "accidental_type": "none"})
     navne = [b.get("name") for b in r.json() if isinstance(b, dict)]
-    assert not any(str(n).startswith("E_d,ALS") for n in navne)
+    assert not any(str(n).startswith("E_d,ulykke") for n in navne)
 
 
 def test_partial_factors_are_all_unity_in_an_accident(client):
@@ -145,7 +145,7 @@ def test_partial_factors_are_all_unity_in_an_accident(client):
             "A_d": 10.0, "accidental_type": "fire"})
         for b in r.json():
             if (isinstance(b, dict) and b.get("type") == "calc_row"
-                    and str(b.get("name", "")).startswith("E_d,ALS")):
+                    and str(b.get("name", "")).startswith("E_d,ulykke")):
                 return float(b["result"].split()[0])
         raise AssertionError("ingen ALS-række")
     assert als("CC1") == pytest.approx(als("CC3"))
@@ -328,3 +328,52 @@ def test_the_combination_exports_an_instantaneous_duration(client):
     assert varighed("fire")  == "instant"
     assert varighed("other") == "instant"
     assert varighed("none")  != "instant"
+
+
+def test_both_accidental_situations_are_always_computed(client):
+    """
+    Ulykken var et tilvalg, og så stod der "ikke eftervist" i et dokument, hvor
+    tallet bare aldrig blev regnet — ikke til at skelne fra en forglemmelse.
+    SLS-kombinationerne regnes heller ikke efter tilvalg.
+
+    Begge situationer regnes nu altid. Valget i blokken afgør kun HVILKEN der
+    eksporteres til eftervisningerne, altså hvad man dimensionerer for.
+    """
+    for typ in ("none", "fire", "other"):
+        ex = client.post("/calc/load-combo", json={
+            "label": "LC", "unit": "kN/m", "G_k": 5.0,
+            "loads": [{"label": "Nytte", "Q_k": 4.0, "category": "A"},
+                      {"label": "Sne", "Q_k": 2.0, "category": "S"}],
+            "method": "6.10ab", "consequence_class": "CC2",
+            "accidental_type": typ}).json()[0]["exports"]
+        assert ex["E_d_brand"]  == pytest.approx(6.20, abs=1e-6), typ
+        assert ex["E_d_oevrig"] == pytest.approx(5.80, abs=1e-6), typ
+
+
+def test_only_the_chosen_situation_is_exported_for_design(client):
+    """Tallene står der altid; kun ét af dem er det, der dimensioneres for."""
+    def ex(typ):
+        return client.post("/calc/load-combo", json={
+            "label": "LC", "unit": "kN/m", "G_k": 5.0,
+            "loads": [{"label": "Nytte", "Q_k": 4.0, "category": "A"},
+                      {"label": "Sne", "Q_k": 2.0, "category": "S"}],
+            "method": "6.10ab", "consequence_class": "CC2",
+            "accidental_type": typ}).json()[0]["exports"]
+    assert "E_d_acc" not in ex("none")
+    assert ex("fire")["E_d_acc"]  == pytest.approx(6.20, abs=1e-6)
+    assert ex("other")["E_d_acc"] == pytest.approx(5.80, abs=1e-6)
+
+
+def test_the_summary_lists_both_and_marks_the_choice(client):
+    """En læser skal kunne se begge tal og hvilket der er lagt til grund."""
+    r = client.post("/calc/load-combo", json={
+        "label": "LC", "unit": "kN/m", "G_k": 5.0,
+        "loads": [{"label": "Nytte", "Q_k": 4.0, "category": "A"}],
+        "method": "6.10ab", "consequence_class": "CC2",
+        "accidental_type": "fire"})
+    tabel = [b for b in r.json()
+             if isinstance(b, dict) and b.get("type") == "table"
+             and "Dimensioneringssituation" in str(b.get("headers"))][0]
+    tekst = " ".join(" ".join(map(str, row)) for row in tabel["rows"])
+    assert "Ulykke — brand" in tekst and "Ulykke — øvrig" in tekst
+    assert "(valgt)" in tekst

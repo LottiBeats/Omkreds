@@ -219,65 +219,64 @@ def load_combos(
         blocks.append(N("Dimensionsgivende: 6.10a (kun permanent last) → lastvarighed: permanent"))
 
     # ── Ulykke — 6.11a/b ──────────────────────────────────────────────────────
-    # En ulykke er en DIMENSIONERINGSSITUATION, ikke en last man paasaetter.
-    # Kombinationen blev foer kun regnet naar A_d > 0, altsaa kun hvis man
-    # tastede en ulykkeslast ind. Det betoed at brandkombinationen aldrig kunne
-    # komme ud af blokken: ved brand ER A_d nul -- branden virker gennem det
-    # reducerede tvaersnit, ikke som en ydre kraft. Man skulle taste et falsk
-    # tal for at faa den rigtige kombination.
+    # Begge ulykkessituationer regnes ALTID. De koster ingenting: lasterne er
+    # de samme som ovenfor, og psi-tabellen er allerede slaaet op. Foer var det
+    # et tilvalg, og saa staar der "ikke eftervist" i et dokument, hvor tallet
+    # bare aldrig blev regnet -- det er ikke til at skelne fra en forglemmelse.
+    # SLS-kombinationerne regnes heller ikke efter tilvalg.
     #
-    # Nu afgoer situationen om der regnes, og A_d er en valgfri ekstra last i
-    # den -- stoed, eksplosion -- som oftest er nul.
-    E_d_acc = None
-    if accidental_type in ('fire', 'other'):
-        blocks.append(S(
-            "Ulykke — brand (formel 6.11a/b, DK NA tabel A1.3)"
-            if accidental_type == 'fire' else
-            "Ulykke — øvrig (formel 6.11a/b, DK NA tabel A1.3)"
-        ))
-        if A_d == 0:
-            blocks.append(N(
-                "A_d = 0. Ulykken er en dimensioneringssituation, ikke en last: "
-                "lasterne er de samme, men de kombineres med ψ i stedet for "
-                "partialkoefficienter, og γ_M sættes til 1,0 (anneks F, 10). "
-                "Ved brand er A_d altid nul — branden virker gennem det "
-                "reducerede tværsnit. Er der derimod tale om stød eller "
-                "eksplosion, angives den kraft som A_d."))
-        # γ = 1.0 for all loads in ALS
-        # Fire:  leading uses ψ₁,  others use ψ₂
-        # Other: all variable uses ψ₂
-
-        als_vals: list[tuple] = []
-
+    # Valget i blokken afgoer nu kun HVILKEN situation der eksporteres til
+    # eftervisningerne, altsaa hvad man dimensionerer for. Tallene staar der
+    # uanset hvad.
+    #
+    # DK NA tabel A1.3: ingen partialkoefficienter og intet K_FI -- alt regnes
+    # med 1,0. Brand tager psi_1 paa den dominerende last, oevrig ulykke tager
+    # psi_2 paa alle.
+    def _ulykke(kind: str) -> list[tuple]:
+        vals: list[tuple] = []
         if n == 0:
-            Ed_als = G_k + A_d
-            als_vals.append(("Ulykke", "G_k + A_d", Ed_als, -1))
-        elif accidental_type == 'fire':
+            vals.append(("Ulykke", "G_k + A_d", G_k + A_d, -1))
+        elif kind == 'fire':
             for lead in range(n):
                 others = [i for i in range(n) if i != lead]
-                Ed_als = (G_k + A_d
-                          + psi1[lead] * Q[lead]
-                          + sum(psi2[i] * Q[i] for i in others))
-                als_vals.append((f"Brand — {loads[lead]['label']}",
-                                 "G_k + A_d + ψ₁·Q₁ + Σ ψ₂·Qᵢ", Ed_als, lead))
-        else:  # other accident
-            Ed_als = G_k + A_d + sum(psi2[i] * Q[i] for i in range(n))
-            als_vals.append(("Øvrig ulykke",
-                             "G_k + A_d + Σ ψ₂·Qᵢ", Ed_als, -1))
+                Ed = (G_k + A_d + psi1[lead] * Q[lead]
+                      + sum(psi2[i] * Q[i] for i in others))
+                vals.append((f"Brand — {loads[lead]['label']}",
+                             "G_k + A_d + ψ₁·Q₁ + Σ ψ₂·Qᵢ", Ed, lead))
+        else:
+            Ed = G_k + A_d + sum(psi2[i] * Q[i] for i in range(n))
+            vals.append(("Øvrig ulykke", "G_k + A_d + Σ ψ₂·Qᵢ", Ed, -1))
+        return vals
 
-        for name, formula, val, _ in als_vals:
-            blocks.append(CALC_ROW(name, formula, f"{val:.3f}  {unit}"))
+    _brand  = _ulykke('fire')
+    _oevrig = _ulykke('other')
+    E_d_brand  = max(v[2] for v in _brand)
+    E_d_oevrig = max(v[2] for v in _oevrig)
 
-        gov_als  = max(als_vals, key=lambda x: x[2])
-        E_d_acc  = gov_als[2]
-        blocks.append(CALC_ROW("E_d,ALS", "= største af ovenstående", f"{E_d_acc:.3f}  {unit}"))
+    blocks.append(S("Ulykke — formel 6.11a/b (DK NA tabel A1.3)"))
+    for navn, formel, val, _ in _brand + _oevrig:
+        blocks.append(CALC_ROW(navn, formel, f"{val:.3f}  {unit}"))
+
+    if accidental_type in ('fire', 'other'):
+        E_d_acc = E_d_brand if accidental_type == 'fire' else E_d_oevrig
+        _valgt = "brand" if accidental_type == 'fire' else "øvrig ulykke"
+        blocks.append(CALC_ROW("E_d,ulykke", f"= {_valgt} (valgt)",
+                               f"{E_d_acc:.3f}  {unit}"))
         blocks.append(N(
-            "Alle laster regnes med 1,0 — tabel A1.3 har hverken "
-            "partialkoefficienter eller K_FI. "
-            + ("Brand: ψ₁ på den dominerende variable last, ψ₂ på de øvrige."
-               if accidental_type == 'fire' else
-               "Øvrig ulykke: ψ₂ på alle variable laster.")
-            + " Materialesiden følger med: γ_M = 1,0 (anneks F, punkt 10)."))
+            f"Der dimensioneres for {_valgt}. Alle laster regnes med 1,0 — "
+            "tabel A1.3 har hverken partialkoefficienter eller K_FI — og "
+            "materialesiden følger med: γ_M = 1,0 (anneks F, punkt 10) og "
+            "øjeblikkelig lastvarighed (EN 1995-1-1 tabel 3.1)."
+            + (" A_d er nul ved brand: branden virker gennem det reducerede "
+               "tværsnit, ikke som en ydre kraft." if accidental_type == 'fire'
+               and A_d == 0 else "")))
+    else:
+        E_d_acc = None
+        blocks.append(N(
+            "Tallene ovenfor er regnet, men der dimensioneres ikke for en "
+            "ulykke: situationen står på vedvarende. Vælg brand eller øvrig "
+            "ulykke i blokken, hvis eftervisningerne skal bruge dem — så "
+            "følger γ_M = 1,0 og øjeblikkelig lastvarighed med af sig selv."))
 
     # ── SLS ───────────────────────────────────────────────────────────────────
     blocks.append(S("Anvendelsesgrænsetilstand"))
@@ -308,30 +307,20 @@ def load_combos(
     summary_rows = [
         ['Brudgrænse (dimensionsgivende)', f'{E_d_uls:.3f}', unit],
     ]
-    if E_d_acc is not None:
-        summary_rows.append([
-            f'Ulykke — {_ULYKKE_DK.get(accidental_type, accidental_type)}',
-            f'{E_d_acc:.3f}', unit,
-        ])
-    else:
-        # Fraværet af en ulykkessituation er en oplysning, ikke en stilhed. Et
-        # dokument, der ikke nævner den, kan ikke skelnes fra et, hvor den blev
-        # glemt.
-        summary_rows.append(['Ulykke', 'ikke eftervist', '—'])
+    summary_rows.append([
+        'Ulykke — brand' + ('  (valgt)' if accidental_type == 'fire' else ''),
+        f'{E_d_brand:.3f}', unit,
+    ])
+    summary_rows.append([
+        'Ulykke — øvrig' + ('  (valgt)' if accidental_type == 'other' else ''),
+        f'{E_d_oevrig:.3f}', unit,
+    ])
     summary_rows += [
         ['Anvendelse — karakteristisk',  f'{E_d_sls_char:.3f}', unit],
         ['Anvendelse — hyppig',          f'{E_d_sls_freq:.3f}', unit],
         ['Anvendelse — kvasi-permanent', f'{E_d_sls_qp:.3f}',  unit],
     ]
     blocks.append(TBL(['Dimensioneringssituation', 'E_d', 'Enhed'], summary_rows))
-
-    if E_d_acc is None:
-        blocks.append(N(
-            "Ulykkessituationen er ikke eftervist. Den er ikke altid relevant, "
-            "men fraværet skal være et valg og ikke en forglemmelse — vælg "
-            "brand eller øvrig ulykke i blokken, hvis den skal med. "
-            "Lasterne er de samme; de kombineres blot med ψ i stedet for "
-            "partialkoefficienter, og γ_M sættes til 1,0 (DK NA anneks F, 10)."))
 
     # Export every individual ULS combination with its load-duration class.
     # Timber checks must find the governing combination by comparing E_d / k_mod,
@@ -354,6 +343,8 @@ def load_combos(
         'accidental_type':    accidental_type,
         'design_situation':   'accidental' if accidental_type in ('fire', 'other')
                               else 'persistent',
+        'E_d_brand':          round(E_d_brand,     4),
+        'E_d_oevrig':         round(E_d_oevrig,    4),
         'E_d_uls':            round(E_d_uls,       4),
         'E_d_sls_char':       round(E_d_sls_char,  4),
         'E_d_sls_freq':       round(E_d_sls_freq,  4),
