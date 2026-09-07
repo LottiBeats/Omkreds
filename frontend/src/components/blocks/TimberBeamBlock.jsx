@@ -99,8 +99,14 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         // Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2
         // Kommer lasten fra en ulykkeskombination, foelger materialesiden med
         // af sig selv -- brugeren skal ikke vide at gamma_M ogsaa aendrer sig.
-        design_situation: (source === 'combo' && exports_?.design_situation)
+        design_situation: (source === 'combo' && comboExp?.design_situation)
                           || d.design_situation || 'persistent',
+        // Er kombinationen en brandsituation, skal eftervisningen ogsaa regne
+        // med psi_1 og ikke psi_2 i den lukkede form.
+        accidental_type:  (source === 'combo' && comboExp?.accidental_type
+                           && comboExp.accidental_type !== 'none'
+                           && comboExp.accidental_type)
+                          || d.accidental_type || 'fire',
 
         check_deflection: d.check_deflection ?? true,
         psi_1:            d.psi_1            ?? 0.2,
