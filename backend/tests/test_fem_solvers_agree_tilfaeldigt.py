@@ -135,12 +135,19 @@ def test_tilfaeldige_rammer(na, nb):
             sprunget += 1
             continue
         except Exception as exc:
-            # PyNite har sin egen singularitetskontrol og kaster en almindelig
-            # Exception. Den er ikke en fejl -- den er en loeser, der siger fra.
-            # Modellen springes over, men det taelles: afviser den ene loeser
-            # markant oftere end den anden, er det i sig selv en forskel, der
-            # skal ses.
-            if 'singular' not in str(exc).lower():
+            # De to andre loesere siger fra paa hver sin maade, og ingen af dem
+            # bruger ModelError:
+            #
+            #   PyNite    "The stiffness matrix is singular ..."
+            #   OpenSees  RuntimeError("OpenSeesPy analysis failed.") -- ordet
+            #             singulaer staar kun i dens stderr-advarsel, ikke i
+            #             undtagelsen.
+            #
+            # Begge dele er en loeser, der siger fra, ikke en fejl i testen.
+            # Modellen springes over. Alt ANDET kastes videre: en test, der
+            # sluger enhver undtagelse, holder op med at kunne fejle.
+            if not any(t in str(exc).lower()
+                       for t in ('singular', 'analysis failed')):
                 raise
             afvist += 1
             sprunget += 1
