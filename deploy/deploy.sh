@@ -11,7 +11,18 @@ cd "$APP_DIR/app"
 git pull
 
 echo "==> Updating Python dependencies..."
-sudo -u "$APP_USER" "$APP_DIR/venv/bin/pip" install -r backend/requirements.txt
+# pip koeres som root, ikke som $APP_USER.
+#
+# Venv'et ejes af root hele vejen igennem, saa "sudo -u structcalc pip install"
+# kan ikke skrive i det. Det gik ubemaerket i lang tid, fordi alle pakker
+# allerede var installeret -- pip havde ingenting at skrive, og returnerede 0.
+# Foerste gang der faktisk kom en ny afhaengighed (PyNiteFEA), faldt deployet
+# med "Permission denied: .../site-packages/wcwidth".
+#
+# root installerer, $APP_USER laeser og koerer. Det passer til de rettigheder,
+# der allerede er sat, og det er bedre end at give den bruger, tjenesten koerer
+# som, skriveadgang til sine egne biblioteker.
+"$APP_DIR/venv/bin/pip" install -r backend/requirements.txt
 
 echo "==> Rebuilding React frontend..."
 cd "$APP_DIR/app/frontend"
