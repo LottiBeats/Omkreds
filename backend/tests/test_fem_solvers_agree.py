@@ -171,12 +171,19 @@ def test_ramme_med_vandret_og_lodret_last():
 
 @begge_loesere
 def test_momentudloesning_i_elementende():
-    """release='end' — den ene af de to maader, et charnier kan angives paa."""
+    """
+    release='end' — den ene af de to maader, et charnier kan angives paa.
+
+    Knude 2 fastholdes i rz. Uden det er der ingenting, der optager en drejning
+    der: elementet kan ikke overfoere moment til knuden, og der sidder ikke
+    andet i den. Foerste udgave af testen glemte det, og validate_model afviste
+    modellen med det samme -- med rette.
+    """
     L, w = 6.0, 10.0
     nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': L, 'y': 0}]
     elements = [dict(id=1, ni=1, nj=2, type='beam', release='end', **STAV)]
     supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True},
-                {'node_id': 2, 'ux': False, 'uy': True, 'rz': False}]
+                {'node_id': 2, 'ux': False, 'uy': True, 'rz': True}]
     loads = [{'type': 'udl', 'elem_id': 1,
               'direction': 'vertical', 'value_kNm': w}]
     _sammenlign('udloesning', nodes, elements, supports, loads)

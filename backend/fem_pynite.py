@@ -200,7 +200,17 @@ def _lokale_endekraefter(mem, L, wy, wx):
     V_L = V_i + wy * L
     M_L = -M_i + V_i * L + 0.5 * wy * L * L
 
-    return [N_i, V_i, M_i, -N_L, -V_L, M_L]
+    # N_j er snitkraften i j-enden, ikke dens modsatte -- paa en stav uden
+    # langsgaaende last er N_i og N_j lige store og modsat rettede, og det er
+    # hele grundlaget for, at compute_buckling_lengths kan laese en normalkraft
+    # ud af de to ender. V_j og M_j vender derimod om.
+    #
+    # Fortegnet stod forkert i foerste udgave, og ingen af de lukkede former
+    # kunne se det: N_j indgaar hverken i en nedboejning eller i et moment.
+    # test_fem_solvers_agree fandt det paa serveren, hvor OpenSees kunne svare
+    # -- i alle fem modeller var N_j det eneste tal, de to loesere var uenige
+    # om, og de var uenige om praecis fortegnet.
+    return [N_i, V_i, M_i, N_L, -V_L, M_L]
 
 
 # ---------------------------------------------------------------------------
