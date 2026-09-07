@@ -327,6 +327,23 @@ def tegning_gate(request: Request):
 
     if _ALLOWED_EMAILS:
         email = (payload.get("email") or "").strip().lower()
+        if not email:
+            # Sessions-cookien baerer ikke noedvendigvis en e-mail. Bearer-
+            # tokenet goer, fordi frontend'en beder Clerk om en JWT-skabelon,
+            # der indeholder den -- cookien er Clerks egen standardsession, og
+            # den har kun sub, sid og exp, medmindre skabelonen er sat op til
+            # andet.
+            #
+            # Uden det her ville en tom e-mail bare falde igennem til testen
+            # nedenfor og give 403 til ALLE indloggede brugere i samme sekund,
+            # ALLOWED_EMAILS blev sat -- og fejlen ville ligne, at listen var
+            # skrevet forkert. Vi lukker stadig ikke op (en port, der fejler
+            # aabent, er ingen port), men grunden staar der, saa den kan findes.
+            raise HTTPException(
+                status_code=403, detail="ikke tilladt",
+                headers={"X-Gate-Reason":
+                         "ALLOWED_EMAILS er sat, men sessionen baerer ingen "
+                         "e-mail -- tilfoej email til Clerks JWT-skabelon"})
         if email not in _ALLOWED_EMAILS:
             raise HTTPException(status_code=403, detail="ikke tilladt",
                                 headers={"X-Gate-Reason": "e-mail ikke paa listen"})

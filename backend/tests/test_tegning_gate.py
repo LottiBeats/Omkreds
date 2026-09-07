@@ -88,3 +88,39 @@ def test_allowlisten_gaelder_ogsaa_her(monkeypatch, client):
 
     r = client.get('/auth/gate', cookies={'__session': 'gyldig-men-forkert-konto'})
     assert r.status_code == 403
+
+
+def test_en_session_uden_email_lukkes_ikke_ind_naar_listen_er_sat(monkeypatch,
+                                                                  client):
+    """
+    Clerks sessions-cookie baerer ikke noedvendigvis en e-mail.
+
+    Bearer-tokenet gor, fordi frontend'en beder om en JWT-skabelon der
+    indeholder den. Cookien er Clerks standardsession og har kun sub, sid og
+    exp, medmindre skabelonen siger andet. Er ALLOWED_EMAILS sat, og har
+    sessionen ingen e-mail, kan porten ikke afgoere om brugeren maa -- og saa
+    lukker den ikke op. En adgangskontrol, der fejler aabent, er ingen
+    adgangskontrol.
+    """
+    monkeypatch.setattr(main, 'verify_clerk_token',
+                        lambda t: {'sub': 'user_1', 'sid': 'sess_1'})
+    monkeypatch.setattr(main, '_ALLOWED_EMAILS', frozenset({'niels@example.com'}))
+
+    r = client.get('/auth/gate', cookies={'__session': 'gyldig-uden-email'})
+    assert r.status_code == 403
+    assert 'JWT-skabelon' in r.headers.get('X-Gate-Reason', ''), \
+        'grunden skal kunne findes i loggen, ellers ligner det en forkert liste'
+
+
+def test_uden_allowlist_er_en_session_uden_email_nok(monkeypatch, client):
+    """
+    Er ALLOWED_EMAILS ikke sat, er e-mailen uden betydning: enhver gyldig
+    Clerk-konto maa bruge API'et, og saa maa den ogsaa aabne tegningerne.
+    Det er sadan serveren staar i dag.
+    """
+    monkeypatch.setattr(main, 'verify_clerk_token',
+                        lambda t: {'sub': 'user_1', 'sid': 'sess_1'})
+    monkeypatch.setattr(main, '_ALLOWED_EMAILS', frozenset())
+
+    r = client.get('/auth/gate', cookies={'__session': 'gyldig-uden-email'})
+    assert r.status_code == 204
