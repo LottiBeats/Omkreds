@@ -22,6 +22,7 @@ import math
 
 import pytest
 
+import fem_direkte
 import fem_pynite
 import general_frame_fem as gf
 from general_frame_fem import ModelError, section_forces_2d
@@ -380,6 +381,9 @@ if gf._OPS_AVAILABLE:
     _LOESERE.append(pytest.param(gf.solve, id='opensees'))
 if fem_pynite._PYNITE_AVAILABLE:
     _LOESERE.append(pytest.param(fem_pynite.solve, id='pynite'))
+# fem_direkte har ingen betingelse: den bruger kun numpy, som allerede er der.
+# Kan den ikke importeres, er det en fejl og ikke et miljoe.
+_LOESERE.append(pytest.param(fem_direkte.solve, id='direkte'))
 if not _LOESERE:
     _LOESERE.append(pytest.param(
         None, id='ingen',

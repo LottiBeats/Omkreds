@@ -531,9 +531,16 @@ def compute_alpha_cr(nodes, elements, supports, ele_forces, node_reactions,
     Returns None when the frame has no identifiable columns, and marks the
     result as out of scope when the standard's own conditions are not met.
     """
-    if not _OPS_AVAILABLE:
-        return None
-
+    # Der stod "if not _OPS_AVAILABLE: return None" her.
+    #
+    # Den spaerre bandt rammens sidestivhed til én bestemt loeser. Med
+    # fem_direkte og fem_pynite ved siden af betyder "openseespy mangler" ikke
+    # laengere "der er ingen loeser" -- og saa returnerede alpha_cr None paa
+    # enhver maskine uden OpenSees, uanset hvad der faktisk regnede. Beregningen
+    # ville ogsaa vaere forsvundet stiltiende, hvis produktionen skiftede loeser.
+    #
+    # Proeveberegningen nedenfor er allerede pakket ind, saa "ingen loeser"
+    # haandteres dér, hvor det opstaar.
     cols = _columns(nodes, elements, supports)
     if not cols:
         return None
