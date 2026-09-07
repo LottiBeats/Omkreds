@@ -533,6 +533,38 @@ def test_wind_pushes_the_column_downwind(loeser):
     assert res['node_disps'][2][0] > 0
 
 
+def test_gitterstangens_fortegn_er_det_samme_som_bjaelkens(loeser):
+    """
+    En trukket gitterstang skal rapportere traek, praecis som en bjaelke gor.
+
+    De to elementtyper regnede modsat fortegn af den samme stoerrelse.
+    Bjaelkens N kommer fra section_force_extremes; gitterstangens blev laest
+    direkte af OpenSees' axialForce, som er positiv i traek, og saa vendt om.
+    En traekstang stod derfor i dokumentet som en trykstang.
+
+    Ingen af de andre tests kunne se det: der fandtes ikke én gitterstang
+    blandt dem, og alle normalkraft-paastande brugte abs().
+    """
+    L, P = 4.0, 100.0
+    nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': L, 'y': 0}]
+    elements = [{'id': 1, 'ni': 1, 'nj': 2, 'type': 'truss', 'release': 'none',
+                 'E_GPa': E_GPA, 'A_cm2': A_CM2, 'Iz_cm4': IZ_CM4}]
+    # rz fastholdes: en gitterstang har ingen boejningsstivhed til at optage
+    # en drejning, og validate_model afviser modellen uden.
+    supports = [{'node_id': 1, 'ux': True,  'uy': True, 'rz': True},
+                {'node_id': 2, 'ux': False, 'uy': True, 'rz': True}]
+
+    traek = loeser(nodes, elements, supports,
+                   [{'type': 'nodal', 'node_id': 2,
+                     'Fx_kN': +P, 'Fy_kN': 0.0, 'Mz_kNm': 0.0}])
+    assert traek['ele_extremes'][1]['N_kN'] == pytest.approx(+P, rel=0.01),         'lasten traekker knude 2 vaek fra knude 1, saa stangen er trukket'
+
+    tryk = loeser(nodes, elements, supports,
+                  [{'type': 'nodal', 'node_id': 2,
+                    'Fx_kN': -P, 'Fy_kN': 0.0, 'Mz_kNm': 0.0}])
+    assert tryk['ele_extremes'][1]['N_kN'] == pytest.approx(-P, rel=0.01)
+
+
 def test_axial_sign_says_compression_not_tension(loeser):
     """
     En soejle med lasten nedad er trykket, og fortegnet skal sige det.

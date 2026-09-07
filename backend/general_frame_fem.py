@@ -810,10 +810,22 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         if el.get('type', 'beam') == 'truss':
             # Axial only. eleResponse gives it directly; eleForce would need
             # resolving out of the global components.
+            # OpenSees' axialForce er POSITIV I TRAEK. Der stod -N her, og det
+            # vendte gitterstangen om: en stang, der blev trukket, kom ud som
+            # -100 kN, og pdf_builder skriver "tryk" om alt under nul. En
+            # traekstang stod altsaa i dokumentet som en trykstang, og en
+            # trykstang som en traekstang.
+            #
+            # Bjaelkerne var upaavirkede -- deres N kommer fra
+            # section_force_extremes -- saa de to elementtyper rapporterede
+            # modsat fortegn af den samme ting. Ingen af de lukkede former
+            # kunne se det: der fandtes ingen gitterstang blandt dem.
+            # test_fem_solvers_agree fandt det, da direkte og pynite var enige
+            # om +100 og OpenSees alene sagde -100.
             axial = ops.eleResponse(eid, 'axialForce')
             N = float(axial[0]) if axial else 0.0
-            ele_forces[eid]   = [N, 0.0, 0.0, -N, 0.0, 0.0]
-            ele_extremes[eid] = {'N_kN': -N, 'V_kN': 0.0, 'M_kNm': 0.0,
+            ele_forces[eid]   = [-N, 0.0, 0.0, N, 0.0, 0.0]
+            ele_extremes[eid] = {'N_kN': N, 'V_kN': 0.0, 'M_kNm': 0.0,
                                  'x_N_m': 0.0, 'x_V_m': 0.0, 'x_M_m': 0.0}
             continue
 
