@@ -662,8 +662,15 @@ def _control_plan(block: dict) -> list:
 # ── General / Portal Frame FEM blocks ────────────────────────────────────────
 
 def _figs_b64_to_pdf(figs_b64: list, tmp_files: list, captions: list,
-                     width_mm: int = 160) -> list:
-    """Decode a list of base64 PNGs and return FIG() blocks."""
+                     width_mm: int = 140, max_h_mm: int = 80) -> list:
+    """
+    Afkod base64-PNG'erne og returner FIG()-blokke.
+
+    140 x 80 mm i stedet for 160 mm bred uden loft. En rammeberegning har fem
+    figurer, og uden loftet fyldte de 564 mm -- 2,3 siders billede, foer der
+    stod tekst. Loftet er det, der goer forskellen paa en hoej model: den bliver
+    smallere i stedet for at fylde en halv side.
+    """
     out = []
     for i, b64 in enumerate(figs_b64):
         try:
@@ -672,7 +679,8 @@ def _figs_b64_to_pdf(figs_b64: list, tmp_files: list, captions: list,
             tmp.close()
             tmp_files.append(tmp.name)
             caption = captions[i] if i < len(captions) else ""
-            out.append(FIG(tmp.name, caption, width_mm=width_mm))
+            out.append(FIG(tmp.name, caption, width_mm=width_mm,
+                           max_h_mm=max_h_mm))
         except Exception as exc:
             out.append(N(f"Could not embed figure: {exc}"))
     return out

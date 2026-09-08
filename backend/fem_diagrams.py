@@ -57,9 +57,18 @@ STYLE = {
 ORDINATE_FRAC = 0.16
 
 SAMPLES_PER_ELEM = 25       # nok til at en parabel ser ud som en parabel
-FIG_WIDTH_IN     = 9.0      # smallere end opsvis' 13" — figuren skal ind i A4
-FIG_H_MIN        = 2.6
-FIG_H_MAX        = 7.0
+# Figuren tegnes taet paa den stoerrelse, den trykkes i: 5,5" er 140 mm, og
+# det er den bredde, PDF'en giver den. Foer blev der tegnet 9" og skaleret ned
+# til 160 mm -- en reduktion paa 30 %, saa 8,5 pt etiketter blev til under 6 pt
+# paa papiret. Tegner man i den rigtige stoerrelse, staar skriften som den er
+# sat.
+#
+# Hoejden foelger modellen, men har et loft: en ramme er hoejere end en
+# bjaelke, og uden loftet fyldte én figur en halv A4-side. Fem af dem blev til
+# 2,3 siders billede, foer der stod tekst.
+FIG_WIDTH_IN     = 5.5
+FIG_H_MIN        = 1.7
+FIG_H_MAX        = 3.4
 DPI              = 200
 MAX_PEAK_LABELS  = 8
 

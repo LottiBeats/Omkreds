@@ -121,8 +121,17 @@ def MH(title, subtitle, material="general"):
 def hc_block(latex, label=""):
     return {"type": "handcalc", "latex": latex, "label": label}
 
-def FIG(path, caption="", width_mm=170):
-    return {"type": "figure", "path": path, "caption": caption, "width_mm": width_mm}
+def FIG(path, caption="", width_mm=170, max_h_mm=None):
+    """
+    En figur i dokumentet.
+
+    max_h_mm er et loft paa hoejden. Uden det skaleres figuren kun efter
+    bredden, og hoejden foelger frit med billedets forhold -- saa en hoej model
+    fylder en halv side, uanset hvor lidt den har at sige. Med loftet
+    skaleres der, saa figuren gaar ind i BEGGE maal og beholder sit forhold.
+    """
+    return {"type": "figure", "path": path, "caption": caption,
+            "width_mm": width_mm, "max_h_mm": max_h_mm}
 
 def CALC_ROW(name, formula="", result="", label=""):
     """Single pre-parsed calculation row — bypasses LaTeX entirely.
@@ -985,7 +994,11 @@ def build_story(all_blocks, styles):
                 img = Image(b["path"])
                 target_w = b.get("width_mm", 170) * mm
                 scale = target_w / img.imageWidth
-                img.drawWidth = target_w
+                # Passer den ikke i hoejden, er det hoejden der bestemmer.
+                max_h = b.get("max_h_mm")
+                if max_h:
+                    scale = min(scale, (max_h * mm) / img.imageHeight)
+                img.drawWidth  = img.imageWidth * scale
                 img.drawHeight = img.imageHeight * scale
                 flow = [img]
                 caption = b.get("caption", "")
