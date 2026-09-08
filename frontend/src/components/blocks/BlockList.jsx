@@ -152,8 +152,10 @@ const BLOCK_TYPES = [
     // eller en glemt last fra en portalramme, man troede man havde slettet,
     // ligner ikke en fejl i dokumentet.
     //
-    // Vejen ind er "Vaelg statisk system", eller knuderne og elementerne
-    // taste for taste. Modulet er generelt; det skal ogsaa starte generelt.
+    // Modellen tastes ind: knuder, elementer, understoetninger, laster. Der var
+    // en skabelonvaelger ved siden af, men den blev skaaret ned til ét system
+    // og derefter taget helt ud -- den var en genvej til noget, der alligevel
+    // skulle rettes bagefter. Modulet er generelt; det starter generelt.
     default: { title: '2D Frame FEM',
                nodes: [], elements: [], supports: [], loads: [], equal_dofs: [],
                _figs_b64: null, _summary: null, _result: null } },

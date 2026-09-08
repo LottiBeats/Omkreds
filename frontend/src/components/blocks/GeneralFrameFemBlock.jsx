@@ -19,8 +19,6 @@ import { maxUtilization, utilColor } from '../CalcResultView.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
 import ModelSketch from './ModelSketch.jsx'
-import FemSystemModal from './FemSystemModal.jsx'
-import { FEM_SYSTEMS } from '../../templates/femSystems.js'
 
 // ── Section presets ───────────────────────────────────────────────────────────
 
@@ -1127,7 +1125,6 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   const loadMode = d.load_mode ?? 'simple'   // 'simple' | 'load_cases'
 
   const [previewing, setPreviewing] = useState(false)
-  const [systemOpen, setSystemOpen] = useState(false)
   // The raw lists start closed once there is a model to hide — they are the
   // way in when there is nothing yet, and clutter once there is.
   const [rawOpen, setRawOpen] = useState((d.elements ?? []).length === 0)
@@ -1399,45 +1396,10 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         onChange={e => update({ title: e.target.value })}
         placeholder="Analysetitel" style={s.titleInput} />
 
-      {/* The way in for ordinary work: pick the system, give it its measures.
-          The node and element lists below stay for everything else. */}
-      <div style={s.systemRow}>
-        <button style={s.systemBtn} onClick={() => setSystemOpen(true)}>
-          ✦ Vælg statisk system
-        </button>
-        {/* Listen laeses ud af FEM_SYSTEMS. Den stod hardkodet som "Bjælke ·
-            udkraget · kontinuerlig · portalramme · hanebåndsramme", og da de
-            fire sidste systemer blev taget ud, blev teksten staaende og lovede
-            noget, knappen ikke kunne levere. En liste, der staar to steder,
-            gaar fra hinanden. */}
-        <span style={s.systemHint}>
-          {FEM_SYSTEMS.map(x => x.label).join(' · ')}
-        </span>
-      </div>
-
       {/* Live geometry sketch — instant feedback while editing */}
       <ModelSketch nodes={nodes} elements={elements}
         supports={supports} equalDofs={equalDofs} loads={loads} />
 
-      {systemOpen && (
-        <FemSystemModal
-          hasModel={nodes.length > 0 || elements.length > 0}
-          onClose={() => setSystemOpen(false)}
-          onInsert={(model, label) => {
-            setSystemOpen(false)
-            update({
-              nodes: model.nodes, elements: model.elements,
-              supports: model.supports, equal_dofs: model.equal_dofs,
-              // Loads reference element ids, and the new model renumbers them —
-              // keeping them would silently move a load onto another member.
-              loads: [],
-              title: (d.title && d.title !== '2D Frame FEM') ? d.title : label,
-              _figs_b64: null, _summary: null, _result: null,
-              _exports: null, _model_b64: null,
-            })
-          }}
-        />
-      )}
 
       {/* Members — the structure as it is thought about */}
       {members.length > 0 && (
@@ -1592,7 +1554,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           disabled={running || previewing || tomModel
                     || (loadMode === 'load_cases' && !loadCasesReady)}
           title={tomModel
-                   ? 'Der er ingen model at regne på — vælg et statisk system, eller tilføj knuder og elementer'
+                   ? 'Der er ingen model at regne på — tilføj mindst to knuder og et element'
                    : loadMode === 'load_cases' && !loadCasesReady
                      ? 'Kør lastkombinations-blokken først' : 'Ctrl+Enter'}>
           {running ? '⏳  Beregner…' : '▶  Kør FEM'}
@@ -1698,11 +1660,6 @@ const s = {
   discloseBtn:  { background: 'none', border: 'none', padding: 0, cursor: 'pointer',
                   fontFamily: 'inherit', fontSize: 10, fontWeight: 700, color: '#9a9aa0',
                   letterSpacing: '0.1em', textTransform: 'uppercase' },
-  systemRow:    { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' },
-  systemBtn:    { background: '#fffaf8', color: '#d94a2b', border: '1px solid #f3c9bd',
-                  padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                  fontFamily: 'inherit', letterSpacing: '0.02em' },
-  systemHint:   { fontSize: 10.5, color: '#b8b8bd' },
   btn:          { background: '#f5f5f7', border: '1px solid #e8e8e8', padding: '7px 14px',
                   fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                   letterSpacing: '0.04em' },
