@@ -502,6 +502,11 @@ def render_all(nodes, elements, supports, ele_forces, ele_udl, node_disps,
 # Farver til serierne. Valgt saa de kan skelnes paa hvidt papir og i graatone
 # -- en rapport bliver printet -- og saa de ikke ligner STYLE-farverne for M, V
 # og N, som betyder noget andet.
+# Ordinaten i et overlay. Lavere end den enkelte figurs ORDINATE_FRAC, fordi
+# flere kurver ud fra den samme stav skal kunne vaere der uden at naa ind i
+# nabofagene.
+OVERLAY_ORDINATE_FRAC = 0.115
+
 SERIE_FARVER = [
     '#1F4E79', '#C2410C', '#0E7C66', '#7C3AED',
     '#B45309', '#BE185D', '#0369A1', '#4D7C0F',
@@ -540,7 +545,11 @@ def overlay_skala(kind, drawn, dict_nodes, serier, ref_size, scale=1.0):
         peak_abs = max(peak_abs, sp)
 
     ord_ref = _ordinate_reference(drawn, dict_nodes, ref_size)
-    fac = (ord_ref * ORDINATE_FRAC / peak_abs * scale) if peak_abs > 1e-9 else 0.0
+    # Lavere end den enkelte figurs 0,16. Med fire kurver ud fra samme stav
+    # naar den yderste lige saa langt ud som én kurve gjorde, og saa stoeder
+    # soejlernes kurver ind i riglens. Det er ikke en skoenhedsfejl: to
+    # kurvesaet, der overlapper hinanden, kan ikke laeses hver for sig.
+    fac = (ord_ref * OVERLAY_ORDINATE_FRAC / peak_abs * scale)         if peak_abs > 1e-9 else 0.0
     return alle, peak_abs, serie_peak, fac
 
 
@@ -597,27 +606,54 @@ def section_force_overlay(kind, nodes, elements, supports, serier, ref_size,
     # Momentet paa traekside, som i den enkelte figur.
     flip = -1.0 if kind == 'M' else 1.0
 
+    # Den dimensionerende serie tegnes med en svag udfyldning mellem stav og
+    # kurve. Uden noget udfyldt er der ingenting, der binder en kurve til sin
+    # stav: en kurve, der krydser sin egen stav, ligner bare to streger der
+    # krydser. Kun ÉN faar den -- fire udfyldninger oven i hinanden er den
+    # groed, overlayet skulle undgaa -- og det er den dimensionerende, fordi
+    # det er den, resten sammenlignes med.
+    vaerst_idx = serie_peak.index(peak_abs) if peak_abs > 0 else -1
+
     for si, el, xi, yi, ca, sa, L, pts in alle:
+        farve = SERIE_FARVER[si % len(SERIE_FARVER)]
         ox, oy = -sa * fac * flip, ca * fac * flip
         px = [xi + ca * x + ox * v for x, v in pts]
         py = [yi + sa * x + oy * v for x, v in pts]
+        bx = [xi + ca * x for x, _ in pts]
+        by = [yi + sa * x for x, _ in pts]
         xs += px; ys += py
-        ax.plot(px, py, color=SERIE_FARVER[si % len(SERIE_FARVER)],
-                lw=1.35, zorder=5, solid_joinstyle='round', alpha=0.9)
+
+        if si == vaerst_idx and max(abs(v) for _, v in pts) > 5e-3 * peak_abs:
+            ax.fill(px + bx[::-1], py + by[::-1],
+                    color=farve, alpha=0.11, lw=0, zorder=2)
+
+        ax.plot(px, py, color=farve,
+                lw=1.7 if si == vaerst_idx else 1.15,
+                zorder=6 if si == vaerst_idx else 5,
+                solid_joinstyle='round',
+                alpha=1.0 if si == vaerst_idx else 0.82)
 
     # ── Signaturforklaring ──────────────────────────────────────────────────
     # Hver serie faar sit eget maksimum med. Uden det skal man gaette sig til,
     # hvilken kurve der er stoerst, ud fra hvor langt den stikker ud -- og det
     # er praecis den aflaesning, tallet kan goere overfloedig.
+    # Forklaringen ligger UNDER tegningen, ikke i et hjoerne af den. "loc=best"
+    # lagde den oven paa taget -- den daekkede den konstruktion, kurverne
+    # handler om. Der er ingen ledig plads inde i en rammefigur; ordinaterne
+    # peger udad til alle sider.
     haandtag = [
-        Line2D([0], [0], color=SERIE_FARVER[i % len(SERIE_FARVER)], lw=2.0,
-               label='%s  —  max %s' % (s['navn'], _nice(serie_peak[i],
-                                                         st['unit'])))
+        Line2D([0], [0],
+               color=SERIE_FARVER[i % len(SERIE_FARVER)],
+               lw=2.6 if i == vaerst_idx else 1.6,
+               label='%s%s   %s' % ('▸ ' if i == vaerst_idx else '   ',
+                                    s['navn'],
+                                    _nice(serie_peak[i], st['unit'])))
         for i, s in enumerate(serier)
     ]
-    leg = ax.legend(handles=haandtag, loc='best', fontsize=8, frameon=True,
-                    framealpha=0.92, edgecolor='#D8D8DC', borderpad=0.6,
-                    labelspacing=0.5)
+    leg = ax.legend(handles=haandtag, fontsize=8.5, frameon=False,
+                    loc='upper center', bbox_to_anchor=(0.5, -0.02),
+                    ncol=2 if len(serier) > 3 else 1,
+                    handlelength=2.2, columnspacing=2.4, labelspacing=0.45)
     leg.set_zorder(10)
 
     hint = {'M': ' · tegnet på trækside',

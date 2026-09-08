@@ -101,11 +101,18 @@ def test_skalaen_er_faelles_for_alle_serier():
     assert peak_b == pytest.approx(peak, rel=1e-12)
 
 
-def test_en_serie_alene_fylder_figuren_som_foer():
+def test_overlayet_bruger_en_lavere_ordinat_end_den_enkelte_figur():
     """
-    Med én serie skal faktoren vaere den samme, som den enkelte figur ville
-    bruge — ellers ville et overlay af én kurve tegne den mindre end den
-    tilsvarende almindelige figur, uden grund.
+    Et overlay tegner kurverne tættere paa staven end den enkelte figur.
+
+    Fire kurver ud fra samme stav naar tilsammen lige saa langt ud, som én
+    kurve gjorde alene, og saa stoeder soejlernes kurver ind i riglens. To
+    kurvesaet, der overlapper hinanden, kan ikke laeses hver for sig.
+
+    Denne test stod foer som "en serie alene fylder figuren som foer" og
+    kraevede det modsatte. Den praemis holdt kun, saa laenge overlayet
+    genbrugte den enkelte figurs skala -- og gjorde det, blev en ramme med
+    fire kombinationer ulaeselig.
     """
     nodes, elements, supports = _bjaelke()
     kun = _serie('kun', 9.0)
@@ -113,8 +120,10 @@ def test_en_serie_alene_fylder_figuren_som_foer():
     _, peak, _, fac = fd.overlay_skala('M', elements, dn, [kun], ref_size=6.0)
 
     ord_ref = fd._ordinate_reference(elements, dn, 6.0)
-    ventet = ord_ref * fd.ORDINATE_FRAC / peak
-    assert fac == pytest.approx(ventet, rel=1e-12)
+    assert fac == pytest.approx(ord_ref * fd.OVERLAY_ORDINATE_FRAC / peak,
+                                rel=1e-12)
+    assert fd.OVERLAY_ORDINATE_FRAC < fd.ORDINATE_FRAC, \
+        'et overlay skal tegne tættere paa staven end den enkelte figur'
 
 
 def test_overskriften_navngiver_den_vaerste_kombination():
