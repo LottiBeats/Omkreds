@@ -291,3 +291,46 @@ def test_lasten_taelles_ikke_med_to_gange(client):
 
     assert kombineret['max_moment_kNm'] == pytest.approx(
         direkte['max_moment_kNm'], rel=0.01)
+
+
+def test_kombinationstabellen_staar_i_dokumentet(client):
+    """
+    Kombinationerne skal kunne laeses i dokumentet, ikke kun bruges.
+
+    Uden tabellen staar der hvad der KOM UD, men ikke hvad der blev regnet.
+    DS 1140 kraever kombinationerne angivet, og en indhyldning kan ingen
+    efterregne uden at vide, hvad der gik ind i den.
+
+    Det er ogsaa svaret paa "det bliver lidt sort boks": reglen om, at vind fra
+    to sider udelukker hinanden, kan ses direkte -- de to varianter har hver
+    sin soejle, og ingen raekke har tal i dem begge.
+    """
+    nodes, elements, supports = _ramme()
+    r = client.post('/calc/general-frame-fem', json={
+        'title': 'Ramme', 'nodes': nodes, 'elements': elements,
+        'supports': supports,
+        'loads': [
+            {'type': 'udl', 'elem_id': 2, 'direction': 'vertical',
+             'value_kNm': 3.0, 'virkning': 'permanent'},
+            {'type': 'udl', 'elem_id': 1, 'direction': 'horizontal',
+             'value_kNm': 2.0, 'virkning': 'wind', 'variant': 'venstre'},
+            {'type': 'udl', 'elem_id': 3, 'direction': 'horizontal',
+             'value_kNm': -2.0, 'virkning': 'wind', 'variant': 'hoejre'},
+        ],
+    })
+    assert r.status_code == 200, r.text
+    blocks = r.json()['_result']
+
+    tabeller = [b for b in blocks if b.get('type') == 'table']
+    assert tabeller, 'ingen tabel i dokumentet'
+
+    kombi = next((t for t in tabeller
+                  if any('venstre' in str(h) for h in t['headers'])), None)
+    assert kombi, 'kombinationstabellen mangler — kun indhyldningen er der'
+
+    # Én søjle pr. variant, og ingen række med tal i dem begge.
+    iv = next(i for i, h in enumerate(kombi['headers']) if 'venstre' in str(h))
+    ih = next(i for i, h in enumerate(kombi['headers']) if 'hoejre' in str(h))
+    for row in kombi['rows']:
+        begge = row[iv] != '—' and row[ih] != '—'
+        assert not begge, 'vind fra to sider i samme raekke: %s' % row[0]

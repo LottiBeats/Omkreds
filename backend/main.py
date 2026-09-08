@@ -2769,9 +2769,45 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 best_res['node_reactions'], equal_dofs,
             )
 
-            result_blocks = [S(data.title), T(f'{len(combos)} load combinations analysed')]
+            result_blocks = [S(data.title),
+                             T(f'{len(combos)} lastkombinationer eftervist')]
+
+            # Selve kombinationstabellen -- hvilken faktor hver virkning fik i
+            # hver kombination.
+            #
+            # Uden den staar der i dokumentet, hvad der KOM UD, men ikke hvad
+            # der blev regnet. DS 1140 kraever kombinationerne angivet, og det
+            # er ogsaa det eneste, en laeser kan kontrollere: en indhyldning
+            # kan ingen efterregne uden at vide, hvad der gik ind i den.
+            #
+            # Det er den tabel, Frame Load Cases lavede. Uden den her kunne den
+            # blok ikke fjernes, uanset hvor godt resten virkede.
+            _handlinger = []
+            for c in combos:
+                for k in (c.get('factor_table') or {}):
+                    if k not in _handlinger:
+                        _handlinger.append(k)
+            if _handlinger:
+                result_blocks.append(S('Lastkombinationer '
+                                       '(DS/EN 1990 DK NA:2024)'))
+                result_blocks.append(TBL(
+                    ['Kombination'] + [f'γ·{h}' for h in _handlinger],
+                    [[c['name']] + [
+                        (f"{c['factor_table'][h]:.3f}"
+                         if h in (c.get('factor_table') or {})
+                         and abs(c['factor_table'][h]) > 1e-10 else '—')
+                        for h in _handlinger]
+                     for c in combos],
+                ))
+                result_blocks.append(T(
+                    'En tom celle betyder, at virkningen ikke indgår i den '
+                    'kombination — ikke at den indgår med nul. Virkninger med '
+                    'samme betegnelse men forskellig variant udelukker '
+                    'hinanden og optræder aldrig sammen.'))
+
+            result_blocks.append(S('Indhyldning'))
             result_blocks.append(TBL(
-                ['Element', 'M_max (kNm)', 'Governing combo (M)',
+                ['Element', 'M_max (kNm)', 'Dimensionerende (M)',
                  'V_max (kN)', 'N_max (kN)'],
                 [[str(eid),
                   f"{v['M_max_kNm']:.2f}", v['M_combo'],
