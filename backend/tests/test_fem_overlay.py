@@ -183,3 +183,82 @@ def test_en_serie_der_mangler_et_element_fjerner_det_ikke_for_de_andre():
     fig = fd.section_force_overlay('M', nodes, elements, supports,
                                    [delvis, hel], ref_size=6.0)
     assert _png_stoerrelse(fig)[0] > 200
+
+
+# ── Endepunktet ──────────────────────────────────────────────────────────────
+# Overlayet kan tegnes om med et udvalg af kombinationer. Som gentegningen af
+# den enkelte figur regner det ingenting: snitkraefterne kommer fra den koersel,
+# der allerede er lavet. Det er dét, der goer et fravalg til en maade at kigge
+# paa og ikke til en ny beregning.
+
+def _serie_payload(navn, w):
+    s = _serie(navn, w)
+    return {'navn': navn,
+            'ele_forces': {str(k): list(v) for k, v in s['ele_forces'].items()},
+            'ele_udl':    {str(k): list(v) for k, v in s['ele_udl'].items()}}
+
+
+def _overlay_payload(navne_og_last, scale=1.0):
+    nodes, elements, supports = _bjaelke()
+    return {
+        'nodes':    nodes,
+        'elements': [{k: v for k, v in e.items()} for e in elements],
+        'supports': supports,
+        'serier':   [_serie_payload(n, w) for n, w in navne_og_last],
+        'scale':    scale,
+    }
+
+
+def test_overlay_endepunktet_tegner_tre_figurer(client):
+    r = client.post('/calc/general-frame-fem/overlay',
+                    json=_overlay_payload([('6.10a', 8.0), ('6.10b', 12.0)]))
+    assert r.status_code == 200, r.text
+    figs = r.json()['_figs_b64']
+    assert len(figs) == 3, 'M, V og N'
+    assert all(_png_stoerrelse(f)[0] > 100 for f in figs)
+
+
+def test_et_fravalg_aendrer_figuren(client):
+    """
+    Slaar man en kombination fra, skal tegningen blive en anden.
+
+    Den store kombination er den, der saetter skalaen. Fjernes den, faar de
+    tilbagevaerende hele ordinaten — det er hele nytten af at kunne slaa fra:
+    to kurver, der laa taet i skyggen af en tredje, bliver til at skelne.
+    """
+    begge = client.post('/calc/general-frame-fem/overlay',
+                        json=_overlay_payload([('lille', 6.0),
+                                               ('stor', 18.0)])).json()['_figs_b64']
+    kun_lille = client.post('/calc/general-frame-fem/overlay',
+                            json=_overlay_payload([('lille', 6.0)])).json()['_figs_b64']
+    assert begge[0] != kun_lille[0], \
+        'samme PNG med og uden den dimensionerende kombination'
+
+
+def test_ingen_valgte_kombinationer_er_en_fejl_ikke_en_tom_figur(client):
+    """
+    Et overlay uden serier er et fravalg af alt, ikke en tegning.
+
+    Svarede endepunktet med en figur af konstruktionen uden kurver, ville den
+    ikke kunne skelnes fra en model uden snitkraefter — altsaa fra et rigtigt
+    resultat.
+    """
+    p = _overlay_payload([('6.10a', 8.0)])
+    p['serier'] = []
+    r = client.post('/calc/general-frame-fem/overlay', json=p)
+    assert r.status_code == 422
+    assert 'kombinationer' in r.json()['detail'].lower()
+
+
+def test_overlay_endepunktet_regner_ikke(client):
+    """
+    Ingen laster i kaldet, og alligevel en figur.
+
+    Det er den samme egenskab som gentegningen har: skalaen og fravalget kan
+    ikke aendre en dimensionsgivende vaerdi, for der er ingen beregning at
+    aendre. Testen koerer ogsaa paa en maskine uden openseespy.
+    """
+    p = _overlay_payload([('6.10b', 10.0)])
+    assert 'loads' not in p
+    r = client.post('/calc/general-frame-fem/overlay', json=p)
+    assert r.status_code == 200, r.text

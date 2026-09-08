@@ -332,6 +332,16 @@ export const redrawGeneralFrameFemDiagrams = (data) =>
   request('POST', '/calc/general-frame-fem/diagrams', data)
 
 /**
+ * Tegn M, V og N for et valgt udsnit af lastkombinationer i ét plot.
+ *
+ * Som gentegningen ovenfor: snitkræfterne kommer fra den kørsel, der allerede
+ * er lavet, så hverken et fravalg eller ordinatskalaen kan ændre et tal — kun
+ * hvad man kigger på.
+ */
+export const overlayGeneralFrameFemDiagrams = (data) =>
+  request('POST', '/calc/general-frame-fem/overlay', data)
+
+/**
  * Generate EN 1990 load combinations from named load cases.
  * Returns { _exports: { combinations }, _result }
  */

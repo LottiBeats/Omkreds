@@ -14,6 +14,7 @@
 import React, { useEffect, useState } from 'react'
 import { calcGeneralFrameFem, previewGeneralFrameFem,
          redrawGeneralFrameFemDiagrams,
+         overlayGeneralFrameFemDiagrams,
          calcTimberBeam, calcSteelBeam } from '../../api/client.js'
 import { maxUtilization, utilColor } from '../CalcResultView.jsx'
 import Field from './Field.jsx'
@@ -682,11 +683,55 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
   const [scale,     setScale]     = useState(summary?.diagram_scale ?? 1)
   const [scaledFigs, setScaledFigs] = useState({})
   const [redrawing, setRedrawing] = useState(false)
+  // Hvilke kombinationer overlayet viser. null = alle. Et Set ville vaere
+  // mindre at skrive, men en liste kan sammenlignes med === i en useEffect.
+  const [valgte,    setValgte]    = useState(null)
+  const [overlayEgen, setOverlayEgen] = useState(null)   // egne figurer, eller null
 
   // A new run means new figures. Redrawn ones from the previous run belong to
   // a result that no longer exists, and leaving them on screen would show a
   // curve from the old model under the new model's numbers.
-  useEffect(() => { setScaledFigs({}) }, [figs])
+  useEffect(() => {
+    setScaledFigs({})
+    // Et fravalg hoerer til den koersel, det blev lavet i. Beholdt paa tvaers
+    // ville man se et overlay af tre kombinationer fra en model, der nu har
+    // fem — og listen under figuren ville sige noget andet end tegningen.
+    setValgte(null)
+    setOverlayEgen(null)
+  }, [figs])
+
+  /** Tegn overlayet med netop de kombinationer, der er slaaet til. */
+  async function tegnOverlay(navne, skala) {
+    if (!nodes?.length) return
+    const alle = summary?.combo_figs ?? []
+    const brug = alle.filter(cf => navne === null || navne.includes(cf.name))
+    if (!brug.length) { setOverlayEgen([]); return }
+    // Alle til, og standardskala: saa er serverens egen figur den rigtige, og
+    // der er ingen grund til at hente den igen.
+    if (navne === null && Math.abs(skala - 1) < 1e-9) {
+      setOverlayEgen(null); return
+    }
+    setRedrawing(true)
+    try {
+      const res = await overlayGeneralFrameFemDiagrams({
+        nodes, elements, supports,
+        serier: brug.map(cf => ({
+          navn:       cf.name,
+          ele_forces: cf.state?.ele_forces ?? {},
+          ele_udl:    cf.state?.ele_udl    ?? {},
+        })),
+        scale: skala,
+      })
+      setOverlayEgen(res._figs_b64)
+    } catch {
+      // Slaar tegningen fejl, bliver den forrige staaende. Den viser stadig
+      // rigtige tal — bare ikke det udsnit, der lige blev valgt — saa en
+      // advarsel ville vaere mere alarmerende end sagen er.
+      setOverlayEgen(null)
+    } finally {
+      setRedrawing(false)
+    }
+  }
 
   async function redraw(value, state, key) {
     if (!state || !nodes?.length) return
@@ -830,7 +875,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
             // has to be spliced back in behind it.
             const isOverlay  = comboIdx === 'overlay' && hasOverlay
             const isStatic   = !isOverlay && (comboIdx === null || !hasComboFigs)
-            const baseFigs   = isOverlay ? overlayFigs
+            const baseFigs   = isOverlay ? (overlayEgen ?? overlayFigs)
                              : isStatic  ? figs
                              : (comboFigs[comboIdx]?.figs ?? [])
             // Ordinatskalaen kan ikke tegnes om for et overlay: redraw-
@@ -848,10 +893,15 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
                 ? FIG_LABELS.slice(0, activeFigs.length)
                 : COMBO_FIG_LABELS.slice(0, activeFigs.length)
             const idx = Math.min(figIdx, activeFigs.length - 1)
-            const state = isOverlay ? null
+            // Overlayet har sit eget endepunkt, der ogsaa tager en skala, saa
+            // skyderen virker her nu. state bruges kun til at afgoere, OM den
+            // vises; selve gentegningen gaar gennem tegnOverlay().
+            const state = isOverlay
+                        ? (summary?.diagram_state ?? null)
                         : isStatic
                           ? summary?.diagram_state
                           : (comboFigs[comboIdx]?.state ?? summary?.diagram_state)
+            const valgteNavne = valgte ?? comboFigs.map(cf => cf.name)
 
             return (
               <div>
@@ -890,6 +940,60 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
                   </div>
                 )}
 
+                {/* Hvilke kombinationer overlayet viser.
+                    Fire kurver paa den samme ramme ligger taet, og tre af dem
+                    kan godt vaere naesten ens — saa er det ikke tegningen, der
+                    skal laeses bedre, det er de to man faktisk sammenligner,
+                    der skal blive tilbage. */}
+                {isOverlay && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={s.detailLabel}>Vis kombinationer</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap',
+                                  marginTop: 4, alignItems: 'center' }}>
+                      {comboFigs.map((cf, ci) => {
+                        const til = valgteNavne.includes(cf.name)
+                        return (
+                          <button key={ci} disabled={redrawing}
+                            style={{ ...s.tabBtn,
+                                     ...(til ? s.tabBtnActive : {}),
+                                     opacity: til ? 1 : 0.45 }}
+                            onClick={() => {
+                              const naeste = til
+                                ? valgteNavne.filter(n => n !== cf.name)
+                                : [...valgteNavne, cf.name]
+                              // Raekkefoelgen skal foelge kombinationerne og
+                              // ikke rekkefoelgen man klikkede i — ellers
+                              // skifter farverne, hver gang man slaar noget
+                              // til igen.
+                              const ordnet = comboFigs
+                                .map(x => x.name)
+                                .filter(n => naeste.includes(n))
+                              setValgte(ordnet)
+                              tegnOverlay(ordnet, scale)
+                            }}>
+                            {til ? '☑' : '☐'}  {cf.name}
+                          </button>
+                        )
+                      })}
+                      {valgte && (
+                        <button style={s.scaleReset} disabled={redrawing}
+                          onClick={() => { setValgte(null)
+                                           tegnOverlay(null, scale) }}>
+                          Vis alle
+                        </button>
+                      )}
+                      {redrawing && <span style={s.scaleBusy}>tegner …</span>}
+                    </div>
+                    {valgteNavne.length === 0 && (
+                      <div style={{ fontSize: 12, color: '#e67e22',
+                                    marginTop: 6 }}>
+                        Ingen kombinationer valgt — slå mindst én til for at se
+                        en kurve.
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Diagram type tabs */}
                 <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                   {labels.map((lbl, i) => (
@@ -911,18 +1015,24 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
                     <input type="range" min="0.3" max="3" step="0.1"
                       value={scale} disabled={redrawing}
                       onChange={e => setScale(parseFloat(e.target.value))}
-                      onMouseUp={e => redraw(parseFloat(e.target.value), state,
-                                             isStatic ? 'static' : comboIdx)}
-                      onKeyUp={e => redraw(parseFloat(e.target.value), state,
-                                           isStatic ? 'static' : comboIdx)}
-                      onTouchEnd={e => redraw(scale, state,
-                                              isStatic ? 'static' : comboIdx)}
+                      onMouseUp={e => isOverlay
+                        ? tegnOverlay(valgte, parseFloat(e.target.value))
+                        : redraw(parseFloat(e.target.value), state,
+                                 isStatic ? 'static' : comboIdx)}
+                      onKeyUp={e => isOverlay
+                        ? tegnOverlay(valgte, parseFloat(e.target.value))
+                        : redraw(parseFloat(e.target.value), state,
+                                 isStatic ? 'static' : comboIdx)}
+                      onTouchEnd={e => isOverlay
+                        ? tegnOverlay(valgte, scale)
+                        : redraw(scale, state, isStatic ? 'static' : comboIdx)}
                       style={{ flex: 1, maxWidth: 220 }} />
                     <span style={s.scaleValue}>{scale.toFixed(1)}×</span>
                     {scale !== 1 && (
                       <button style={s.scaleReset} disabled={redrawing}
-                        onClick={() => { setScale(1); redraw(1, state,
-                          isStatic ? 'static' : comboIdx) }}>
+                        onClick={() => { setScale(1)
+                          if (isOverlay) tegnOverlay(valgte, 1)
+                          else redraw(1, state, isStatic ? 'static' : comboIdx) }}>
                         Nulstil
                       </button>
                     )}

@@ -2555,6 +2555,71 @@ def redraw_general_frame_fem(data: GenFrameRedrawInput):
                             detail=str(exc) + "\n" + traceback.format_exc())
 
 
+class GenFrameOverlaySerie(BaseModel):
+    """Én lastkombinations snitkraefter, som de kom ud af den koersel, der
+    allerede er lavet."""
+    navn:       str                    = ""
+    ele_forces: dict[str, list[float]] = {}
+    ele_udl:    dict[str, list[float]] = {}
+
+
+class GenFrameOverlayInput(BaseModel):
+    """
+    Et overlay af netop de kombinationer, brugeren har slaaet til.
+
+    Som gentegningen ovenfor: her regnes ingenting. Snitkraefterne kommer fra
+    den koersel, der allerede er lavet, saa hverken et fravalg eller
+    ordinatskalaen kan aendre en dimensionsgivende vaerdi -- kun hvad man kigger
+    paa.
+    """
+    nodes:    list[GenFrameNodeIn]      = []
+    elements: list[GenFrameElemIn]      = []
+    supports: list[GenFrameSupportIn]   = []
+    serier:   list[GenFrameOverlaySerie] = []
+    scale:    float                     = 1.0
+
+
+@protected.post("/calc/general-frame-fem/overlay", tags=["Calculations"])
+def overlay_general_frame_fem(data: GenFrameOverlayInput):
+    """
+    Tegn M, V og N for de valgte lastkombinationer i ét plot.
+
+    Ren matplotlib -- ingen loeser. Returnerer { _figs_b64 } med [M, V, N].
+    """
+    import traceback
+    try:
+        from fem_diagrams import render_overlay
+        from section_resolver import apply_sections
+
+        nodes    = [n.model_dump() for n in data.nodes]
+        elements = apply_sections([e.model_dump() for e in data.elements])
+        supports = [s.model_dump() for s in data.supports]
+        if not nodes or not elements:
+            raise ValueError("Ingen model at tegne.")
+        if not data.serier:
+            # Et overlay uden serier er ikke en tom figur, det er et fravalg
+            # af alt. Frontenden skal sige det med ord, ikke vise en tegning
+            # af en konstruktion uden snitkraefter.
+            raise ValueError("Ingen lastkombinationer valgt.")
+
+        serier = [{
+            'navn':       s.navn or f"Kombination {i + 1}",
+            'ele_forces': {int(k): list(v) for k, v in s.ele_forces.items()},
+            'ele_udl':    {int(k): (float(v[0]), float(v[1]))
+                           for k, v in s.ele_udl.items() if len(v) >= 2},
+        } for i, s in enumerate(data.serier)]
+
+        xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
+        ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+        scale = max(0.2, min(float(data.scale or 1.0), 4.0))
+
+        return {"_figs_b64": render_overlay(nodes, elements, supports, serier,
+                                            ref_size, scale=scale)}
+    except Exception as exc:
+        raise HTTPException(status_code=422,
+                            detail=str(exc) + "\n" + traceback.format_exc())
+
+
 @protected.post("/calc/general-frame-fem", tags=["Calculations"])
 def calc_general_frame_fem(data: GenFrameFemInput):
     """
