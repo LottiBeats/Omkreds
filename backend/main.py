@@ -2614,6 +2614,20 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                            'state': _diagram_state(r)}
                           for r in all_results]
 
+            # Alle kombinationer i ét plot. Med kun én kombination er der
+            # ingenting at sammenligne, og en figur, der lover en
+            # sammenligning og viser én kurve, er en figur for meget.
+            overlay_figs = []
+            if len(all_results) > 1:
+                from fem_diagrams import render_overlay
+                overlay_figs = render_overlay(
+                    nodes, elements, supports,
+                    [{'navn':       r['name'],
+                      'ele_forces': r['ele_forces'],
+                      'ele_udl':    r.get('ele_udl', {})}
+                     for r in all_results],
+                    ref_size, scale)
+
             # _figs_b64 = static model + governing combo (backward compat)
             best_combo_name = max(envelope.values(), key=lambda v: v['M_max_kNm'],
                                   default={}).get('M_combo', combos[0]['name'])
@@ -2638,6 +2652,9 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             summary['timber_envelope']   = timber_envelope   # {eid: {sc: {M_Ed, V_Ed, duration, combo}}}
             summary['combinations']      = [r['name'] for r in all_results]
             summary['combo_figs']        = combo_figs   # [{name, figs:[defo,M,V,N], state}]
+            # [M, V, N] med alle kombinationer lagt oven paa hinanden. Tom ved
+            # én kombination.
+            summary['overlay_figs']      = overlay_figs
             summary['buckling_lengths']  = buck_lengths
             summary['diagram_scale']     = scale
             summary['diagram_state']     = _diagram_state(best_res)

@@ -587,6 +587,10 @@ function fmt(v) {
 
 const FIG_LABELS       = ['Statisk model', 'Deformation', 'Moment', 'Forskydning', 'Normalkraft']
 const COMBO_FIG_LABELS = ['Deformation', 'Moment', 'Forskydning', 'Normalkraft']
+// Overlay har ingen deformeret form. Den tegnes af den flyttede geometri og
+// ikke af en kurve langs staven, saa seks af dem oven i hinanden er en tegning
+// af noget andet end en sammenligning.
+const OVERLAY_FIG_LABELS = ['Moment', 'Forskydning', 'Normalkraft']
 
 function Tbl({ headers, rows, zebra = true }) {
   return (
@@ -818,23 +822,36 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
           {tab === 'Figurer' && figs?.length > 0 && (() => {
             const comboFigs    = summary?.combo_figs ?? []
             const hasComboFigs = comboFigs.length > 0
+            const overlayFigs  = summary?.overlay_figs ?? []
+            const hasOverlay   = overlayFigs.length > 0
 
             // Active figure set. The static set carries the model sketch in
             // front, so the redraw — which only makes the four result curves —
             // has to be spliced back in behind it.
-            const isStatic   = comboIdx === null || !hasComboFigs
-            const baseFigs   = isStatic ? figs : (comboFigs[comboIdx]?.figs ?? [])
-            const redrawn    = scaledFigs[isStatic ? 'static' : comboIdx]
+            const isOverlay  = comboIdx === 'overlay' && hasOverlay
+            const isStatic   = !isOverlay && (comboIdx === null || !hasComboFigs)
+            const baseFigs   = isOverlay ? overlayFigs
+                             : isStatic  ? figs
+                             : (comboFigs[comboIdx]?.figs ?? [])
+            // Ordinatskalaen kan ikke tegnes om for et overlay: redraw-
+            // endepunktet tager ét saet snitkraefter, og et overlay er mange.
+            // state = null skjuler skyderen i stedet for at vise en, der ikke
+            // gør noget.
+            const redrawn    = isOverlay ? null
+                             : scaledFigs[isStatic ? 'static' : comboIdx]
             const activeFigs = redrawn
               ? (isStatic ? [baseFigs[0], ...redrawn] : redrawn)
               : baseFigs
-            const labels     = isStatic
-              ? FIG_LABELS.slice(0, activeFigs.length)
-              : COMBO_FIG_LABELS.slice(0, activeFigs.length)
+            const labels     = isOverlay
+              ? OVERLAY_FIG_LABELS.slice(0, activeFigs.length)
+              : isStatic
+                ? FIG_LABELS.slice(0, activeFigs.length)
+                : COMBO_FIG_LABELS.slice(0, activeFigs.length)
             const idx = Math.min(figIdx, activeFigs.length - 1)
-            const state = isStatic
-              ? summary?.diagram_state
-              : (comboFigs[comboIdx]?.state ?? summary?.diagram_state)
+            const state = isOverlay ? null
+                        : isStatic
+                          ? summary?.diagram_state
+                          : (comboFigs[comboIdx]?.state ?? summary?.diagram_state)
 
             return (
               <div>
@@ -855,6 +872,20 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
                           {cf.name}
                         </button>
                       ))}
+                      {/* Alle kombinationer oven paa hinanden. Staar sidst,
+                          fordi det er et opslag man laver EFTER at have set
+                          den enkelte — og fordi listen ellers begynder med
+                          noget, der kun findes ved mere end én kombination. */}
+                      {hasOverlay && (
+                        <button
+                          style={{ ...s.tabBtn,
+                                   ...(isOverlay ? s.tabBtnActive : {}),
+                                   fontWeight: 600 }}
+                          onClick={() => { setComboIdx('overlay'); setFigIdx(0) }}
+                          title="Alle kombinationers kurver i ét plot, med fælles ordinatskala">
+                          ⧉ Alle kombinationer
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

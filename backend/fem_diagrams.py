@@ -29,6 +29,7 @@ from collections import defaultdict
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 
 # ── Palet ─────────────────────────────────────────────────────────────────────
@@ -494,3 +495,153 @@ def render_all(nodes, elements, supports, ele_forces, ele_udl, node_disps,
         out.append(section_force_figure(kind, nodes, elements, supports,
                                         ele_forces, ele_udl, ref_size, scale))
     return out
+
+
+# ── Flere lastkombinationer i ét plot ─────────────────────────────────────────
+
+# Farver til serierne. Valgt saa de kan skelnes paa hvidt papir og i graatone
+# -- en rapport bliver printet -- og saa de ikke ligner STYLE-farverne for M, V
+# og N, som betyder noget andet.
+SERIE_FARVER = [
+    '#1F4E79', '#C2410C', '#0E7C66', '#7C3AED',
+    '#B45309', '#BE185D', '#0369A1', '#4D7C0F',
+]
+
+
+def overlay_skala(kind, drawn, dict_nodes, serier, ref_size, scale=1.0):
+    """
+    Kurverne for alle serier, og den FAELLES ordinatfaktor.
+
+    Trukket ud af tegnefunktionen, fordi det er her sammenligningen staar og
+    falder, og fordi et tal kan proeves af, hvor en PNG ikke kan. Faktoren
+    kommer af det stoerste maksimum blandt SAMTLIGE serier -- ikke af hver
+    series eget. Skalerede hver for sig ville to kombinationer, hvor den ene er
+    dobbelt saa stor som den anden, blive tegnet lige store, og figuren ville
+    svare paa noget andet end det, den bliver brugt til.
+
+    Returnerer (alle, peak_abs, serie_peak, fac), hvor alle er
+    [(serie_idx, el, xi, yi, ca, sa, L, pts)].
+    """
+    alle = []
+    peak_abs = 0.0
+    serie_peak = []
+    for si, s in enumerate(serier):
+        sp = 0.0
+        for el in drawn:
+            ef = s['ele_forces'].get(el['id'])
+            if ef is None:
+                continue
+            xi, yi, xj, yj, L, ca, sa = _geom(el, dict_nodes)
+            wy, wx = (s.get('ele_udl') or {}).get(el['id'], (0.0, 0.0))
+            pts = _sample(kind, el, ef, wy, wx, L)
+            alle.append((si, el, xi, yi, ca, sa, L, pts))
+            sp = max(sp, max(abs(v) for _, v in pts))
+        serie_peak.append(sp)
+        peak_abs = max(peak_abs, sp)
+
+    ord_ref = _ordinate_reference(drawn, dict_nodes, ref_size)
+    fac = (ord_ref * ORDINATE_FRAC / peak_abs * scale) if peak_abs > 1e-9 else 0.0
+    return alle, peak_abs, serie_peak, fac
+
+
+def section_force_overlay(kind, nodes, elements, supports, serier, ref_size,
+                          scale=1.0):
+    """
+    Tegn den samme snitkraft for flere lastkombinationer i ét plot.
+
+    serier : liste af {'navn': str, 'ele_forces': dict, 'ele_udl': dict}
+
+    Hvorfor en funktion for sig og ikke et flag paa section_force_figure:
+    den enkelte kurve tegnes med udfyldning mellem stangen og kurven, med
+    ordinatstreger og med toppunkter sat paa. Alt tre er rigtigt for én kurve
+    og ulaeseligt for seks -- udfyldningen bliver groed ved alpha 0,16 gange
+    seks, og stregerne staar saa taet, at kurverne forsvinder i dem. Her
+    tegnes streger og en signaturforklaring, og ingenting andet.
+
+    DET VIGTIGE: ordinatskalaen findes paa tvaers af ALLE serier. Skalerede
+    hver for sig ville kurverne blive lige store paa papiret, og saa kan man
+    ikke se, hvilken kombination der er den vaerste -- hvilket er det eneste,
+    man laegger dem oven paa hinanden for at finde ud af.
+    """
+    st = STYLE[kind]
+    dict_nodes = {n['id']: n for n in nodes}
+
+    if not serier:
+        raise ValueError("section_force_overlay kaldt uden serier")
+
+    # Elementerne er de samme i alle serier -- det er den samme model regnet
+    # med forskellige laster -- men vi tager unionen, saa en serie, der mangler
+    # et element, ikke tavst fjerner det for de andre.
+    har = set()
+    for s in serier:
+        har |= set(s['ele_forces'])
+    drawn = [el for el in elements
+             if el['id'] in har and (kind == 'N'
+                                     or el.get('type', 'beam') == 'beam')]
+    if not drawn:
+        drawn = [el for el in elements if el['id'] in har]
+
+    alle, peak_abs, serie_peak, fac = overlay_skala(
+        kind, drawn, dict_nodes, serier, ref_size, scale)
+
+    fig, ax = plt.subplots()
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('white')
+
+    xs = [float(n['x']) for n in nodes]
+    ys = [float(n['y']) for n in nodes]
+
+    _draw_structure(ax, elements, dict_nodes, C_STRUCT, lw=2.0, zorder=4)
+    _draw_supports(ax, supports, dict_nodes, ref_size * 0.05)
+
+    # Momentet paa traekside, som i den enkelte figur.
+    flip = -1.0 if kind == 'M' else 1.0
+
+    for si, el, xi, yi, ca, sa, L, pts in alle:
+        ox, oy = -sa * fac * flip, ca * fac * flip
+        px = [xi + ca * x + ox * v for x, v in pts]
+        py = [yi + sa * x + oy * v for x, v in pts]
+        xs += px; ys += py
+        ax.plot(px, py, color=SERIE_FARVER[si % len(SERIE_FARVER)],
+                lw=1.35, zorder=5, solid_joinstyle='round', alpha=0.9)
+
+    # ── Signaturforklaring ──────────────────────────────────────────────────
+    # Hver serie faar sit eget maksimum med. Uden det skal man gaette sig til,
+    # hvilken kurve der er stoerst, ud fra hvor langt den stikker ud -- og det
+    # er praecis den aflaesning, tallet kan goere overfloedig.
+    haandtag = [
+        Line2D([0], [0], color=SERIE_FARVER[i % len(SERIE_FARVER)], lw=2.0,
+               label='%s  —  max %s' % (s['navn'], _nice(serie_peak[i],
+                                                         st['unit'])))
+        for i, s in enumerate(serier)
+    ]
+    leg = ax.legend(handles=haandtag, loc='best', fontsize=8, frameon=True,
+                    framealpha=0.92, edgecolor='#D8D8DC', borderpad=0.6,
+                    labelspacing=0.5)
+    leg.set_zorder(10)
+
+    hint = {'M': ' · tegnet på trækside',
+            'V': '',
+            'N': ' · + træk / − tryk'}[kind]
+    scale_note = '' if abs(scale - 1.0) < 1e-9 else f' · ordinat ×{_dk(scale, 1)}'
+    # Hvilken kombination der ejer maksimum staar i overskriften. Det er det
+    # foerste, man vil vide, og signaturforklaringen kraever, at man
+    # sammenligner otte tal for at finde det samme svar.
+    vaerst = serier[serie_peak.index(peak_abs)]['navn'] if peak_abs > 0 else '—'
+    return _finish(fig, ax, xs, ys,
+                   f'{st["title"]}  [{st["unit"]}]  ·  {len(serier)} kombinationer',
+                   f'max {_nice(peak_abs, st["unit"])} i {vaerst}'
+                   f'{hint}{scale_note}')
+
+
+def render_overlay(nodes, elements, supports, serier, ref_size, scale=1.0):
+    """
+    M, V og N for alle kombinationer, i den raekkefoelge rapporten forventer.
+
+    Ingen deformeret form: den tegnes af den flyttede geometri og ikke af en
+    kurve langs staven, saa seks af dem oven i hinanden er en tegning af noget
+    andet end en sammenligning.
+    """
+    return [section_force_overlay(kind, nodes, elements, supports, serier,
+                                  ref_size, scale)
+            for kind in ('M', 'V', 'N')]
