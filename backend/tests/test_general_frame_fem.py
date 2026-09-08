@@ -663,3 +663,54 @@ def test_symmetrisk_forskydning_giver_altid_samme_fortegn():
             'stoej paa %g flyttede den rapporterede forskydning fra %.6f til '
             '%.6f' % (stoej, ren['V_kN'], forstyrret['V_kN']))
         assert forstyrret['x_V_m'] == pytest.approx(ren['x_V_m'], abs=1e-9)
+
+
+def test_et_element_der_peger_paa_en_knude_der_ikke_findes_giver_en_besked(client):
+    """
+    En tastefejl i ni/nj skal give en forklaring, ikke en traceback.
+
+    plot_model laa foer validate_model i endepunktet, saa et element med
+    ni = 0 naaede tegningen foerst og kastede "KeyError: 0" med hele
+    stakken ud i brugerfladen. Fejlen var den samme; det eneste, der skiftede,
+    er om den kan laeses.
+
+    At taste 0 er ikke usandsynligt: knuder kunne godt taelles fra nul, og
+    NumericInput tager imod det uden indvending.
+    """
+    r = client.post('/calc/general-frame-fem', json={
+        'title': 'Ramme',
+        'nodes':    [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 4, 'y': 0}],
+        'elements': [{'id': 1, 'ni': 0, 'nj': 2, 'type': 'beam',
+                      'release': 'none', 'E_GPa': 210, 'A_cm2': 39.1,
+                      'Iz_cm4': 3892}],
+        'supports': [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True}],
+        'loads':    [],
+    })
+    assert r.status_code == 422, r.text
+    detalje = r.json()['detail']
+    assert 'KeyError' not in detalje and 'Traceback' not in detalje, \
+        'brugeren fik en traceback:\n' + detalje
+    assert '0' in detalje and ('knude' in detalje.lower()
+                               or 'node' in detalje.lower()), \
+        'beskeden naevner ikke den knude, der mangler:\n' + detalje
+
+
+def test_forhaandsvisningen_tegner_det_der_findes(client):
+    """
+    Forhaandsvisningen kaldes ved hver aendring, ogsaa midt i en indtastning,
+    hvor elementet findes og knuden ikke goer endnu. Den skal tegne resten i
+    stedet for at falde fra hinanden — man er jo netop i gang.
+    """
+    r = client.post('/calc/general-frame-fem/preview', json={
+        'title': 'Ramme',
+        'nodes':    [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 4, 'y': 0}],
+        'elements': [{'id': 1, 'ni': 1, 'nj': 2, 'type': 'beam',
+                      'release': 'none', 'E_GPa': 210, 'A_cm2': 39.1,
+                      'Iz_cm4': 3892},
+                     {'id': 2, 'ni': 2, 'nj': 9, 'type': 'beam',
+                      'release': 'none', 'E_GPa': 210, 'A_cm2': 39.1,
+                      'Iz_cm4': 3892}],
+        'supports': [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True}],
+        'loads':    [],
+    })
+    assert r.status_code == 200, r.text

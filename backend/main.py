@@ -2647,7 +2647,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
     try:
         from general_frame_fem import (ModelError, solve, solve_combinations,
                                        make_figures, summarise, plot_model,
-                                       compute_buckling_lengths, compute_alpha_cr)
+                                       compute_buckling_lengths, compute_alpha_cr,
+                                       validate_model)
         from section_resolver import apply_sections
         from calc_core import S, T, TBL
         import math
@@ -2685,6 +2686,14 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
         xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
         ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+
+        # Modellen efterses FOER der tegnes.
+        #
+        # plot_model laa foerst, og et element, der pegede paa en knude, der
+        # ikke fandtes, gav en KeyError med traceback i stedet for
+        # validate_models forklaring. Fejlen var den samme; det eneste, der
+        # skiftede, var om brugeren kunne laese den.
+        validate_model(nodes, elements, supports, loads or [], equal_dofs)
 
         model_fig = plot_model(data.title, nodes, elements, supports,
                                loads or [], ref_size)

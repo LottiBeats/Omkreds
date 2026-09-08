@@ -43,11 +43,17 @@ const STEEL_SECTIONS = [
 
 // ── Tiny helpers ──────────────────────────────────────────────────────────────
 
-function NumField({ label, val, set, width = 72 }) {
+function NumField({ label, val, set, width = 72, galt = false, titel }) {
   return (
     <div style={s.fieldWrap}>
-      <label style={s.miniLabel}>{label}</label>
-      <NumericInput style={{ ...s.smallInput, width }} value={val} onChange={set} />
+      <label style={{ ...s.miniLabel, ...(galt ? { color: '#c0392b' } : {}) }}>
+        {label}
+      </label>
+      <NumericInput
+        style={{ ...s.smallInput, width,
+                 ...(galt ? { borderColor: '#c0392b', background: '#fff5f4',
+                              color: '#c0392b' } : {}) }}
+        value={val} onChange={set} title={titel} />
     </div>
   )
 }
@@ -285,7 +291,12 @@ function MemberRow({ member, check, onSection, onRemove }) {
 }
 
 
-function ElemRow({ elem, onChange, onRemove }) {
+function ElemRow({ elem, onChange, onRemove, nodeIds = [] }) {
+  // Et element, der peger paa en knude, der ikke findes, er den fejl der
+  // faktisk sker: man taster 0, fordi knuder godt kunne taelles fra nul.
+  // Serveren siger det pent nu, men den siger det foerst naar man trykker
+  // Koer. Her ses det med det samme, hvor tallet staar.
+  const ukendt = id => nodeIds.length > 0 && !nodeIds.includes(id)
   const material = elem.material ?? ''
   const matDef   = MATERIALS.find(m => m.key === material)
   // With a section reference the backend owns E/A/I; showing editable fields
@@ -312,8 +323,12 @@ function ElemRow({ elem, onChange, onRemove }) {
     <div style={s.listRow}>
       <div style={s.listRowInner}>
         <NumField label="ID" val={elem.id} set={v => onChange({ ...elem, id: Math.round(v) })} width={44} />
-        <NumField label="ni" val={elem.ni} set={v => onChange({ ...elem, ni: Math.round(v) })} width={44} />
-        <NumField label="nj" val={elem.nj} set={v => onChange({ ...elem, nj: Math.round(v) })} width={44} />
+        <NumField label="ni" val={elem.ni} set={v => onChange({ ...elem, ni: Math.round(v) })} width={44}
+                  galt={ukendt(elem.ni)}
+                  titel={ukendt(elem.ni) ? `Der er ingen knude ${elem.ni}` : undefined} />
+        <NumField label="nj" val={elem.nj} set={v => onChange({ ...elem, nj: Math.round(v) })} width={44}
+                  galt={ukendt(elem.nj)}
+                  titel={ukendt(elem.nj) ? `Der er ingen knude ${elem.nj}` : undefined} />
 
         <div style={s.fieldWrap}>
           <label style={s.miniLabel}>Type</label>
@@ -1653,7 +1668,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
             <button style={s.addBtn} onClick={addElem}>+ Element</button>
           </div>
           {elements.map((el, i) => (
-            <ElemRow key={i} elem={el} onChange={v => updateElem(i, v)} onRemove={() => removeElem(i)} />
+            <ElemRow key={i} elem={el} onChange={v => updateElem(i, v)}
+                     onRemove={() => removeElem(i)}
+                     nodeIds={nodes.map(n => n.id)} />
           ))}
 
           {/* equalDOF is how a hinge is written for the solver, not something

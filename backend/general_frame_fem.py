@@ -1190,6 +1190,21 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
     C_LABEL   = '#6E6E73'
     C_GRID    = '#E5E5EA'
 
+    # Et element, hvis knude ikke findes, springes over i stedet for at rive
+    # tegningen ned.
+    #
+    # plot_model tegner ogsaa den model, man er MIDT i at taste: forhaandsvis-
+    # ningen kaldes ved hver aendring, og der er et oejeblik, hvor elementet
+    # findes og knuden ikke goer endnu. Foer kastede den KeyError, og brugeren
+    # fik en Python-traceback i staedet for sin skitse. I selve beregningen naar
+    # den aldrig hertil: validate_model koerer nu foerst og siger med ord, hvad
+    # der mangler.
+    _ukendte = [el for el in elements
+                if el.get('ni') not in dict_nodes or el.get('nj') not in dict_nodes]
+    if _ukendte:
+        elements = [el for el in elements
+                    if el.get('ni') in dict_nodes and el.get('nj') in dict_nodes]
+
     def elem_geom(el):
         ni = dict_nodes[el['ni']]; nj = dict_nodes[el['nj']]
         xi, yi = ni['x'], ni['y']; xj, yj = nj['x'], nj['y']
