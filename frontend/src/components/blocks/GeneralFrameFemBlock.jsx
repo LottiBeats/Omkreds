@@ -445,6 +445,17 @@ const UDL_DIRECTIONS = [
   { value: 'perpendicular',label: '⊥ Vinkelret (vind på flade)',     hint: '+ trykker ind på fladen' },
 ]
 
+// Virkningen afgør γ og ψ₀ efter DS/EN 1990 DK NA:2024. "—" betyder: ingen
+// kombinering — lasten påsættes som den står, og blokken kører én beregning.
+// Det er standarden, og det er dét, der holder den simple vej simpel.
+const VIRKNINGER = [
+  { value: '',          label: '— ingen',      hint: 'lasten påsættes som den står' },
+  { value: 'permanent', label: 'G  Egenlast',  hint: 'γ = 1,2 i 6.10a · 1,0 i 6.10b' },
+  { value: 'imposed',   label: 'Q  Nyttelast', hint: 'ψ₀ = 0,7' },
+  { value: 'snow',      label: 'S  Sne',       hint: 'ψ₀ = 0,3 · 0 når vinden leder' },
+  { value: 'wind',      label: 'W  Vind',      hint: 'ψ₀ = 0,3' },
+]
+
 function LoadRow({ load, onChange, onRemove, comboBlocks }) {
   const lt = load.type ?? 'nodal'
   const selCombo = lt === 'combo_udl'
@@ -503,6 +514,38 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
           <span style={s.dirHint}>
             {UDL_DIRECTIONS.find(x => x.value === udlDirection)?.hint}
           </span>
+        </>}
+
+        {/* Virkning og variant. Begge valgfrie.
+            Uden virkning sker der præcis det, der skete før feltet fandtes.
+            Med virkning bliver lasten en del af en EN 1990-kombination — og
+            varianten er det, der udelukker: to laster med samme virkning men
+            forskellig variant kommer aldrig i den samme kombination. Det er
+            sådan vind fra venstre og fra højre holdes fra hinanden, uden at
+            der findes en skjult regel om ordet "vind". */}
+        {lt !== 'combo_udl' && <>
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>Virkning</label>
+            <select style={{ ...s.smallInput, width: 104 }}
+              value={load.virkning ?? ''}
+              title={VIRKNINGER.find(v => v.value === (load.virkning ?? ''))?.hint}
+              onChange={e => onChange({ ...load, virkning: e.target.value || undefined,
+                                        variant: e.target.value ? load.variant : undefined })}>
+              {VIRKNINGER.map(v => (
+                <option key={v.value} value={v.value}>{v.label}</option>
+              ))}
+            </select>
+          </div>
+          {load.virkning && load.virkning !== 'permanent' && (
+            <div style={s.fieldWrap}>
+              <label style={s.miniLabel}>Variant</label>
+              <input style={{ ...s.smallInput, width: 96 }}
+                value={load.variant ?? ''}
+                placeholder="fx venstre"
+                title="Laster med samme virkning men forskellig variant udelukker hinanden — de kommer aldrig i samme kombination"
+                onChange={e => onChange({ ...load, variant: e.target.value || undefined })} />
+            </div>
+          )}
         </>}
 
         {lt === 'combo_udl' && <>
@@ -1361,6 +1404,14 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   ]}) }
   function removeLoad(i)      { update({ loads: loads.filter((_, j) => j !== i) }) }
 
+  // Baerer bare én last en virkning, kombineres der. Det er hele kontakten:
+  // ingen tilstand at vaelge, ingen knap at finde -- feltet paa lasten er
+  // baade valget og forklaringen.
+  const kombinerer = loads.some(l => l.virkning)
+  const antalVirkninger = new Set(
+    loads.filter(l => l.virkning)
+         .map(l => l.virkning + (l.variant ? '·' + l.variant : ''))).size
+
   async function handleRun() {
     setRunning(true); setError(null)
     try {
@@ -1399,6 +1450,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         combinations,
         equal_dofs:   equalDofs,
         diagram_scale: d.diagram_scale ?? 1,
+        consequence_class: d.consequence_class ?? 'CC2',
       })
 
       // Build _exports so capacity check blocks can read element forces.
@@ -1675,6 +1727,29 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       )}
 
       {/* Simple loads list */}
+      {/* Konsekvensklassen afgør K_FI (0,9 / 1,0 / 1,1) og dermed hver
+          eneste partialkoefficient. Den vises kun, når der faktisk
+          kombineres — men så SKAL den vises: en klasse, blokken antog i
+          stilhed, er præcis den slags, der ikke må stå usagt i en
+          eftervisning. */}
+      {loadMode === 'simple' && kombinerer && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+                      margin: '2px 0 8px' }}>
+          <span style={s.miniLabel}>Konsekvensklasse</span>
+          <select style={{ ...s.smallInput, width: 76 }}
+            value={d.consequence_class ?? 'CC2'}
+            onChange={e => update({ consequence_class: e.target.value })}>
+            <option value="CC1">CC1</option>
+            <option value="CC2">CC2</option>
+            <option value="CC3">CC3</option>
+          </select>
+          <span style={{ fontSize: 11, color: '#6E6E73' }}>
+            K<sub>FI</sub> = {{ CC1: '0,9', CC2: '1,0', CC3: '1,1' }[d.consequence_class ?? 'CC2']}
+            {'  ·  '}{antalVirkninger} virkninger påsat — kombinationerne dannes af dem
+          </span>
+        </div>
+      )}
+
       {loadMode === 'simple' && (<>
         <div style={s.rowHeader}>
           <button style={s.addBtn} onClick={() => addLoad('nodal')}>+ Punktlast</button>

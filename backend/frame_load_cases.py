@@ -55,15 +55,24 @@ TYPE_LABELS = {
 }
 
 
+# De to veje ind kalder feltet noget forskelligt: lasttilfaeldeblokken bruger
+# 'load_type', og FEM-blokkens egne laster bruger 'type'. Derfor skaleres alle
+# stoerrelsesfelter, der faktisk er der, i stedet for at gaette lastens art ud
+# af det ene navn.
+#
+# Det gik galt praecis der: en last fra FEM-blokken med type='udl' faldt i
+# nodal-grenen, fik skaleret sine Fx/Fy/Mz -- som alle var nul -- og beholdt
+# sin value_kNm ukombineret. Egenlasten blev regnet med 3,0 i stedet for 1,2 x
+# 3,0, og der stod ikke noget nogen steder om det.
+_MAGNITUDER = ('value_kNm', 'Fx_kN', 'Fy_kN', 'Mz_kNm', 'wy_kNm', 'wx_kNm')
+
+
 def _scale_load(ld, factor):
     """Return a copy of load dict with magnitudes scaled by factor."""
     s = dict(ld)
-    if s.get('load_type') == 'udl':
-        s['value_kNm'] = round(float(s.get('value_kNm', 0.0)) * factor, 5)
-    else:
-        s['Fx_kN']  = round(float(s.get('Fx_kN',  0.0)) * factor, 5)
-        s['Fy_kN']  = round(float(s.get('Fy_kN',  0.0)) * factor, 5)
-        s['Mz_kNm'] = round(float(s.get('Mz_kNm', 0.0)) * factor, 5)
+    for felt in _MAGNITUDER:
+        if felt in s and s[felt] is not None:
+            s[felt] = round(float(s[felt]) * factor, 5)
     return s
 
 
@@ -213,3 +222,134 @@ def combinations_to_calc_blocks(cases, combinations, consequence_class, method):
     blocks.append(TBL(headers, rows))
 
     return blocks
+
+
+# ── Kombinationer ud af laster, der er paasat modellen ────────────────────────
+#
+# Den anden vej ind. generate_combinations() ovenfor tager navngivne
+# lasttilfaelde, der er defineret i en blok for sig -- og den blok viser ikke
+# modellen, saa elementnumrene tastes i blinde og bliver staaende, naar FEM-
+# blokken omnummererer.
+#
+# Her kommer lasterne fra modellen selv. Hver last kan baere to valgfrie felter:
+#
+#     virkning : 'permanent' | 'snow' | 'wind' | 'imposed'
+#     variant  : en tekst, eller None
+#
+# Virkningen afgoer gamma og psi_0. Varianten afgoer, hvad der udelukker
+# hinanden: to laster med samme virkning men forskellig variant kommer aldrig i
+# den samme kombination. Det er saadan "vind fra venstre" og "vind fra hoejre"
+# holdes fra hinanden -- ikke ved en regel om ordet "vind", men ved noget,
+# brugeren selv har skrevet paa lasten og kan se.
+#
+# Uden virkning paa nogen last er der ingenting at kombinere over, og kaldet
+# returnerer en tom liste. Saa koerer FEM-blokken som den altid har gjort: én
+# beregning med lasterne som de staar.
+
+_UDEN_VIRKNING = 'permanent'
+
+
+def _handlinger(loads):
+    """
+    Grupper lasterne i handlinger.
+
+    En handling er (virkning, variant). Alle permanente laster er én handling
+    uanset variant -- egenlasten er der i hver kombination, og en "variant" af
+    den ville betyde noget andet, end brugeren tror.
+    """
+    grupper = {}
+    for ld in loads:
+        virkning = (ld.get('virkning') or _UDEN_VIRKNING).strip().lower()
+        variant = ld.get('variant') or None
+        if virkning == 'permanent':
+            variant = None
+        grupper.setdefault((virkning, variant), []).append(ld)
+    return grupper
+
+
+def _navngiv(virkning, variant):
+    kort = {'permanent': 'G', 'snow': 'S', 'wind': 'W', 'imposed': 'Q'}
+    n = kort.get(virkning, virkning[:1].upper())
+    return f'{n}·{variant}' if variant else n
+
+
+def kombinationer_fra_laster(loads, method='6.10ab', consequence_class='CC2'):
+    """
+    Byg EN 1990-kombinationer af laster, der er paasat modellen.
+
+    Returnerer [] naar ingen last baerer en virkning -- saa er der ingenting at
+    kombinere, og kaldet skal ikke opfinde en kombination af én ting.
+
+    Ellers en liste af
+        {name, loads, governing_duration, factor_table, aktive}
+    hvor factor_table er {handlingsnavn: faktor} og aktive er de
+    handlingsnavne, der faktisk indgaar. Tabellen er det, brugeren ser og kan
+    rette; den er ikke et mellemresultat.
+    """
+    if not any(ld.get('virkning') for ld in loads):
+        return []
+
+    kfi = _KFI.get(consequence_class, 1.0)
+    grupper = _handlinger(loads)
+
+    permanente = [(k, v) for k, v in grupper.items() if k[0] == 'permanent']
+    variable = [(k, v) for k, v in grupper.items() if k[0] != 'permanent']
+
+    # Varianterne inden for én virkning udelukker hinanden. Har vinden fire
+    # varianter, er der fire valg -- ikke fire samtidige laster.
+    pr_virkning = {}
+    for (virkning, variant), lds in variable:
+        pr_virkning.setdefault(virkning, []).append((virkning, variant))
+
+    import itertools
+    valgmuligheder = [sorted(v, key=lambda k: str(k[1] or ''))
+                      for v in pr_virkning.values()]
+    udvalg = [list(u) for u in itertools.product(*valgmuligheder)] \
+        if valgmuligheder else [[]]
+
+    combos = []
+
+    def _saml(navn, g_fac, faktorer):
+        """faktorer: {handlingsnoegle: faktor} for de variable, der indgaar."""
+        ud = []
+        tabel = {}
+        varigheder = []
+        for noegle, lds in permanente:
+            tabel[_navngiv(*noegle)] = round(g_fac, 4)
+            ud += [_scale_load(l, g_fac) for l in lds]
+        for noegle, f in faktorer.items():
+            tabel[_navngiv(*noegle)] = round(f, 4)
+            if abs(f) > 1e-10:
+                ud += [_scale_load(l, f) for l in grupper[noegle]]
+                varigheder.append(_TYPE_DURATION.get(noegle[0], 'medium'))
+        governing = (max(varigheder, key=lambda d: _DURATION_RANK.get(d, 0))
+                     if varigheder else 'permanent')
+        combos.append({'name': navn, 'loads': ud, 'factor_table': tabel,
+                       'governing_duration': governing,
+                       'aktive': [_navngiv(*k) for k in faktorer
+                                  if abs(faktorer[k]) > 1e-10]})
+
+    # 6.10a — kun de permanente
+    g_a = _GAMMA_G_A * kfi
+    _saml(f'6.10a: {g_a:.2f}G', g_a, {})
+
+    # 6.10b — for hvert udvalg af varianter, hver aktiv handling som ledende
+    g_b = _GAMMA_G_B * kfi
+    for valg in udvalg:
+        for ledende in valg:
+            faktorer = {}
+            dele = []
+            for noegle in valg:
+                if noegle == ledende:
+                    faktorer[noegle] = _GAMMA_Q * kfi
+                    dele.append(f'1,5·{_navngiv(*noegle)}')
+                else:
+                    psi = _companion_psi0(ledende[0], noegle[0])
+                    faktorer[noegle] = round(_GAMMA_Q * psi * kfi, 5)
+                    if psi > 0:
+                        dele.append(f'{psi:.1f}·1,5·{_navngiv(*noegle)}')
+            navn = (f'6.10b ({_navngiv(*ledende)} leder): '
+                    f'{g_b:.2f}G + ' + ' + '.join(dele))
+            _saml(navn, g_b, faktorer)
+
+    return combos

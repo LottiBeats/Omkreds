@@ -2439,6 +2439,16 @@ class GenFrameLoadIn(BaseModel):
     direction:  str | None = None   # 'vertical' | 'projected' | 'horizontal' | 'perpendicular'
     value_kNm:  float = 0.0         # magnitude for direction-based loads
     target:     str | None = None   # 'elem' | 'member' (expanded client-side before sending)
+    # Valgfri. Uden dem opfoerer lasten sig som hidtil: den paasaettes som den
+    # staar, og der koeres én beregning.
+    #
+    # Med dem bliver den en del af en EN 1990-kombination. virkning afgoer
+    # gamma og psi_0; variant afgoer hvad der udelukker hinanden -- to laster
+    # med samme virkning men forskellig variant kommer aldrig i den samme
+    # kombination. Det er saadan vind fra venstre og fra hoejre holdes fra
+    # hinanden, uden at der findes en skjult regel om ordet "vind".
+    virkning:   str | None = None   # 'permanent' | 'snow' | 'wind' | 'imposed'
+    variant:    str | None = None   # fx 'venstre' / 'hoejre'
 
 class FrameComboLoadIn(BaseModel):
     """One load inside a combination (from Frame Load Cases block)."""
@@ -2475,6 +2485,11 @@ class GenFrameFemInput(BaseModel):
     # curves crowd its own columns wants it smaller; a nearly straight
     # diagram wants it larger. It changes the drawing, never the numbers.
     diagram_scale: float = 1.0
+    # Bruges kun, naar lasterne selv baerer en virkning og skal kombineres her.
+    # Kommer kombinationerne udefra, er de allerede regnet med disse valg i
+    # den blok, der lavede dem.
+    method:            str = '6.10ab'   # '6.10ab' | '6.10'
+    consequence_class: str = 'CC2'      # CC1 | CC2 | CC3
 
 
 @protected.post("/calc/general-frame-fem/preview", tags=["Calculations"])
@@ -2645,6 +2660,28 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         loads    = [l.model_dump() for l in data.loads]
         combos      = [c.model_dump() for c in data.combinations]
         equal_dofs  = [e.model_dump() for e in data.equal_dofs]
+
+        # Baerer lasterne selv en virkning, kombineres de her i stedet for at
+        # komme faerdigkombinerede fra en blok, der ikke kan se modellen.
+        #
+        # Den vej findes, fordi en rammes lasttilfaelde ikke kun er
+        # forskellige TAL -- de er forskellige MOENSTRE. Vind fra venstre
+        # sidder andre steder end vind fra hoejre, og det kan ikke koges ned
+        # til én kN/m-vaerdi, som en bjaelkes kan.
+        #
+        # Kommer der allerede kombinationer udefra, roeres de ikke: den gamle
+        # vej virker uaendret.
+        if not combos:
+            from frame_load_cases import kombinationer_fra_laster
+            egne = kombinationer_fra_laster(
+                loads, data.method or '6.10ab',
+                data.consequence_class or 'CC2')
+            if egne:
+                combos = egne
+                # Lasterne ligger nu inde i kombinationerne. Blev de ogsaa
+                # staaende her, ville hver kombination faa sin egen last
+                # ovenpaa den ukombinerede.
+                loads = []
 
         xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
         ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
