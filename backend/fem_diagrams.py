@@ -719,3 +719,126 @@ def render_overlay(nodes, elements, supports, serier, ref_size, scale=1.0):
     return [section_force_overlay(kind, nodes, elements, supports, serier,
                                   ref_size, scale)
             for kind in ('M', 'V', 'N')]
+
+
+# ── Udnyttelse langs stangen ─────────────────────────────────────────────────
+
+C_ETA_OK    = '#0E7C66'    # under 1,0
+C_ETA_OVER  = '#DC2626'    # over 1,0 — eftervisningen holder ikke
+
+
+def udnyttelse_figur(nodes, elements, supports, ele_forces, ele_segs,
+                     kapaciteter, ref_size, art='boejning', scale=1.0):
+    """
+    Tegn udnyttelsesgraden langs hver stang.
+
+    kapaciteter : {elem_id: kapacitetsdict fra udnyttelse.kapaciteter}
+                  Elementer uden en kapacitet springes over -- et element uden
+                  tvaersnit har ingen udnyttelse, og en kurve paa nul ville
+                  ligne en stang, der ikke er belastet.
+    art         : 'boejning' | 'forskydning'
+
+    Ordinaten er dimensionsloes, saa skalaen er fast: 1,0 fylder altid det
+    samme. Dermed kan to figurer sammenlignes med oejet, og en stang, der er
+    over, ser ud som om den er over -- hvor en automatisk skala ville faa 0,3
+    og 1,3 til at se lige store ud.
+
+    Kurven skifter farve ved 1,0. Det er den ene graense, der betyder noget, og
+    en roed strimmel er lettere at faa oeje paa end et tal i en tabel.
+    """
+    import udnyttelse as _u
+
+    dict_nodes = {n['id']: n for n in nodes}
+    idx = 1 if art == 'boejning' else 2
+    navn = 'Bøjning' if art == 'boejning' else 'Forskydning'
+
+    drawn = [el for el in elements
+             if el['id'] in ele_forces and el['id'] in kapaciteter
+             and el.get('type', 'beam') == 'beam']
+
+    fig, ax = plt.subplots()
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('white')
+    xs = [float(n['x']) for n in nodes]
+    ys = [float(n['y']) for n in nodes]
+
+    _draw_structure(ax, elements, dict_nodes, C_STRUCT, lw=2.0, zorder=4)
+    _draw_supports(ax, supports, dict_nodes, ref_size * 0.05)
+
+    if not drawn:
+        return _finish(fig, ax, xs, ys, f'η — {navn}',
+                       'ingen stænger med tværsnit')
+
+    # Ordinaten er fast, saa laenge udnyttelsen er i naerheden af 1,0: dér
+    # betyder sammenligneligheden noget, og to figurer kan holdes op mod
+    # hinanden. Er en stang langt over, ville den faste skala sende kurven ud
+    # af figuren og ind over nabofagene -- saa skaleres der ned, og
+    # overskriften siger det.
+    ord_ref = _ordinate_reference(drawn, dict_nodes, ref_size)
+    _toppe = []
+    for el in drawn:
+        _, _, _, _, _L, _, _ = _geom(el, dict_nodes)
+        _sy, _sx = ele_segs.get(el['id'], ([], []))
+        _k = _u.eta_langs_stang(ele_forces[el['id']], _L, _sy, _sx,
+                                kapaciteter[el['id']])
+        _toppe.append(max([t[idx] for t in _k], default=0.0))
+    _top = max(_toppe, default=0.0)
+    GRAENSE = 1.5
+    _presset = _top > GRAENSE
+    fac = ord_ref * OVERLAY_ORDINATE_FRAC * scale / (_top if _presset else 1.0)
+
+    peak = 0.0
+    peak_el = None
+    for el in drawn:
+        eid = el['id']
+        xi, yi, xj, yj, L, ca, sa = _geom(el, dict_nodes)
+        segs_y, segs_x = ele_segs.get(eid, ([], []))
+        kurve = _u.eta_langs_stang(ele_forces[eid], L, segs_y, segs_x,
+                                   kapaciteter[eid])
+        ox, oy = -sa * fac, ca * fac
+
+        px = [xi + ca * k[0] + ox * k[idx] for k in kurve]
+        py = [yi + sa * k[0] + oy * k[idx] for k in kurve]
+        bx = [xi + ca * k[0] for k in kurve]
+        by = [yi + sa * k[0] for k in kurve]
+        xs += px; ys += py
+
+        vals = [k[idx] for k in kurve]
+        e_max = max(vals) if vals else 0.0
+        if e_max > peak:
+            peak, peak_el = e_max, eid
+
+        ax.fill(px + bx[::-1], py + by[::-1],
+                color=C_ETA_OK if e_max <= 1.0 else C_ETA_OVER,
+                alpha=0.13, lw=0, zorder=2)
+
+        # Kurven tegnes i stykker, saa den del der er over 1,0 er roed.
+        for i in range(len(kurve) - 1):
+            over = vals[i] > 1.0 or vals[i + 1] > 1.0
+            ax.plot(px[i:i + 2], py[i:i + 2],
+                    color=C_ETA_OVER if over else C_ETA_OK,
+                    lw=1.9 if over else 1.5, zorder=6 if over else 5,
+                    solid_joinstyle='round')
+
+        # Stiplet linje ved 1,0, saa graensen kan ses og ikke kun beregnes.
+        gx = [xi + ca * k[0] + ox * 1.0 for k in (kurve[0], kurve[-1])]
+        gy = [yi + sa * k[0] + oy * 1.0 for k in (kurve[0], kurve[-1])]
+        ax.plot(gx, gy, color=C_ETA_OVER, lw=0.7, ls=(0, (4, 3)),
+                alpha=0.55, zorder=3)
+
+        if e_max > 0.05:
+            j = vals.index(e_max)
+            tipx = xi + ca * kurve[j][0] + ox * e_max
+            tipy = yi + sa * kurve[j][0] + oy * e_max
+            pad = ref_size * 0.028
+            lx, ly = tipx - sa * pad, tipy + ca * pad
+            ax.text(lx, ly, _dk(e_max, 2), fontsize=8.5, fontweight='bold',
+                    color=C_ETA_OK if e_max <= 1.0 else C_ETA_OVER,
+                    ha='center', va='center', zorder=7,
+                    bbox=dict(fc='white', ec='none', alpha=0.85, pad=1.2))
+            xs.append(lx); ys.append(ly)
+
+    hoejre = (f'max η = {_dk(peak, 2)} i element {peak_el}'
+              + ('  ·  HOLDER IKKE' if peak > 1.0 else '')
+              + ('  ·  ordinat nedskaleret' if _presset else ''))
+    return _finish(fig, ax, xs, ys, f'η — {navn}', hoejre)

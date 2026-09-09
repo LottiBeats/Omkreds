@@ -148,3 +148,64 @@ def test_en_dellast_flytter_toppunktet():
     x_m = max(kurve, key=lambda t: t[1])[0]
     assert x_m < L / 2, 'toppunktet skal ligge inde i den belastede halvdel'
     assert x_m > 0.2 * L
+
+
+# ── Figuren ─────────────────────────────────────────────────────────────────
+
+def _ramme_med_kapaciteter():
+    import general_frame_fem as gf
+    STAV = dict(material='timber', section='140x360', grade='GL28h',
+                E_GPa=12.6, A_cm2=504.0, Iz_cm4=54432.0)
+    b, h = 8.0, 4.0
+    nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 0, 'y': h},
+             {'id': 3, 'x': b / 2, 'y': h + 1.2},
+             {'id': 4, 'x': b, 'y': h}, {'id': 5, 'x': b, 'y': 0}]
+    els = [dict(id=i + 1, ni=a, nj=c, type='beam', release='none', **STAV)
+           for i, (a, c) in enumerate([(1, 2), (2, 3), (3, 4), (4, 5)])]
+    sup = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True},
+           {'node_id': 5, 'ux': True, 'uy': True, 'rz': True}]
+    loads = [{'type': 'udl', 'elem_id': 2, 'direction': 'vertical',
+              'value_kNm': 9.0},
+             {'type': 'udl', 'elem_id': 3, 'direction': 'vertical',
+              'value_kNm': 9.0, 'x1': 0.0, 'x2': 2.5}]
+    r = gf.solve(nodes, els, sup, loads)
+    kap = {e['id']: u.kapaciteter(140, 360, 'GL28h', 0.8, 1.3) for e in els}
+    return nodes, els, sup, r, kap
+
+
+def test_figuren_tegnes_for_boejning_og_forskydning():
+    import base64
+    import struct
+    from fem_diagrams import udnyttelse_figur
+
+    nodes, els, sup, r, kap = _ramme_med_kapaciteter()
+    for art in ('boejning', 'forskydning'):
+        b64 = udnyttelse_figur(nodes, els, sup, r['ele_forces'],
+                               r['ele_segs'], kap, 8.0, art=art)
+        raw = base64.b64decode(b64)
+        assert raw[:8] == b'\x89PNG\r\n\x1a\n'
+        w, _ = struct.unpack('>II', raw[16:24])
+        assert w > 200
+
+
+def test_et_element_uden_tvaersnit_springes_over():
+    """
+    Et element uden kapacitet har ingen udnyttelse. En kurve paa nul ville
+    ligne en stang, der ikke er belastet -- og det er en anden oplysning.
+    """
+    from fem_diagrams import udnyttelse_figur
+
+    nodes, els, sup, r, kap = _ramme_med_kapaciteter()
+    del kap[2]                       # ét element mister sit tvaersnit
+    b64 = udnyttelse_figur(nodes, els, sup, r['ele_forces'], r['ele_segs'],
+                           kap, 8.0, art='boejning')
+    assert b64                       # den tegner stadig resten
+
+
+def test_helt_uden_kapaciteter_siges_der_fra_i_overskriften():
+    from fem_diagrams import udnyttelse_figur
+
+    nodes, els, sup, r, _ = _ramme_med_kapaciteter()
+    b64 = udnyttelse_figur(nodes, els, sup, r['ele_forces'], r['ele_segs'],
+                           {}, 8.0, art='boejning')
+    assert b64, 'en model uden tvaersnit skal give en figur, ikke et brag'
