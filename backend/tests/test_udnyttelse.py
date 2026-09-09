@@ -1,0 +1,150 @@
+"""
+test_udnyttelse.py — udnyttelseskurven skal sige det samme som eftervisningen.
+
+Formlerne i udnyttelse.py er de samme som i timber.py, men de staar to steder.
+To steder gaar fra hinanden. Testen her er den eneste grund til, at det er
+forsvarligt: den koerer begge paa de samme tal og kraever, at forholdene er
+ens til seks decimaler.
+
+En kurve, der siger 0,43 hvor eftervisningen siger 0,51, er vaerre end ingen
+kurve -- den ser ud som en oplysning.
+"""
+import pytest
+
+import udnyttelse as u
+import forallpeople as si
+si.environment('structural')
+from forallpeople import mm, m, kN, MPa       # noqa: E402
+from timber import timber_beam
+
+
+def _ratio(blocks, indeholder):
+    """Forholdet fra den check-blok, hvis tekst indeholder *indeholder*."""
+    for b in blocks:
+        if b.get('type') == 'check' and indeholder in b.get('label', ''):
+            return b['ratio']
+    raise AssertionError('fandt ingen eftervisning med %r' % indeholder)
+
+
+@pytest.mark.parametrize('b_mm,h_mm,grade,span,g_k,q_k,sc,dur,kmod', [
+    (45, 195, 'C24',   4.0, 0.9, 0.7, 1, 'medium',    0.80),
+    (45, 245, 'C24',   5.0, 1.2, 2.0, 2, 'short',     0.90),
+    (140, 360, 'GL28h', 8.0, 3.0, 4.5, 1, 'permanent', 0.60),
+    (63, 200, 'C30',   3.5, 0.6, 1.8, 2, 'instant',   1.10),
+])
+def test_udnyttelsen_stemmer_med_eftervisningen(b_mm, h_mm, grade, span,
+                                                g_k, q_k, sc, dur, kmod):
+    """
+    Samme snitkraefter, samme kapaciteter — samme udnyttelse.
+
+    M_Ed, V_Ed, f_m,d og f_v,d laeses ud af eftervisningens EGNE raekker. Saa
+    sammenlignes der ikke bare "to beregninger af det samme", men den nye
+    formel mod praecis de tal, dokumentet indeholder.
+
+    Kapaciteterne tages af udnyttelse.kapaciteter -- den funktion, timber.py nu
+    selv kalder -- og ikke af de trykte raekker. Saa er den eneste afrunding
+    tilbage M_Ed og V_Ed med to decimaler, og forholdet med tre.
+
+    Foerste udgave laeste ogsaa W_y, A, f_m,d og f_v,d af trykt tekst. Fire
+    afrundede tal ganget sammen kom 0,3 % ved siden af, og det var ikke en fejl
+    i regnestykket -- det var testen, der ikke kunne se skarpere. Det var
+    grunden til at lade timber.py kalde den samme kode i stedet for at holde to
+    implementeringer op mod hinanden.
+    """
+    blocks = timber_beam(
+        label='T1', span=span * m, g_k=g_k * kN / m, q_k=q_k * kN / m,
+        b=b_mm * mm, h=h_mm * mm, timber_grade=grade,
+        service_class=sc, load_duration=dur, gamma_M=1.3,
+        check_deflection=False,
+    )
+
+    def _tal(navn):
+        for b in blocks:
+            if b.get('type') == 'calc_row' and b.get('name') == navn:
+                return float(b['result'].split()[0].replace(',', '.'))
+        raise AssertionError('fandt ingen raekke %r' % navn)
+
+    M_Ed, V_Ed = _tal('M_Ed'), _tal('V_Ed')
+
+    kap = u.kapaciteter(b_mm, h_mm, grade, kmod, 1.3)
+    e_m, e_v = u.eta_i_snit(M_Ed, V_Ed, kap)
+
+    assert e_m == pytest.approx(_ratio(blocks, 'Bøjning'), abs=1e-3),         'boejningsudnyttelsen er ikke den samme som i eftervisningen'
+    assert e_v == pytest.approx(_ratio(blocks, 'Forskydning'), abs=1e-3),         'forskydningsudnyttelsen er ikke den samme som i eftervisningen'
+
+
+@pytest.mark.parametrize('grade,sc,dur,kmod', [
+    ('C24',   1, 'medium',    0.80),
+    ('C24',   2, 'short',     0.90),
+    ('GL28h', 1, 'permanent', 0.60),
+    ('C30',   2, 'instant',   1.10),
+])
+def test_kapaciteterne_udledes_som_i_eftervisningen(grade, sc, dur, kmod):
+    """
+    Den anden halvdel: at k_mod·f_k/gamma_M giver det samme her som dér.
+
+    Testen ovenfor beviser formlen (sigma = M/W, tau = 1,5V/A). Denne beviser
+    kapaciteten. Tilsammen daekker de vejen fra styrkeklasse til udnyttelse --
+    og hver af dem siger hvilket led der er gaaet i stykker, hvis en af dem
+    falder.
+    """
+    blocks = timber_beam(
+        label='T1', span=4.0 * m, g_k=1.0 * kN / m, q_k=1.0 * kN / m,
+        b=45 * mm, h=245 * mm, timber_grade=grade,
+        service_class=sc, load_duration=dur, gamma_M=1.3,
+        check_deflection=False,
+    )
+
+    def _tal(navn):
+        for b in blocks:
+            if b.get('type') == 'calc_row' and b.get('name') == navn:
+                return float(b['result'].split()[0].replace(',', '.'))
+        raise AssertionError('fandt ingen raekke %r' % navn)
+
+    kap = u.kapaciteter(45, 245, grade, kmod, 1.3)
+    assert float(kap['f_md'] / MPa) == pytest.approx(_tal('f_m,d'), abs=5e-3)
+    assert float(kap['f_vd'] / MPa) == pytest.approx(_tal('f_v,d'), abs=5e-3)
+    assert float(kap['W_y'] / (10 * mm) ** 3) == pytest.approx(_tal('W_y'),
+                                                               rel=1e-3)
+    assert float(kap['A'] / (10 * mm) ** 2) == pytest.approx(_tal('A'),
+                                                             rel=1e-3)
+
+
+def test_kurven_topper_hvor_momentet_topper():
+    """
+    Paa en simpelt understoettet bjaelke med jaevnt fordelt last ligger
+    boejningens toppunkt midt paa, og forskydningens ved enderne. Kurven skal
+    vise det -- ellers viser den noget andet end snitkraefterne.
+    """
+    import stanglaster as sl
+
+    L, w = 6.0, 10.0
+    pl = [0.0, w * L / 2, 0.0, 0.0, w * L / 2, 0.0]
+    segs_y, segs_x = sl.afsnit_fra_par(-w, 0.0, L)
+    kap = u.kapaciteter(45, 245, 'C24', 0.8, 1.3)
+
+    kurve = u.eta_langs_stang(pl, L, segs_y, segs_x, kap)
+    x_m = max(kurve, key=lambda t: t[1])[0]
+    x_v = max(kurve, key=lambda t: t[2])[0]
+
+    assert x_m == pytest.approx(L / 2, abs=0.05)
+    assert x_v in (pytest.approx(0.0, abs=0.05), pytest.approx(L, abs=0.05))
+
+
+def test_en_dellast_flytter_toppunktet():
+    """
+    Med lasten kun paa den ene halvdel ligger det stoerste moment ikke laengere
+    midt paa. Det er hele grunden til at ville se kurven i stedet for ét tal.
+    """
+    import stanglaster as sl
+
+    L, w = 6.0, 10.0
+    # Simpelt understoettet, w paa [0, L/2]: R_i = 3wL/8, R_j = wL/8
+    pl = [0.0, 3 * w * L / 8, 0.0, 0.0, w * L / 8, 0.0]
+    segs_y = [(-w, -w, 0.0, L / 2)]
+    kap = u.kapaciteter(45, 245, 'C24', 0.8, 1.3)
+
+    kurve = u.eta_langs_stang(pl, L, segs_y, [], kap)
+    x_m = max(kurve, key=lambda t: t[1])[0]
+    assert x_m < L / 2, 'toppunktet skal ligge inde i den belastede halvdel'
+    assert x_m > 0.2 * L

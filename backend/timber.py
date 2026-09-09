@@ -336,8 +336,16 @@ def timber_beam(
     # ── Bending resistance ────────────────────────────────────────────────────
     blocks.append(S("Bøjning — EN 1995-1-1 pkt. 6.1.6"))
 
-    W_y    = (b * h**2) / 6
-    f_md   = kmod * f_mk / gamma_M
+    # W_y, A, f_m,d og f_v,d kommer fra udnyttelse.kapaciteter_af, saa
+    # udnyttelseskurven langs stangen regner med praecis de samme tal som
+    # denne eftervisning. Stod formlerne to steder, kunne de kun holdes sammen
+    # af en test, der laeste trykte, afrundede tal -- og den kunne ikke komme
+    # taettere end 0,3 %.
+    from udnyttelse import kapaciteter_af
+    _kap = kapaciteter_af(b, h, f_mk, f_vk, kmod, gamma_M)
+
+    W_y    = _kap['W_y']
+    f_md   = _kap['f_md']
     sigma_md = M_Ed / W_y
 
     blocks.extend([
@@ -403,8 +411,8 @@ def timber_beam(
     # ── Shear resistance ──────────────────────────────────────────────────────
     blocks.append(S("Forskydning — EN 1995-1-1 pkt. 6.1.7"))
 
-    A     = b * h
-    f_vd  = kmod * f_vk / gamma_M
+    A     = _kap['A']
+    f_vd  = _kap['f_vd']
     tau_d = (1.5 * V_Ed) / A
 
     blocks.extend([
