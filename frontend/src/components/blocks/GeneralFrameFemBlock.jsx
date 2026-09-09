@@ -473,6 +473,12 @@ const VIRKNINGER = [
 
 function LoadRow({ load, onChange, onRemove, comboBlocks }) {
   const lt = load.type ?? 'nodal'
+  // Delvis eller varierende last er undtagelsen, ikke reglen. Felterne ligger
+  // paa en linje for sig, der kun foldes ud naar de bruges — editoren er
+  // omkring 320 px bred, og tre felter mere paa hovedlinjen braekker den.
+  const harUdvidet = load.x1 != null || load.x2 != null
+                     || load.value_end_kNm != null
+  const [udvidet, setUdvidet] = useState(harUdvidet)
   const selCombo = lt === 'combo_udl'
     ? (comboBlocks.find(b => b.data.label === load.combo_label) ?? comboBlocks[0])
     : null
@@ -529,6 +535,12 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
           <span style={s.dirHint}>
             {UDL_DIRECTIONS.find(x => x.value === udlDirection)?.hint}
           </span>
+          {!udvidet && (
+            <button style={s.udvidBtn} onClick={() => setUdvidet(true)}
+                    title="Lasten dækker kun et stykke af stangen, eller varierer langs den">
+              ⇥ del / varierende
+            </button>
+          )}
         </>}
 
         {/* Virkning og variant. Begge valgfrie.
@@ -589,6 +601,33 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
           </div>
         </>}
       </div>
+
+      {/* Delvis eller varierende last.
+          Tomme felter betyder det almindelige: hele stangen, konstant. Det er
+          derfor de er tomme og ikke udfyldt med 0 og L — et 0 i "fra" ser ud
+          som en beslutning, og en tom celle ser ud som "ikke relevant". */}
+      {lt === 'udl' && udvidet && (
+        <div style={s.udvidRow}>
+          <NumField label="fra (m)" width={62}
+            val={load.x1 ?? ''} set={v => onChange({ ...load, x1: v })} />
+          <NumField label="til (m)" width={62}
+            val={load.x2 ?? ''} set={v => onChange({ ...load, x2: v })} />
+          <NumField label="w slut (kN/m)" width={82}
+            val={load.value_end_kNm ?? ''}
+            set={v => onChange({ ...load, value_end_kNm: v })} />
+          <span style={s.dirHint}>
+            tom = hele stangen · tom slutværdi = konstant
+          </span>
+          <button style={s.udvidBtn}
+            onClick={() => { setUdvidet(false)
+                             onChange({ ...load, x1: undefined, x2: undefined,
+                                        value_end_kNm: undefined }) }}
+            title="Ryd og fold sammen — lasten dækker igen hele stangen">
+            ✕ ryd
+          </button>
+        </div>
+      )}
+
       <button onClick={onRemove} style={s.removeBtn}>✕</button>
     </div>
   )
@@ -1859,6 +1898,12 @@ const s = {
   smallInput:   { border: '1px solid #e0e0e0', padding: '4px 6px', fontSize: 12,
                   fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' },
   hint:         { fontSize: 10, color: '#bbb', alignSelf: 'center' },
+  udvidRow:     { display: 'flex', gap: 8, alignItems: 'flex-end',
+                  flexWrap: 'wrap', marginTop: 6, paddingTop: 6,
+                  borderTop: '1px dashed #e5e7eb' },
+  udvidBtn:     { fontSize: 10.5, padding: '2px 7px', background: '#fff',
+                  color: '#6b7280', border: '1px solid #e5e7eb',
+                  borderRadius: 3, cursor: 'pointer', whiteSpace: 'nowrap' },
   removeBtn:    { background: 'none', border: 'none', color: '#ccc', cursor: 'pointer',
                   fontSize: 14, padding: '4px 6px', lineHeight: 1, alignSelf: 'flex-start' },
   addBtn:       { background: '#f5f5f7', border: '1px solid #e8e8e8', padding: '4px 10px',
