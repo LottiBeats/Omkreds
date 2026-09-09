@@ -2490,6 +2490,12 @@ class GenFrameFemInput(BaseModel):
     loads:        list[GenFrameLoadIn]      = []
     combinations: list[FrameComboIn]       = []
     equal_dofs:   list[GenFrameEqualDOFIn] = []  # pin joints between co-located nodes
+    # Til udnyttelseskurven. k_mod slaas op af de to, praecis som i en
+    # traeeftervisning. Er lasten en kombination, bruges kombinationens egen
+    # varighed i stedet for den her.
+    service_class: int = 1
+    load_duration: str = 'medium'
+    gamma_M_timber: float = 1.3
     # Ordinate scaling on the section-force diagrams. 1.0 = automatic, which
     # sizes the largest ordinate to a fixed share of the model. A frame whose
     # curves crowd its own columns wants it smaller; a nearly straight
@@ -2708,6 +2714,32 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         model_fig = plot_model(data.title, nodes, elements, supports,
                                loads or [], ref_size)
 
+        def _udnyttelsesfigurer(res, varighed):
+            """
+            eta-kurverne for boejning og forskydning, eller [] naar ingen
+            stang har et traetvaersnit.
+
+            Tom liste og ikke to tomme figurer: en figur uden kurver ligner en
+            konstruktion, der ikke er udnyttet, og det er en anden oplysning
+            end "her er ikke noget at regne paa".
+            """
+            try:
+                import udnyttelse as _u
+                from fem_diagrams import udnyttelse_figur
+                kap = _u.kapaciteter_pr_element(
+                    elements, data.service_class, varighed,
+                    data.gamma_M_timber)
+                if not kap:
+                    return []
+                return [udnyttelse_figur(nodes, elements, supports,
+                                         res['ele_forces'],
+                                         res.get('ele_segs', {}), kap,
+                                         ref_size, art=a, scale=scale)
+                        for a in ('boejning', 'forskydning')]
+            except Exception:
+                # En figur maa ikke kunne vaelte en beregning, der er lykkedes.
+                return []
+
         def _diagram_state(r):
             """
             What it takes to draw the curves again without solving again.
@@ -2769,7 +2801,13 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                                                     best_res['ele_forces'],
                                                     best_res.get('ele_extremes'))
 
-            figs_b64 = [model_fig] + best_figs
+            # Udnyttelsen tegnes for den dimensionsgivende kombination -- den
+            # med det stoerste moment -- og med DENS lastvarighed, saa k_mod er
+            # den samme, som eftervisningen af den kombination ville bruge.
+            figs_b64 = ([model_fig] + best_figs
+                        + _udnyttelsesfigurer(
+                            best_res, best_res.get('governing_duration')
+                            or data.load_duration))
 
             # Build envelope summary for frontend
             summary = summarise(nodes, elements,
@@ -2848,12 +2886,12 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             buck_lengths = compute_buckling_lengths(nodes, elements, supports,
                                                     res['ele_forces'],
                                                     res.get('ele_extremes'))
-            figs_b64 = [model_fig] + make_figures(
+            figs_b64 = ([model_fig] + make_figures(
                 data.title, nodes, elements, supports, loads,
                 res['ele_forces'], res['node_disps'], ref_size,
                 ele_udl=res.get('ele_udl', {}), scale=scale,
                 ele_segs=res.get('ele_segs', {}),
-            )
+            ) + _udnyttelsesfigurer(res, data.load_duration))
             summary = summarise(nodes, elements,
                                 res['node_disps'], res['node_reactions'],
                                 res['ele_forces'], supports, loads,

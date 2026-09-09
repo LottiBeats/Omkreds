@@ -683,8 +683,14 @@ function fmt(v) {
   return v.toFixed(a >= 1000 ? 0 : a >= 100 ? 1 : 2)
 }
 
-const FIG_LABELS       = ['Statisk model', 'Deformation', 'Moment', 'Forskydning', 'Normalkraft']
-const COMBO_FIG_LABELS = ['Deformation', 'Moment', 'Forskydning', 'Normalkraft']
+// Udnyttelseskurverne haenger BAGEST, saa de indekser der allerede peger paa
+// model, deformation, M, V og N ikke flytter sig. De er der kun, naar mindst
+// én stang har et traetvaersnit — slice() nedenfor klipper listen til det
+// antal figurer, der faktisk kom.
+const FIG_LABELS       = ['Statisk model', 'Deformation', 'Moment', 'Forskydning', 'Normalkraft',
+                          'η — bøjning', 'η — forskydning']
+const COMBO_FIG_LABELS = ['Deformation', 'Moment', 'Forskydning', 'Normalkraft',
+                          'η — bøjning', 'η — forskydning']
 // Overlay har ingen deformeret form. Den tegnes af den flyttede geometri og
 // ikke af en kurve langs staven, saa seks af dem oven i hinanden er en tegning
 // af noget andet end en sammenligning.

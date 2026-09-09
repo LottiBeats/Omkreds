@@ -726,6 +726,12 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
                  summary.get('max_shear_ele')),
             _cap("Normalkraftkurve", summary.get('max_axial_kN'), "kN",
                  summary.get('max_axial_ele')),
+            # Udnyttelseskurverne staar bagest og er der kun, naar mindst én
+            # stang har et traetvaersnit. _figs_b64_to_pdf laeser kun saa mange
+            # tekster, som der er figurer, saa de to sidste falder bare bort,
+            # naar de ikke er der.
+            "Udnyttelse — bøjning. Stiplet linje er η = 1,0",
+            "Udnyttelse — forskydning. Stiplet linje er η = 1,0",
         ],
     )
 

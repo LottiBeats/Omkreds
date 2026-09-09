@@ -102,3 +102,41 @@ def eta_langs_stang(pl, L, segs_y, segs_x, kap, n=60):
         e_m, e_v = eta_i_snit(M, V, kap)
         ud.append((x, e_m, e_v))
     return ud
+
+
+def kapaciteter_pr_element(elements, service_class=1, load_duration='medium',
+                           gamma_M=1.3):
+    """
+    {elem_id: kapaciteter} for de elementer, der HAR et traetvaersnit.
+
+    Elementer uden -- staal, eller et element hvor kun E/A/I er tastet -- er
+    ikke med. Udnyttelsesfiguren springer dem over, og det er rigtigt: en
+    udnyttelse uden en kapacitet er ikke nul, den findes ikke.
+
+    k_mod slaas op af servicklasse og lastvarighed, praecis som timber.py
+    goer det. Er lasten en kombination, er varigheden kombinationens egen --
+    kalderen sender den ind.
+    """
+    from timber import KMOD
+
+    kmod = KMOD.get((service_class, load_duration), 0.80)
+    ud = {}
+    for el in elements:
+        if (el.get('material') or '').lower() != 'timber':
+            continue
+        maal = str(el.get('section') or '').lower().replace(' ', '')
+        if 'x' not in maal:
+            continue
+        try:
+            b_mm, h_mm = (float(t) for t in maal.split('x')[:2])
+        except ValueError:
+            continue
+        if not el.get('grade'):
+            continue
+        try:
+            ud[el['id']] = kapaciteter(b_mm, h_mm, el['grade'], kmod, gamma_M)
+        except Exception:
+            # En ukendt styrkeklasse er ikke en grund til at vaelte en
+            # rammeberegning. Elementet faar bare ingen kurve.
+            continue
+    return ud

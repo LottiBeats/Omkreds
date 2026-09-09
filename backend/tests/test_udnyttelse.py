@@ -209,3 +209,52 @@ def test_helt_uden_kapaciteter_siges_der_fra_i_overskriften():
     b64 = udnyttelse_figur(nodes, els, sup, r['ele_forces'], r['ele_segs'],
                            {}, 8.0, art='boejning')
     assert b64, 'en model uden tvaersnit skal give en figur, ikke et brag'
+
+
+def test_endepunktet_leverer_udnyttelsesfigurerne(client):
+    """
+    Kurverne skal komme med ud af beregningen, ikke skulle hentes for sig.
+
+    De haenges bagest i _figs_b64, saa de indekser, frontenden og PDF'en
+    allerede bruger til model, deformation, M, V og N, ikke flytter sig.
+    """
+    r = client.post('/calc/general-frame-fem', json={
+        'title': 'Bjælke',
+        'nodes': [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 3, 'y': 0},
+                  {'id': 3, 'x': 6, 'y': 0}],
+        'elements': [
+            {'id': 1, 'ni': 1, 'nj': 2, 'type': 'beam', 'release': 'none',
+             'material': 'timber', 'section': '140x360', 'grade': 'GL28h'},
+            {'id': 2, 'ni': 2, 'nj': 3, 'type': 'beam', 'release': 'none',
+             'material': 'timber', 'section': '140x360', 'grade': 'GL28h'}],
+        'supports': [{'node_id': 1, 'ux': True, 'uy': True, 'rz': False},
+                     {'node_id': 3, 'ux': False, 'uy': True, 'rz': False}],
+        'loads': [{'type': 'udl', 'elem_id': e, 'direction': 'vertical',
+                   'value_kNm': 9.0} for e in (1, 2)],
+        'service_class': 1, 'load_duration': 'medium',
+    })
+    assert r.status_code == 200, r.text
+    figs = r.json()['_figs_b64']
+    assert len(figs) == 7, \
+        'model + deformation + M + V + N + eta_boejning + eta_forskydning'
+
+
+def test_uden_traetvaersnit_kommer_der_ingen_eta_figurer(client):
+    """
+    Et element med raa E/A/I har ingen styrkeklasse, saa der er ingen kapacitet
+    at dividere med. Tom liste og ikke to tomme figurer: en figur uden kurver
+    ligner en konstruktion, der ikke er udnyttet.
+    """
+    r = client.post('/calc/general-frame-fem', json={
+        'title': 'Bjælke',
+        'nodes': [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 6, 'y': 0}],
+        'elements': [{'id': 1, 'ni': 1, 'nj': 2, 'type': 'beam',
+                      'release': 'none', 'E_GPa': 210, 'A_cm2': 53.8,
+                      'Iz_cm4': 8356}],
+        'supports': [{'node_id': 1, 'ux': True, 'uy': True, 'rz': False},
+                     {'node_id': 2, 'ux': False, 'uy': True, 'rz': False}],
+        'loads': [{'type': 'udl', 'elem_id': 1, 'direction': 'vertical',
+                   'value_kNm': 9.0}],
+    })
+    assert r.status_code == 200, r.text
+    assert len(r.json()['_figs_b64']) == 5, 'model + deformation + M + V + N'
