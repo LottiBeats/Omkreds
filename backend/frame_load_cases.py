@@ -64,7 +64,12 @@ TYPE_LABELS = {
 # nodal-grenen, fik skaleret sine Fx/Fy/Mz -- som alle var nul -- og beholdt
 # sin value_kNm ukombineret. Egenlasten blev regnet med 3,0 i stedet for 1,2 x
 # 3,0, og der stod ikke noget nogen steder om det.
-_MAGNITUDER = ('value_kNm', 'Fx_kN', 'Fy_kN', 'Mz_kNm', 'wy_kNm', 'wx_kNm')
+# value_end_kNm er med, fordi en trapezlast har to intensiteter. Uden den
+# blev kun startvaerdien ganget, og en trekantlast kom ind i kombinationen
+# med 1,5 i den ene ende og 1,0 i den anden -- en anden lastfigur end den,
+# der blev tastet, og den ville se helt normal ud i tabellen.
+_MAGNITUDER = ('value_kNm', 'value_end_kNm',
+               'Fx_kN', 'Fy_kN', 'Mz_kNm', 'wy_kNm', 'wx_kNm')
 
 
 def _scale_load(ld, factor):

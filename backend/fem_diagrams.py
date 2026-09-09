@@ -145,26 +145,51 @@ def _interior_nodes(elements):
 
 # ── Snitkræfter langs elementet ───────────────────────────────────────────────
 
-def _ordinate(kind, pl, x, wy, wx):
+def _ordinate(kind, pl, x, wy, wx, segs=None, L=None):
     """
     N, V eller M i afstanden x fra ende i.
 
-    Samme udtryk som section_force_2d() i general_frame_fem — gentaget her, og
+    Samme udtryk som section_forces_2d() i general_frame_fem — gentaget her, og
     ikke importeret, ville være to sandheder. Det importeres.
+
+    Er lasten givet som afsnit, regnes den af stanglaster: en dellast eller en
+    trekantlast kan ikke beskrives af ét talpar, og section_forces_2d ville
+    tegne en ret linje, hvor der skal være et knæk.
     """
-    from general_frame_fem import section_forces_2d
-    N, V, M = section_forces_2d(pl, x, wy, wx)
+    if segs is not None:
+        import stanglaster as _sl
+        segs_y, segs_x = segs
+        N, V, M = _sl.snitkraefter(pl, x, segs_y, segs_x, L)
+    else:
+        from general_frame_fem import section_forces_2d
+        N, V, M = section_forces_2d(pl, x, wy, wx)
     return {'N': N, 'V': V, 'M': M}[kind]
 
 
-def _sample(kind, el, pl, wy, wx, L, n=SAMPLES_PER_ELEM):
-    """(x, værdi) langs ét element."""
+def _sample(kind, el, pl, wy, wx, L, n=SAMPLES_PER_ELEM, segs=None):
+    """
+    (x, værdi) langs ét element.
+
+    Med afsnit lægges afsnittenes ender ind mellem stikprøverne. Et jævnt
+    gitter ville skære hjørnet af netop dér, hvor en dellast begynder eller
+    slutter — og det er det sted på kurven, der bærer oplysningen om, at
+    lasten ikke dækker det hele.
+    """
     if el.get('type', 'beam') == 'truss':
         # En trussstang har kun normalkraft, og den er konstant.
         v = -pl[0] if kind == 'N' else 0.0
         return [(0.0, v), (L, v)]
     xs = [L * i / (n - 1) for i in range(n)]
-    return [(x, _ordinate(kind, pl, x, wy, wx)) for x in xs]
+    if segs is not None:
+        knaek = set()
+        for seg in (list(segs[0]) + list(segs[1])):
+            for x in (seg[2], seg[3]):
+                if 0.0 < x < L:
+                    # Lige på hver side af knækket, så springet i V ses.
+                    knaek.add(max(0.0, x - 1e-7))
+                    knaek.add(min(L, x + 1e-7))
+        xs = sorted(set(xs) | knaek)
+    return [(x, _ordinate(kind, pl, x, wy, wx, segs, L)) for x in xs]
 
 
 # ── Tegneprimitiver ───────────────────────────────────────────────────────────
@@ -253,7 +278,7 @@ def _finish(fig, ax, xs, ys, title_left, title_right):
 # ── Snitkraftkurve ────────────────────────────────────────────────────────────
 
 def section_force_figure(kind, nodes, elements, supports, ele_forces, ele_udl,
-                         ref_size, scale=1.0):
+                         ref_size, scale=1.0, ele_segs=None):
     """
     Tegn N-, V- eller M-kurven.
 
@@ -276,7 +301,8 @@ def section_force_figure(kind, nodes, elements, supports, ele_forces, ele_udl,
     for el in drawn:
         xi, yi, xj, yj, L, ca, sa = _geom(el, dict_nodes)
         wy, wx = ele_udl.get(el['id'], (0.0, 0.0))
-        pts = _sample(kind, el, ele_forces[el['id']], wy, wx, L)
+        segs = (ele_segs or {}).get(el['id'])
+        pts = _sample(kind, el, ele_forces[el['id']], wy, wx, L, segs=segs)
         curves.append((el, xi, yi, ca, sa, L, wy, wx, pts))
         peak_abs = max(peak_abs, max(abs(v) for _, v in pts))
 
@@ -335,7 +361,8 @@ def section_force_figure(kind, nodes, elements, supports, ele_forces, ele_udl,
         n_tick = max(int(L / tick_step), 1)
         for i in range(n_tick + 1):
             x = L * i / n_tick
-            v = _ordinate(kind, ele_forces[el['id']], x, wy, wx)
+            v = _ordinate(kind, ele_forces[el['id']], x, wy, wx,
+                          (ele_segs or {}).get(el['id']), L)
             if abs(v) * fac < ref_size * 0.004:
                 continue
             ax.plot([xi + ca * x, xi + ca * x + ox * v],
@@ -489,7 +516,7 @@ FIGURE_KINDS = ('defo', 'M', 'V', 'N')
 
 
 def render_all(nodes, elements, supports, ele_forces, ele_udl, node_disps,
-               ref_size, scale=1.0, defo_scale=None):
+               ref_size, scale=1.0, defo_scale=None, ele_segs=None):
     """
     Deformeret form, M, V og N i den rækkefølge frontend og PDF forventer.
     Returnerer en liste af base64-PNG'er.
@@ -502,7 +529,8 @@ def render_all(nodes, elements, supports, ele_forces, ele_udl, node_disps,
                            defo_scale if defo_scale is not None else scale)]
     for kind in ('M', 'V', 'N'):
         out.append(section_force_figure(kind, nodes, elements, supports,
-                                        ele_forces, ele_udl, ref_size, scale))
+                                        ele_forces, ele_udl, ref_size, scale,
+                                        ele_segs=ele_segs))
     return out
 
 
@@ -547,7 +575,8 @@ def overlay_skala(kind, drawn, dict_nodes, serier, ref_size, scale=1.0):
                 continue
             xi, yi, xj, yj, L, ca, sa = _geom(el, dict_nodes)
             wy, wx = (s.get('ele_udl') or {}).get(el['id'], (0.0, 0.0))
-            pts = _sample(kind, el, ef, wy, wx, L)
+            pts = _sample(kind, el, ef, wy, wx, L,
+                          segs=(s.get('ele_segs') or {}).get(el['id']))
             alle.append((si, el, xi, yi, ca, sa, L, pts))
             sp = max(sp, max(abs(v) for _, v in pts))
         serie_peak.append(sp)

@@ -201,34 +201,141 @@ def snitkraefter(pl, x, segs_y, segs_x, L):
             -M_i + V_i * x + mom_y)
 
 
-def ekstremer(pl, L, segs_y, segs_x, n=40):
-    """
-    Stoerste N, V og M langs stangen, med fortegn og sted.
+def _rødder_i(c2, c1, c0, laengde):
+    """Rødder af c2·u² + c1·u + c0 i [0, laengde]."""
+    ud = []
+    if abs(c2) < 1e-14:
+        if abs(c1) > 1e-14:
+            ud.append(-c0 / c1)
+    else:
+        disk = c1 * c1 - 4 * c2 * c0
+        if disk >= 0:
+            r = disk ** 0.5
+            ud += [(-c1 + r) / (2 * c2), (-c1 - r) / (2 * c2)]
+    return [u for u in ud if -1e-12 <= u <= laengde + 1e-12]
 
-    Med konstant last er M kvadratisk, og stationaerpunktet kan findes eksakt.
-    Med afsnit er kurven stykkevis polynomiel, og knaekpunkterne ligger ved
-    afsnittenes ender. Der proeves derfor paa et gitter PLUS hver afsnitsende
-    -- gitteret alene ville kunne springe over et maksimum, der ligger praecis
-    hvor en dellast slutter, og det er netop dér, det ofte ligger.
+
+def ekstremer(pl, L, segs_y, segs_x):
     """
+    Stoerste N, V og M langs stangen, med fortegn og sted -- EKSAKT.
+
+    Foerste udgave proevede paa et jaevnt gitter. Det var forkert nok til at
+    blive fanget: paa en tilfaeldig ramme gav den M = -4,69602 hvor PyNite gav
+    -4,69664. Toppunktet ligger sjaeldent paa et gitterpunkt.
+
+    Med stykkevis lineaer last er V stykkevis kvadratisk og M stykkevis kubisk.
+    Saa ligger kandidaterne praecis her, og der er ikke flere:
+
+        M: hvor V = 0            (dM/dx = V)  -- roedder i et andengradspolynomium
+        V: hvor w = 0            (dV/dx = w)  -- hvor en trapezlast skifter fortegn
+        begge: afsnitsenderne og stangens to ender
+
+    Det er samme fremgangsmaade som den gamle section_force_extremes, der loeste
+    V_i + wy·x = 0 for den ene last, den kunne haandtere -- bare for et afsnit
+    ad gangen.
+    """
+    V_i = pl[1]
+
     steder = {0.0, float(L)}
     for seg in (list(segs_y) + list(segs_x)):
         s = _klip(seg, L)
         if s is None:
             continue
-        steder.add(s[2])
-        steder.add(s[3])
-    for i in range(n + 1):
-        steder.add(L * i / n)
+        steder.add(s[2]); steder.add(s[3])
+
+    # M's toppunkter: V(x) = 0 inden for hvert afsnit.
+    for seg in segs_y:
+        s = _klip(seg, L)
+        if s is None:
+            continue
+        w1, w2, a, b = s
+        # V(a) findes ved at integrere frem til afsnittets begyndelse.
+        V_a = V_i
+        for andet in segs_y:
+            t = _klip(andet, L)
+            if t is None:
+                continue
+            oe = min(a, t[3])
+            if oe > t[2]:
+                V_a += _integrer(t, t[2], oe, lambda _t: 1.0)
+        c = (w2 - w1) / (b - a) if b > a else 0.0
+        for u in _rødder_i(c / 2.0, w1, V_a, b - a):
+            steder.add(a + u)
+        # V's toppunkt: w(x) = 0, hvor en trapezlast skifter fortegn.
+        if abs(w2 - w1) > 1e-14 and w1 * w2 < 0:
+            steder.add(a + (b - a) * (-w1) / (w2 - w1))
+
+    def _stoerre(ny, hidtil):
+        """
+        Med et slip, saa et uafgjort ikke afgoeres af afrunding.
+
+        Samme regel som section_force_extremes, og af samme grund: en
+        symmetrisk bjaelke med jaevnt fordelt last har V(0) = -V(L). De to
+        ender er lige store, saa hvilken der vinder blev afgjort af den sidste
+        bit -- og de har modsat fortegn. Den samme konstruktion kunne give
+        -10 kN i ét dokument og +10 kN i det naeste.
+
+        Reglen skal staa BEGGE steder. Stod den kun det ene, var de to veje
+        gennem koden uenige om fortegnet paa praecis det tilfaelde, reglen blev
+        skrevet for.
+        """
+        return abs(ny) > abs(hidtil) * (1.0 + 1e-9) + 1e-12
 
     bedst = {'N_kN': 0.0, 'V_kN': 0.0, 'M_kNm': 0.0,
              'x_N_m': 0.0, 'x_V_m': 0.0, 'x_M_m': 0.0}
-    for x in sorted(steder):
+    for x in sorted(v for v in steder if -1e-9 <= v <= L + 1e-9):
+        x = min(max(x, 0.0), L)
         N, V, M = snitkraefter(pl, x, segs_y, segs_x, L)
-        if abs(N) > abs(bedst['N_kN']):
+        if _stoerre(N, bedst['N_kN']):
             bedst['N_kN'], bedst['x_N_m'] = N, x
-        if abs(V) > abs(bedst['V_kN']):
+        if _stoerre(V, bedst['V_kN']):
             bedst['V_kN'], bedst['x_V_m'] = V, x
-        if abs(M) > abs(bedst['M_kNm']):
+        if _stoerre(M, bedst['M_kNm']):
             bedst['M_kNm'], bedst['x_M_m'] = M, x
     return bedst
+
+
+def afsnit_af_last(wy_start, wy_slut, wx_start, wx_slut, x1, x2, L):
+    """
+    Ét lastafsnit ud af de vaerdier, en lastraekke baerer.
+
+    x1, x2 er meter langs stangen fra i-enden. Er de None, daekker lasten hele
+    stangen -- det er den gamle opfoersel, og den er stadig det almindelige.
+
+    Vaerdierne er allerede projiceret til lokale akser og vendt til
+    OpenSees-konventionen af kalderen; her laves der ingen mekanik, kun
+    bogholderi over, hvor lasten begynder og slutter.
+    """
+    a = 0.0 if x1 is None else max(0.0, float(x1))
+    b = float(L) if x2 is None else min(float(L), float(x2))
+    if b - a <= 1e-9:
+        return [], []
+    segs_y = [(float(wy_start), float(wy_slut), a, b)] \
+        if (wy_start or wy_slut) else []
+    segs_x = [(float(wx_start), float(wx_slut), a, b)] \
+        if (wx_start or wx_slut) else []
+    return segs_y, segs_x
+
+
+def er_fuld_og_konstant(segs_y, segs_x, L):
+    """
+    Er lasten den gamle slags -- konstant over hele stangen?
+
+    Bruges til at afgoere, om ele_udl kan udfyldes med et talpar, der betyder
+    det samme. Kan den ikke, maa den, der tegner, bruge afsnittene; et talpar
+    ville tegne en ret linje, hvor der skal vaere et knaek.
+    """
+    for segs in (segs_y, segs_x):
+        for w1, w2, a, b in segs:
+            if abs(w1 - w2) > 1e-12:
+                return False
+            if abs(a) > 1e-9 or abs(b - L) > 1e-9:
+                return False
+    return True
+
+
+def som_par(segs_y, segs_x):
+    """(wy, wx) for laster, der ER fulde og konstante. Ellers (0, 0)."""
+    wy = sum(w1 for w1, _, _, _ in segs_y)
+    wx = sum(w1 for w1, _, _, _ in segs_x)
+    return wy, wx

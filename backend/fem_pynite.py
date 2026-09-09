@@ -46,6 +46,8 @@ from __future__ import annotations
 
 import math
 
+import stanglaster as sl
+
 from general_frame_fem import (
     ModelError,
     validate_model,
@@ -153,7 +155,7 @@ def _kollaps_charnierer(nodes, elements, equal_dofs):
 # Fortegn
 # ---------------------------------------------------------------------------
 
-def _lokale_endekraefter(mem, L, wy, wx):
+def _lokale_endekraefter(mem, L, wy, wx, segs=None):
     """
     De seks lokale endekraefter [N_i, V_i, M_i, N_j, V_j, M_j] i OpenSees'
     forstand, udledt af PyNites snitkraefter.
@@ -195,10 +197,21 @@ def _lokale_endekraefter(mem, L, wy, wx):
     V_i = V0
     M_i = M0
 
-    # x = L, samme relationer
-    N_L = -N_i - wx * L
-    V_L = V_i + wy * L
-    M_L = -M_i + V_i * L + 0.5 * wy * L * L
+    # x = L, samme relationer.
+    #
+    # Med afsnit skal integralerne regnes, ikke ganges: wx*L forudsaetter, at
+    # lasten daekker hele stangen. Gjorde den ikke det, blev normalkraften i
+    # j-enden talt for hele laengden i stedet for for det stykke, lasten
+    # faktisk daekker -- paa en tilfaeldig ramme gav det -47,8 kN mod
+    # fem_direktes rigtige -25,4 kN. De andre fem tal var enige, saa det var
+    # kun N_j og N_kN der roebede det.
+    if segs is not None:
+        _, V_L, M_L = sl.snitkraefter([N_i, V_i, M_i], L, segs[0], segs[1], L)
+        N_L, _, _ = sl.snitkraefter([N_i, V_i, M_i], L, segs[0], segs[1], L)
+    else:
+        N_L = -N_i - wx * L
+        V_L = V_i + wy * L
+        M_L = -M_i + V_i * L + 0.5 * wy * L * L
 
     # N_j er snitkraften i j-enden, ikke dens modsatte -- paa en stav uden
     # langsgaaende last er N_i og N_j lige store og modsat rettede, og det er
@@ -280,6 +293,7 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
 
     # Laster
     ele_udl = {}
+    ele_segs = {}
     for ld in (loads or []):
         if ld['type'] == 'nodal':
             for retning, noegle in (('FX', 'Fx_kN'), ('FY', 'Fy_kN'),
@@ -318,15 +332,52 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
             # Lasten paasaettes i globale komposanter, saa PyNites egen
             # opfattelse af elementets lokale y-akse ikke behoever at stemme
             # med OpenSees'. Lokal x er (c, s) og lokal y er (-s, c).
-            gx = wx_ops * c - wy_ops * s
-            gy = wx_ops * s + wy_ops * c
-            if gx:
-                m.add_member_dist_load(_navn_element(eid), 'FX', gx, gx)
-            if gy:
-                m.add_member_dist_load(_navn_element(eid), 'FY', gy, gy)
+            # Lasten kan daekke et stykke af stangen og variere langs det.
+            # PyNite tager x1/x2 og to intensiteter direkte -- det er derfor
+            # den er den eneste af de tre loesere, der kan doemme en dellast.
+            # OpenSees' eleLoad -beamUniform kan kun hele stangen.
+            v_start = float(ld.get('value_kNm', 0.0))
+            v_slut = ld.get('value_end_kNm')
+            v_slut = v_start if v_slut is None else float(v_slut)
+            faktor = (v_slut / v_start) if abs(v_start) > 1e-12 else 1.0
+
+            gx_a = wx_ops * c - wy_ops * s
+            gy_a = wx_ops * s + wy_ops * c
+            gx_b, gy_b = gx_a * faktor, gy_a * faktor
+            if abs(v_start) <= 1e-12 and abs(v_slut) > 1e-12:
+                # Trekantlast fra nul: forholdet duer ikke, saa den anden ende
+                # projiceres for sig.
+                pb = _project_load(
+                    {'load_type': 'udl', 'elem_id': eid,
+                     'direction': retning or 'vertical',
+                     'value_kNm': v_slut}, elements, dict_nodes)
+                if pb is not None:
+                    wy_b, wx_b = -float(pb['wy_kNm']), float(pb['wx_kNm'])
+                    gx_b = wx_b * c - wy_b * s
+                    gy_b = wx_b * s + wy_b * c
+
+            x1 = ld.get('x1')
+            x2 = ld.get('x2')
+            ekstra = {} if (x1 is None and x2 is None) else {
+                'x1': max(0.0, float(x1 or 0.0)),
+                'x2': min(L, float(x2 if x2 is not None else L)),
+            }
+            if gx_a or gx_b:
+                m.add_member_dist_load(_navn_element(eid), 'FX', gx_a, gx_b,
+                                       **ekstra)
+            if gy_a or gy_b:
+                m.add_member_dist_load(_navn_element(eid), 'FY', gy_a, gy_b,
+                                       **ekstra)
 
             prev_y, prev_x = ele_udl.get(eid, (0.0, 0.0))
             ele_udl[eid] = (prev_y + wy_ops, prev_x + wx_ops)
+            # Samme afsnit som fem_direkte danner, saa en figur tegnet af et
+            # PyNite-resultat viser den samme lastfigur.
+            _wy_b = wy_ops * faktor
+            _wx_b = wx_ops * faktor
+            sy, sx = sl.afsnit_af_last(wy_ops, _wy_b, wx_ops, _wx_b, x1, x2, L)
+            gy, gx = ele_segs.get(eid, ([], []))
+            ele_segs[eid] = (gy + sy, gx + sx)
 
     m.analyze_linear(check_statics=False, sparse=False)
 
@@ -361,7 +412,7 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         wy, wx = ele_udl.get(eid, (0.0, 0.0))
 
         mem = m.members[_navn_element(eid)]
-        pl = _lokale_endekraefter(mem, L, wy, wx)
+        pl = _lokale_endekraefter(mem, L, wy, wx, ele_segs.get(eid))
 
         if el.get('type', 'beam') == 'truss':
             N = pl[0]
@@ -370,7 +421,8 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
                                  'x_N_m': 0.0, 'x_V_m': 0.0, 'x_M_m': 0.0}
         else:
             ele_forces[eid] = pl
-            ele_extremes[eid] = section_force_extremes(pl, L, wy, wx)
+            ele_extremes[eid] = sl.ekstremer(
+                pl, L, *(ele_segs.get(eid) or ([], [])))
 
     xs = [float(n['x']) for n in org_nodes]
     ys = [float(n['y']) for n in org_nodes]
@@ -383,4 +435,5 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         'ele_forces':     ele_forces,
         'ele_extremes':   ele_extremes,
         'ele_udl':        ele_udl,
+        'ele_segs':       ele_segs,
     }

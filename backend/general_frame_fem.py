@@ -1067,12 +1067,14 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
             'ele_forces':         result['ele_forces'],
             'ele_extremes':       result.get('ele_extremes', {}),
             'ele_udl':            result.get('ele_udl', {}),
+            'ele_segs':           result.get('ele_segs', {}),
         }
         if make_figs:
             entry['figs'] = make_figures(
                 combo['name'], nodes, elements, supports, [],
                 result['ele_forces'], result['node_disps'], ref_size,
                 ele_udl=result.get('ele_udl', {}), scale=diagram_scale,
+                ele_segs=result.get('ele_segs', {}),
             )
         all_results.append(entry)
 
@@ -1425,7 +1427,8 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
 
 
 def make_figures(title, nodes, elements, supports, loads,
-                 ele_forces, node_disps, ref_size, ele_udl=None, scale=1.0):
+                 ele_forces, node_disps, ref_size, ele_udl=None, scale=1.0,
+                 ele_segs=None):
     """
     Deformeret form og snitkraftkurver: [deformation, M, V, N].
 
@@ -1440,7 +1443,8 @@ def make_figures(title, nodes, elements, supports, loads,
     """
     from fem_diagrams import render_all
     return render_all(nodes, elements, supports, ele_forces,
-                      ele_udl or {}, node_disps, ref_size, scale=scale)
+                      ele_udl or {}, node_disps, ref_size, scale=scale,
+                      ele_segs=ele_segs)
 
 
 def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports, loads,

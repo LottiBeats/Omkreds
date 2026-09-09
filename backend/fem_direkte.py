@@ -47,6 +47,8 @@ import math
 
 import numpy as np
 
+import stanglaster as sl
+
 from general_frame_fem import (
     ModelError,
     validate_model,
@@ -232,7 +234,10 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
     # Elementlasterne laegges til side i lokale akser, fordi de skal bruges to
     # gange: til fastindspaendingskraefterne nu, og til fordelingen langs
     # elementet bagefter.
-    ele_udl = {}
+    # Lasterne pr. element som AFSNIT. ele_udl udfyldes bagefter for de
+    # elementer, hvor lasten er den gamle slags -- konstant over hele
+    # stangen -- saa alt, der endnu kun kender et talpar, faar et rigtigt.
+    ele_segs = {}
     F = np.zeros(n_dof)
 
     for ld in (loads or []):
@@ -242,24 +247,38 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
                 F[kort[(nid, k)]] += float(ld.get(noegle, 0.0))
 
         elif ld['type'] == 'udl':
+            # Lasten kan daekke et stykke af stangen og variere langs det.
+            # value_end_kNm er intensiteten i den anden ende; mangler den, er
+            # lasten konstant. x1/x2 er meter fra i-enden; mangler de, daekker
+            # den hele stangen -- det almindelige tilfaelde, uaendret.
+            v_start = float(ld.get('value_kNm', 0.0))
+            v_slut = ld.get('value_end_kNm')
+            v_slut = v_start if v_slut is None else float(v_slut)
+
             retning = ld.get('direction')
             if retning is not None:
-                proj = _project_load(
-                    {'load_type': 'udl', 'elem_id': ld['elem_id'],
-                     'direction': retning,
-                     'value_kNm': float(ld.get('value_kNm', 0.0))},
-                    elements, dn,
-                )
-                if proj is None:
+                def _proj(v):
+                    return _project_load(
+                        {'load_type': 'udl', 'elem_id': ld['elem_id'],
+                         'direction': retning, 'value_kNm': v}, elements, dn)
+                pa, pb = _proj(v_start), _proj(v_slut)
+                if pa is None or pb is None:
                     continue
-                wy = -float(proj['wy_kNm'])
-                wx = float(proj['wx_kNm'])
+                wy_a, wx_a = -float(pa['wy_kNm']), float(pa['wx_kNm'])
+                wy_b, wx_b = -float(pb['wy_kNm']), float(pb['wx_kNm'])
             else:
-                wy = -float(ld.get('wy_kNm', 0.0))
-                wx = float(ld.get('wx_kNm', 0.0))
+                wy_a = wy_b = -float(ld.get('wy_kNm', 0.0))
+                wx_a = wx_b = float(ld.get('wx_kNm', 0.0))
 
-            forrige_y, forrige_x = ele_udl.get(ld['elem_id'], (0.0, 0.0))
-            ele_udl[ld['elem_id']] = (forrige_y + wy, forrige_x + wx)
+            eid = ld['elem_id']
+            el = next(e for e in elements if e['id'] == eid)
+            ni_, nj_ = dn[int(el['ni'])], dn[int(el['nj'])]
+            L_el = math.hypot(float(nj_['x']) - float(ni_['x']),
+                              float(nj_['y']) - float(ni_['y']))
+            sy, sx = sl.afsnit_af_last(wy_a, wy_b, wx_a, wx_b,
+                                       ld.get('x1'), ld.get('x2'), L_el)
+            gy, gx = ele_segs.get(eid, ([], []))
+            ele_segs[eid] = (gy + sy, gx + sx)
 
     # ── Samling ───────────────────────────────────────────────────────────────
     K = np.zeros((n_dof, n_dof))
@@ -283,9 +302,9 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         if el.get('type') == 'truss':
             frigivne = {2, 5}
 
-        wy, wx = ele_udl.get(eid, (0.0, 0.0))
+        segs_y, segs_x = ele_segs.get(eid, ([], []))
         k_lok = _stivhed(E, A, I, L)
-        p_fast = _fastindspaending(wx, wy, L)
+        p_fast = np.array(sl.fastindspaending(segs_y, segs_x, L))
         k_lok, p_fast = _kondenser(k_lok, p_fast, frigivne)
 
         T = _transformation(c, s)
@@ -302,7 +321,7 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         # drejet til globale akser.
         F[idx] -= T.T @ p_fast
 
-        ele_data[eid] = (idx, T, k_lok, p_fast, L, wy, wx)
+        ele_data[eid] = (idx, T, k_lok, p_fast, L, segs_y, segs_x)
 
     # ── Understoetninger ──────────────────────────────────────────────────────
     # Bundne frihedsgrader fjernes i stedet for at faa en stor stivhed paalagt.
@@ -373,7 +392,7 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
     ele_extremes = {}
     for el in elements:
         eid = el['id']
-        idx, T, k_lok, p_fast, L, wy, wx = ele_data[eid]
+        idx, T, k_lok, p_fast, L, segs_y, segs_x = ele_data[eid]
         d_lok = T @ D[idx]
         pl = list(k_lok @ d_lok + p_fast)
 
@@ -384,7 +403,7 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
                                  'x_N_m': 0.0, 'x_V_m': 0.0, 'x_M_m': 0.0}
         else:
             ele_forces[eid] = pl
-            ele_extremes[eid] = section_force_extremes(pl, L, wy, wx)
+            ele_extremes[eid] = sl.ekstremer(pl, L, segs_y, segs_x)
 
     xs = [float(node['x']) for node in nodes]
     ys = [float(node['y']) for node in nodes]
@@ -396,5 +415,21 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         'node_reactions': node_reactions,
         'ele_forces':     ele_forces,
         'ele_extremes':   ele_extremes,
-        'ele_udl':        ele_udl,
+        # ele_udl er tilbage for alt, der endnu kun kender et talpar. Er
+        # lasten ikke fuld og konstant, kan et talpar ikke beskrive den, og
+        # den staar som (0, 0) frem for som et tal, der ville tegne en ret
+        # linje hvor der er et knaek.
+        'ele_udl':        {e: (sl.som_par(*ele_segs[e])
+                               if sl.er_fuld_og_konstant(
+                                   *ele_segs[e], _laengde(e, elements, dn))
+                               else (0.0, 0.0))
+                           for e in ele_segs},
+        'ele_segs':       ele_segs,
     }
+
+
+def _laengde(eid, elements, dn):
+    el = next(e for e in elements if e['id'] == eid)
+    ni, nj = dn[int(el['ni'])], dn[int(el['nj'])]
+    return math.hypot(float(nj['x']) - float(ni['x']),
+                      float(nj['y']) - float(ni['y']))

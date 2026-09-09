@@ -2449,10 +2449,20 @@ class GenFrameLoadIn(BaseModel):
     # hinanden, uden at der findes en skjult regel om ordet "vind".
     virkning:   str | None = None   # 'permanent' | 'snow' | 'wind' | 'imposed'
     variant:    str | None = None   # fx 'venstre' / 'hoejre'
+    # Lasten behoever ikke daekke hele stangen, og den behoever ikke vaere
+    # konstant. x1/x2 er meter fra i-enden; mangler de, daekker den det hele.
+    # value_end_kNm er intensiteten i den anden ende; mangler den, er lasten
+    # konstant. Begge dele er det almindelige, saa begge er valgfri.
+    x1:            float | None = None
+    x2:            float | None = None
+    value_end_kNm: float | None = None
 
 class FrameComboLoadIn(BaseModel):
     """One load inside a combination (from Frame Load Cases block)."""
     load_type:  str
+    x1:            float | None = None
+    x2:            float | None = None
+    value_end_kNm: float | None = None
     elem_id:    int | None = None
     member_id:  int | None = None   # preserved for completeness (expanded client-side)
     value_kNm:  float      = 0.0
@@ -2705,6 +2715,13 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             ordinate scale be a slider instead of another full run.
             """
             return {
+                # Afsnittene skal med. Uden dem tegner en gentegning lasten
+                # som konstant over hele stangen, og en dellast bliver til en
+                # ret linje, hvor der er et knaek -- paa en figur, hvis tal
+                # kommer fra den rigtige beregning.
+                'ele_segs': {str(k): [[list(t) for t in v[0]],
+                                      [list(t) for t in v[1]]]
+                             for k, v in (r.get('ele_segs') or {}).items()},
                 'ele_forces': {str(k): [float(x) for x in v]
                                for k, v in r['ele_forces'].items()},
                 'ele_udl':    {str(k): [float(v[0]), float(v[1])]
@@ -2835,6 +2852,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 data.title, nodes, elements, supports, loads,
                 res['ele_forces'], res['node_disps'], ref_size,
                 ele_udl=res.get('ele_udl', {}), scale=scale,
+                ele_segs=res.get('ele_segs', {}),
             )
             summary = summarise(nodes, elements,
                                 res['node_disps'], res['node_reactions'],

@@ -88,16 +88,38 @@ def _tilfaeldig_ramme(rng):
         if el['type'] == 'truss':
             continue
         if rng.random() < 0.6:
-            loads.append({'type': 'udl', 'elem_id': el['id'],
-                          'direction': rng.choice(['vertical', 'horizontal',
-                                                   'perpendicular']),
-                          'value_kNm': round(rng.uniform(-12.0, 12.0), 2)})
+            ld = {'type': 'udl', 'elem_id': el['id'],
+                  'direction': rng.choice(['vertical', 'horizontal',
+                                           'perpendicular']),
+                  'value_kNm': round(rng.uniform(-12.0, 12.0), 2)}
+            # Hver tredje last daekker kun et stykke af stangen, og hver
+            # fjerde varierer langs det. Det er de to ting, der ikke kunne
+            # skrives foer, og de to steder en fastindspaendingsformel er
+            # lettest at tage fejl af.
+            if rng.random() < 0.33:
+                a = rng.uniform(0.0, 0.5)
+                b = a + rng.uniform(0.2, 1.0 - a)
+                ld['x1'], ld['x2'] = a, b        # brøkdele, skaleres nedenfor
+            if rng.random() < 0.25:
+                ld['value_end_kNm'] = round(rng.uniform(-12.0, 12.0), 2)
+            loads.append(ld)
     for t in top:
         if rng.random() < 0.4:
             loads.append({'type': 'nodal', 'node_id': t,
                           'Fx_kN': round(rng.uniform(-30.0, 30.0), 2),
                           'Fy_kN': round(rng.uniform(-80.0, 10.0), 2),
                           'Mz_kNm': round(rng.uniform(-20.0, 20.0), 2)})
+
+    # x1/x2 blev trukket som broekdele af stangen; her bliver de til meter.
+    dn = {n['id']: n for n in nodes}
+    for ld in loads:
+        if ld.get('x1') is None:
+            continue
+        el = next(e for e in elements if e['id'] == ld['elem_id'])
+        ni, nj = dn[el['ni']], dn[el['nj']]
+        Le = ((nj['x'] - ni['x']) ** 2 + (nj['y'] - ni['y']) ** 2) ** 0.5
+        ld['x1'] = round(ld['x1'] * Le, 4)
+        ld['x2'] = round(ld['x2'] * Le, 4)
 
     return nodes, elements, supports, loads
 
