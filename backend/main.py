@@ -2502,6 +2502,21 @@ class GenFrameFemInput(BaseModel):
     service_class: int = 1
     load_duration: str = 'medium'
     gamma_M_timber: float = 1.3
+
+    # Anvendelsesgraensetilstand. Lasterne er de samme, paasat igen med de
+    # karakteristiske vaerdier: G alene og Q alene. Analysen er lineaer, saa
+    # to ekstra koersler giver alt hvad §2.2.3(5) skal bruge -- den permanente
+    # del kryber fuldt, den variable kun med sin kvasi-permanente andel.
+    #
+    # Tomme lister betyder ingen SLS-eftervisning. Blokken udfylder dem kun,
+    # naar ALLE linjelaster kommer fra en lastkombination; ellers ville
+    # saettet vaere ufuldstaendigt, og en for lille nedboejning er vaerre end
+    # ingen.
+    loads_sls_G:   list[GenFrameLoadIn] = []
+    loads_sls_Q:   list[GenFrameLoadIn] = []
+    psi_2:         float = 0.0
+    limit_inst:    int   = 400
+    limit_net_fin: int   = 300
     # Ordinate scaling on the section-force diagrams. 1.0 = automatic, which
     # sizes the largest ordinate to a fixed share of the model. A frame whose
     # curves crowd its own columns wants it smaller; a nearly straight
@@ -2670,9 +2685,9 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         from general_frame_fem import (ModelError, solve, solve_combinations,
                                        make_figures, summarise, plot_model,
                                        compute_buckling_lengths, compute_alpha_cr,
-                                       validate_model)
+                                       validate_model, stoerste_nedboejning)
         from section_resolver import apply_sections
-        from calc_core import S, T, TBL
+        from calc_core import S, T, TBL, CALC_ROW, CheckContext
         import math
 
         nodes    = [n.model_dump() for n in data.nodes]
@@ -2719,6 +2734,92 @@ def calc_general_frame_fem(data: GenFrameFemInput):
 
         model_fig = plot_model(data.title, nodes, elements, supports,
                                loads or [], ref_size)
+
+        def _sls_afsnit():
+            """
+            Anvendelsesgraensetilstanden: nedboejningen af de KARAKTERISTISKE
+            laster, med krybning efter EN 1995-1-1 §2.2.3(5).
+
+            Lasterne paasaettes igen -- G alene og Q alene. Analysen er
+            lineaer, saa de to koersler giver alt: w_inst er summen, og
+            langtidsdelen er G*(1+k_def) + Q*(1+psi_2*k_def).
+
+            Grunden til at det ikke bare kan skaleres fra brudgraensekoerslen
+            er ikke matematikken (den ER lineaer), men at faktoren ville
+            afhaenge af hvilken kombination hvert enkelt element fik sin last
+            fra. To rigtige koersler er kortere at forklare end én rigtig og
+            en faktor.
+            """
+            if not data.loads_sls_G and not data.loads_sls_Q:
+                return [], None
+            try:
+                lg = [l.model_dump() for l in data.loads_sls_G]
+                lq = [l.model_dump() for l in data.loads_sls_Q]
+                rG = solve(nodes, elements, supports, lg, equal_dofs)
+                rQ = solve(nodes, elements, supports, lq, equal_dofs)
+                wG, elG, xG = stoerste_nedboejning(
+                    nodes, elements, rG['ele_forces'], rG.get('ele_segs'),
+                    rG['node_disps'])
+                wQ, elQ, xQ = stoerste_nedboejning(
+                    nodes, elements, rQ['ele_forces'], rQ.get('ele_segs'),
+                    rQ['node_disps'])
+            except Exception:
+                return [], None
+
+            from timber_grades import K_DEF
+            k_def = K_DEF.get(data.service_class, 0.80)
+            p2 = float(data.psi_2 or 0.0)
+
+            w_inst = abs(wG) + abs(wQ)
+            w_fin  = abs(wG) * (1 + k_def) + abs(wQ) * (1 + p2 * k_def)
+
+            # Spaendet maales paa det led, hvor nedboejningen er stoerst.
+            _dn = {n['id']: n for n in nodes}
+            _el = next((e for e in elements if e['id'] == (elG or elQ)), None)
+            L_ref = 0.0
+            if _el is not None:
+                _ni, _nj = _dn.get(_el['ni']), _dn.get(_el['nj'])
+                if _ni and _nj:
+                    L_ref = math.hypot(float(_nj['x']) - float(_ni['x']),
+                                       float(_nj['y']) - float(_ni['y']))
+
+            b = [S('Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2'),
+                 T('Lasterne er påsat igen med deres karakteristiske værdier. '
+                   'Analysen er lineær, så den permanente og den variable del '
+                   'kan holdes hver for sig — det kræver §2.2.3(5), fordi den '
+                   'permanente del kryber fuldt og den variable kun med sin '
+                   'kvasi-permanente andel.'),
+                 CALC_ROW('w_inst,G', '= nedbøjning af G_k alene',
+                          f'{abs(wG) * 1e3:.2f} mm'.replace('.', ',')),
+                 CALC_ROW('w_inst,Q', '= nedbøjning af Q_k alene',
+                          f'{abs(wQ) * 1e3:.2f} mm'.replace('.', ',')),
+                 CALC_ROW('w_inst', '= w_inst,G + w_inst,Q',
+                          f'{w_inst * 1e3:.2f} mm'.replace('.', ',')),
+                 CALC_ROW('k_def', f'krybefaktor, anvendelsesklasse {data.service_class}',
+                          f'{k_def:.2f}'.replace('.', ',')),
+                 CALC_ROW('ψ₂', 'kvasi-permanent faktor',
+                          f'{p2:.2f}'.replace('.', ',')),
+                 CALC_ROW('w_fin', '= w_G·(1 + k_def) + w_Q·(1 + ψ₂·k_def)',
+                          f'{w_fin * 1e3:.2f} mm'.replace('.', ','))]
+
+            if L_ref > 0:
+                gr_i = L_ref / data.limit_inst
+                gr_n = L_ref / data.limit_net_fin
+                b += [CALC_ROW(f'L/{data.limit_inst}', 'grænse for w_inst',
+                               f'{gr_i * 1e3:.2f} mm'.replace('.', ',')),
+                      CALC_ROW(f'L/{data.limit_net_fin}', 'grænse for w_net,fin',
+                               f'{gr_n * 1e3:.2f} mm'.replace('.', ','))]
+                cc = CheckContext()
+                b.append(cc.check(f'Nedbøjning: w_inst / (L/{data.limit_inst})',
+                                  w_inst * m, gr_i * m))
+                b.append(cc.check(f'Nedbøjning: w_fin / (L/{data.limit_net_fin})',
+                                  w_fin * m, gr_n * m))
+
+            return b, {'w_inst_G_mm': round(abs(wG) * 1e3, 3),
+                       'w_inst_Q_mm': round(abs(wQ) * 1e3, 3),
+                       'w_inst_mm':   round(w_inst * 1e3, 3),
+                       'w_fin_mm':    round(w_fin * 1e3, 3),
+                       'k_def': k_def, 'psi_2': p2}
 
         def _udnyttelsesfigurer(res, varighed):
             """
@@ -2928,6 +3029,14 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                     T(f"  Node {nid}: Fx={R['Fx_kN']:+.2f} kN  "
                       f"Fy={R['Fy_kN']:+.2f} kN  Mz={R['Mz_kNm']:+.2f} kNm")
                 )
+
+        # Anvendelsesgraensetilstanden staar sidst i afsnittet, som i en
+        # haandskrevet beregning: foerst braendes der igennem paa
+        # brudgraensen, saa eftervises nedboejningen.
+        _sls_blokke, _sls_tal = _sls_afsnit()
+        if _sls_blokke:
+            result_blocks = list(result_blocks) + _sls_blokke
+            summary['sls'] = _sls_tal
 
         return {"_figs_b64": figs_b64, "_summary": summary, "_result": result_blocks}
 

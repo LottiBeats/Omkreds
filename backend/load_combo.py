@@ -353,6 +353,11 @@ def load_combos(
         # over og skrev at den ikke fulgte med -- men den staar jo i tabellen
         # over karakteristiske laster to afsnit laengere oppe.
         'G_k':                round(float(G_k), 4),
+        # psi_2 for den dominerende variable last. Den skal med, fordi
+        # krybningen efter EN 1995-1-1 §2.2.3(5) ganger den variable dels
+        # nedboejning med (1 + psi_2*k_def). Uden den maatte en eftervisning
+        # gaette paa 0,0 og faa en for lille langtidsnedboejning.
+        'psi_2':              round(float(psi2[0]) if psi2 else 0.0, 3),
         'Q_k_sum':            round(float(sum(Q)), 4),
         'E_d_sls_char':       round(E_d_sls_char,  4),
         'E_d_sls_freq':       round(E_d_sls_freq,  4),

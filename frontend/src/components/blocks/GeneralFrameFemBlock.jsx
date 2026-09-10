@@ -1477,6 +1477,11 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
     try {
       let resolvedLoads = []
       let combinations  = []
+      // Erklæret HER og ikke inde i else-grenen. Den bruges i kaldet nedenfor,
+      // som ligger uden for grenen — og en let-erklæring i en blok findes ikke
+      // udenfor den. Det er samme fejl som exports_ i træbjælken: den ville
+      // kun vise sig, når man faktisk brugte simpel tilstand.
+      let sls = {}
 
       if (loadMode === 'load_cases') {
         // Combination mode — expand any member_id loads to constituent elem_ids, then pass to backend
@@ -1500,6 +1505,37 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           }
           return [ld]
         })
+
+        // ── Anvendelsesgrænsetilstand ────────────────────────────────────
+        // Lasterne påføres igen med deres karakteristiske værdier: G alene og
+        // Q alene. Analysen er lineær, så to ekstra kørsler giver alt hvad
+        // §2.2.3(5) skal bruge — den permanente del kryber fuldt, den
+        // variable kun med sin kvasi-permanente andel.
+        //
+        // Kun når ALLE linjelaster kommer fra en lastkombination. Er der en
+        // håndtastet last iblandt, kender vi ikke dens opdeling, og et
+        // ufuldstændigt sæt ville give en for LILLE nedbøjning — værre end
+        // ingen.
+        const udlLaster = loads.filter(l => l.type === 'udl' || l.type === 'combo_udl')
+        const alleFraKombi = udlLaster.length > 0
+                             && udlLaster.every(l => l.type === 'combo_udl')
+
+        const slsSaet = (noegle) => loads.flatMap(ld => {
+          if (ld.type !== 'combo_udl') return []
+          const cb = comboBlocks.find(b => b.data.label === ld.combo_label) ?? comboBlocks[0]
+          const w  = cb?.data?._exports?.[noegle]
+          return w ? [{ type: 'udl', elem_id: ld.elem_id ?? 1, wy_kNm: w, wx_kNm: 0 }] : []
+        })
+
+        if (alleFraKombi) {
+          const cb0 = comboBlocks.find(b => b.data.label === udlLaster[0].combo_label)
+                      ?? comboBlocks[0]
+          sls = {
+            loads_sls_G: slsSaet('G_k'),
+            loads_sls_Q: slsSaet('Q_k_sum'),
+            psi_2: cb0?.data?._exports?.psi_2 ?? 0,
+          }
+        }
         resolvedLoads = resolved
       }
 
@@ -1511,6 +1547,11 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         equal_dofs:   equalDofs,
         diagram_scale: d.diagram_scale ?? 1,
         consequence_class: d.consequence_class ?? 'CC2',
+        service_class: d.service_class ?? 1,
+        load_duration: d.load_duration ?? 'medium',
+        limit_inst:    d.limit_inst    ?? 400,
+        limit_net_fin: d.limit_net_fin ?? 300,
+        ...sls,
       })
 
       // Build _exports so capacity check blocks can read element forces.
