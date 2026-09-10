@@ -46,6 +46,16 @@ const KOMBI = {
   },
 }
 
+const FEM_NABO = {
+  id: 'dev-fem', type: 'general_frame_fem',
+  data: { title: '2D Frame FEM', _exports: { elements: [
+    { id: 1, label: 'Elem 1  (1→2, L=4m)', E_GPa: 210, L_m: 4,
+      M_max_kNm: 6.5, V_max_kN: 8.12, N_max_kN: 0, M_duration: 'short',
+      timber: {}, M_i_kNm: 0, V_i_kN: 4.88, N_i_kN: 0,
+      M_j_kNm: -6.5, V_j_kN: 8.12, N_j_kN: 0 },
+  ] } },
+}
+
 const KATALOG = [
   ['Tagets egenlast', RoofDeadLoadBlock, 'roof_dead_load',
     { title: 'Tagets egenlast', label: 'G1', alpha_deg: 30, a_m: 0.9,
@@ -59,6 +69,10 @@ const KATALOG = [
     { title: 'Lastkombinationer', label: 'LC1', unit: 'kN/m', G_k: 5,
       loads: [{ label: 'Sne', Q_k: 2, category: 'S' }], method: '6.10ab',
       consequence_class: 'CC2' }],
+  ['Træbjælke — stivhedsprove', TimberBeamBlock, 'timber_beam',
+    { title: 'Træbjælke', label: 'T1', span_m: 4, b_mm: 90, h_mm: 220,
+      timber_grade: 'C24', load_source: 'fem', fem_block_id: 'dev-fem',
+      fem_elem_id: 1 }],
   ['Træbjælke', TimberBeamBlock, 'timber_beam',
     { title: 'Træbjælke', label: 'T1', span_m: 4, b_mm: 45, h_mm: 195,
       timber_grade: 'C24', g_k_kNm: 0.9, q_k_kNm: 0.7 }],
@@ -88,7 +102,7 @@ function Vaerksted() {
 
   const block = { id: 'dev', type, data }
   // Kombinationen ligger altid ved siden af, saa combo-kilden kan vaelges.
-  const naboer = type === 'load_combo' ? [block] : [KOMBI, block]
+  const naboer = type === 'load_combo' ? [block] : [KOMBI, FEM_NABO, block]
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', padding: 16 }}>

@@ -1630,6 +1630,11 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
             material:   e.material,
             section:    e.section,
             grade:      e.grade,
+            // Stivheden følger med, så en eftervisning kan se, om elementet
+            // overhovedet er af det materiale, den regner det som. Et element
+            // med E = 210 GPa og en C24-eftervisning giver et rigtigt moment
+            // og en nedbøjning, der er ~19× for lille.
+            E_GPa:      e.E_GPa,
             L_m:        e.L_m,
             M_max_kNm:  worstM(e),
             V_max_kN:   worstV(e),

@@ -60,6 +60,19 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
   const selElem    = genExports.find(e => e.id === selElemId) ?? genExports[0]
   const femReady   = isGenFem ? !!selElem : !!femSummary?.M_Ed_kNm
 
+  // Er elementets stivhed overhovedet træ?
+  //
+  // "+ Element" i FEM-blokken kommer med E = 210 GPa — en stålprofil. Regnes
+  // det element bagefter som C24, er MOMENTET rigtigt (på en bjælke med samme
+  // EI i alle fag går E ud af regnestykket), men nedbøjningen bliver omkring
+  // 19× for lille. Det er præcis den kombination, der er svær at opdage:
+  // eftervisningen ser rigtig ud, og kun det ene tal er galt.
+  //
+  // Grænsen er grov med vilje. Træ ligger på 7-14 GPa og stål på 210; alt over
+  // 30 er ikke træ, uanset hvilken klasse man havde tænkt sig.
+  const femE = isGenFem ? selElem?.E_GPa : undefined
+  const stivhedIkkeTrae = source === 'fem' && femE != null && femE > 30
+
   function getFemMV() {
     if (!selFem) return {}
     if (!isGenFem) return { M: femSummary?.M_Ed_kNm, V: femSummary?.V_Ed_kN }
@@ -72,6 +85,17 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
             : selElem.V_max_kN
     return { M, V }
   }
+
+  const stivhedsAdvarsel = stivhedIkkeTrae ? (
+    <div style={{ fontSize: 11.5, color: '#c0392b', marginTop: 6,
+                  padding: '6px 8px', background: '#fff5f4',
+                  border: '1px solid #f3c9bd', borderRadius: 3 }}>
+      ⚠ Elementet er regnet med E = {femE} GPa — det er stål, ikke træ.
+      Momentet er rigtigt, men nedbøjningen bliver omkring{' '}
+      {Math.round(femE / 11)}× for lille. Sæt materiale og tværsnit på
+      elementet i FEM-blokken, så følger E, A og I med fra styrkeklassen.
+    </div>
+  ) : null
 
   const runDisabled =
     (source === 'combo'   && !comboReady) ||
@@ -250,6 +274,10 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
       )}
 
       {/* ── FEM picker ── */}
+      {stivhedsAdvarsel && (
+        <div style={{ gridColumn: '1/-1' }}>{stivhedsAdvarsel}</div>
+      )}
+
       {source === 'fem' && (
         <Field label="FEM block" style={{ gridColumn: '1/-1' }}>
           {femBlocks.length === 0 ? (
