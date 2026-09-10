@@ -33,8 +33,22 @@ from __future__ import annotations
 
 import forallpeople as si
 
-si.environment('structural')
-from forallpeople import MPa, mm, kN, m      # noqa: E402
+# top_level=True som i timber.py og steel.py, og det er ikke pynt.
+#
+# si.environment() UDEN top_level fjerner den injektion i builtins, som et
+# tidligere kald med top_level=True har lavet. main.py kalder den med
+# top_level=True ved opstart, og alle beregningsmoduler goer det samme. Dette
+# modul gjorde ikke -- og da det blev importeret dovent under en FEM-koersel,
+# forsvandt kN, m og MPa ud af builtins bagefter.
+#
+# Fejlen viste sig et helt andet sted: naeste blok, man koerte, sagde
+# "name 'kN' is not defined". Intet i FEM-blokken saa forkert ud.
+si.environment('structural', top_level=True)
+
+# Enhederne (mm, kN, MPa, m) ligger i builtins efter kaldet ovenfor og bruges
+# som bare navne, praecis som i timber.py og steel.py. Et "from forallpeople
+# import mm" ville ikke virke: med top_level=True lander de i builtins og ikke
+# i modulets eget navnerum.
 
 
 def kapaciteter_af(b, h, f_mk, f_vk, kmod, gamma_M):

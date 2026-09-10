@@ -13,8 +13,10 @@ import pytest
 
 import udnyttelse as u
 import forallpeople as si
-si.environment('structural')
-from forallpeople import mm, m, kN, MPa       # noqa: E402
+si.environment('structural', top_level=True)
+# Enhederne er builtins efter kaldet ovenfor. top_level=True er ikke
+# valgfrit: uden det fjerner kaldet den injektion, main.py har lavet, og
+# naeste blok i appen siger "name 'kN' is not defined".
 from timber import timber_beam
 
 
