@@ -122,6 +122,35 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         fire_exposed_sides:  d.fire_exposed_sides  ?? 2,
         fire_exposed_bottom: d.fire_exposed_bottom ?? true,
         fire_exposed_top:    d.fire_exposed_top    ?? false,
+
+        // η_fi — forholdet mellem brandkombinationen og brudgrænsen.
+        //
+        // Kommer snitkræfterne fra en lastkombination, KAN forholdet udledes:
+        // blokken eksporterer både E_d,ULS og E_d,brand. Uden det regnede
+        // brandeftervisningen med η_fi = 1,0 og brugte det fulde ULS-moment i
+        // brand — på den sikre side, men unødvendigt: i en typisk dansk
+        // kombination er forholdet omkring 0,45, og et moment der er dobbelt
+        // så stort som det skal være, dimensionerer et tværsnit der er
+        // dobbelt så dyrt.
+        //
+        // Brand og ikke "øvrig ulykke": η_fi hører til brandsituationen,
+        // hvor ψ₁ gælder. Øvrig ulykke er en anden kombination.
+        // Kommer lasten fra en kombination, følger opdelingen i permanent og
+        // variabel med — og så kan nedbøjningen eftervises. Bjælken er stadig
+        // et simpelt understøttet fag: det er sådan M_Ed = w·L²/8 blev dannet.
+        //
+        // Uden det stod der i dokumentet at opdelingen "ikke følger med fra
+        // rammeberegningen", to afsnit under en tabel der viste G_k og Q_k.
+        ...(source === 'combo' && comboExp?.G_k != null
+            ? { g_k_kNm: comboExp.G_k,
+                q_k_kNm: comboExp.Q_k_sum ?? 0,
+                udl_deflection: true }
+            : {}),
+
+        fire_eta_fi: d.fire_eta_fi ?? (
+          (source === 'combo' && comboExp?.E_d_uls && comboExp?.E_d_brand)
+            ? comboExp.E_d_brand / comboExp.E_d_uls
+            : null),
       }
 
       if (source === 'actions') {

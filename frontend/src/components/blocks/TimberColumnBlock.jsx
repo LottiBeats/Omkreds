@@ -72,7 +72,15 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
         fire_t_min:      d.fire_t_min      ?? null,
         fire_exposed_b:  d.fire_exposed_b  ?? 2,
         fire_exposed_h:  d.fire_exposed_h  ?? 2,
-        fire_eta_fi:     d.fire_eta_fi     ?? null,
+        // η_fi udledes af kombinationen, naar den er kilden — den eksporterer
+        // baade E_d,ULS og E_d,brand. Uden det regnede brandeftervisningen
+        // med den fulde ULS-last (η_fi = 1,0): paa den sikre side, men i en
+        // typisk dansk kombination er forholdet omkring 0,45.
+        // Et manuelt indtastet tal vinder over det udledte.
+        fire_eta_fi: d.fire_eta_fi ?? (
+          (source === 'combo' && exports_?.E_d_uls && exports_?.E_d_brand)
+            ? exports_.E_d_brand / exports_.E_d_uls
+            : null),
       }
 
       if (source === 'combo' && exports_) {

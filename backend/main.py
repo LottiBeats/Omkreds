@@ -1316,6 +1316,11 @@ class TimberBeamInput(BaseModel):
     fire_exposed_bottom: bool  = True
     fire_exposed_top:    bool  = False
     fire_eta_fi:         float | None = None   # None = udledes af lasterne
+    # Saettes af blokken, naar snitkraefterne kommer fra en LASTKOMBINATION:
+    # saa er bjaelken stadig et simpelt understoettet fag med jaevnt fordelt
+    # last, og nedboejningen kan eftervises. Fra en rammeberegning er formen
+    # ukendt, og flaget bliver staaende falsk.
+    udl_deflection:      bool = False
 
     compression_edge_restrained:     bool = True
     torsional_restraint_at_supports: bool = True
@@ -1345,6 +1350,7 @@ def calc_timber_beam(data: TimberBeamInput):
             design_situation = data.design_situation,
             accidental_type  = data.accidental_type,
             check_deflection = data.check_deflection,
+            udl_deflection   = data.udl_deflection,
             psi_1         = data.psi_1,
             psi_2         = data.psi_2,
             w_c           = None if data.w_c_mm is None else data.w_c_mm * mm,

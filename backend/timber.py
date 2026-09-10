@@ -74,6 +74,14 @@ def timber_beam(
     limit_inst=400,         # w_inst ≤ L/limit_inst
     limit_net_fin=300,      # w_net,fin ≤ L/limit_net_fin
     beam_results=None,
+    # Naar snitkraefterne er importeret fra en LASTKOMBINATION, er bjaelken
+    # stadig et simpelt understoettet fag med en jaevnt fordelt last -- det er
+    # netop saadan M_Ed = w*L^2/8 blev dannet. Saa gaelder 5wL^4/384EI ogsaa,
+    # og nedboejningen kan eftervises.
+    #
+    # Fra en RAMMEBEREGNING gaelder den ikke: formen er ukendt. Derfor er det
+    # et flag kalderen saetter og ikke noget, der gaettes af, om g_k er nul.
+    udl_deflection=False,
     fire_design=None,
     l_ef=None,
     compression_edge_restrained=False,
@@ -474,7 +482,7 @@ def timber_beam(
     # ── Nedbøjning ────────────────────────────────────────────────────────────
     # EN 1995-1-1 §7.2 med krybningen efter §2.2.3(5). Den er tit
     # dimensionsgivende for en træbjælke, og den manglede helt indtil nu.
-    if check_deflection and beam_results is None:
+    if check_deflection and (beam_results is None or udl_deflection):
         blocks.append(S("Nedbøjning — EN 1995-1-1 §7.2"))
 
         E_mean, _forhold, _kilde = E_0_mean(grade_key) if grade_key else (
@@ -545,10 +553,12 @@ def timber_beam(
             blocks.append(CALC_ROW("δ_max", "øjeblikkelig, fra rammeberegningen",
                                    _u(_d, mm, "mm", 1)))
         blocks.append(N(
-            "Snitkræfterne er importeret, og krybningen efter §2.2.3(5) kræver "
-            "at den permanente og den variable del holdes hver for sig. Den "
-            "opdeling følger ikke med fra rammeberegningen, så w_fin og "
-            "w_net,fin er ikke eftervist her."))
+            "Snitkræfterne er importeret fra en rammeberegning, hvor formen af "
+            "nedbøjningen ikke er givet af et enkelt fag, og krybningen efter "
+            "§2.2.3(5) kræver desuden at den permanente og den variable del "
+            "holdes hver for sig. w_fin og w_net,fin er derfor ikke eftervist "
+            "her. Kommer lasten fra en lastkombination i stedet, følger "
+            "opdelingen med, og nedbøjningen eftervises."))
 
     # ── Fire design ───────────────────────────────────────────────────────────
     if fire_design:

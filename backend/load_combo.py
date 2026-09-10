@@ -346,6 +346,14 @@ def load_combos(
         'E_d_brand':          round(E_d_brand,     4),
         'E_d_oevrig':         round(E_d_oevrig,    4),
         'E_d_uls':            round(E_d_uls,       4),
+        # Opdelingen i permanent og variabel. Den skal med, fordi krybningen
+        # efter EN 1995-1-1 §2.2.3(5) holder de to dele hver for sig: den
+        # permanente kryber fuldt, den variable kun med sin kvasi-permanente
+        # andel. Uden opdelingen sprang traebjaelken hele nedboejningsafsnittet
+        # over og skrev at den ikke fulgte med -- men den staar jo i tabellen
+        # over karakteristiske laster to afsnit laengere oppe.
+        'G_k':                round(float(G_k), 4),
+        'Q_k_sum':            round(float(sum(Q)), 4),
         'E_d_sls_char':       round(E_d_sls_char,  4),
         'E_d_sls_freq':       round(E_d_sls_freq,  4),
         'E_d_sls_qp':         round(E_d_sls_qp,   4),
