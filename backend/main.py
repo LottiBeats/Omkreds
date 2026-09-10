@@ -2819,7 +2819,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             summary = summarise(nodes, elements,
                                 best_res['node_disps'], best_res['node_reactions'],
                                 best_res['ele_forces'], supports, [],
-                                best_res.get('ele_extremes'))
+                                best_res.get('ele_extremes'),
+                                ele_segs=best_res.get('ele_segs'))
             summary['envelope']          = envelope
             summary['timber_envelope']   = timber_envelope   # {eid: {sc: {M_Ed, V_Ed, duration, combo}}}
             summary['combinations']      = [r['name'] for r in all_results]
@@ -2901,7 +2902,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             summary = summarise(nodes, elements,
                                 res['node_disps'], res['node_reactions'],
                                 res['ele_forces'], supports, loads,
-                                res.get('ele_extremes'))
+                                res.get('ele_extremes'),
+                                ele_segs=res.get('ele_segs'))
             summary['buckling_lengths'] = buck_lengths
             summary['diagram_scale']    = scale
             summary['diagram_state']    = _diagram_state(res)

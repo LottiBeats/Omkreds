@@ -339,3 +339,47 @@ def som_par(segs_y, segs_x):
     wy = sum(w1 for w1, _, _, _ in segs_y)
     wx = sum(w1 for w1, _, _, _ in segs_x)
     return wy, wx
+
+
+def boejningslinje(pl, L, segs_y, segs_x, EI, n=100):
+    """
+    Nedboejningen langs stangen i forhold til korden mellem de to ender.
+
+    [(x, w)] med w i lokal y og nul i begge ender -- den del af nedboejningen,
+    der kommer af boejningen selv. Knudernes egne flytninger laegges til af
+    kalderen.
+
+    Hvorfor den skal findes
+    -----------------------
+    Knudeflytninger findes kun i knuderne. En bjaelke med ét element pr. fag
+    har ingen knude midt i faget, og saa er den stoerste knudeflytning nul --
+    ogsaa naar bjaelken er fuldt belastet. Det stod i brugerfladen som
+    "max 0,0 mm" paa en model med 3,25 kN/m paa begge fag.
+
+    Hvordan
+    -------
+    EI*w'' = M(x). M er kendt eksakt langs stangen, ogsaa med dellaster, saa
+    kurven integreres to gange og faestes i w(0) = w(L) = 0. Det gaelder for
+    enhver lastfigur -- ogsaa dem, en lukket form ikke daekker.
+    """
+    if EI <= 0 or L <= 0:
+        return [(0.0, 0.0), (float(L), 0.0)]
+
+    xs = [L * i / n for i in range(n + 1)]
+    M = [snitkraefter(pl, x, segs_y, segs_x, L)[2] for x in xs]
+
+    # Foerste integration: haeldningen, paa naer en konstant.
+    theta = [0.0]
+    for i in range(n):
+        h = xs[i + 1] - xs[i]
+        theta.append(theta[-1] + 0.5 * (M[i] + M[i + 1]) * h / EI)
+
+    # Anden integration: nedboejningen, paa naer en lineaer del.
+    w = [0.0]
+    for i in range(n):
+        h = xs[i + 1] - xs[i]
+        w.append(w[-1] + 0.5 * (theta[i] + theta[i + 1]) * h)
+
+    # Faestes i begge ender: traek den rette linje fra, der goer w(L) = 0.
+    haeld = w[-1] / L
+    return [(x, wi - haeld * x) for x, wi in zip(xs, w)]

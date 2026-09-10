@@ -424,7 +424,8 @@ def section_force_figure(kind, nodes, elements, supports, ele_forces, ele_udl,
 
 # ── Deformeret form ───────────────────────────────────────────────────────────
 
-def deformed_figure(nodes, elements, supports, node_disps, ref_size, scale=1.0):
+def deformed_figure(nodes, elements, supports, node_disps, ref_size, scale=1.0,
+                    ele_forces=None, ele_segs=None):
     """
     Den deformerede konstruktion, tegnet med kubiske formfunktioner.
 
@@ -438,6 +439,21 @@ def deformed_figure(nodes, elements, supports, node_disps, ref_size, scale=1.0):
     dmax = 0.0
     for d in node_disps.values():
         dmax = max(dmax, math.hypot(float(d[0]), float(d[1])))
+    # Nedhænget mellem knuderne tæller med i skalaen. Uden det var en bjælke
+    # med ét element pr. fag flad: alle dens knuder er understøtninger, dmax
+    # blev nul, og faktoren blev nul — figuren tegnede den udeformerede
+    # konstruktion og skrev "max 0,0 mm" over den.
+    kurver = {}
+    if ele_forces:
+        from general_frame_fem import nedboejning_langs_stang, stoerste_nedboejning
+        _w, _, _ = stoerste_nedboejning(nodes, elements, ele_forces,
+                                        ele_segs, node_disps)
+        dmax = max(dmax, abs(_w))
+        for el in elements:
+            if el['id'] in ele_forces and el.get('type', 'beam') == 'beam':
+                kurver[el['id']] = nedboejning_langs_stang(
+                    el, ele_forces[el['id']],
+                    (ele_segs or {}).get(el['id']), dict_nodes, node_disps)
     fac = (ref_size * 0.10 / dmax * scale) if dmax > 1e-12 else 0.0
 
     fig, ax = plt.subplots()
@@ -471,29 +487,73 @@ def deformed_figure(nodes, elements, supports, node_disps, ref_size, scale=1.0):
         elif rel == 'end':
             tj = (vj - vi) / L
 
-        pts = []
-        for i in range(21):
-            s = i / 20.0
-            h1 = 1 - 3*s*s + 2*s**3
-            h2 = L * (s - 2*s*s + s**3)
-            h3 = 3*s*s - 2*s**3
-            h4 = L * (-s*s + s**3)
-            v = h1*vi + h2*ti + h3*vj + h4*tj
-            u = (1 - s) * ui + s * uj
-            x = xi + ca * (L * s) + (ca * u - sa * v) * fac
-            y = yi + sa * (L * s) + (sa * u + ca * v) * fac
-            pts.append((x, y))
+        kurve = kurver.get(el['id'])
+        if kurve:
+            # Bøjningslinjen regnet af momentet: EI·w'' = M. Den gælder for
+            # enhver lastfigur og for et fag uden knude i midten — hvor de
+            # kubiske formfunktioner nedenfor kun kan gengive et ubelastet led.
+            # Punkterne fra nedboejning_langs_stang er den virkelige,
+            # uforstørrede geometri. Her skaleres afvigelsen fra staven op,
+            # præcis som Hermite-grenen gør.
+            pts = []
+            for k, (gx, gy) in enumerate(kurve):
+                t = k / (len(kurve) - 1) if len(kurve) > 1 else 0.0
+                bx = xi + ca * (L * t)
+                by = yi + sa * (L * t)
+                pts.append((bx + (gx - bx) * fac, by + (gy - by) * fac))
+        else:
+            pts = []
+            for i in range(21):
+                s = i / 20.0
+                h1 = 1 - 3*s*s + 2*s**3
+                h2 = L * (s - 2*s*s + s**3)
+                h3 = 3*s*s - 2*s**3
+                h4 = L * (-s*s + s**3)
+                v = h1*vi + h2*ti + h3*vj + h4*tj
+                u = (1 - s) * ui + s * uj
+                x = xi + ca * (L * s) + (ca * u - sa * v) * fac
+                y = yi + sa * (L * s) + (sa * u + ca * v) * fac
+                pts.append((x, y))
         xs += [p[0] for p in pts]; ys += [p[1] for p in pts]
         ax.plot([p[0] for p in pts], [p[1] for p in pts],
                 color='#E74825', lw=2.0, zorder=5, solid_capstyle='round')
 
-    # Den største flytning er det tal figuren er lavet for at vise
+    # Den største flytning er det tal figuren er lavet for at vise.
+    #
+    # Ligger den inde i et fag — og det gør den på en bjælke, hvis knuder alle
+    # er understøtninger — sættes prikken dér i stedet for på en knude, hvor
+    # tallet ville være nul.
     worst_id, worst = None, 0.0
     for nid, d in node_disps.items():
         m = math.hypot(float(d[0]), float(d[1]))
         if m > worst:
             worst_id, worst = nid, m
-    if worst_id is not None and worst > 1e-12 and worst_id in dict_nodes:
+
+    span_pkt = None
+    for eid, kurve in kurver.items():
+        if not kurve:
+            continue
+        el = next((e for e in elements if e['id'] == eid), None)
+        if el is None:
+            continue
+        gxi, gyi, _, _, Lk, cak, sak = _geom(el, dict_nodes)
+        for k, (gx, gy) in enumerate(kurve):
+            t = k / (len(kurve) - 1) if len(kurve) > 1 else 0.0
+            bx, by = gxi + cak * (Lk * t), gyi + sak * (Lk * t)
+            m = math.hypot(gx - bx, gy - by)
+            if m > worst:
+                worst = m
+                span_pkt = (bx + (gx - bx) * fac, by + (gy - by) * fac)
+
+    if span_pkt is not None and worst > 1e-12:
+        ax.plot([span_pkt[0]], [span_pkt[1]], 'o', ms=3.6, color='#E74825',
+                zorder=6)
+        ax.text(span_pkt[0], span_pkt[1] - ref_size * 0.03,
+                f'{_dk(worst * 1000, 1)} mm', fontsize=8.5, fontweight='bold',
+                color='#E74825', ha='center', va='top', zorder=7,
+                bbox=dict(fc='white', ec='none', alpha=0.85, pad=1.2))
+        xs.append(span_pkt[0]); ys.append(span_pkt[1] - ref_size * 0.03)
+    elif worst_id is not None and worst > 1e-12 and worst_id in dict_nodes:
         n = dict_nodes[worst_id]
         d = node_disps[worst_id]
         x = float(n['x']) + float(d[0]) * fac
@@ -526,7 +586,8 @@ def render_all(nodes, elements, supports, ele_forces, ele_udl, node_disps,
     # stedet, skrider figurteksterne i rapporten et trin — hvilket de gjorde,
     # så momentkurven stod med teksten "Deformeret form".
     out = [deformed_figure(nodes, elements, supports, node_disps, ref_size,
-                           defo_scale if defo_scale is not None else scale)]
+                           defo_scale if defo_scale is not None else scale,
+                           ele_forces=ele_forces, ele_segs=ele_segs)]
     for kind in ('M', 'V', 'N'):
         out.append(section_force_figure(kind, nodes, elements, supports,
                                         ele_forces, ele_udl, ref_size, scale,

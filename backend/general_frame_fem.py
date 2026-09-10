@@ -1448,7 +1448,7 @@ def make_figures(title, nodes, elements, supports, loads,
 
 
 def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports, loads,
-              ele_extremes=None):
+              ele_extremes=None, ele_segs=None):
     """Return structured summary dict including full element and node detail."""
     import math
 
@@ -1466,6 +1466,14 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
     # ── Max displacements ─────────────────────────────────────────────────────
     max_ux = max((abs(node_disps[n['id']][0]) for n in nodes), default=0.0)
     max_uy = max((abs(node_disps[n['id']][1]) for n in nodes), default=0.0)
+    # Nedhaenget MELLEM knuderne taeller med. En bjaelke med ét element pr. fag
+    # har kun understoetninger som knuder, saa max_uy over knuderne alene er
+    # nul -- ogsaa naar bjaelken er fuldt belastet.
+    _w_span, _w_el, _w_x = stoerste_nedboejning(
+        nodes, elements, ele_forces, ele_segs, node_disps)
+    _span_styrer = abs(_w_span) > max_uy
+    if _span_styrer:
+        max_uy = abs(_w_span)
     node_max_ux = max(nodes, key=lambda n: abs(node_disps[n['id']][0]))
     node_max_uy = max(nodes, key=lambda n: abs(node_disps[n['id']][1]))
 
@@ -1602,6 +1610,9 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
         'max_ux_node':    node_max_ux['id'],
         'max_uy_mm':      round(max_uy * 1e3, 3),
         'max_uy_node':    node_max_uy['id'],
+        # Hvor den stoerste nedboejning ligger, naar den ligger inde i et fag.
+        'max_uy_elem':    _w_el if _span_styrer else None,
+        'max_uy_x_m':     round(_w_x, 3) if _span_styrer else None,
         'max_moment_kNm': round(max_M, 3),
         'max_moment_ele': el_max_M['id'] if el_max_M else None,
         'max_shear_kN':   round(max_V, 3),
@@ -1614,3 +1625,86 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
         'ele_force_table': ele_force_table,
         'loads_table':     loads_table,
     }
+
+
+def nedboejning_langs_stang(el, pl, segs, dict_nodes, node_disps):
+    """
+    Bjaelkens boejningslinje i GLOBALE koordinater, som en liste af (x, y).
+
+    Knudeflytningerne giver korden; boejningslinjen giver nedhaenget imellem
+    dem. Uden det sidste er en bjaelke med ét element pr. fag flad -- alle dens
+    knuder er understoetninger, og der er ingen knude midt i faget at aflaese.
+    Det stod i brugerfladen som "max 0,0 mm" paa en fuldt belastet bjaelke.
+    """
+    import stanglaster as sl
+
+    ni, nj = dict_nodes[el['ni']], dict_nodes[el['nj']]
+    xi, yi = float(ni['x']), float(ni['y'])
+    dx, dy = float(nj['x']) - xi, float(nj['y']) - yi
+    L = math.hypot(dx, dy)
+    if L < 1e-12:
+        return []
+    ca, sa = dx / L, dy / L
+
+    E = float(el.get('E_GPa', 210.0)) * 1e6        # GPa  -> kN/m2
+    I = float(el.get('Iz_cm4', 5000.0)) * 1e-8     # cm4  -> m4
+    segs_y, segs_x = segs or ([], [])
+    kurve = sl.boejningslinje(pl, L, segs_y, segs_x, E * I)
+
+    di = node_disps.get(el['ni'], (0.0, 0.0, 0.0))
+    dj = node_disps.get(el['nj'], (0.0, 0.0, 0.0))
+    # Knudeflytningerne projiceret paa den lokale tvaerretning (-sa, ca).
+    vi = -sa * float(di[0]) + ca * float(di[1])
+    vj = -sa * float(dj[0]) + ca * float(dj[1])
+    ui = ca * float(di[0]) + sa * float(di[1])
+    uj = ca * float(dj[0]) + sa * float(dj[1])
+
+    ud = []
+    for x, wb in kurve:
+        t = x / L
+        v = vi + (vj - vi) * t + wb          # tvaers
+        u = ui + (uj - ui) * t               # langs
+        gx = xi + ca * (x + u) - sa * v
+        gy = yi + sa * (x + u) + ca * v
+        ud.append((gx, gy))
+    return ud
+
+
+def stoerste_nedboejning(nodes, elements, ele_forces, ele_segs, node_disps):
+    """
+    (stoerste flytning i m, element-id, x i m) langs staengerne.
+
+    Maalt vinkelret paa stangen, saa en skraa stav ikke faar sin nedboejning
+    talt som en vandret flytning.
+    """
+    import stanglaster as sl
+
+    dn = {n['id']: n for n in nodes}
+    bedst = (0.0, None, 0.0)
+    for el in elements:
+        eid = el['id']
+        if eid not in ele_forces or el.get('type', 'beam') != 'beam':
+            continue
+        ni, nj = dn.get(el['ni']), dn.get(el['nj'])
+        if ni is None or nj is None:
+            continue
+        L = math.hypot(float(nj['x']) - float(ni['x']),
+                       float(nj['y']) - float(ni['y']))
+        if L < 1e-12:
+            continue
+        ca = (float(nj['x']) - float(ni['x'])) / L
+        sa = (float(nj['y']) - float(ni['y'])) / L
+        E = float(el.get('E_GPa', 210.0)) * 1e6
+        I = float(el.get('Iz_cm4', 5000.0)) * 1e-8
+        segs_y, segs_x = (ele_segs or {}).get(eid, ([], []))
+        kurve = sl.boejningslinje(pl := ele_forces[eid], L, segs_y, segs_x,
+                                  E * I)
+        di = node_disps.get(el['ni'], (0.0, 0.0, 0.0))
+        dj = node_disps.get(el['nj'], (0.0, 0.0, 0.0))
+        vi = -sa * float(di[0]) + ca * float(di[1])
+        vj = -sa * float(dj[0]) + ca * float(dj[1])
+        for x, wb in kurve:
+            v = vi + (vj - vi) * (x / L) + wb
+            if abs(v) > abs(bedst[0]):
+                bedst = (v, eid, x)
+    return bedst
