@@ -248,8 +248,22 @@ const PANEL_GROUPS = [
     // Egenlast, sne og vind kunne kun komme ind i et dokument via en skabelon.
     // De blokke virker; de stod bare ikke i panelet, så et A2 skrevet i hånden
     // manglede sit lastgrundlag.
-    types: ['roof_dead_load', 'snow_load', 'wind_load',
-            'load_combo', 'frame_load_cases'],
+    //
+    // frame_load_cases er taget UD af panelet, ikke slettet. Eksisterende
+    // blokke gengives stadig (TYPE_MAP er urørt) -- en Frame Load Cases ER en
+    // blok i et dokument, og fjernes komponenten, brækker ethvert dokument der
+    // har en. Samme grund som python_calc længere nede.
+    //
+    // Hvorfor den ud: den bad om elementnumre i en blok, der ikke viser
+    // modellen, så de blev tastet i blinde og blev stående når FEM-blokken
+    // omnummererede. Og den kendte ikke til, at vind fra venstre og fra højre
+    // er alternativer -- alle fire vindtilfælde havnede i samme kombination,
+    // og en symmetrisk ramme blev eftervist for 70 % af sidelasten.
+    //
+    // Vejen nu: Lastkombinationer -> FEM (Kombi-linjelast). Lasten sidder på
+    // modellen, hvor man kan se den, og opdelingen i G og Q følger med, så
+    // anvendelsesgrænsetilstanden kan regnes.
+    types: ['roof_dead_load', 'snow_load', 'wind_load', 'load_combo'],
   },
   {
     label: 'Stål  (EC3)',
