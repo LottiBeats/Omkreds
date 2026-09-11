@@ -342,6 +342,19 @@ export const overlayGeneralFrameFemDiagrams = (data) =>
   request('POST', '/calc/general-frame-fem/overlay', data)
 
 /**
+ * Hvilke kombinationer ville de påsatte laster give?
+ *
+ * Svaret kommer fra den samme funktion, som kørslen bruger. Det er hele
+ * pointen: en tabel, der regnes af noget andet end det, der regner, kan vise
+ * noget andet end det, der bliver eftervist.
+ *
+ * Returnerer { kombinationer: [{ name, factor_table, aktive,
+ * governing_duration }] }.
+ */
+export const kombinationerGeneralFrameFem = (data) =>
+  request('POST', '/calc/general-frame-fem/kombinationer', data)
+
+/**
  * Generate EN 1990 load combinations from named load cases.
  * Returns { _exports: { combinations }, _result }
  */

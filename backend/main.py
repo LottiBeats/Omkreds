@@ -2527,6 +2527,18 @@ class GenFrameFemInput(BaseModel):
     # den blok, der lavede dem.
     method:            str = '6.10ab'   # '6.10ab' | '6.10'
     consequence_class: str = 'CC2'      # CC1 | CC2 | CC3
+    # Kombinationer, brugeren har slaaet fra i tabellen, angivet ved navn.
+    #
+    # Et fravalg er en beslutning om konstruktionen -- "her kan vinden ikke
+    # loefte" -- ikke en indstilling. Derfor staar de fravalgte ved navn i
+    # dokumentet: den, der laeser eftervisningen, skal kunne se, at en
+    # kombination blev taget ud, og hvilken.
+    #
+    # Navnet baerer faktorerne, saa aendrer lasterne sig, passer et gammelt
+    # fravalg ikke laengere paa nogen kombination. Saa falder det bort, og
+    # kombinationen koeres. Den vej er den rigtige: en glemt udelukkelse
+    # giver en eftervisning for meget, ikke en for lidt.
+    combo_fravalg: list[str] = []
 
 
 @protected.post("/calc/general-frame-fem/preview", tags=["Calculations"])
@@ -2672,6 +2684,46 @@ def overlay_general_frame_fem(data: GenFrameOverlayInput):
                             detail=str(exc) + "\n" + traceback.format_exc())
 
 
+class GenFrameKombiInput(BaseModel):
+    """Kun det, kombinationerne dannes af: lasternes virkning og de valg,
+    der styrer partialkoefficienterne. Ingen model, ingen loeser."""
+    loads:             list[GenFrameLoadIn] = []
+    method:            str = "6.10ab"
+    consequence_class: str = "CC2"
+
+
+@protected.post("/calc/general-frame-fem/kombinationer", tags=["Calculations"])
+def kombinationer_general_frame_fem(data: GenFrameKombiInput):
+    """
+    Hvilke kombinationer ville de her laster give?
+
+    Svaret er de samme kombinationer, koerslen ville danne -- samme funktion,
+    ikke en gengivelse af reglerne et andet sted. Det er hele pointen: en
+    tabel, der regnes af noget andet end det, der regner, kan vise noget
+    andet end det, der bliver eftervist.
+
+    Selve lasterne udelades af svaret. De skaleres allerede i koerslen, og
+    tabellen skal vise faktorerne, ikke sende hver lastfigur retur i saa mange
+    kopier, som der er kombinationer.
+    """
+    import traceback
+    try:
+        from frame_load_cases import kombinationer_fra_laster
+        combos = kombinationer_fra_laster(
+            [l.model_dump() for l in data.loads],
+            data.method or '6.10ab',
+            data.consequence_class or 'CC2')
+        return {"kombinationer": [
+            {'name':               c['name'],
+             'factor_table':       c['factor_table'],
+             'aktive':             c['aktive'],
+             'governing_duration': c['governing_duration']}
+            for c in combos]}
+    except Exception as exc:
+        raise HTTPException(status_code=422,
+                            detail=str(exc) + "\n" + traceback.format_exc())
+
+
 @protected.post("/calc/general-frame-fem", tags=["Calculations"])
 def calc_general_frame_fem(data: GenFrameFemInput):
     """
@@ -2687,7 +2739,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                                        compute_buckling_lengths, compute_alpha_cr,
                                        validate_model, stoerste_nedboejning)
         from section_resolver import apply_sections
-        from calc_core import S, T, TBL, CALC_ROW, CheckContext
+        from calc_core import S, T, N, TBL, CALC_ROW, CheckContext
         import math
 
         nodes    = [n.model_dump() for n in data.nodes]
@@ -2720,6 +2772,22 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 # staaende her, ville hver kombination faa sin egen last
                 # ovenpaa den ukombinerede.
                 loads = []
+
+        # Fravalgte kombinationer tages ud her -- efter de er dannet, saa den
+        # tilvalgte del af tabellen er den samme, uanset hvad der er slaaet
+        # fra, og saa de fravalgte kan naevnes ved navn nedenfor.
+        fravalgt = []
+        if data.combo_fravalg and combos:
+            fjern = set(data.combo_fravalg)
+            fravalgt = [c['name'] for c in combos if c['name'] in fjern]
+            beholdt = [c for c in combos if c['name'] not in fjern]
+            # Alt fravalgt er ikke et fravalg, det er en tom eftervisning.
+            # Den skal ikke koere og se ud som om der var regnet noget.
+            if not beholdt:
+                raise ValueError(
+                    "Alle lastkombinationer er slaaet fra. "
+                    "Slaa mindst én til, ellers er der ingenting at eftervise.")
+            combos = beholdt
 
         xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
         ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
@@ -2976,6 +3044,17 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                     'kombination — ikke at den indgår med nul. Virkninger med '
                     'samme betegnelse men forskellig variant udelukker '
                     'hinanden og optræder aldrig sammen.'))
+                # Er der taget kombinationer ud i haanden, staar de her ved
+                # navn. En eftervisning, hvor en kombination er udeladt, er
+                # ikke forkert -- men den er kun kontrollerbar, hvis det staar
+                # der. Uden det ville tabellen ovenfor se komplet ud.
+                if fravalgt:
+                    result_blocks.append(N(
+                        'Følgende kombinationer er slået fra i hånden og '
+                        'indgår ikke i eftervisningen: '
+                        + '; '.join(fravalgt) + '. '
+                        'Fravalget er en vurdering af konstruktionen, ikke '
+                        'et resultat af beregningen.'))
 
             result_blocks.append(S('Indhyldning'))
             result_blocks.append(TBL(

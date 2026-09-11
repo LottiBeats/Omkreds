@@ -15,6 +15,7 @@ import React, { useEffect, useState } from 'react'
 import { calcGeneralFrameFem, previewGeneralFrameFem,
          redrawGeneralFrameFemDiagrams,
          overlayGeneralFrameFemDiagrams,
+         kombinationerGeneralFrameFem,
          calcTimberBeam, calcSteelBeam } from '../../api/client.js'
 import { maxUtilization, utilColor } from '../CalcResultView.jsx'
 import Field from './Field.jsx'
@@ -1472,6 +1473,65 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
     loads.filter(l => l.virkning)
          .map(l => l.virkning + (l.variant ? '·' + l.variant : ''))).size
 
+  // Kombinationstabellen, FØR der køres.
+  //
+  // Den kommer fra serveren og ikke fra en kopi af EN 1990 her i browseren.
+  // En tabel, der regnes af noget andet end det, der regner, kan vise noget
+  // andet end det, der bliver eftervist — og den ville se fuldstændig rigtig
+  // ud imens.
+  const [kombiTabel, setKombiTabel] = useState([])
+  const [kombiFejl,  setKombiFejl]  = useState(null)
+
+  // Faktorerne afhænger kun af HVILKE virkninger der er påsat og af
+  // konsekvensklassen — ikke af hvor store lasterne er. Derfor hentes der
+  // ikke en ny tabel, hver gang der tastes et tal.
+  const kombiNoegle = JSON.stringify([
+    loads.map(l => [l.virkning ?? '', l.variant ?? '']),
+    d.consequence_class ?? 'CC2',
+    d.method ?? '6.10ab',
+  ])
+
+  useEffect(() => {
+    if (!kombinerer || loadMode !== 'simple') { setKombiTabel([]); return }
+    let afbrudt = false
+    const t = setTimeout(async () => {
+      try {
+        const r = await kombinationerGeneralFrameFem({
+          loads,
+          method:            d.method ?? '6.10ab',
+          consequence_class: d.consequence_class ?? 'CC2',
+        })
+        if (!afbrudt) { setKombiTabel(r.kombinationer ?? []); setKombiFejl(null) }
+      } catch (e) {
+        // Tabellen er en forhåndsvisning. Kan den ikke hentes, siges det —
+        // men "Kør FEM" spærres ikke: kørslen danner sine kombinationer selv.
+        if (!afbrudt) { setKombiTabel([]); setKombiFejl(e.message ?? String(e)) }
+      }
+    }, 250)
+    return () => { afbrudt = true; clearTimeout(t) }
+  }, [kombiNoegle, kombinerer, loadMode])
+
+  // Fravalgte kombinationer, ved navn. Navnet bærer faktorerne, så ændrer
+  // lasterne sig, passer et gammelt fravalg ikke længere på nogen kombination
+  // — og så falder det bort, og kombinationen køres. Den vej er den rigtige:
+  // en glemt udelukkelse giver en eftervisning for meget, ikke en for lidt.
+  const fravalg = d.combo_fravalg ?? []
+  function toggleKombi(navn) {
+    update({ combo_fravalg: fravalg.includes(navn)
+      ? fravalg.filter(n => n !== navn)
+      : [...fravalg, navn] })
+  }
+  const tilvalgte = kombiTabel.filter(k => !fravalg.includes(k.name))
+  // Alt fravalgt er ikke et fravalg, det er en tom eftervisning. Serveren
+  // afviser den — knappen skal ikke sende afsted for at få det at vide.
+  const alleFravalgt = kombinerer && kombiTabel.length > 0
+                       && tilvalgte.length === 0
+  // Handlingerne på tværs af alle kombinationer, i den rækkefølge de dukker op.
+  const kombiHandlinger = []
+  for (const k of kombiTabel)
+    for (const h of Object.keys(k.factor_table ?? {}))
+      if (!kombiHandlinger.includes(h)) kombiHandlinger.push(h)
+
   async function handleRun() {
     setRunning(true); setError(null)
     try {
@@ -1547,6 +1607,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         equal_dofs:   equalDofs,
         diagram_scale: d.diagram_scale ?? 1,
         consequence_class: d.consequence_class ?? 'CC2',
+        // Fravalgte kombinationer sendes med ved navn. De står i dokumentet,
+        // så en eftervisning, hvor en kombination er udeladt, siger det selv.
+        combo_fravalg: fravalg,
         service_class: d.service_class ?? 1,
         load_duration: d.load_duration ?? 'medium',
         limit_inst:    d.limit_inst    ?? 400,
@@ -1870,15 +1933,118 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         ))}
       </>)}
 
+      {/* Kombinationstabellen — hvad der faktisk bliver regnet.
+          Den står her, under lasterne og over knappen, fordi det er
+          rækkefølgen: sæt virkning på lasterne, se hvad det giver, kør.
+          Uden den er kombineringen en black box: man påsætter fire laster og
+          får et svar, uden nogensinde at have set de fem kombinationer. */}
+      {loadMode === 'simple' && kombinerer && (kombiTabel.length > 0 || kombiFejl) && (
+        <div style={{ margin: '10px 0 4px', border: '1px solid #E5E5EA',
+                      borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '6px 10px', background: '#F7F7F9',
+                        borderBottom: '1px solid #E5E5EA' }}>
+            <span style={{ fontSize: 12, fontWeight: 700 }}>
+              Lastkombinationer
+            </span>
+            <span style={{ fontSize: 11, color: '#6E6E73' }}>
+              DS/EN 1990 DK NA:2024
+              {kombiTabel.length > 0 && ` · ${tilvalgte.length} af ${kombiTabel.length} køres`}
+            </span>
+          </div>
+
+          {kombiFejl
+            ? <div style={{ padding: '8px 10px', fontSize: 11, color: '#e67e22' }}>
+                Kunne ikke hente tabellen: {kombiFejl}. Kørslen danner selv sine
+                kombinationer — kun forhåndsvisningen mangler.
+              </div>
+            : <>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ borderCollapse: 'collapse', fontSize: 11,
+                                width: '100%' }}>
+                  <thead>
+                    <tr style={{ background: '#FCFCFD' }}>
+                      <th style={s.kombiTh}></th>
+                      <th style={{ ...s.kombiTh, textAlign: 'left' }}>Kombination</th>
+                      {kombiHandlinger.map(h => (
+                        <th key={h} style={s.kombiTh}>γ·{h}</th>
+                      ))}
+                      <th style={s.kombiTh} title="Korteste varighed blandt de variable laster i kombinationen — den styrer k_mod">
+                        k<sub>mod</sub>-varighed
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kombiTabel.map(k => {
+                      const fra = fravalg.includes(k.name)
+                      return (
+                        <tr key={k.name} style={{
+                          borderTop: '1px solid #F0F0F2',
+                          opacity: fra ? 0.45 : 1,
+                          textDecoration: fra ? 'line-through' : 'none' }}>
+                          <td style={{ ...s.kombiTd, textAlign: 'center' }}>
+                            <input type="checkbox" checked={!fra}
+                              onChange={() => toggleKombi(k.name)}
+                              title={fra ? 'Slået fra — indgår ikke i eftervisningen'
+                                         : 'Slå fra, hvis kombinationen ikke kan optræde'} />
+                          </td>
+                          <td style={{ ...s.kombiTd, textAlign: 'left',
+                                       whiteSpace: 'nowrap' }}>{k.name}</td>
+                          {kombiHandlinger.map(h => {
+                            const f = (k.factor_table ?? {})[h]
+                            const med = f != null && Math.abs(f) > 1e-10
+                            return (
+                              <td key={h} style={{ ...s.kombiTd,
+                                                   color: med ? '#1D1D1F' : '#C7C7CC' }}>
+                                {med ? f.toFixed(2).replace('.', ',') : '—'}
+                              </td>
+                            )
+                          })}
+                          <td style={{ ...s.kombiTd, color: '#6E6E73' }}>
+                            {k.governing_duration}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ padding: '6px 10px', fontSize: 10.5,
+                            color: '#6E6E73', background: '#FCFCFD',
+                            borderTop: '1px solid #F0F0F2' }}>
+                En tom celle betyder, at virkningen ikke indgår i den
+                kombination — ikke at den indgår med nul. Virkninger med samme
+                betegnelse men forskellig variant udelukker hinanden og
+                optræder aldrig sammen.
+                {fravalg.length > 0 && (
+                  <> <strong>Fravalgte kombinationer står ved navn i
+                  dokumentet</strong> — et fravalg er en vurdering af
+                  konstruktionen, ikke et resultat af beregningen.</>
+                )}
+              </div>
+              {tilvalgte.length === 0 && (
+                <div style={{ padding: '6px 10px', fontSize: 11,
+                              color: '#e74c3c', background: '#FFF5F5' }}>
+                  Alle kombinationer er slået fra — der er ingenting at
+                  eftervise. Slå mindst én til.
+                </div>
+              )}
+            </>}
+        </div>
+      )}
+
       {/* Actions */}
       <div style={s.actionRow}>
         <button style={{ ...s.btn, ...s.btnRun,
-                         opacity: (tomModel || (loadMode === 'load_cases' && !loadCasesReady)) ? 0.5 : 1 }}
+                         opacity: (tomModel || alleFravalgt
+                                   || (loadMode === 'load_cases' && !loadCasesReady)) ? 0.5 : 1 }}
           onClick={handleRun}
-          disabled={running || previewing || tomModel
+          disabled={running || previewing || tomModel || alleFravalgt
                     || (loadMode === 'load_cases' && !loadCasesReady)}
           title={tomModel
                    ? 'Der er ingen model at regne på — tilføj mindst to knuder og et element'
+                   : alleFravalgt
+                     ? 'Alle lastkombinationer er slået fra — slå mindst én til'
                    : loadMode === 'load_cases' && !loadCasesReady
                      ? 'Kør lastkombinations-blokken først' : 'Ctrl+Enter'}>
           {running ? '⏳  Beregner…' : '▶  Kør FEM'}
@@ -1947,6 +2113,9 @@ const s = {
   listRowInner: { display: 'flex', flex: 1, gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' },
   fieldWrap:    { display: 'flex', flexDirection: 'column', gap: 3 },
   miniLabel:    { fontSize: 10, fontWeight: 600, color: '#888', letterSpacing: '0.04em' },
+  kombiTh:      { padding: '5px 8px', fontSize: 10, fontWeight: 700,
+                  color: '#6E6E73', textAlign: 'right', whiteSpace: 'nowrap' },
+  kombiTd:      { padding: '4px 8px', textAlign: 'right', whiteSpace: 'nowrap' },
   smallInput:   { border: '1px solid #e0e0e0', padding: '4px 6px', fontSize: 12,
                   fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' },
   hint:         { fontSize: 10, color: '#bbb', alignSelf: 'center' },
