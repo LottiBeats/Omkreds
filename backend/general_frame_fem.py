@@ -1025,59 +1025,18 @@ def _project_load(ld, elements, dict_nodes):
     return {'type': 'udl', 'elem_id': eid, 'wy_kNm': wy, 'wx_kNm': wx}
 
 
-def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
-                       make_figs=False, ref_size=1.0, diagram_scale=1.0):
+# Noeglen for brudgraensen. Den staar her og i load_combo, og de skal stave den
+# ens; det er billigere end at importere lastmodulet ind i loeseren.
+ULS_NOEGLE = 'uls'
+
+
+def _indhyl(elements, resultater):
     """
-    Run the FEM once per load combination and return envelope results.
+    Vaerste M, V og N pr. element paa tvaers af ÉN bunke kombinationer.
 
-    Parameters
-    ----------
-    combinations : list of dicts
-        Each: { name: str, loads: [frame-load-case load dicts] }
-    make_figs : bool
-        If True, store per-combination diagrams in all_results[i]['figs'].
-        They are drawn from that combination's own section forces, so the
-        timing no longer matters — it used to, when opsvis read the live
-        OpenSeesPy model and every figure showed the last combination solved.
-    diagram_scale : float
-        The engineer's ordinate scaling, passed through to the diagrams.
-
-    Returns
-    -------
-    envelope        : dict  {elem_id: {M_max_kNm, M_combo, M_duration, ...}}
-    timber_envelope : dict  {elem_id: {1: {M_Ed_kNm, V_Ed_kN, duration, combo}, 2: ..., 3: ...}}
-    all_results     : list of {name, governing_duration, node_disps, ele_forces, node_reactions[, figs]}
+    Bunken er én dimensioneringssituation. Blandes de, bliver indhyldningen
+    et resultat, der ikke svarer til nogen kombination, nogen har regnet.
     """
-    dict_nodes = {n['id']: n for n in nodes}
-    all_results = []
-
-    for combo in combinations:
-        resolved = []
-        for ld in combo.get('loads', []):
-            proj = _project_load(ld, elements, dict_nodes)
-            if proj is not None:
-                resolved.append(proj)
-
-        result = solve(nodes, elements, supports, resolved, equal_dofs)
-        entry = {
-            'name':               combo['name'],
-            'governing_duration': combo.get('governing_duration', 'short'),
-            'node_disps':         result['node_disps'],
-            'node_reactions':     result['node_reactions'],
-            'ele_forces':         result['ele_forces'],
-            'ele_extremes':       result.get('ele_extremes', {}),
-            'ele_udl':            result.get('ele_udl', {}),
-            'ele_segs':           result.get('ele_segs', {}),
-        }
-        if make_figs:
-            entry['figs'] = make_figures(
-                combo['name'], nodes, elements, supports, [],
-                result['ele_forces'], result['node_disps'], ref_size,
-                ele_udl=result.get('ele_udl', {}), scale=diagram_scale,
-                ele_segs=result.get('ele_segs', {}),
-            )
-        all_results.append(entry)
-
     # k_mod per service class and load duration  (EN 1995-1-1 Table 3.1)
     _KMOD = {
         1: {'permanent': 0.60, 'long': 0.70, 'medium': 0.80, 'short': 0.90, 'instant': 1.10},
@@ -1097,7 +1056,7 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
                 'N': 0.0, 'N_combo': '', 'N_duration': 'short'}
         timber_best = {sc: {'ratio': 0.0, 'M_Ed': 0.0, 'V_Ed': 0.0, 'dur': 'short', 'combo': ''}
                        for sc in (1, 2, 3)}
-        for r in all_results:
+        for r in resultater:
             f = r['ele_forces'].get(eid, [0.0] * 6)
             # The envelope is what the member checks are designed against, so
             # it has to be the worst value anywhere along the element, not the
@@ -1135,7 +1094,96 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
             for sc in (1, 2, 3)
         }
 
-    return envelope, timber_envelope, all_results
+
+    return envelope, timber_envelope
+
+
+def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
+                       make_figs=False, ref_size=1.0, diagram_scale=1.0):
+    """
+    Run the FEM once per load combination and return envelope results.
+
+    Parameters
+    ----------
+    combinations : list of dicts
+        Each: { name: str, loads: [frame-load-case load dicts] }
+    make_figs : bool
+        If True, store per-combination diagrams in all_results[i]['figs'].
+        They are drawn from that combination's own section forces, so the
+        timing no longer matters — it used to, when opsvis read the live
+        OpenSeesPy model and every figure showed the last combination solved.
+    diagram_scale : float
+        The engineer's ordinate scaling, passed through to the diagrams.
+
+    Returns
+    -------
+    envelope        : dict  {elem_id: {M_max_kNm, M_combo, M_duration, ...}}
+                      BRUDGRAENSEN, naar kombinationerne baerer en situation.
+    timber_envelope : dict  {elem_id: {1: {M_Ed_kNm, V_Ed_kN, duration, combo}, 2: ..., 3: ...}}
+    all_results     : list of {name, situation, governing_duration, node_disps,
+                      ele_forces, node_reactions[, figs]}
+    indhyldninger   : dict  {situation: {envelope, timber_envelope}} -- én kurv
+                      pr. dimensioneringssituation. Styrke laeser 'uls',
+                      nedboejning en af 'sls_*', brand 'als_brand'.
+    """
+    dict_nodes = {n['id']: n for n in nodes}
+    all_results = []
+
+    for combo in combinations:
+        resolved = []
+        for ld in combo.get('loads', []):
+            proj = _project_load(ld, elements, dict_nodes)
+            if proj is not None:
+                resolved.append(proj)
+
+        result = solve(nodes, elements, supports, resolved, equal_dofs)
+        entry = {
+            'name':               combo['name'],
+            'situation':          combo.get('situation'),
+            'governing_duration': combo.get('governing_duration', 'short'),
+            'node_disps':         result['node_disps'],
+            'node_reactions':     result['node_reactions'],
+            'ele_forces':         result['ele_forces'],
+            'ele_extremes':       result.get('ele_extremes', {}),
+            'ele_udl':            result.get('ele_udl', {}),
+            'ele_segs':           result.get('ele_segs', {}),
+        }
+        if make_figs:
+            entry['figs'] = make_figures(
+                combo['name'], nodes, elements, supports, [],
+                result['ele_forces'], result['node_disps'], ref_size,
+                ele_udl=result.get('ele_udl', {}), scale=diagram_scale,
+                ele_segs=result.get('ele_segs', {}),
+            )
+        all_results.append(entry)
+
+    # Indhyldning PR. DIMENSIONERINGSSITUATION. Foer laa alle kombinationer i
+    # samme kurv, og det gaar godt, saa laenge der kun er brudgraense i den.
+    # Kommer anvendelse og ulykke med, er det forkert paa den tavse maade: det
+    # stoerste moment ville komme fra 6.10b og den stoerste nedboejning fra den
+    # karakteristiske, og de ville staa i den samme raekke som ét resultat.
+    pr_situation = {}
+    for r in all_results:
+        pr_situation.setdefault(r.get('situation'), []).append(r)
+
+    indhyldninger = {}
+    for sit, raekke in pr_situation.items():
+        env, tenv = _indhyl(elements, raekke)
+        indhyldninger[sit] = {'envelope': env, 'timber_envelope': tenv}
+
+    # De to foerste returvaerdier er fortsat BRUDGRAENSEN. Alt, der eftervises
+    # for styrke, laeser dem, og de maa ikke en dag begynde at baere en
+    # anvendelseskombination, fordi nogen tilfoejede en situation.
+    if ULS_NOEGLE in indhyldninger:
+        hoved = indhyldninger[ULS_NOEGLE]
+    elif None in indhyldninger:
+        hoved = indhyldninger[None]          # ingen situation sat — som foer
+    else:
+        env, tenv = _indhyl(elements, all_results)
+        hoved = {'envelope': env, 'timber_envelope': tenv}
+
+    return (hoved['envelope'], hoved['timber_envelope'], all_results,
+            indhyldninger)
 
 
 def udl_arrow_direction(ld, ca, sa):

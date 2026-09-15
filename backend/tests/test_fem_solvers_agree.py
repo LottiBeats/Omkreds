@@ -302,10 +302,10 @@ def test_solve_combinations_giver_samme_indhyldning(par, monkeypatch):
     ]
 
     monkeypatch.setattr(gf, 'solve', a)
-    env_a, tim_a, alle_a = gf.solve_combinations(
+    env_a, tim_a, alle_a, _ = gf.solve_combinations(
         nodes, elements, supports, kombinationer)
     monkeypatch.setattr(gf, 'solve', b)
-    env_b, tim_b, alle_b = gf.solve_combinations(
+    env_b, tim_b, alle_b, _ = gf.solve_combinations(
         nodes, elements, supports, kombinationer)
 
     afvig = []

@@ -2940,7 +2940,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         # ── Combination mode ──────────────────────────────────────────────────
         if combos:
             scale = max(0.2, min(float(data.diagram_scale or 1.0), 4.0))
-            envelope, timber_envelope, all_results = solve_combinations(
+            envelope, timber_envelope, all_results, indhyldninger = solve_combinations(
                 nodes, elements, supports, combos, equal_dofs,
                 make_figs=True, ref_size=ref_size, diagram_scale=scale,
             )
