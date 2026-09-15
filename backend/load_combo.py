@@ -447,6 +447,24 @@ def load_combos(
                                if accidental_type in ('fire', 'other')
                                else governing_duration),
         'uls_combinations':   uls_combinations,   # all combos + durations for timber
+        # Lasttilfaeldene og kombinationerne som faktorer. De er her, for at en
+        # rammeberegning kan haente dem i stedet for at danne dem igen: en
+        # kombination, der regnes to steder, kan vise to ting.
+        #
+        # nr er noeglen. -1 er den permanente, 0 og opefter peger ind i 'q' paa
+        # hver kombination, i lasternes egen raekkefoelge. Den maa ikke laves om
+        # til et navn -- to laster kan hedde det samme, og et navn kan rettes,
+        # mens et dokument ligger og venter.
+        'lasttilfaelde': (
+            [{'nr': -1, 'navn': 'Egenlast', 'kategori': None,
+              'Q_k': round(float(G_k), 4), 'permanent': True,
+              'varighed': 'permanent'}]
+            + [{'nr': i, 'navn': l.get('label') or f'Q{i + 1}',
+                'kategori': l['category'].upper(),
+                'Q_k': round(float(l['Q_k']), 4), 'permanent': False,
+                'varighed': _DURATION_MAP.get(l['category'].upper(), 'medium')}
+               for i, l in enumerate(loads)]),
+        'kombinationer':      _saet,
         'unit':               unit,
         'K_FI':               KFI,
         'consequence_class':  consequence_class.upper(),
