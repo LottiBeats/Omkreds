@@ -827,6 +827,21 @@ def solve_opensees(nodes, elements, supports, loads, equal_dofs=None):
                          float(ld.get('Fy_kN',  0.0)),
                          float(ld.get('Mz_kNm', 0.0)))
             elif ld['type'] == 'udl':
+                # OpenSees' eleLoad -beamUniform kan kun laegge en konstant last
+                # over HELE stangen. En dellast eller en varierende last kan den
+                # ikke faa at vide om, og det er den tavse slags: lasten ville
+                # blive lagt ud over hele laengden med startvaerdien, og
+                # resultatet ville komme ud groent og forkert. Derfor siger den
+                # fra her i stedet. fem_direkte og fem_pynite kan begge dele.
+                _slut = ld.get('value_end_kNm')
+                _varierer = (_slut is not None
+                             and abs(float(_slut) - float(ld.get('value_kNm', 0.0))) > 1e-12)
+                if ld.get('x1') is not None or ld.get('x2') is not None or _varierer:
+                    raise ModelError(
+                        f'Lasten paa element {ld["elem_id"]} daekker kun en del af '
+                        f'stangen eller varierer langs den. Den loeser kan '
+                        f'OMKREDS_FEM_LOESER=opensees ikke regne — vaelg '
+                        f"'direkte' (standard) eller 'pynite'.")
                 direction = ld.get('direction')
                 if direction is not None:
                     # New-style load: project from global direction to local element axes
