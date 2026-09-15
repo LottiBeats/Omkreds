@@ -90,6 +90,144 @@ def _psi0(category: str, lead_category: str) -> float:
     return PSI_DK.get(c, _DEFAULT_PSI)[0]
 
 
+# ── Kombinationerne som faktorer ─────────────────────────────────────────────
+# Situationsnoeglerne. De staar her, fordi baade den, der danner
+# kombinationerne, og den, der bruger dem, skal stave dem ens.
+ULS        = 'uls'
+ALS_BRAND  = 'als_brand'
+ALS_OEVRIG = 'als_oevrig'
+SLS_KAR    = 'sls_karakteristisk'
+SLS_HYP    = 'sls_hyppig'
+SLS_KVASI  = 'sls_kvasi'
+
+
+def kombinationssaet(loads, method='6.10ab', G_fav=False,
+                     consequence_class='CC2'):
+    """
+    Alle EN 1990-kombinationer som FAKTORER i stedet for tal.
+
+    Hver post:
+
+        {'navn', 'situation', 'formel', 'ledende', 'varighed',
+         'g': faktor paa G_k,
+         'q': [faktor pr. variabel last, i lasternes egen raekkefoelge],
+         'a': faktor paa A_d}
+
+    saa at
+
+        E_d = g·G_k + Σ q[i]·Q_k[i] + a·A_d
+
+    Det er meningen med formen. En lastkombination er ikke et tal -- det er et
+    saet faktorer, og tallet er hvad de giver, naar de rammer nogle laster.
+    Skal en rammeberegning kombinere laster paa en model, er det faktorerne,
+    den skal bruge; skal blokken skrive en tabel, er det tallene. Begge dele
+    kommer nu fra den her funktion, saa tabellen i dokumentet og den
+    eftervisning, der faktisk blev regnet, ikke kan vaere to forskellige ting.
+
+    A_d staar som en faktor og ikke som en vaerdi, fordi ulykken er en
+    kombination og ikke en last, man paasaetter -- den er nul ved brand, hvor
+    branden virker gennem det reducerede tvaersnit.
+    """
+    KFI = K_FI_MAP.get(consequence_class.upper(), 1.0)
+    n = len(loads)
+    kat = [l['category'].upper() for l in loads]
+    psi1 = [PSI_DK.get(c, _DEFAULT_PSI)[1] for c in kat]
+    psi2 = [PSI_DK.get(c, _DEFAULT_PSI)[2] for c in kat]
+    navne = [l.get('label') or f'Q{i + 1}' for i, l in enumerate(loads)]
+
+    ud = []
+
+    def _tilfoej(navn, situation, formel, g, q, a=0.0, ledende=-1, varighed=None):
+        ud.append({
+            'navn': navn, 'situation': situation, 'formel': formel,
+            'g': round(float(g), 6),
+            'q': [round(float(f), 6) for f in q],
+            'a': round(float(a), 6),
+            'ledende': ledende, 'varighed': varighed,
+        })
+
+    def _ledende_varighed(lead):
+        return _DURATION_MAP.get(kat[lead], 'medium')
+
+    # ── Brudgraense ──────────────────────────────────────────────────────────
+    if n == 0:
+        # Uden variable laster er der kun den permanente kombination.
+        if method == '6.10ab':
+            g_a = 1.0 if G_fav else 1.2 * KFI
+            _tilfoej('6.10a', ULS, f'{g_a:.2f} · G_k', g_a, [],
+                     varighed='permanent')
+        else:
+            g_a = 1.0 if G_fav else 1.35 * KFI
+            _tilfoej('6.10', ULS, f'{g_a:.2f} · G_k', g_a, [],
+                     varighed='permanent')
+    elif method == '6.10':
+        g = 1.0 if G_fav else 1.35 * KFI
+        gQ = 1.50 * KFI
+        for lead in range(n):
+            q = [gQ * (1.0 if i == lead else _psi0(kat[i], kat[lead]))
+                 for i in range(n)]
+            _tilfoej(f'6.10 — {navne[lead]}', ULS,
+                     '1.35·K_FI·G + 1.5·K_FI·Q₁ + Σ…',
+                     g, q, ledende=lead, varighed=_ledende_varighed(lead))
+    else:
+        g_a = 1.0 if G_fav else 1.2 * KFI
+        _tilfoej('6.10a', ULS, f'{g_a:.2f} · G_k', g_a, [0.0] * n,
+                 varighed='permanent')
+        g_b = 0.9 if G_fav else 1.0 * KFI
+        gQ = 1.5 * KFI
+        for lead in range(n):
+            q = [gQ * (1.0 if i == lead else _psi0(kat[i], kat[lead]))
+                 for i in range(n)]
+            _tilfoej(f'6.10b — {navne[lead]}', ULS,
+                     f'{g_b:.2f}·G + 1.5·K_FI·Q₁ + Σ1.5·K_FI·ψ₀·Qᵢ',
+                     g_b, q, ledende=lead, varighed=_ledende_varighed(lead))
+
+    # ── Ulykke, tabel A1.3 ───────────────────────────────────────────────────
+    # Ingen partialkoefficienter og intet K_FI: alt regnes med 1,0. Varigheden
+    # er oejeblikkelig (EN 1995-1-1 tabel 3.1) uanset hvad der leder.
+    if n == 0:
+        _tilfoej('Ulykke', ALS_BRAND,  'G_k + A_d', 1.0, [], a=1.0,
+                 varighed='instant')
+        _tilfoej('Ulykke', ALS_OEVRIG, 'G_k + A_d', 1.0, [], a=1.0,
+                 varighed='instant')
+    else:
+        for lead in range(n):
+            q = [psi1[lead] if i == lead else psi2[i] for i in range(n)]
+            _tilfoej(f'Brand — {navne[lead]}', ALS_BRAND,
+                     'G_k + A_d + ψ₁·Q₁ + Σ ψ₂·Qᵢ',
+                     1.0, q, a=1.0, ledende=lead, varighed='instant')
+        _tilfoej('Øvrig ulykke', ALS_OEVRIG, 'G_k + A_d + Σ ψ₂·Qᵢ',
+                 1.0, list(psi2), a=1.0, varighed='instant')
+
+    # ── Anvendelse ───────────────────────────────────────────────────────────
+    # Varigheden staar som None med vilje. k_mod hoerer til brudgraensen; i
+    # anvendelsesgraensetilstanden er det k_def og opdelingen i permanent og
+    # variabel, der afgoer noget, og et varighedsnavn her ville blive brugt.
+    if n == 0:
+        _tilfoej('Karakteristisk', SLS_KAR, 'G_k', 1.0, [])
+        _tilfoej('Hyppig',         SLS_HYP, 'G_k', 1.0, [])
+    else:
+        for lead in range(n):
+            q = [1.0 if i == lead else _psi0(kat[i], kat[lead])
+                 for i in range(n)]
+            _tilfoej(f'Karakteristisk — {navne[lead]}', SLS_KAR,
+                     'G_k + Q_1 + Σ ψ_0·Q_i', 1.0, q, ledende=lead)
+            q = [psi1[lead] if i == lead else psi2[i] for i in range(n)]
+            _tilfoej(f'Hyppig — {navne[lead]}', SLS_HYP,
+                     'G_k + ψ_1·Q_1 + Σ ψ_2·Q_i', 1.0, q, ledende=lead)
+    _tilfoej('Kvasi-permanent', SLS_KVASI, 'G_k + Σ ψ_2·Q_i',
+             1.0, list(psi2))
+
+    return ud
+
+
+def vaerdi(komb, G_k, Q_k, A_d=0.0):
+    """E_d for én kombination fra kombinationssaet(): g·G_k + Σ q·Q_k + a·A_d."""
+    return (komb['g'] * float(G_k)
+            + sum(f * float(q) for f, q in zip(komb['q'], Q_k))
+            + komb['a'] * float(A_d))
+
+
 def load_combos(
     label:             str,
     unit:              str,
@@ -150,48 +288,16 @@ def load_combos(
     # ── ULS ───────────────────────────────────────────────────────────────────
     blocks.append(S("Brudgrænsetilstand — STR/GEO  (tabel A1.2(B+C) DK NA)"))
 
-    uls_vals: list[tuple] = []   # (name, formula, value, lead_idx)
+    # Kombinationerne dannes ét sted -- som faktorer -- og tallene her er
+    # hvad de giver. Regnede tabellen og eftervisningen hver sit sted, kunne
+    # de vise to forskellige ting, og begge ville se rigtige ud.
+    _saet = kombinationssaet(loads, method, G_fav, consequence_class)
 
-    if n == 0:
-        if method == '6.10ab':
-            gamma_G_a = 1.0 if G_fav else 1.2 * KFI
-            uls_vals.append(("6.10a", f"{gamma_G_a:.2f} · G_k", gamma_G_a * G_k, -1))
-        else:
-            gamma_G_a = 1.0 if G_fav else 1.35 * KFI
-            uls_vals.append(("6.10", f"{gamma_G_a:.2f} · G_k", gamma_G_a * G_k, -1))
+    def _raekker(situation):
+        return [(k['navn'], k['formel'], vaerdi(k, G_k, Q, A_d), k['ledende'])
+                for k in _saet if k['situation'] == situation]
 
-    elif method == '6.10':
-        gamma_G = 1.0 if G_fav else 1.35 * KFI
-        gamma_Q = 1.50 * KFI
-        for lead in range(n):
-            others  = [i for i in range(n) if i != lead]
-            lcat    = loads[lead]['category'].upper()
-            p0_oth  = [_psi0(loads[i]['category'], lcat) for i in others]
-            Ed = (gamma_G * G_k
-                  + gamma_Q * Q[lead]
-                  + sum(gamma_Q * p0_oth[j] * Q[others[j]] for j in range(len(others))))
-            uls_vals.append((f"6.10 — {loads[lead]['label']}",
-                             f"1.35·K_FI·G + 1.5·K_FI·Q₁ + Σ…", Ed, lead))
-
-    else:  # 6.10a / 6.10b
-        # 6.10a — permanent only (one row, regardless of number of variable loads)
-        gamma_G_a = 1.0 if G_fav else 1.2 * KFI
-        Ed_a = gamma_G_a * G_k
-        uls_vals.append(("6.10a", f"{gamma_G_a:.2f} · G_k", Ed_a, -1))
-
-        # 6.10b — one row per possible leading action
-        gamma_G = 0.9 if G_fav else 1.0 * KFI
-        gamma_Q = 1.5 * KFI
-        for lead in range(n):
-            others  = [i for i in range(n) if i != lead]
-            lcat    = loads[lead]['category'].upper()
-            p0_oth  = [_psi0(loads[i]['category'], lcat) for i in others]
-            Ed_b = (gamma_G * G_k
-                    + gamma_Q * Q[lead]
-                    + sum(gamma_Q * p0_oth[j] * Q[others[j]] for j in range(len(others))))
-            uls_vals.append((f"6.10b — {loads[lead]['label']}",
-                             f"{gamma_G:.2f}·G + 1.5·K_FI·Q₁ + Σ1.5·K_FI·ψ₀·Qᵢ",
-                             Ed_b, lead))
+    uls_vals: list[tuple] = _raekker(ULS)   # (name, formula, value, lead_idx)
 
     for name, formula, val, _ in uls_vals:
         blocks.append(CALC_ROW(name, formula, f"{val:.3f}  {unit}"))
@@ -232,24 +338,9 @@ def load_combos(
     # DK NA tabel A1.3: ingen partialkoefficienter og intet K_FI -- alt regnes
     # med 1,0. Brand tager psi_1 paa den dominerende last, oevrig ulykke tager
     # psi_2 paa alle.
-    def _ulykke(kind: str) -> list[tuple]:
-        vals: list[tuple] = []
-        if n == 0:
-            vals.append(("Ulykke", "G_k + A_d", G_k + A_d, -1))
-        elif kind == 'fire':
-            for lead in range(n):
-                others = [i for i in range(n) if i != lead]
-                Ed = (G_k + A_d + psi1[lead] * Q[lead]
-                      + sum(psi2[i] * Q[i] for i in others))
-                vals.append((f"Brand — {loads[lead]['label']}",
-                             "G_k + A_d + ψ₁·Q₁ + Σ ψ₂·Qᵢ", Ed, lead))
-        else:
-            Ed = G_k + A_d + sum(psi2[i] * Q[i] for i in range(n))
-            vals.append(("Øvrig ulykke", "G_k + A_d + Σ ψ₂·Qᵢ", Ed, -1))
-        return vals
+    _brand  = _raekker(ALS_BRAND)
+    _oevrig = _raekker(ALS_OEVRIG)
 
-    _brand  = _ulykke('fire')
-    _oevrig = _ulykke('other')
     E_d_brand  = max(v[2] for v in _brand)
     E_d_oevrig = max(v[2] for v in _oevrig)
 
@@ -281,22 +372,9 @@ def load_combos(
     # ── SLS ───────────────────────────────────────────────────────────────────
     blocks.append(S("Anvendelsesgrænsetilstand"))
 
-    if n == 0:
-        E_d_sls_char = E_d_sls_freq = G_k
-    else:
-        char_vals, freq_vals = [], []
-        for lead in range(n):
-            others  = [i for i in range(n) if i != lead]
-            lcat    = loads[lead]['category'].upper()
-            p0_oth  = [_psi0(loads[i]['category'], lcat) for i in others]
-            char_vals.append(G_k + Q[lead]
-                             + sum(p0_oth[j] * Q[others[j]] for j in range(len(others))))
-            freq_vals.append(G_k + psi1[lead] * Q[lead]
-                             + sum(psi2[i] * Q[i] for i in others))
-        E_d_sls_char = max(char_vals)
-        E_d_sls_freq = max(freq_vals)
-
-    E_d_sls_qp = G_k + sum(psi2[i] * Q[i] for i in range(n))
+    E_d_sls_char = max(v[2] for v in _raekker(SLS_KAR))
+    E_d_sls_freq = max(v[2] for v in _raekker(SLS_HYP))
+    E_d_sls_qp   = max(v[2] for v in _raekker(SLS_KVASI))
 
     blocks.append(CALC_ROW("Karakteristisk",    "G_k + Q_1 + Σ ψ_0·Q_i",      f"{E_d_sls_char:.3f}  {unit}"))
     blocks.append(CALC_ROW("Hyppig",            "G_k + ψ_1·Q_1 + Σ ψ_2·Q_i",  f"{E_d_sls_freq:.3f}  {unit}"))
