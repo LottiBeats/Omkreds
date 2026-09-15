@@ -2455,6 +2455,11 @@ class GenFrameLoadIn(BaseModel):
     # hinanden, uden at der findes en skjult regel om ordet "vind".
     virkning:   str | None = None   # 'permanent' | 'snow' | 'wind' | 'imposed'
     variant:    str | None = None   # fx 'venstre' / 'hoejre'
+    # Peger paa et lasttilfaelde i lastmodulet. -1 er den permanente, 0 og
+    # opefter er de variable i deres egen raekkefoelge. Er den sat, hentes
+    # faktorerne DERFRA i stedet for at blive dannet her -- se lastmodul-
+    # felterne paa GenFrameFemInput.
+    lasttilfaelde: int | None = None
     # Lasten behoever ikke daekke hele stangen, og den behoever ikke vaere
     # konstant. x1/x2 er meter fra i-enden; mangler de, daekker den det hele.
     # value_end_kNm er intensiteten i den anden ende; mangler den, er lasten
@@ -2512,6 +2517,19 @@ class GenFrameFemInput(BaseModel):
     # naar ALLE linjelaster kommer fra en lastkombination; ellers ville
     # saettet vaere ufuldstaendigt, og en for lille nedboejning er vaerre end
     # ingen.
+    # Kombinationerne fra lastmodulet, som faktorer, og de lasttilfaelde de
+    # gaelder. Er de her, danner FEM'en ikke kombinationer selv: hver gang de
+    # samme kombinationer er blevet dannet to steder i det her program, er de
+    # to steder blevet uenige -- senest psi_0 for nyttelast, 0,50 i lastmodulet
+    # og 0,70 i frame_load_cases.
+    #
+    # situationer vaelger hvilke dimensioneringssituationer der koeres. Tom
+    # liste betyder alle: brudgraense, brand, oevrig ulykke og de tre
+    # anvendelseskombinationer.
+    lastmodul_kombinationer: list[dict] = []
+    lastmodul_tilfaelde:     list[dict] = []
+    situationer:             list[str]  = []
+
     loads_sls_G:   list[GenFrameLoadIn] = []
     loads_sls_Q:   list[GenFrameLoadIn] = []
     psi_2:         float = 0.0
@@ -2761,6 +2779,17 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         #
         # Kommer der allerede kombinationer udefra, roeres de ikke: den gamle
         # vej virker uaendret.
+        # Lastmodulet foerst. Kommer kombinationerne derfra, er det dem, der
+        # gaelder -- ogsaa selv om lasterne tilfaeldigvis ogsaa baerer en
+        # virkning fra den gamle vej.
+        if not combos and data.lastmodul_kombinationer:
+            from frame_load_cases import kombinationer_fra_lastmodul
+            combos = kombinationer_fra_lastmodul(
+                loads, data.lastmodul_kombinationer, data.lastmodul_tilfaelde,
+                situationer=tuple(data.situationer) or None)
+            if combos:
+                loads = []
+
         if not combos:
             from frame_load_cases import kombinationer_fra_laster
             egne = kombinationer_fra_laster(
@@ -2940,7 +2969,7 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         # ── Combination mode ──────────────────────────────────────────────────
         if combos:
             scale = max(0.2, min(float(data.diagram_scale or 1.0), 4.0))
-            envelope, timber_envelope, all_results = solve_combinations(
+            envelope, timber_envelope, all_results, indhyldninger = solve_combinations(
                 nodes, elements, supports, combos, equal_dofs,
                 make_figs=True, ref_size=ref_size, diagram_scale=scale,
             )
@@ -2992,6 +3021,27 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                                 ele_segs=best_res.get('ele_segs'))
             summary['envelope']          = envelope
             summary['timber_envelope']   = timber_envelope   # {eid: {sc: {M_Ed, V_Ed, duration, combo}}}
+            # Indhyldningen pr. dimensioneringssituation. 'envelope' ovenfor er
+            # fortsat brudgraensen; den her er der, for at en eftervisning kan
+            # tage den situation, dens check hoerer til -- styrke fra 'uls',
+            # brand fra 'als_brand', nedboejning fra en 'sls_*'.
+            summary['indhyldninger']     = indhyldninger
+            # Nedboejningen hoerer til anvendelsen, og den maales langs
+            # stangen og ikke i knuderne: en tofagsbjaelke har nul flytning i
+            # hver eneste knude, og det er ikke det samme som ingen
+            # nedboejning.
+            nedb = {}
+            for r in all_results:
+                sit = r.get('situation')
+                v, n_eid, n_x = stoerste_nedboejning(
+                    nodes, elements, r['ele_forces'],
+                    r.get('ele_segs') or {}, r['node_disps'])
+                tidl = nedb.get(sit)
+                if tidl is None or abs(v) > abs(tidl['w_mm'] / 1000.0):
+                    nedb[sit] = {'w_mm': round(v * 1000.0, 3),
+                                 'elem_id': n_eid, 'x_m': round(n_x, 3),
+                                 'combo': r['name']}
+            summary['nedboejning_pr_situation'] = nedb
             summary['combinations']      = [r['name'] for r in all_results]
             summary['combo_figs']        = combo_figs   # [{name, figs:[defo,M,V,N], state}]
             # [M, V, N] med alle kombinationer lagt oven paa hinanden. Tom ved

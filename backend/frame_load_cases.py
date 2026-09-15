@@ -358,3 +358,76 @@ def kombinationer_fra_laster(loads, method='6.10ab', consequence_class='CC2'):
             _saml(navn, g_b, faktorer)
 
     return combos
+
+
+# ── Kombinationerne fra lastmodulet, paasat modellen ─────────────────────────
+def kombinationer_fra_lastmodul(loads, kombinationer, lasttilfaelde,
+                                situationer=None):
+    """
+    Modellens laster ganget med lastmodulets faktorer.
+
+    loads          modellens laster. Hver skal baere 'lasttilfaelde': nr.
+                   -1 er den permanente; 0 og opefter peger ind i 'q'.
+    kombinationer  fra load_combo.kombinationssaet(), via lastmodulets eksport.
+    lasttilfaelde  samme sted -- kun til at skrive navne i faktortabellen.
+    situationer    hvilke dimensioneringssituationer der skal med. None = alle.
+
+    Returnerer samme form som solve_combinations allerede tager imod, plus
+    'situation', saa en indhyldning kan holdes pr. situation.
+
+    Den danner ikke kombinationer selv. Det er hele aendringen: hver gang to
+    steder i programmet har dannet de samme kombinationer, er de blevet
+    uenige -- senest psi_0 for nyttelast, 0,50 i lastmodulet og 0,70 her.
+    """
+    navne = {t['nr']: t['navn'] for t in (lasttilfaelde or [])}
+
+    utagget = [ld for ld in loads if ld.get('lasttilfaelde') is None]
+    if utagget:
+        hvor = ', '.join(sorted({str(ld.get('elem_id') or ld.get('node_id') or '?')
+                                 for ld in utagget}))
+        raise ValueError(
+            f'{len(utagget)} last(er) hoerer ikke til et lasttilfaelde '
+            f'(element/knude {hvor}). Naar modellen kombineres, skal hver last '
+            f'vide hvad den er, ellers faar den ingen faktor — og en '
+            f'kombination, der mangler en last, giver en for lille '
+            f'eftervisning uden at sige noget.')
+
+    ud = []
+    for k in kombinationer:
+        if situationer is not None and k['situation'] not in situationer:
+            continue
+
+        paasat = []
+        tabel = {}
+        for ld in loads:
+            nr = int(ld['lasttilfaelde'])
+            if nr < 0:
+                faktor = float(k['g'])
+            else:
+                try:
+                    faktor = float(k['q'][nr])
+                except (IndexError, TypeError):
+                    # Lastmodulet har faerre laster end modellen peger paa.
+                    # Det sker, naar en raekke slettes i lastmodulet, mens en
+                    # last paa modellen stadig peger paa den. Nul ville vaere
+                    # en eftervisning uden den last.
+                    raise ValueError(
+                        f'Lasttilfaelde {nr} findes ikke i lastmodulet '
+                        f'laengere. Kombinationen kan ikke paasaettes.')
+            tabel[navne.get(nr, f'#{nr}')] = round(faktor, 4)
+            if abs(faktor) > 1e-12:
+                paasat.append(_scale_load(ld, faktor))
+
+        ud.append({
+            'name':               k['navn'],
+            'situation':          k['situation'],
+            'loads':              paasat,
+            # Varigheden kommer fra kombinationen og ikke fra et felt nogen
+            # saetter. Det er den, der afgoer k_mod.
+            'governing_duration': k['varighed'],
+            'factor_table':       tabel,
+            'aktive':             [navne.get(nr, f'#{nr}')
+                                   for nr in sorted(navne)
+                                   if abs(tabel.get(navne.get(nr, f'#{nr}'), 0)) > 1e-12],
+        })
+    return ud
