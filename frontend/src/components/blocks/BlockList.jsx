@@ -719,8 +719,11 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   const [selectedId,  setSelectedId]  = useState(null)
   // IDs of selected blocks where the editor is collapsed (preview only, blue border)
   const [minimised,   setMinimised]   = useState(() => new Set())
-  const [dragIdx,     setDragIdx]     = useState(null)
-  const [dropIdx,     setDropIdx]     = useState(null)
+  // Id og ikke indeks. Et indeks peger paa en plads i listen, og pladsen
+  // betyder noget andet, saa snart listen aendrer sig -- saa var det pludselig
+  // en anden blok, der stod og lyste som den, man trak i.
+  const [dragId,      setDragId]      = useState(null)
+  const [dropId,      setDropId]      = useState(null)
   const pageRef = useRef(null)
 
   // Click outside page → deselect
@@ -857,19 +860,58 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     fraHaandtag.current = !!e.target.closest?.('[data-drag-handle]')
   }
 
-  function onDragStart(e, i) {
+  function slutTraek() {
+    setDragId(null); setDropId(null); fraHaandtag.current = false
+  }
+
+  function onDragStart(e, id) {
     if (!fraHaandtag.current) { e.preventDefault(); return }
-    setDragIdx(i); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', i)
+    setDragId(id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(id))
   }
-  function onDragOver(e, i)  { e.preventDefault(); if (i !== dragIdx) setDropIdx(i) }
-  function onDrop(e, i) {
+  function onDragOver(e, id)  { e.preventDefault(); if (id !== dragId) setDropId(id) }
+  function onDrop(e, id) {
     e.preventDefault()
-    if (dragIdx !== null && dragIdx !== i) {
-      const n = [...blocks]; const [m] = n.splice(dragIdx, 1); n.splice(i, 0, m); onChange(n)
+    const fra = blocks.findIndex(b => b.id === dragId)
+    const til = blocks.findIndex(b => b.id === id)
+    if (fra >= 0 && til >= 0 && fra !== til) {
+      const n = [...blocks]; const [m] = n.splice(fra, 1); n.splice(til, 0, m); onChange(n)
     }
-    setDragIdx(null); setDropIdx(null)
+    slutTraek()
   }
-  function onDragEnd() { setDragIdx(null); setDropIdx(null); fraHaandtag.current = false }
+  function onDragEnd() { slutTraek() }
+
+  // Nettet under traekket.
+  //
+  // Den graa blok var det her: blokken tegnes med opacity 0,3 mens den
+  // traekkes, og den tilstand blev ryddet ét sted -- i dragend paa blokkens
+  // eget element. Udeblev den begivenhed, blev blokken graa og BLEV det.
+  // Hverken et klik, en tast eller en ny beregning kunne faa den tilbage; kun
+  // et nyt traek, der lykkedes.
+  //
+  // Og den udeblev. Et traek, der startede inde i et talfelt -- hvad det
+  // gjorde indtil for lidt siden -- har feltets tekst som kilde, og feltet
+  // gentegnes under traekket. Saa er kildeelementet vaek, og dragend har ingen
+  // at komme til.
+  //
+  // Derfor: hvert eneste tegn paa at gestussen er slut rydder nu. dragend og
+  // drop paa vinduet fanger det normale forloeb uanset hvilket element de
+  // rammer; Escape fanger en afbrudt traekning; og et museklik et vilkaarligt
+  // sted fanger resten -- for saa er brugeren gaaet videre, og saa er traekket
+  // slut, uanset hvad browseren fik sagt.
+  useEffect(() => {
+    if (dragId === null) return
+    const paaTast = e => { if (e.key === 'Escape') slutTraek() }
+    window.addEventListener('dragend',   slutTraek)
+    window.addEventListener('drop',      slutTraek)
+    window.addEventListener('mousedown', slutTraek)
+    window.addEventListener('keydown',   paaTast)
+    return () => {
+      window.removeEventListener('dragend',   slutTraek)
+      window.removeEventListener('drop',      slutTraek)
+      window.removeEventListener('mousedown', slutTraek)
+      window.removeEventListener('keydown',   paaTast)
+    }
+  }, [dragId])
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -991,17 +1033,17 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
           const isMinimised     = minimised.has(block.id)
           const showEditor      = isSelected && !isMinimised && !!Comp
           const isInlineEditable = ['text', 'heading'].includes(block.type)
-          const isDragging      = dragIdx === index
-          const isTarget        = dropIdx === index && dragIdx !== index
+          const isDragging      = dragId === block.id
+          const isTarget        = dropId === block.id && dragId !== block.id
 
           return (
             <React.Fragment key={block.id}>
               <div
                 draggable
                 onMouseDown={onMouseDownBlok}
-                onDragStart={e => onDragStart(e, index)}
-                onDragOver={e  => onDragOver(e, index)}
-                onDrop={e      => onDrop(e, index)}
+                onDragStart={e => onDragStart(e, block.id)}
+                onDragOver={e  => onDragOver(e, block.id)}
+                onDrop={e      => onDrop(e, block.id)}
                 onDragEnd={onDragEnd}
                 onClick={e => { e.stopPropagation(); selectBlock(block.id) }}
                 style={{
