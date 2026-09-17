@@ -1676,15 +1676,65 @@ class CustomCalcInput(BaseModel):
     items: list = []
 
 
+class EnhedsFejl(Exception):
+    """En enhed, der ikke kan bruges til det, den bliver bedt om.
+
+    Med vilje IKKE en ValueError. Eftervisningens kapacitetsfelt fanger
+    ValueError for at se, om der stod et tal eller et udtryk -- en ulaeselig
+    enhed ville saa blive laest som "det maa vaere et udtryk" og forsvinde ind
+    i den forkerte gren.
+    """
+
+
+def _har_enhed(x) -> bool:
+    """Er x en stoerrelse med dimension -- eller bare et tal?
+
+    forallpeople giver et rent tal tilbage, naar dimensionerne gaar op, og en
+    Physical, naar der er enheder tilbage. Det er hele maaleredskabet her.
+    """
+    return getattr(x, "dimensions", None) is not None
+
+
+def _enhed_vis(unit_str: str) -> str:
+    """Enhedsstrengen, som den skal staa i dokumentet: mm**2 bliver til mm²."""
+    return (str(unit_str).strip()
+            .replace("^", "**")
+            .replace("**2", "²").replace("**3", "³").replace("**4", "⁴")
+            .replace("*", "·"))
+
+
 def _parse_qty(value: float, unit_str: str):
-    """Convert float + unit string to a forallpeople quantity (or plain float)."""
+    """Convert float + unit string to a forallpeople quantity (or plain float).
+
+    En enhed, der ikke kan laeses, er en fejl og ikke et tal uden enhed.
+
+    Foer faldt den tilbage til float(value), og saa stod raekken med "500 mm²"
+    i dokumentet, mens navnet i regnestykket var et bart 500. Alt, der blev
+    regnet videre med den, var dimensionsloest forkert, og der stod ingenting
+    om det noget sted.
+    """
     if unit_str == "-" or not unit_str:
         return float(value)
+    return float(value) * _enhed(unit_str)
+
+
+def _enhed(unit_str: str):
+    """Enhedsstrengen som stoerrelse. Rejser EnhedsFejl, hvis den ikke er én.
+
+    mm^2 og mm**2 er den samme enhed. Rullelisten sender ** , men en gemt
+    skabelon eller et aeldre dokument kan baere ^ , og at afvise den ville
+    vaere en fejl om skrivemaaden og ikke om enheden.
+    """
+    ren = (str(unit_str).strip()
+           .replace("^", "**").replace("·", "*").replace("×", "*")
+           .replace("²", "**2").replace("³", "**3").replace("⁴", "**4"))
     try:
-        unit = eval(unit_str, _UNIT_NS, {})
-        return float(value) * unit
-    except Exception:
-        return float(value)
+        unit = eval(ren, _UNIT_NS, {})
+    except Exception as exc:
+        raise EnhedsFejl(f"kender ikke enheden {unit_str!r}") from exc
+    if not _har_enhed(unit):
+        raise EnhedsFejl(f"{unit_str!r} er ikke en enhed")
+    return unit
 
 
 def _fmt_qty(qty, result_unit: str = "-") -> str:
@@ -1699,14 +1749,30 @@ def _fmt_qty(qty, result_unit: str = "-") -> str:
     import re as _re
 
     # ── Try unit conversion if a result unit is requested ──────────────────
+    #
+    # Delingen skal gaa OP. Gaar den ikke op, er den oenskede enhed en anden
+    # slags stoerrelse end tallet, og saa maa der ikke saettes et maerkat paa.
+    #
+    # Det var praecis det, der skete: et moment paa 15,625 kN·m vist i kN gav
+    # "15.625 kN", fordi M/kN er 15,625 m og float() smed metrene vaek. Et
+    # spaendingstal paa 24 MPa vist i kN gav "0.024 kN". Tallet saa rigtigt ud,
+    # enheden var forkert, og ingen af delene sagde noget.
     if result_unit and result_unit not in ("-", ""):
+        unit_disp = _enhed_vis(result_unit)
         try:
-            unit_qty  = eval(result_unit, _UNIT_NS, {})    # e.g. kN*m quantity
-            converted = float(qty / unit_qty)               # dimensionless scalar
-            unit_disp = (result_unit
-                         .replace("**2", "²").replace("**3", "³").replace("**4", "⁴")
-                         .replace("*", "·"))
-            return f"{converted:.5g} {unit_disp}"
+            unit_qty  = _enhed(result_unit)                # e.g. kN*m quantity
+            if not _har_enhed(qty):
+                # Et bart tal har ingen dimension at modsige. Saa er enheden
+                # brugerens paastand om, hvad tallet er, og den staar ved magt.
+                return f"{float(qty):.5g} {unit_disp}"
+            rest = qty / unit_qty
+            if _har_enhed(rest):
+                # Der er enheder tilbage efter delingen. Vaerdien vises i sin
+                # EGEN enhed, og der staar hvorfor -- en stille omdoebning ville
+                # vaere det vaerste af de tre mulige udfald.
+                return (f"{_fmt_qty(qty)}  "
+                        f"(kan ikke vises i {unit_disp} — anden enhed)")
+            return f"{float(rest):.5g} {unit_disp}"
         except Exception:
             pass  # fall through to plain formatting below
 
@@ -1761,9 +1827,7 @@ def calc_custom(data: CustomCalcInput):
                     unit_str = item.get("unit", "-")
                     qty      = _parse_qty(float(item.get("value", 0.0)), unit_str)
                     ns[name] = qty
-                    unit_disp = (unit_str
-                                 .replace("**2", "²").replace("**3", "³").replace("**4", "⁴")
-                                 .replace("*", "·"))
+                    unit_disp = _enhed_vis(unit_str)
                     val_str  = (f"{item['value']:.5g}" if unit_str == "-"
                                 else f"{item['value']:.5g} {unit_disp}")
                     desc = item.get("description", "").strip()
@@ -1825,9 +1889,18 @@ def calc_custom(data: CustomCalcInput):
                     cond_result  = bool(_safe_eval(_preprocess_expr(cond_raw), {**_UNIT_NS, **ns}))
                     chosen_raw   = true_raw  if cond_result else false_raw
                     result       = _safe_eval(_preprocess_expr(chosen_raw), {**_UNIT_NS, **ns})
+                    # Har grenen selv regnet en størrelse med enhed, ER den
+                    # resultatet. Enhedsfeltet siger kun, hvad det skal VISES i
+                    # — præcis som ved en formel.
+                    #
+                    # Før blev den pakket om: float(24 MPa) er 24, og 24 × kPa
+                    # er 24 kPa. En faktor 1000 forkert, uden en eneste fejl at
+                    # se. Kun et bart tal kan få en enhed sat på her.
                     if name:
-                        ns[name] = _parse_qty(float(result), unit_str) if unit_str != "-" else result
-                    result_str   = _fmt_qty(ns[name]) if name else _fmt_qty(result)
+                        ns[name] = (result if _har_enhed(result)
+                                    else _parse_qty(float(result), unit_str))
+                    vis          = ns[name] if name else result
+                    result_str   = _fmt_qty(vis, unit_str)
                     branch_sym   = "✓" if cond_result else "✗"
                     chosen_disp  = (chosen_raw
                         .replace("**", "^").replace("*", "×").replace("/", " / "))

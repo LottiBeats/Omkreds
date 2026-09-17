@@ -837,7 +837,30 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
   // ── Drag ──────────────────────────────────────────────────────────────
 
-  function onDragStart(e, i) { setDragIdx(i); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', i) }
+  // En blok traekkes KUN i haandtaget.
+  //
+  // Foer stod draggable paa hele blokken, og saa er et tal i et felt ikke til
+  // at markere: browseren ser en museknap trykket ned inde i noget, der kan
+  // traekkes, og begynder at flytte blokken i stedet for at markere teksten.
+  // Det samme gjaldt enhver tekst i blokken -- et resultat kunne ikke kopieres
+  // uden at dokumentet skiftede rundt paa sig selv.
+  //
+  // Haandtaget stod der hele tiden ("Traek for at flytte"); det var bare ikke
+  // det eneste sted, der trak. Nu er det.
+  // Hvor museknappen gik ned. Ikke hvor dragstart siger, den gik ned:
+  // dragstart afgives paa det element, der baerer draggable -- altsaa blokken
+  // selv -- saa e.target dér er den samme uanset, hvad man tog fat i. Musen
+  // ved det, og mousedown kommer foerst.
+  const fraHaandtag = useRef(false)
+
+  function onMouseDownBlok(e) {
+    fraHaandtag.current = !!e.target.closest?.('[data-drag-handle]')
+  }
+
+  function onDragStart(e, i) {
+    if (!fraHaandtag.current) { e.preventDefault(); return }
+    setDragIdx(i); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', i)
+  }
   function onDragOver(e, i)  { e.preventDefault(); if (i !== dragIdx) setDropIdx(i) }
   function onDrop(e, i) {
     e.preventDefault()
@@ -846,7 +869,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     }
     setDragIdx(null); setDropIdx(null)
   }
-  function onDragEnd() { setDragIdx(null); setDropIdx(null) }
+  function onDragEnd() { setDragIdx(null); setDropIdx(null); fraHaandtag.current = false }
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -975,6 +998,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
             <React.Fragment key={block.id}>
               <div
                 draggable
+                onMouseDown={onMouseDownBlok}
                 onDragStart={e => onDragStart(e, index)}
                 onDragOver={e  => onDragOver(e, index)}
                 onDrop={e      => onDrop(e, index)}
@@ -989,10 +1013,14 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
               >
                 {/* Floating controls — drag handle always, others when selected */}
                 <div style={s.floatControls}>
+                  {/* Det eneste sted, blokken kan trækkes i. Derfor er den
+                      tydeligere end før — et håndtag, der er det eneste, der
+                      virker, må ikke være det svageste på siden. */}
                   <span
+                    data-drag-handle
                     style={s.dragHandle}
                     onPointerDown={e => e.stopPropagation()}
-                    title="Træk for at flytte"
+                    title="Træk for at flytte blokken"
                   >⠿</span>
                   {isSelected && (
                     <span style={s.floatBtns} onClick={e => e.stopPropagation()}>
@@ -1178,8 +1206,8 @@ const s = {
     zIndex:     10,
   },
   dragHandle: {
-    color: '#ccc', cursor: 'grab', fontSize: 13,
-    padding: '2px 3px', userSelect: 'none', lineHeight: 1,
+    color: '#9A9AA0', cursor: 'grab', fontSize: 14,
+    padding: '2px 4px', userSelect: 'none', lineHeight: 1,
   },
   floatBtns: {
     display: 'flex', gap: 2,
