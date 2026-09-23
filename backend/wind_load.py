@@ -37,9 +37,19 @@ def wind_load(
     c_pe_leeward:      float = -0.5,        # external pressure coeff leeward wall
     c_pi:              float = 0.2,         # internal pressure coeff (positive)
     rho_air:           float = 1.25,        # air density [kg/m³]
+    # ── Saddeltag, EN 1991-1-4 tabel 7.4a ─────────────────────────
+    # Aflaest af den projekterende. Er de tomme, regnes der som foer: kun
+    # vaeggenes to formfaktorer og ingen tagzoner.
+    #
+    # Der er ingen standardvaerdier. En formfaktor, programmet fandt paa,
+    # staar i rapporten som om nogen havde slaaet den op -- og det er den
+    # vaerste slags fejl her, for den ser fuldstaendig normal ud.
+    tagzoner:          dict | None = None,  # {'G':..,'H':..,'I':..,'J':..}
+    alpha_deg:         float = 0.0,         # taghaeldning, kun til teksten
+    rammeafstand_m:    float | None = None,
 ):
     """
-    Returns a list of calc_core blocks for the wind load check.
+    Returnerer (blocks, eksport).
     """
     chk = CheckContext()
     blocks = []
@@ -140,4 +150,58 @@ def wind_load(
                  f"{w_net_total:.3f} kN/m²"),
     ]
 
-    return blocks
+    # ── Saddeltagets zoner ───────────────────────────────────────────────
+    #
+    # Vinden regnes foer modellen og staar i dokumentet, uanset om der er en
+    # FEM-model. Det her er beregningens resultat: et tryk pr. flade. Hvor det
+    # skal saettes hen, afgoeres i modellen.
+    eksport = {'q_p_kNm2': round(q_p, 4),
+               'label': label,
+               'h_m': h_m, 'b_m': b_m, 'd_m': d_m}
+
+    if tagzoner:
+        import vind_ramme as vr
+
+        c_pe_alle = dict(tagzoner)
+        c_pe_alle.setdefault('D', c_pe_windward)
+        c_pe_alle.setdefault('E', c_pe_leeward)
+
+        e = vr.zonebredde_e(h_m, b_m)
+        raekker = vr.zonetryk(q_p, c_pe_alle, rammeafstand_m=rammeafstand_m)
+
+        blocks.append(S("Saddeltag \u2014 zoner  (EN 1991-1-4 \u00a77.2.5)"))
+        blocks.append(T(
+            f"Taghaeldning \u03b1 = {alpha_deg:.0f}\u00b0. "
+            f"e = min(b, 2h) = min({b_m:.1f}; {2 * h_m:.1f}) = {e:.2f} m, "
+            f"saa kantzonen er e/10 = {e / 10:.2f} m \u2014 maalt vandret "
+            "fra tagfoden paa luvsiden og fra kippen paa laesiden.\n\n"
+            "Formfaktorerne er aflaest i EN 1991-1-4 tabel 7.1 (vaegge) og "
+            "7.4a (tag). Begge indvendige tryk er regnet: c_pi = +0,2 og "
+            "\u22120,3 (\u00a77.2.9(6)), og begge skal eftervises \u2014 "
+            "hvilket der er vaerst kan ikke afgoeres paa forhaand."))
+
+        hoved = ["Zone", "Flade", "c_pe", "c_pi", "w  [kN/m\u00b2]"]
+        if rammeafstand_m is not None:
+            hoved.append(f"w \u00b7 {rammeafstand_m:.1f} m  [kN/m]")
+        flader = {'D': 'V\u00e6g, luv', 'E': 'V\u00e6g, l\u00e6',
+                  'G': 'Tag, luv \u2014 kantzone', 'H': 'Tag, luv',
+                  'I': 'Tag, l\u00e6', 'J': 'Tag, l\u00e6 \u2014 ved kippen'}
+        rows = []
+        for r in raekker:
+            raekke = [r['zone'], flader.get(r['zone'], ''),
+                      f"{r['c_pe']:+.2f}", f"{r['c_pi']:+.2f}",
+                      f"{r['w_kNm2']:+.3f}"]
+            if rammeafstand_m is not None:
+                raekke.append(f"{r['w_kNm']:+.3f}")
+            rows.append(raekke)
+        blocks.append(TBL(hoved, rows))
+        blocks.append(T(
+            "Positiv w er tryk ind mod fladen, negativ er sug. Zone F og "
+            "A/B/C hoerer til gavlene og til vaegge parallelt med vinden; en "
+            "indvendig ramme baerer dem ikke."))
+
+        eksport['zoner'] = raekker
+        eksport['e_m'] = round(e, 4)
+        eksport['kantzone_m'] = round(e / 10.0, 4)
+
+    return blocks, eksport

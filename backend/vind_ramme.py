@@ -174,198 +174,45 @@ def tagzoner_langs_spaer(h_m: float, b_m: float, spaerlaengde_m: float,
 _KRAEVEDE_ZONER = ('D', 'E', 'G', 'H', 'I', 'J')
 
 
-def vindlaster_paa_ramme(q_p_kNm2: float, h_m: float, b_m: float,
-                         spaer_luv_m: float, spaer_lae_m: float,
-                         rammeafstand_m: float, elementer: dict,
-                         c_pe: dict, c_pi: float = 0.2) -> list:
+def zonetryk(q_p_kNm2: float, c_pe: dict, cpi_saet=CPI_SAET,
+             rammeafstand_m: float | None = None) -> list:
     """
-    Linjelasterne paa rammens staenger for ÉN vindretning og ÉT c_pi.
+    Vindtrykket pr. zone. Resultatet af vindberegningen -- ikke laster.
 
-    c_pe      {'D':.., 'E':.., 'G':.., 'H':.., 'I':.., 'J':..} -- de vaerdier,
-              den projekterende har aflaest i EN 1991-1-4 tabel 7.1 og 7.4a.
-              Der er ingen standardvaerdier. En formfaktor, programmet fandt
-              paa, staar i rapporten som om nogen havde slaaet den op.
-    elementer {'vaeg_luv': id, 'spaer_luv': id, 'spaer_lae': id,
-               'vaeg_lae': id}
+    Vinden regnes foer modellen og staar i dokumentet, uanset om der er en
+    FEM-model. Det her er hvad den beregning giver: et tryk pr. flade.
 
-    Returnerer laster i blokkens eget format, med 'direction' = 'perpendicular'
-    -- vindtryk virker vinkelret paa fladen, og det gaelder ogsaa et spaer.
+        w = (c_pe - c_pi) * q_p          [kN/m2]
 
-    Fortegnet: w er positiv som TRYK ind mod fladen. En negativ w er sug.
+    Hvor det saa skal saettes hen -- hvilket element, fra hvor til hvor --
+    hoerer til modellen og afgoeres dér. Zonegeometrien ligger i
+    tagzoner_langs_spaer(); den fortaeller hvor graensen falder, naar man
+    paasaetter.
+
+    rammeafstand_m er valgfri. Er den givet, kommer w_kNm med: trykket ganget
+    med lastbredden, altsaa det tal, der faktisk paasaettes en ramme. Det
+    hoerer med i lastgrundlaget, for det er dér, en kontrollant leder efter
+    det.
+
+    Returnerer én raekke pr. (zone, c_pi):
+        {zone, c_pe, c_pi, w_kNm2 [, w_kNm]}
     """
     mangler = [z for z in _KRAEVEDE_ZONER if z not in (c_pe or {})]
     if mangler:
         # Ikke nul for en manglende zone. Nul er en gyldig formfaktor, og en
-        # flade, der stilfaerdigt fik nul, ville se ubelastet ud i en figur
-        # uden at nogen havde besluttet det.
+        # flade, der stilfaerdigt fik nul, ville se ubelastet ud uden at nogen
+        # havde besluttet det.
         raise ValueError(
             'c_pe mangler for zone ' + ', '.join(mangler)
             + '. Aflaes dem i EN 1991-1-4 tabel 7.1 (vaegge) og 7.4a (tag).')
 
-    vaeg = {'D': float(c_pe['D']), 'E': float(c_pe['E'])}
-    tag = {z: float(c_pe[z]) for z in ('G', 'H', 'I', 'J')}
-    s = float(rammeafstand_m)
-
-    def w(c_pe):
-        # w = (c_pe - c_pi) * q_p, ganget med rammeafstanden -> kN/m
-        return round((c_pe - c_pi) * float(q_p_kNm2) * s, 4)
-
     ud = []
-
-    def _tilfoej(elem_id, vaerdi, zone, x1=None, x2=None):
-        last = {'type': 'udl', 'elem_id': int(elem_id),
-                'direction': 'perpendicular', 'value_kNm': vaerdi,
-                'zone': zone}
-        if x1 is not None:
-            last['x1'], last['x2'] = round(x1, 4), round(x2, 4)
-        ud.append(last)
-
-    _tilfoej(elementer['vaeg_luv'], w(vaeg['D']), 'D')
-    _tilfoej(elementer['vaeg_lae'], w(vaeg['E']), 'E')
-
-    for zone, x1, x2 in tagzoner_langs_spaer(h_m, b_m, spaer_luv_m, 'luv'):
-        _tilfoej(elementer['spaer_luv'], w(tag[zone]), zone, x1, x2)
-    for zone, x1, x2 in tagzoner_langs_spaer(h_m, b_m, spaer_lae_m, 'lae'):
-        _tilfoej(elementer['spaer_lae'], w(tag[zone]), zone, x1, x2)
-
+    for cpi in cpi_saet:
+        for zone in _KRAEVEDE_ZONER:
+            w = (float(c_pe[zone]) - float(cpi)) * float(q_p_kNm2)
+            raekke = {'zone': zone, 'c_pe': round(float(c_pe[zone]), 3),
+                      'c_pi': round(float(cpi), 3), 'w_kNm2': round(w, 4)}
+            if rammeafstand_m is not None:
+                raekke['w_kNm'] = round(w * float(rammeafstand_m), 4)
+            ud.append(raekke)
     return ud
-
-
-def lasttilfaelde_vind(**kwargs) -> list:
-    """
-    De fire vindlasttilfaelde, en saddeltagsramme skal eftervises for.
-
-    To retninger gange to indvendige tryk. De fire udelukker hinanden
-    indbyrdes -- de ligger i gruppen 'vind' -- saa de kommer aldrig to ad
-    gangen i den samme kombination.
-
-    Hvorfor fire og ikke to: c_pi er +0,2 ELLER -0,3, og hvilken der er
-    vaerst kan ikke afgoeres paa forhaand. Et indvendigt overtryk loefter
-    taget sammen med suget; et undertryk trykker det ned og modvirker.
-    Paa et let tag afgoer det forankringen.
-    """
-    fra_retning = kwargs.pop('retninger', ('venstre', 'hoejre'))
-    cpi_saet = kwargs.pop('cpi_saet', CPI_SAET)
-
-    tilfaelde = []
-    nr = int(kwargs.pop('foerste_nr', 1))
-    for retning in fra_retning:
-        for cpi in cpi_saet:
-            elementer = dict(kwargs['elementer'])
-            if retning == 'hoejre':
-                # Spejlvendingen er kun et bytte af, hvilken side der er luv.
-                elementer = {
-                    'vaeg_luv': elementer['vaeg_lae'],
-                    'vaeg_lae': elementer['vaeg_luv'],
-                    'spaer_luv': elementer['spaer_lae'],
-                    'spaer_lae': elementer['spaer_luv'],
-                }
-            argumenter = dict(kwargs, elementer=elementer, c_pi=cpi)
-            argumenter.pop('foerste_nr', None)
-            laster = vindlaster_paa_ramme(**argumenter)
-            navn = (f"Vind fra {retning}, "
-                    f"c_pi = {cpi:+.1f}".replace('.', ','))
-            tilfaelde.append({
-                'nr': nr,
-                'navn': navn,
-                'kategori': 'wind',
-                'gruppe': 'vind',
-                'laster': [dict(l, lc=nr) for l in laster],
-            })
-            nr += 1
-    return tilfaelde
-
-
-# ── Rammens egen geometri ───────────────────────────────────────────────────
-
-def roller_fra_model(nodes, elements) -> dict:
-    """
-    Hvilken stang er luvvaeg, luvspaer, laespaer og laevaeg -- laest af modellen.
-
-    Der er to grunde til ikke at spoerge om elementnumrene.
-
-    Den ene er, at de allerede staar der: en lodret stang i venstre side ER
-    luvvaeggen, naar vinden kommer fra venstre. Den anden er dyrere: Frame
-    Load Cases spurgte om elementnumre i en blok, der ikke viste modellen, og
-    de blev tastet i blinde og blev staaende, naar FEM'en omnummererede. Den
-    blok er ude af paletten af netop den grund.
-
-    Returnerer ogsaa de maal, vindzonerne skal bruge:
-
-        h_m        kippens hoejde over terraen
-        d_m        rammens spaendvidde -- bygningens dybde PAA LANGS AF VINDEN,
-                   naar den staar vinkelret paa kippen
-        spaer_*_m  de to spaers laengder
-
-    Bygningens bredde b (paa tvaers af vinden, altsaa laengden langs kippen)
-    kan ikke laeses af en 2D-ramme. Den er den ENE maal, brugeren skal give --
-    sammen med rammeafstanden.
-    """
-    knuder = {n['id']: n for n in nodes}
-    mangler = [e.get('id') for e in elements
-               if e.get('ni') not in knuder or e.get('nj') not in knuder]
-    if mangler:
-        raise ValueError(
-            'element %s peger paa en knude, der ikke findes'
-            % ', '.join(str(m) for m in mangler))
-
-    xs = [n['x'] for n in knuder.values()]
-    ys = [n['y'] for n in knuder.values()]
-    if not xs:
-        raise ValueError('modellen har ingen knuder')
-    midte = (min(xs) + max(xs)) / 2.0
-
-    vaegge, spaer = [], []
-    for e in elements:
-        i, j = knuder[e['ni']], knuder[e['nj']]
-        dx, dy = j['x'] - i['x'], j['y'] - i['y']
-        L = (dx * dx + dy * dy) ** 0.5
-        if L <= 1e-9:
-            continue
-        # Lodret nok til at vaere en vaeg: haelder mindre end 45 grader fra
-        # lodret. Et spaer paa 45 grader eller mere er sjaeldent, og er det
-        # der, skal det siges i haanden -- ikke gaettes forkert i stilhed.
-        (vaegge if abs(dy) > abs(dx) else spaer).append(
-            {'id': e['id'], 'x': (i['x'] + j['x']) / 2.0, 'L': L,
-             'y_top': max(i['y'], j['y'])})
-
-    if len(vaegge) != 2 or len(spaer) != 2:
-        raise ValueError(
-            'kan ikke laese en saddeltagsramme: fandt %d lodrette og %d '
-            'skraa staenger, forventede 2 og 2. Er det en anden form, skal '
-            'lasterne paasaettes i haanden.' % (len(vaegge), len(spaer)))
-
-    vaegge.sort(key=lambda s: s['x'])
-    spaer.sort(key=lambda s: s['x'])
-
-    return {
-        'venstre': {'vaeg': vaegge[0]['id'], 'spaer': spaer[0]['id'],
-                    'spaer_L': spaer[0]['L']},
-        'hoejre':  {'vaeg': vaegge[1]['id'], 'spaer': spaer[1]['id'],
-                    'spaer_L': spaer[1]['L']},
-        'h_m': max(ys) - min(ys),
-        'd_m': max(xs) - min(xs),
-    }
-
-
-def lasttilfaelde_fra_model(nodes, elements, q_p_kNm2, b_m, rammeafstand_m,
-                            c_pe, foerste_nr=1, cpi_saet=CPI_SAET) -> list:
-    """
-    De fire vindlasttilfaelde, laest af modellen plus de to maal, den ikke har.
-
-    Brugeren giver: q_p, bygningens laengde langs kippen (b), rammeafstanden
-    og de seks aflaeste c_pe. Alt andet staar i modellen.
-    """
-    r = roller_fra_model(nodes, elements)
-    elementer = {
-        'vaeg_luv':  r['venstre']['vaeg'],
-        'spaer_luv': r['venstre']['spaer'],
-        'spaer_lae': r['hoejre']['spaer'],
-        'vaeg_lae':  r['hoejre']['vaeg'],
-    }
-    return lasttilfaelde_vind(
-        q_p_kNm2=q_p_kNm2, h_m=r['h_m'], b_m=b_m,
-        spaer_luv_m=r['venstre']['spaer_L'],
-        spaer_lae_m=r['hoejre']['spaer_L'],
-        rammeafstand_m=rammeafstand_m, elementer=elementer, c_pe=c_pe,
-        foerste_nr=foerste_nr, cpi_saet=cpi_saet)

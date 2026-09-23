@@ -3521,6 +3521,11 @@ class WindLoadInput(BaseModel):
     c_pe_leeward:      float = -0.5
     c_pi:              float = 0.2
     rho_air:           float = 1.25
+    # Saddeltagets formfaktorer, aflaest af den projekterende i tabel 7.4a.
+    # Tomme: saa regnes der som foer, uden tagzoner.
+    tagzoner:          dict | None = None
+    alpha_deg:         float = 0.0
+    rammeafstand_m:    float | None = None
 
 
 @protected.post("/calc/wind-load", tags=["Calculations"])
@@ -3529,7 +3534,7 @@ def calc_wind_load(data: WindLoadInput):
     try:
         from wind_load import wind_load
 
-        blocks = wind_load(
+        blocks, eksport = wind_load(
             label            = data.label,
             terrain_category = data.terrain_category,
             v_b0_ms          = data.v_b0_ms,
@@ -3543,8 +3548,14 @@ def calc_wind_load(data: WindLoadInput):
             c_pe_leeward     = data.c_pe_leeward,
             c_pi             = data.c_pi,
             rho_air          = data.rho_air,
+            tagzoner         = data.tagzoner,
+            alpha_deg        = data.alpha_deg,
+            rammeafstand_m   = data.rammeafstand_m,
         )
-        return blocks
+        # Samme moenster som lastkombinationerne: eksporten rejser med som en
+        # usynlig blok, saa en anden blok kan hente zonetrykket i stedet for
+        # at faa det tastet af igen.
+        return [{'type': '_exports', 'exports': eksport}] + blocks
 
     except HTTPException:
         raise
