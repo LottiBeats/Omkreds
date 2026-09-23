@@ -993,7 +993,135 @@ def _doclist_table(project: dict) -> dict:
     }
 
 
-def _expand_generated_blocks(blocks: list, project: dict) -> list:
+def _forside_blokke(project: dict, doc_id: str = "") -> list:
+    """
+    Forsidens fire tabeller: sagen, certificeringen, revisionerne og
+    dokumentstrukturen.
+
+    Alt laeses af projektet. Det er hele pointen -- de samme oplysninger stod
+    foer i loebende tekst i hvert dokument, tastet hver gang, og saa kunne et
+    projekt staa med CC2 paa forsiden af A1 og CC3 paa forsiden af B1. Én
+    kilde, fire tabeller.
+
+    Revisionstabellen er dokumentets EGEN udstedelseshistorik, ikke en tom
+    raekke at skrive i. En revisionsliste, der vedligeholdes i haanden, er
+    forkert i samme oejeblik der udstedes noget.
+    """
+    meta = project.get("metadata") or {}
+    documents = project.get("documents") or {}
+
+    def _v(*noegler):
+        """Foerste udfyldte af flere navne -- og en tydelig tom celle."""
+        for k in noegler:
+            v = (meta.get(k) or "").strip() if isinstance(meta.get(k), str)                 else meta.get(k)
+            if v:
+                return v
+        return "—"
+
+    ud = []
+
+    # ── Sagsoplysninger ──────────────────────────────────────────────────
+    ud.append({"type": "table", "data": {
+        "caption": "Sagsoplysninger",
+        "has_header": False,
+        "col_widths": [26, 74],
+        "rows": [
+            ["Sag:",       _v("project_name")],
+            ["Emne:",      _v("emne", "subject")],
+            ["Adresse:",   _v("address")],
+            ["Matrikel:",  _v("matrikel", "cadastre")],
+            ["Sags. nr.:", _v("project_ref")],
+            ["Fase:",      _v("fase", "phase")],
+        ]}})
+
+    # ── Certificeringsoplysninger ────────────────────────────────────────
+    #
+    # Konstruktions- og konsekvensklasse staar her, fordi de bestemmer hvem
+    # der maa skrive under. De er de samme tal, som A1 indplacerer efter, og
+    # de maa ikke kunne tastes forskelligt i to dokumenter.
+    certificeret = _v("certificeret", "certified_statiker")
+    kk = _v("konstruktionsklasse", "kk")
+    if certificeret != "—" and kk != "—" and kk not in str(certificeret):
+        certificeret = f"{certificeret}, Certificeret statiker {kk}"
+    ud.append({"type": "table", "data": {
+        "caption": "Certificeringsoplysninger",
+        "has_header": False,
+        "col_widths": [26, 74],
+        "rows": [
+            ["Certificeret:",         certificeret],
+            ["Konstruktionsklasse:",  kk],
+            ["Konsekvensklasse:",     _v("konsekvensklasse", "consequence_class", "cc")],
+            ["Dato starterklæring:",  _v("dato_starterklaering", "start_declaration_date")],
+        ]}})
+
+    # ── Revisioner ───────────────────────────────────────────────────────
+    doc = documents.get(doc_id) or {}
+    revisioner = list(doc.get("revisions") or [])
+    raekker = [["Rev. nr.", "Dato", "Revision"]]
+    for r in revisioner:
+        raekker.append([str(r.get("rev", "")), str(r.get("date", "")),
+                        str(r.get("desc") or r.get("note") or "")])
+    if not revisioner:
+        # Ikke en tom tabel uden forklaring: der staar hvorfor den er tom.
+        raekker.append(["—", "—", "Dokumentet er ikke udstedt endnu"])
+    ud.append({"type": "table", "data": {
+        "caption": "Revisioner",
+        "has_header": True,
+        "col_widths": [12, 20, 68],
+        "rows": raekker,
+    }})
+
+    # ── Den statiske dokumentation ───────────────────────────────────────
+    #
+    # Hvilke dokumenter sagen bestaar af, og hvilket af dem man sidder med.
+    # Uden den markering er listen den samme paa forsiden af alle otte, og saa
+    # siger den ingenting om DET dokument, den staar i.
+    dok_raekker = [["", "Dokument", "Status"]]
+    for d_id, standardtitel in DOC_TITLES.items():
+        d = documents.get(d_id) or {}
+        titel = d.get("title") or standardtitel
+        revs = d.get("revisions") or []
+        har = bool(d.get("blocks")) or any(
+            sd.get("blocks") for sd in (d.get("subdocs") or []))
+        if revs:
+            status = f"Rev. {revs[-1].get('rev', '')} · {revs[-1].get('date', '')}"
+        elif har:
+            status = "Under udarbejdelse"
+        else:
+            status = "Indgår ikke"
+        dok_raekker.append([
+            "▶" if d_id == doc_id else "",
+            f"{d_id} {titel}",
+            status,
+        ])
+    ud.append({"type": "table", "data": {
+        "caption": "Den statiske dokumentation (BR18 §§ 494-505)",
+        "has_header": True,
+        "col_widths": [6, 60, 34],
+        "rows": dok_raekker,
+    }})
+
+    # ── Underskrifter ────────────────────────────────────────────────────
+    dato = _v("date")
+    ud.append({"type": "table", "data": {
+        "caption": "Underskrifter",
+        "has_header": True,
+        "col_widths": [33, 33, 34],
+        "rows": [
+            ["Udarbejdet", "Kontrolleret", "Godkendt"],
+            [f"Dato: {dato}", f"Dato: {dato}", f"Dato: {dato}"],
+            ["", "", ""],
+            [_v("engineer"), _v("checker"), _v("approver")],
+            [_v("engineer_title", "firm_name"),
+             _v("checker_title", "firm_name"),
+             _v("approver_title", "firm_name")],
+        ]}})
+
+    return ud
+
+
+def _expand_generated_blocks(blocks: list, project: dict,
+                             doc_id: str = "") -> list:
     """
     Replace blocks that are generated from the project rather than authored.
 
@@ -1004,6 +1132,11 @@ def _expand_generated_blocks(blocks: list, project: dict) -> list:
     for block in blocks:
         if block.get("type") == "doclist":
             out.append(_doclist_table(project))
+        elif block.get("type") == "projektforside":
+            # Den staar automatisk i hvert dokument (se build_pdf). Ligger den
+            # ogsaa som en blok i et dokument fra da den var det, udelades den
+            # her -- ellers ville den staa to gange.
+            continue
         else:
             out.append(block)
     return out
@@ -1165,14 +1298,27 @@ def build_pdf(project: dict, blocks: list, doc_id: str = "") -> bytes:
 
     # Expand project-generated blocks (document list) before anything else, so
     # they are numbered and rendered like any other content.
-    expanded_blocks = _expand_generated_blocks(blocks, project)
+    expanded_blocks = _expand_generated_blocks(blocks, project, doc_id)
 
     # Pre-number headings so the TOC and body both show "1.", "1.1." etc.
     numbered_blocks = _number_headings(expanded_blocks)
 
     try:
-        # Build the full list of calc_core blocks
-        all_blocks = COVER(flat_project) + TOC()
+        # Forside, sagsoplysninger, indholdsfortegnelse, indhold.
+        #
+        # Sagsoplysningerne, certificeringen, revisionerne, dokumentlisten og
+        # underskrifterne staar i HVERT dokument, lige efter forsiden. DS 1140
+        # kraever dem, og den, der laeser et enkelt afsnit, skal kunne se hvad
+        # det hoerer til uden at have resten af sagen liggende.
+        #
+        # De staar der af sig selv og ikke som en blok, man tilfoejer. En blok
+        # kan glemmes, og saa er det dokumentet uden oplysningerne, der bliver
+        # udstedt -- og manglen ses ikke paa noget af det, der ER med.
+        forside = _forside_blokke(project, doc_id)
+        all_blocks = COVER(flat_project)
+        for b in forside:
+            all_blocks.extend(_convert_block(b, tmp_files))
+        all_blocks += PAGEBREAK() + TOC()
 
         for block in numbered_blocks:
             try:
