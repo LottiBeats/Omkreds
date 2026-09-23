@@ -2016,10 +2016,6 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
           Dokumenter, der allerede staar i den tilstand, koerer uaendret --
           gengivelsen nedenfor er der stadig -- men der staar hvad de er. */}
-      <div style={s.rowHeader}>
-        <SectionLabel text="Laster" />
-      </div>
-
       {loadMode === 'load_cases' && (
         <div style={{ background: '#fff7ed', border: '1px solid #fed7aa',
                       color: '#c2410c', fontSize: 11.5, padding: '8px 12px',
@@ -2035,7 +2031,41 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         </div>
       )}
 
-      {/* Simple loads list */}
+      {/* Lasttilfældene. Står OVER lasterne, fordi det er rækkefølgen:
+          opret tilfældene, læg lasterne i dem, se kombinationerne, kør.
+          Det er arbejdsgangen fra RFEM og FEM-Design. */}
+      {loadMode === 'simple' && (<>
+        <div style={s.rowHeader}>
+          <SectionLabel text="Lasttilfælde" />
+          <button style={{ ...s.addBtn, marginLeft: 'auto' }}
+            onClick={tilfoejTilfaelde}>+ Lasttilfælde</button>
+        </div>
+        {tilfaelde.length === 0 && (
+          <div style={{ fontSize: 11, color: '#6E6E73', margin: '0 0 8px' }}>
+            Uden lasttilfælde køres der én beregning med lasterne, som de står.
+            Opret dem for at få EN 1990-kombinationer.
+          </div>
+        )}
+        {tilfaelde.map((t, i) => (
+          <LasttilfaeldeRow key={t.nr} t={t}
+            onChange={v => opdaterTilfaelde(i, v)}
+            onRemove={() => fjernTilfaelde(i)} />
+        ))}
+        <div style={{ ...s.rowHeader, marginTop: 14 }}>
+          <SectionLabel text="Laster" />
+          <button style={{ ...s.addBtn, marginLeft: 'auto' }}
+            onClick={() => addLoad('nodal')}>+ Punktlast</button>
+          <button style={s.addBtn} onClick={() => addLoad('udl')}>+ Linjelast</button>
+        </div>
+        {loads.map((ld, i) => (
+          <LoadRow key={i} load={ld} comboBlocks={comboBlocks} tilfaelde={tilfaelde}
+            onChange={v => updateLoad(i, v)} onRemove={() => removeLoad(i)} />
+        ))}
+      </>)}
+
+      {/* Partialkoefficienterne hoerer til kombinationerne, ikke til
+          lasterne -- derfor staar de her, lige over tabellen de styrer, og
+          ikke oppe ved lastraekkerne hvor de ingenting afgoer. */}
       {/* Konsekvensklassen afgør K_FI (0,9 / 1,0 / 1,1) og dermed hver
           eneste partialkoefficient. Den vises kun, når der faktisk
           kombineres — men så SKAL den vises: en klasse, blokken antog i
@@ -2081,36 +2111,6 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           </label>
         </div>
       )}
-
-      {/* Lasttilfældene. Står OVER lasterne, fordi det er rækkefølgen:
-          opret tilfældene, læg lasterne i dem, se kombinationerne, kør.
-          Det er arbejdsgangen fra RFEM og FEM-Design. */}
-      {loadMode === 'simple' && (<>
-        <div style={s.rowHeader}>
-          <SectionLabel text="Lasttilfælde" />
-          <button style={{ ...s.addBtn, marginLeft: 'auto' }}
-            onClick={tilfoejTilfaelde}>+ Lasttilfælde</button>
-        </div>
-        {tilfaelde.length === 0 && (
-          <div style={{ fontSize: 11, color: '#6E6E73', margin: '0 0 8px' }}>
-            Uden lasttilfælde køres der én beregning med lasterne, som de står.
-            Opret dem for at få EN 1990-kombinationer.
-          </div>
-        )}
-        {tilfaelde.map((t, i) => (
-          <LasttilfaeldeRow key={t.nr} t={t}
-            onChange={v => opdaterTilfaelde(i, v)}
-            onRemove={() => fjernTilfaelde(i)} />
-        ))}
-        <div style={s.rowHeader}>
-          <button style={s.addBtn} onClick={() => addLoad('nodal')}>+ Punktlast</button>
-          <button style={s.addBtn} onClick={() => addLoad('udl')}>+ Linjelast</button>
-        </div>
-        {loads.map((ld, i) => (
-          <LoadRow key={i} load={ld} comboBlocks={comboBlocks} tilfaelde={tilfaelde}
-            onChange={v => updateLoad(i, v)} onRemove={() => removeLoad(i)} />
-        ))}
-      </>)}
 
       {/* Kombinationstabellen — hvad der faktisk bliver regnet.
           Den står her, under lasterne og over knappen, fordi det er
