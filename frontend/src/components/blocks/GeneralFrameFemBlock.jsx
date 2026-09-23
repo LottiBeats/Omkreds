@@ -898,6 +898,16 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
     setOverlayEgen(null)
   }, [figs])
 
+  // Vælges en kombination, der ikke blev tegnet ved kørslen, hentes dens
+  // figurer nu. Snitkræfterne ligger allerede i 'state', så det er en
+  // gentegning og ikke en ny beregning — tallene kan ikke ændre sig.
+  useEffect(() => {
+    if (comboIdx === null || comboIdx === 'overlay') return
+    const cf = (summary?.combo_figs ?? [])[comboIdx]
+    if (!cf || (cf.figs && cf.figs.length) || scaledFigs[comboIdx] !== undefined) return
+    redraw(scale, cf.state, comboIdx, true)
+  }, [comboIdx, summary])
+
   /** Tegn overlayet med netop de kombinationer, der er slaaet til. */
   async function tegnOverlay(navne, skala) {
     if (!nodes?.length) return
@@ -931,9 +941,14 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
     }
   }
 
-  async function redraw(value, state, key) {
+  async function redraw(value, state, key, tving = false) {
     if (!state || !nodes?.length) return
-    if (value === 1) { setScaledFigs(f => ({ ...f, [key]: null })); return }
+    // Ved standardskala er serverens egne figurer de rigtige, og der er ingen
+    // grund til at hente dem igen — MEDMINDRE der ikke er nogen. Der tegnes
+    // kun én kombination ved kørslen (den dimensionsgivende), fordi de fire
+    // matplotlib-figurer koster 516 ms pr. kombination mod 1 ms for selve
+    // beregningen. De øvrige hentes her, når nogen faktisk vil se dem.
+    if (value === 1 && !tving) { setScaledFigs(f => ({ ...f, [key]: null })); return }
     setRedrawing(true)
     try {
       const res = await redrawGeneralFrameFemDiagrams({

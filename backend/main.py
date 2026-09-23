@@ -3136,12 +3136,25 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         # ── Combination mode ──────────────────────────────────────────────────
         if combos:
             scale = max(0.2, min(float(data.diagram_scale or 1.0), 4.0))
+            # Der tegnes IKKE en figur pr. kombination.
+            #
+            # Selve beregningen er 1 ms pr. kombination; de fire matplotlib-
+            # figurer er 516. Med ni kombinationer er 99,8 % af ventetiden
+            # tegning af billeder, ingen har bedt om endnu -- og da de
+            # gunstige tvillinger kom til, fordobledes antallet, saa en
+            # koersel gik fra under tre sekunder til over otte.
+            #
+            # Snitkraefterne foelger med for dem alle ('state'), og de fylder
+            # ingenting. Vil man se en bestemt kombination, tegnes den paa
+            # forlangende af det samme endepunkt, som ordinatskalaen allerede
+            # bruger. Kun den dimensionsgivende tegnes her, for den skal med i
+            # rapporten.
             envelope, timber_envelope, all_results, indhyldninger = solve_combinations(
                 nodes, elements, supports, combos, equal_dofs,
-                make_figs=True, ref_size=ref_size, diagram_scale=scale,
+                make_figs=False, ref_size=ref_size, diagram_scale=scale,
             )
 
-            combo_figs = [{'name': r['name'], 'figs': r.get('figs', []),
+            combo_figs = [{'name': r['name'], 'figs': [],
                            'state': _diagram_state(r)}
                           for r in all_results]
 
@@ -3164,8 +3177,17 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                                   default={}).get('M_combo', combos[0]['name'])
             best_res = next((r for r in all_results if r['name'] == best_combo_name),
                              all_results[0])
-            best_figs = next((c['figs'] for c in combo_figs if c['name'] == best_combo_name),
-                              combo_figs[0]['figs'])
+            # Den dimensionsgivende tegnes -- den ene, rapporten skal bruge.
+            best_figs = make_figures(
+                best_res['name'], nodes, elements, supports, [],
+                best_res['ele_forces'], best_res['node_disps'], ref_size,
+                ele_udl=best_res.get('ele_udl', {}), scale=scale,
+                ele_segs=best_res.get('ele_segs', {}),
+            )
+            for c in combo_figs:
+                if c['name'] == best_combo_name:
+                    c['figs'] = best_figs
+                    break
 
             # Buckling lengths from the governing combination
             buck_lengths = compute_buckling_lengths(nodes, elements, supports,

@@ -308,3 +308,43 @@ def test_uden_lasttilfaelde_er_der_ingen_lastbilleder(client):
         MODEL, title='Portalramme', loads=gamle))
     assert r.status_code == 200, r.text
     assert (r.json()['_summary'].get('lastfigurer') or []) == []
+
+
+# ── 5. Der tegnes ikke mere, end der bliver set på ──────────────────────────
+#
+# Selve beregningen er 1 ms pr. kombination; de fire matplotlib-figurer er
+# 516. Med ni kombinationer var 99,8 % af ventetiden tegning af billeder,
+# ingen havde bedt om — og da de gunstige tvillinger fordoblede antallet, gik
+# en kørsel fra under tre sekunder til over otte.
+
+def test_kun_den_dimensionsgivende_kombination_tegnes(koersel):
+    figurer = koersel['_summary']['combo_figs']
+    med = [c for c in figurer if c['figs']]
+    assert len(med) == 1, \
+        'der tegnes mere end den ene kombination, rapporten skal bruge'
+
+    # Og det er den rigtige: den med det største moment.
+    dimensionsgivende = max(
+        koersel['_summary']['envelope'].values(),
+        key=lambda v: v['M_max_kNm'])['M_combo']
+    assert med[0]['name'] == dimensionsgivende
+
+
+def test_de_oevrige_baerer_deres_snitkraefter(koersel):
+    """Uden dem kunne de ikke tegnes bagefter, og så var det ikke en udskydelse
+    men en udeladelse."""
+    for c in koersel['_summary']['combo_figs']:
+        assert c['state'], f"{c['name']} har ingen snitkræfter at tegne af"
+        assert c['state'].get('ele_forces')
+
+
+def test_tallene_er_de_samme_som_da_alt_blev_tegnet(koersel):
+    """Indhyldningen må ikke afhænge af, hvad der blev tegnet.
+
+    Det er den egentlige risiko ved at holde op med at tegne: at figurerne var
+    det, der udregnede noget. De skal være en gengivelse, ikke et led.
+    """
+    s = koersel['_summary']
+    assert len(s['combinations']) == 9
+    assert s['envelope']['1']['M_max_kNm'] == pytest.approx(20.89, abs=0.05)
+    assert s['envelope']['2']['N_max_kN'] == pytest.approx(25.37, abs=0.05)
