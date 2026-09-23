@@ -22,6 +22,70 @@ import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
 import ModelSketch from './ModelSketch.jsx'
 
+/**
+ * Handlingskategorierne. Kategorien bærer ψ og lastvarigheden — derfor står
+ * de på tilfældet og ikke på den enkelte last.
+ */
+const KATEGORIER = [
+  { value: 'permanent', label: 'G  Permanent', hint: 'Egenlast — med i hver kombination' },
+  { value: 'imposed',   label: 'Q  Nyttelast', hint: 'ψ₀ = 0,7 · middel varighed' },
+  { value: 'snow',      label: 'S  Sne',       hint: 'ψ₀ = 0,3 (0 når vind leder) · kort varighed' },
+  { value: 'wind',      label: 'W  Vind',      hint: 'ψ₀ = 0,3 · øjeblikkelig varighed' },
+]
+
+/**
+ * Én række i lasttilfælde-tabellen.
+ *
+ * Gruppen er RFEM's "load case relation": to tilfælde i samme gruppe
+ * udelukker hinanden og kommer aldrig i den samme kombination. Står den tom,
+ * hører tilfældet til sin kategori — så to vindtilfælde udelukker hinanden af
+ * sig selv, hvilket er det rigtige gæt: to vindretninger lagt sammen er 70 %
+ * for meget sidelast.
+ */
+function LasttilfaeldeRow({ t, onChange, onRemove }) {
+  const erPermanent = t.kategori === 'permanent'
+  return (
+    <div style={{ ...s.listRow, marginTop: 4 }}>
+      <span style={{ ...s.miniLabel, width: 34, paddingBottom: 5 }}>LC{t.nr}</span>
+      <div style={s.fieldWrap}>
+        <label style={s.miniLabel}>Navn</label>
+        <input style={{ ...s.smallInput, width: 168 }}
+          value={t.navn ?? ''}
+          placeholder={`Lasttilfælde ${t.nr}`}
+          onChange={e => onChange({ ...t, navn: e.target.value })} />
+      </div>
+      <div style={s.fieldWrap}>
+        <label style={s.miniLabel}>Kategori</label>
+        <select style={{ ...s.smallInput, width: 132 }}
+          value={t.kategori ?? 'permanent'}
+          title={KATEGORIER.find(k => k.value === t.kategori)?.hint}
+          onChange={e => onChange({ ...t, kategori: e.target.value,
+                                    gruppe: e.target.value === 'permanent'
+                                      ? undefined : t.gruppe })}>
+          {KATEGORIER.map(k => (
+            <option key={k.value} value={k.value}>{k.label}</option>
+          ))}
+        </select>
+      </div>
+      {!erPermanent && (
+        <div style={s.fieldWrap}>
+          <label style={s.miniLabel}>Gruppe</label>
+          <input style={{ ...s.smallInput, width: 110 }}
+            value={t.gruppe ?? ''}
+            placeholder={t.kategori}
+            title="Tilfælde i samme gruppe udelukker hinanden. Tom = kategorien, så to vindtilfælde er alternativer af sig selv."
+            onChange={e => onChange({ ...t, gruppe: e.target.value || undefined })} />
+        </div>
+      )}
+      <span style={{ fontSize: 10.5, color: '#6E6E73', alignSelf: 'flex-end',
+                     paddingBottom: 4 }}>
+        {KATEGORIER.find(k => k.value === t.kategori)?.hint}
+      </span>
+      <button style={{ ...s.removeBtn, marginLeft: 'auto' }} onClick={onRemove}>✕</button>
+    </div>
+  )
+}
+
 // ── Section presets ───────────────────────────────────────────────────────────
 
 // A section is a *reference*, not a set of numbers copied onto the element.
@@ -472,7 +536,7 @@ const VIRKNINGER = [
   { value: 'wind',      label: 'W  Vind',      hint: 'ψ₀ = 0,3' },
 ]
 
-function LoadRow({ load, onChange, onRemove, comboBlocks }) {
+function LoadRow({ load, onChange, onRemove, comboBlocks, tilfaelde = [] }) {
   const lt = load.type ?? 'nodal'
   // Delvis eller varierende last er undtagelsen, ikke reglen. Felterne ligger
   // paa en linje for sig, der kun foldes ud naar de bruges — editoren er
@@ -544,19 +608,49 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
           )}
         </>}
 
-        {/* Virkning og variant. Begge valgfrie.
-            Uden virkning sker der præcis det, der skete før feltet fandtes.
-            Med virkning bliver lasten en del af en EN 1990-kombination — og
-            varianten er det, der udelukker: to laster med samme virkning men
-            forskellig variant kommer aldrig i den samme kombination. Det er
-            sådan vind fra venstre og fra højre holdes fra hinanden, uden at
-            der findes en skjult regel om ordet "vind". */}
-        {lt !== 'combo_udl' && <>
+        {/* Hvilket lasttilfælde lasten hører til.
+            Som i RFEM og FEM-Design: identiteten står ét sted — i tilfældet —
+            og ikke tastet på hver enkelt last. Kategorien på tilfældet bærer
+            ψ og lastvarigheden; navnet er det, der står i rapporten.
+
+            Er der ingen tilfælde oprettet, vises feltet ikke: så kører
+            blokken som en enkelt beregning med lasterne, som de står. */}
+        {lt !== 'combo_udl' && tilfaelde.length > 0 && (
           <div style={s.fieldWrap}>
-            <label style={s.miniLabel}>Virkning</label>
+            <label style={s.miniLabel}>Lasttilfælde</label>
+            <select style={{ ...s.smallInput, width: 150,
+                             ...(load.lc == null
+                                 ? { borderColor: '#e67e22', color: '#e67e22' } : {}) }}
+              value={load.lc == null ? '' : String(load.lc)}
+              title={load.lc == null
+                ? 'Lasten hører ikke til et tilfælde og indgår ikke i nogen kombination'
+                : undefined}
+              onChange={e => onChange({
+                ...load,
+                lc: e.target.value === '' ? undefined : Number(e.target.value),
+                // Den gamle vej kan ikke gælde samtidig. Blev de stående
+                // begge to, ville der være to svar på, hvad lasten er.
+                virkning: undefined, variant: undefined,
+              })}>
+              <option value="">— intet</option>
+              {tilfaelde.map(t => (
+                <option key={t.nr} value={String(t.nr)}>
+                  LC{t.nr} {t.navn}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Den gamle vej: virkning og variant på lasten selv. Vises kun i et
+            dokument, der allerede er lavet sådan — så det bliver ved med at
+            kunne rettes — og forsvinder, når der oprettes lasttilfælde. */}
+        {lt !== 'combo_udl' && tilfaelde.length === 0 && load.virkning && (
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>Virkning (gammel)</label>
             <select style={{ ...s.smallInput, width: 104 }}
               value={load.virkning ?? ''}
-              title={VIRKNINGER.find(v => v.value === (load.virkning ?? ''))?.hint}
+              title="Den gamle vej. Opret lasttilfælde ovenfor for at bruge den nye."
               onChange={e => onChange({ ...load, virkning: e.target.value || undefined,
                                         variant: e.target.value ? load.variant : undefined })}>
               {VIRKNINGER.map(v => (
@@ -564,17 +658,17 @@ function LoadRow({ load, onChange, onRemove, comboBlocks }) {
               ))}
             </select>
           </div>
-          {load.virkning && load.virkning !== 'permanent' && (
-            <div style={s.fieldWrap}>
-              <label style={s.miniLabel}>Variant</label>
-              <input style={{ ...s.smallInput, width: 96 }}
-                value={load.variant ?? ''}
-                placeholder="fx venstre"
-                title="Laster med samme virkning men forskellig variant udelukker hinanden — de kommer aldrig i samme kombination"
-                onChange={e => onChange({ ...load, variant: e.target.value || undefined })} />
-            </div>
-          )}
-        </>}
+        )}
+        {lt !== 'combo_udl' && tilfaelde.length === 0 && load.virkning
+          && load.virkning !== 'permanent' && (
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>Variant</label>
+            <input style={{ ...s.smallInput, width: 96 }}
+              value={load.variant ?? ''}
+              placeholder="fx venstre"
+              onChange={e => onChange({ ...load, variant: e.target.value || undefined })} />
+          </div>
+        )}
 
         {lt === 'combo_udl' && <>
           <NumField label="Elem" val={load.elem_id ?? 1} set={v => onChange({ ...load, elem_id: Math.round(v) })} width={50} />
@@ -1367,7 +1461,46 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   const loadCaseCombos   = selLoadCaseBlock?.data?._exports?.combinations ?? []
   const loadCasesReady   = loadCaseCombos.length > 0
 
-  const loadMode = d.load_mode ?? 'simple'   // 'simple' | 'load_cases'
+  const loadMode = d.load_mode ?? 'simple'   // 'simple' | 'load_cases' (gammel)
+
+  // Modellens lasttilfælde — som i RFEM og FEM-Design.
+  //
+  // De bor i blokken, ved siden af den model de virker på. Tom liste betyder,
+  // at blokken opfører sig præcis som før de fandtes: én beregning med
+  // lasterne, som de står, eller den gamle virkning/variant-vej.
+  const tilfaelde = d.load_cases ?? []
+
+  function saetTilfaelde(liste) { update({ load_cases: liste }) }
+  function opdaterTilfaelde(i, v) {
+    const a = [...tilfaelde]; a[i] = v; saetTilfaelde(a)
+  }
+  function tilfoejTilfaelde() {
+    // Nummeret må ikke genbruges: lasterne peger på det, og et genbrugt
+    // nummer ville flytte en last til et andet tilfælde uden at nogen rørte
+    // lasten.
+    const nr = tilfaelde.reduce((m, t) => Math.max(m, t.nr ?? 0), 0) + 1
+    const kat = tilfaelde.length === 0 ? 'permanent' : 'imposed'
+    saetTilfaelde([...tilfaelde, {
+      nr, navn: kat === 'permanent' ? 'Egenlast' : `Lasttilfælde ${nr}`,
+      kategori: kat,
+    }])
+  }
+  function fjernTilfaelde(i) {
+    const fjernet = tilfaelde[i]
+    // ÉT update-kald. update() spreder ...d fra den gengivelse, funktionen
+    // blev lavet i, så to kald efter hinanden ville lade det andet skrive det
+    // førstes ændring væk — uden en fejl at se.
+    //
+    // Lasterne, der pegede på tilfældet, mister deres tilknytning i stedet
+    // for at pege på noget, der ikke findes. De bliver stående og markeres;
+    // en last, der forsvandt sammen med sit tilfælde, ville være en lydløs
+    // ændring af modellen.
+    update({
+      load_cases: tilfaelde.filter((_, j) => j !== i),
+      loads: (d.loads ?? []).map(l =>
+        l.lc === fjernet?.nr ? { ...l, lc: undefined } : l),
+    })
+  }
 
   const [previewing, setPreviewing] = useState(false)
   // The raw lists start closed once there is a model to hide — they are the
@@ -1468,10 +1601,19 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   // Baerer bare én last en virkning, kombineres der. Det er hele kontakten:
   // ingen tilstand at vaelge, ingen knap at finde -- feltet paa lasten er
   // baade valget og forklaringen.
-  const kombinerer = loads.some(l => l.virkning)
-  const antalVirkninger = new Set(
-    loads.filter(l => l.virkning)
-         .map(l => l.virkning + (l.variant ? '·' + l.variant : ''))).size
+  // Der kombineres, saa snart der er et lasttilfaelde -- eller, i et gammelt
+  // dokument, en last der baerer en virkning.
+  const kombinerer = tilfaelde.length > 0 || loads.some(l => l.virkning)
+  const antalVirkninger = tilfaelde.length > 0
+    ? tilfaelde.length
+    : new Set(loads.filter(l => l.virkning)
+                   .map(l => l.virkning + (l.variant ? '·' + l.variant : ''))).size
+  // Laster uden tilfaelde indgaar ikke i nogen kombination. Det skal siges --
+  // en last, der stilfaerdigt falder ud, giver en for lille eftervisning, og
+  // alle tallene i den ser normale ud.
+  const udenTilfaelde = tilfaelde.length > 0
+    ? loads.filter(l => l.type !== 'combo_udl' && l.lc == null).length
+    : 0
 
   // Kombinationstabellen, FØR der køres.
   //
@@ -1486,9 +1628,11 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   // konsekvensklassen — ikke af hvor store lasterne er. Derfor hentes der
   // ikke en ny tabel, hver gang der tastes et tal.
   const kombiNoegle = JSON.stringify([
-    loads.map(l => [l.virkning ?? '', l.variant ?? '']),
+    loads.map(l => [l.virkning ?? '', l.variant ?? '', l.lc ?? '']),
+    tilfaelde.map(t => [t.nr, t.navn, t.kategori, t.gruppe ?? '']),
     d.consequence_class ?? 'CC2',
     d.method ?? '6.10ab',
+    d.gunstig_egenlast !== false,
   ])
 
   useEffect(() => {
@@ -1498,8 +1642,10 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       try {
         const r = await kombinationerGeneralFrameFem({
           loads,
+          load_cases:        tilfaelde,
           method:            d.method ?? '6.10ab',
           consequence_class: d.consequence_class ?? 'CC2',
+          gunstig_egenlast:  d.gunstig_egenlast !== false,
         })
         if (!afbrudt) { setKombiTabel(r.kombinationer ?? []); setKombiFejl(null) }
       } catch (e) {
@@ -1604,12 +1750,21 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         nodes, elements, supports,
         loads:        resolvedLoads,
         combinations,
+        // Modellens lasttilfælde. Er de der, kombineres der over dem; er de
+        // tomme, falder serveren tilbage på virkning/variant på den enkelte
+        // last, og et gammelt dokument regner præcis som før.
+        load_cases:   tilfaelde,
+        situationer:  d.situationer ?? [],
         equal_dofs:   equalDofs,
         diagram_scale: d.diagram_scale ?? 1,
         consequence_class: d.consequence_class ?? 'CC2',
         // Fravalgte kombinationer sendes med ved navn. De står i dokumentet,
         // så en eftervisning, hvor en kombination er udeladt, siger det selv.
         combo_fravalg: fravalg,
+        // Egenlasten som gunstig. Slået til, hvis feltet aldrig er rørt —
+        // derfor !== false og ikke ?? true: et gammelt dokument uden feltet
+        // skal have de gunstige kombinationer med, ikke undvære dem.
+        gunstig_egenlast: d.gunstig_egenlast !== false,
         service_class: d.service_class ?? 1,
         load_duration: d.load_duration ?? 'medium',
         limit_inst:    d.limit_inst    ?? 400,
@@ -1851,49 +2006,32 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         <SupportRow key={i} sup={sup} onChange={v => updateSup(i, v)} onRemove={() => removeSup(i)} />
       ))}
 
-      {/* Load mode selector */}
+      {/* Laster.
+          Tilstandsknapperne "Simpel / Lastkombinationer" stod her og valgte
+          mellem to veje ind. Den ene -- Frame Load Cases -- er ude af
+          paletten, fordi den spurgte om elementnumre i en blok, der ikke
+          viste modellen, og lagde vind fra begge sider i den samme
+          kombination. En knap, der vaelger en vej, man ikke laengere kan
+          bygge, er ikke et valg, det er en faelde.
+
+          Dokumenter, der allerede staar i den tilstand, koerer uaendret --
+          gengivelsen nedenfor er der stadig -- men der staar hvad de er. */}
       <div style={s.rowHeader}>
         <SectionLabel text="Laster" />
-        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-          {[['simple', 'Simpel'], ['load_cases', 'Lastkombinationer']].map(([v, l]) => (
-            <button key={v}
-              style={{ ...s.addBtn, ...(loadMode === v ? { background: '#111', color: '#fff', border: '1px solid #111' } : {}) }}
-              onClick={() => update({ load_mode: v })}>
-              {l}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {/* Frame Load Cases picker */}
       {loadMode === 'load_cases' && (
-        <div style={{ background: '#fafafa', border: '1px solid #e8e8e8', padding: '10px 12px', borderRadius: 2 }}>
-          {loadCaseBlocks.length === 0 ? (
-            <span style={{ fontSize: 12, color: '#e67e22' }}>
-              Ingen lastkombinations-blok i dokumentet — tilføj en "Frame Load Cases"-blok først.
-            </span>
-          ) : (
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={s.fieldWrap}>
-                <label style={s.miniLabel}>Lastkombinationsblok</label>
-                <select style={{ ...s.smallInput, width: 220 }}
-                  value={selLoadCaseBlock?.id ?? ''}
-                  onChange={e => update({ load_cases_block_id: Number(e.target.value) })}>
-                  {loadCaseBlocks.map(b => (
-                    <option key={b.id} value={b.id}>{b.data.title ?? 'Frame Load Cases'}</option>
-                  ))}
-                </select>
-              </div>
-              {loadCasesReady
-                ? <span style={{ fontSize: 12, color: '#27ae60', fontWeight: 700 }}>
-                    ✓ {loadCaseCombos.length} kombinationer klar — FEM kører alle og danner envelope
-                  </span>
-                : <span style={{ fontSize: 12, color: '#e67e22' }}>
-                    ① Kør lastkombinations-blokken ovenfor først — derefter aktiveres "Kør FEM"
-                  </span>
-              }
-            </div>
-          )}
+        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa',
+                      color: '#c2410c', fontSize: 11.5, padding: '8px 12px',
+                      borderRadius: 2, margin: '4px 0 8px' }}>
+          Denne blok henter sine kombinationer fra en <strong>Frame
+          Load Cases</strong>-blok. Den vej er udgaaet: elementnumrene blev
+          tastet i blinde, og vind fra begge sider kunne havne i den samme
+          kombination. Opret lasttilfaelde her i blokken i stedet.
+          <button style={{ ...s.addBtn, marginLeft: 10 }}
+            onClick={() => update({ load_mode: 'simple' })}>
+            Skift til lasttilfaelde
+          </button>
         </div>
       )}
 
@@ -1916,19 +2054,60 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           </select>
           <span style={{ fontSize: 11, color: '#6E6E73' }}>
             K<sub>FI</sub> = {{ CC1: '0,9', CC2: '1,0', CC3: '1,1' }[d.consequence_class ?? 'CC2']}
-            {'  ·  '}{antalVirkninger} virkninger påsat — kombinationerne dannes af dem
+            {'  ·  '}{antalVirkninger}{' '}
+            {tilfaelde.length > 0 ? 'lasttilfælde' : 'virkninger påsat'}
+            {' — kombinationerne dannes af dem'}
           </span>
+          {udenTilfaelde > 0 && (
+            <span style={{ fontSize: 11, color: '#e67e22', fontWeight: 600 }}>
+              ⚠ {udenTilfaelde} last{udenTilfaelde === 1 ? '' : 'er'} uden
+              lasttilfælde — {udenTilfaelde === 1 ? 'den indgår' : 'de indgår'}{' '}
+              ikke i nogen kombination
+            </span>
+          )}
+
+          {/* Løfter vinden i taget, er det den LILLE egenlast, der er farlig,
+              og så er 0,90·G en anden — og værre — eftervisning end 1,00·G.
+              Slået til som udgangspunkt: en manglende kombination er den
+              forkerte vej at tage fejl. Fravalget står i dokumentet. */}
+          <label style={{ fontSize: 11, color: '#6E6E73', display: 'flex',
+                          alignItems: 'center', gap: 4, marginLeft: 'auto',
+                          cursor: 'pointer' }}
+            title="Regner hver 6.10b én gang til med γ_G,inf = 0,90. Det er de kombinationer, der afgør et løft — vindsug på et let tag. Koster én ekstra lineær kørsel pr. kombination.">
+            <input type="checkbox"
+              checked={d.gunstig_egenlast !== false}
+              onChange={e => update({ gunstig_egenlast: e.target.checked })} />
+            Også egenlasten som gunstig (γ<sub>G,inf</sub> = 0,90)
+          </label>
         </div>
       )}
 
+      {/* Lasttilfældene. Står OVER lasterne, fordi det er rækkefølgen:
+          opret tilfældene, læg lasterne i dem, se kombinationerne, kør.
+          Det er arbejdsgangen fra RFEM og FEM-Design. */}
       {loadMode === 'simple' && (<>
+        <div style={s.rowHeader}>
+          <SectionLabel text="Lasttilfælde" />
+          <button style={{ ...s.addBtn, marginLeft: 'auto' }}
+            onClick={tilfoejTilfaelde}>+ Lasttilfælde</button>
+        </div>
+        {tilfaelde.length === 0 && (
+          <div style={{ fontSize: 11, color: '#6E6E73', margin: '0 0 8px' }}>
+            Uden lasttilfælde køres der én beregning med lasterne, som de står.
+            Opret dem for at få EN 1990-kombinationer.
+          </div>
+        )}
+        {tilfaelde.map((t, i) => (
+          <LasttilfaeldeRow key={t.nr} t={t}
+            onChange={v => opdaterTilfaelde(i, v)}
+            onRemove={() => fjernTilfaelde(i)} />
+        ))}
         <div style={s.rowHeader}>
           <button style={s.addBtn} onClick={() => addLoad('nodal')}>+ Punktlast</button>
           <button style={s.addBtn} onClick={() => addLoad('udl')}>+ Linjelast</button>
-          <button style={s.addBtn} onClick={() => addLoad('combo_udl')}>+ Kombi-linjelast</button>
         </div>
         {loads.map((ld, i) => (
-          <LoadRow key={i} load={ld} comboBlocks={comboBlocks}
+          <LoadRow key={i} load={ld} comboBlocks={comboBlocks} tilfaelde={tilfaelde}
             onChange={v => updateLoad(i, v)} onRemove={() => removeLoad(i)} />
         ))}
       </>)}

@@ -2506,6 +2506,25 @@ class GenFrameSupportIn(BaseModel):
     uy:      bool = False
     rz:      bool = False
 
+class GenFrameLoadCaseIn(BaseModel):
+    """
+    Et lasttilfaelde -- det, ethvert rammeprogram kalder en load case.
+
+    Navnet er det, der staar i rapporten. Kategorien baerer psi og
+    lastvarigheden. Gruppen er RFEM's "load case relation": to tilfaelde i
+    samme gruppe udelukker hinanden og kommer aldrig i den samme kombination.
+
+    Uden en gruppe hoerer tilfaeldet til sin kategori, saa to vindtilfaelde
+    udelukker hinanden af sig selv. Skal to virke samtidig, skal det siges --
+    og det er den rigtige vej: to vindretninger lagt sammen er 70 % for meget
+    sidelast, og det ser helt normalt ud i en tabel.
+    """
+    nr:       int
+    navn:     str = ""
+    kategori: str = "permanent"   # permanent | snow | wind | imposed
+    gruppe:   str | None = None
+
+
 class GenFrameLoadIn(BaseModel):
     type:       str         # "nodal" | "udl"
     node_id:    int | None = None
@@ -2540,6 +2559,10 @@ class GenFrameLoadIn(BaseModel):
     x1:            float | None = None
     x2:            float | None = None
     value_end_kNm: float | None = None
+    # Hvilket lasttilfaelde lasten hoerer til. Den nye vej: identiteten staar
+    # ét sted -- i tilfaeldet -- i stedet for at vaere tastet paa hver
+    # enkelt last som virkning + variant.
+    lc:            int | None = None
 
 class FrameComboLoadIn(BaseModel):
     """One load inside a combination (from Frame Load Cases block)."""
@@ -2618,6 +2641,11 @@ class GenFrameFemInput(BaseModel):
     # den blok, der lavede dem.
     method:            str = '6.10ab'   # '6.10ab' | '6.10'
     consequence_class: str = 'CC2'      # CC1 | CC2 | CC3
+    # Modellens lasttilfaelde. Er de her, er det dem der kombineres, og hver
+    # last peger paa sit med 'lc'. Er de tomme, falder kaldet tilbage paa
+    # virkning/variant paa den enkelte last -- den gamle vej, som ethvert
+    # dokument fra foer tilfaeldene fandtes stadig bruger.
+    load_cases:        list[GenFrameLoadCaseIn] = []
     # Skal egenlasten ogsaa regnes som gunstig?
     #
     # Loefter vinden i taget, er det den lille egenlast, der er farlig, og saa
@@ -2785,10 +2813,32 @@ def overlay_general_frame_fem(data: GenFrameOverlayInput):
                             detail=str(exc) + "\n" + traceback.format_exc())
 
 
+def _kombiner_modellens_laster(loads, load_cases, method,
+                               consequence_class, gunstig_egenlast=True):
+    """
+    Modellens kombinationer -- uanset hvilken vej lasterne blev identificeret.
+
+    To veje ind, ét svar: med lasttilfaelde kombineres der over dem, uden dem
+    over virkning/variant paa den enkelte last. Begge ender i den samme motor.
+
+    Den findes for at forhaandsvisningen og koerslen ikke kan vaelge hver sin
+    vej. Stod valget to steder, ville tabellen kunne vise noget andet end det,
+    der blev eftervist -- og den ville se rigtig ud imens.
+    """
+    from frame_load_cases import (kombinationer_af_tilfaelde,
+                                  kombinationer_fra_laster)
+    if load_cases:
+        return kombinationer_af_tilfaelde(
+            load_cases, loads, method, consequence_class, gunstig_egenlast)
+    return kombinationer_fra_laster(
+        loads, method, consequence_class, gunstig_egenlast=gunstig_egenlast)
+
+
 class GenFrameKombiInput(BaseModel):
     """Kun det, kombinationerne dannes af: lasternes virkning og de valg,
     der styrer partialkoefficienterne. Ingen model, ingen loeser."""
     loads:             list[GenFrameLoadIn] = []
+    load_cases:        list[GenFrameLoadCaseIn] = []
     method:            str = "6.10ab"
     consequence_class: str = "CC2"
     gunstig_egenlast:  bool = True
@@ -2810,12 +2860,12 @@ def kombinationer_general_frame_fem(data: GenFrameKombiInput):
     """
     import traceback
     try:
-        from frame_load_cases import kombinationer_fra_laster
-        combos = kombinationer_fra_laster(
+        combos = _kombiner_modellens_laster(
             [l.model_dump() for l in data.loads],
+            [t.model_dump() for t in data.load_cases],
             data.method or '6.10ab',
             data.consequence_class or 'CC2',
-            gunstig_egenlast=data.gunstig_egenlast)
+            data.gunstig_egenlast)
         return {"kombinationer": [
             {'name':               c['name'],
              'factor_table':       c['factor_table'],
@@ -2876,11 +2926,11 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 loads = []
 
         if not combos:
-            from frame_load_cases import kombinationer_fra_laster
-            egne = kombinationer_fra_laster(
-                loads, data.method or '6.10ab',
+            egne = _kombiner_modellens_laster(
+                loads, [t.model_dump() for t in data.load_cases],
+                data.method or '6.10ab',
                 data.consequence_class or 'CC2',
-                gunstig_egenlast=data.gunstig_egenlast)
+                data.gunstig_egenlast)
             if egne:
                 combos = egne
                 # Lasterne ligger nu inde i kombinationerne. Blev de ogsaa

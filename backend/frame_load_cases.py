@@ -287,83 +287,172 @@ def _navngiv(virkning, variant):
     return f'{n}·{variant}' if variant else n
 
 
+# ── Lasttilfaelde ────────────────────────────────────────────────────
+#
+# Et lasttilfaelde er det, ethvert rammeprogram kalder en load case: et navn,
+# en handlingskategori og de laster, der hoerer til. Kategorien baerer psi og
+# lastvarigheden; navnet er det, der staar i rapporten.
+#
+# Tilfaelde i samme GRUPPE udelukker hinanden -- det er RFEM's "load case
+# relation". Vind fra venstre og vind fra hoejre ligger i gruppen "vind", og
+# saa kommer de aldrig i den samme kombination. Uden en gruppe hoerer
+# tilfaeldet til sin kategori, saa to vindtilfaelde udelukker hinanden af sig
+# selv. Det er det rigtige gaet: to vindretninger er naesten altid
+# alternativer, og skal de virke samtidig, skal det siges.
+
+def _normaliser_tilfaelde(load_cases):
+    """Tilfaeldene med de felter, resten af koden regner med."""
+    ud = []
+    for i, t in enumerate(load_cases or []):
+        kategori = (t.get('kategori') or t.get('virkning')
+                    or _UDEN_VIRKNING).strip().lower()
+        nr = t.get('nr', t.get('id', i + 1))
+        navn = (t.get('navn') or '').strip() or f'LC{nr}'
+        # Permanente tilfaelde grupperes aldrig. Egenlasten er der i hver
+        # kombination; et "alternativ" til den ville betyde noget andet, end
+        # den der skrev det regnede med.
+        gruppe = None if kategori == 'permanent' else (t.get('gruppe') or kategori)
+        ud.append({'nr': nr, 'navn': navn, 'kategori': kategori,
+                   'gruppe': gruppe})
+    return ud
+
+
+def _tilfaelde_fra_virkning(loads):
+    """
+    Den gamle vej oversat til tilfaelde.
+
+    Laster baerer virkning og variant direkte. Det er stadig tilladt -- hvert
+    dokument, der er lavet paa den maade, skal blive ved med at regne det
+    samme -- men der er kun ÉN kombinationsmotor, og den taeller i tilfaelde.
+    Saa bliver (virkning, variant) til et tilfaelde med et navn, og resten af
+    koden behoever ikke vide, hvilken vej lasterne kom ind ad.
+    """
+    tilfaelde = []
+    noegler = {}
+    for noegle in _handlinger(loads):
+        virkning, variant = noegle
+        nr = len(tilfaelde) + 1
+        tilfaelde.append({'nr': nr, 'navn': _navngiv(virkning, variant),
+                          'kategori': virkning,
+                          'gruppe': None if virkning == 'permanent' else virkning})
+        noegler[noegle] = nr
+
+    ud = []
+    for ld in loads:
+        virkning = (ld.get('virkning') or _UDEN_VIRKNING).strip().lower()
+        variant = ld.get('variant') or None
+        if virkning == 'permanent':
+            variant = None
+        ud.append(dict(ld, lc=noegler[(virkning, variant)]))
+    return tilfaelde, ud
+
+
 def kombinationer_fra_laster(loads, method='6.10ab', consequence_class='CC2',
                              gunstig_egenlast=True):
     """
-    Byg EN 1990-kombinationer af laster, der er paasat modellen.
+    Byg EN 1990-kombinationer af laster, der baerer virkning og variant.
+
+    Den gamle vej ind. Lasterne oversaettes til tilfaelde og regnes af den
+    samme motor som alt andet, saa de to veje ikke kan blive uenige.
 
     Returnerer [] naar ingen last baerer en virkning -- saa er der ingenting at
     kombinere, og kaldet skal ikke opfinde en kombination af én ting.
-
-    Ellers en liste af
-        {name, loads, governing_duration, factor_table, aktive}
-    hvor factor_table er {handlingsnavn: faktor} og aktive er de
-    handlingsnavne, der faktisk indgaar. Tabellen er det, brugeren ser og kan
-    rette; den er ikke et mellemresultat.
     """
     if not any(ld.get('virkning') for ld in loads):
         return []
+    tilfaelde, med_lc = _tilfaelde_fra_virkning(loads)
+    return kombinationer_af_tilfaelde(tilfaelde, med_lc, method,
+                                      consequence_class, gunstig_egenlast)
+
+
+def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
+                               consequence_class='CC2',
+                               gunstig_egenlast=True):
+    """
+    EN 1990-kombinationer af navngivne lasttilfaelde.
+
+    load_cases  [{nr, navn, kategori, gruppe}]
+    loads       modellens laster; hver med 'lc' = tilfaeldets nr. En last uden
+                et kendt 'lc' udelades -- den hoerer ikke til nogen handling,
+                og at lade den falde ned i en tilfaeldig ville vaere et gaet.
+
+    Returnerer en liste af
+        {name, loads, governing_duration, factor_table, aktive}
+    hvor factor_table er {tilfaeldets navn: faktor}. Tabellen er det, brugeren
+    ser og kan rette; den er ikke et mellemresultat.
+    """
+    tilfaelde = _normaliser_tilfaelde(load_cases)
+    if not tilfaelde:
+        return []
 
     kfi = _KFI.get(consequence_class, 1.0)
-    grupper = _handlinger(loads)
+    pr_nr = {t['nr']: t for t in tilfaelde}
 
-    permanente = [(k, v) for k, v in grupper.items() if k[0] == 'permanent']
-    variable = [(k, v) for k, v in grupper.items() if k[0] != 'permanent']
+    laster_pr_tilfaelde = {}
+    for ld in loads:
+        nr = ld.get('lc')
+        if nr in pr_nr:
+            laster_pr_tilfaelde.setdefault(nr, []).append(ld)
 
-    # Varianterne inden for én virkning udelukker hinanden. Har vinden fire
-    # varianter, er der fire valg -- ikke fire samtidige laster.
-    pr_virkning = {}
-    for (virkning, variant), lds in variable:
-        pr_virkning.setdefault(virkning, []).append((virkning, variant))
+    permanente = [t for t in tilfaelde if t['kategori'] == 'permanent']
+    variable = [t for t in tilfaelde if t['kategori'] != 'permanent']
+
+    # Tilfaelde i samme gruppe udelukker hinanden: ét valg pr. gruppe.
+    pr_gruppe = {}
+    for t in variable:
+        pr_gruppe.setdefault(t['gruppe'], []).append(t)
+    valgmuligheder = [sorted(v, key=lambda t: (str(t['navn']), t['nr']))
+                      for v in pr_gruppe.values()]
 
     import itertools
-    valgmuligheder = [sorted(v, key=lambda k: str(k[1] or ''))
-                      for v in pr_virkning.values()]
     udvalg = [list(u) for u in itertools.product(*valgmuligheder)] \
         if valgmuligheder else [[]]
 
     combos = []
 
     def _saml(navn, g_fac, faktorer):
-        """faktorer: {handlingsnoegle: faktor} for de variable, der indgaar."""
+        """faktorer: {tilfaeldets nr: faktor} for de variable, der indgaar."""
         ud = []
         tabel = {}
         varigheder = []
-        for noegle, lds in permanente:
-            tabel[_navngiv(*noegle)] = round(g_fac, 4)
-            ud += [_scale_load(l, g_fac) for l in lds]
-        for noegle, f in faktorer.items():
-            tabel[_navngiv(*noegle)] = round(f, 4)
+        for t in permanente:
+            tabel[t['navn']] = round(g_fac, 4)
+            ud += [_scale_load(l, g_fac)
+                   for l in laster_pr_tilfaelde.get(t['nr'], [])]
+        for nr, f in faktorer.items():
+            tabel[pr_nr[nr]['navn']] = round(f, 4)
             if abs(f) > 1e-10:
-                ud += [_scale_load(l, f) for l in grupper[noegle]]
-                varigheder.append(_TYPE_DURATION.get(noegle[0], 'medium'))
+                ud += [_scale_load(l, f)
+                       for l in laster_pr_tilfaelde.get(nr, [])]
+                varigheder.append(
+                    _TYPE_DURATION.get(pr_nr[nr]['kategori'], 'medium'))
         governing = (max(varigheder, key=lambda d: _DURATION_RANK.get(d, 0))
                      if varigheder else 'permanent')
         combos.append({'name': navn, 'loads': ud, 'factor_table': tabel,
                        'governing_duration': governing,
-                       'aktive': [_navngiv(*k) for k in faktorer
-                                  if abs(faktorer[k]) > 1e-10]})
+                       'aktive': [pr_nr[nr]['navn'] for nr in faktorer
+                                  if abs(faktorer[nr]) > 1e-10]})
 
     # 6.10a — kun de permanente
     g_a = _GAMMA_G_A * kfi
     _saml(f'6.10a: {g_a:.2f}G', g_a, {})
 
-    # 6.10b — for hvert udvalg af varianter, hver aktiv handling som ledende
+    # 6.10b — for hvert udvalg, hvert aktivt tilfaelde som ledende
     g_b = _GAMMA_G_B * kfi
     for valg in udvalg:
         for ledende in valg:
             faktorer = {}
             dele = []
-            for noegle in valg:
-                if noegle == ledende:
-                    faktorer[noegle] = _GAMMA_Q * kfi
-                    dele.append(f'1,5·{_navngiv(*noegle)}')
+            for t in valg:
+                if t['nr'] == ledende['nr']:
+                    faktorer[t['nr']] = _GAMMA_Q * kfi
+                    dele.append(f"1,5·{t['navn']}")
                 else:
-                    psi = _companion_psi0(ledende[0], noegle[0])
-                    faktorer[noegle] = round(_GAMMA_Q * psi * kfi, 5)
+                    psi = _companion_psi0(ledende['kategori'], t['kategori'])
+                    faktorer[t['nr']] = round(_GAMMA_Q * psi * kfi, 5)
                     if psi > 0:
-                        dele.append(f'{psi:.1f}·1,5·{_navngiv(*noegle)}')
-            navn = (f'6.10b ({_navngiv(*ledende)} leder): '
+                        dele.append(f"{psi:.1f}·1,5·{t['navn']}")
+            navn = (f"6.10b ({ledende['navn']} leder): "
                     f'{g_b:.2f}G + ' + ' + '.join(dele))
             _saml(navn, g_b, faktorer)
 
@@ -381,10 +470,10 @@ def kombinationer_fra_laster(loads, method='6.10ab', consequence_class='CC2',
             # dermed altid stoerre end 1,0, saa en gunstig 6.10a kan ikke blive
             # dimensionsgivende for noget som helst.
             #
-            # Uden permanente laster ville tvillingen vaere en noejagtig kopi
-            # -- der er ingen G at saette en anden faktor paa.
+            # Uden permanente tilfaelde ville tvillingen vaere en noejagtig
+            # kopi -- der er ingen G at saette en anden faktor paa.
             if gunstig_egenlast and permanente:
-                navn_g = (f'6.10b gunstig G ({_navngiv(*ledende)} leder): '
+                navn_g = (f"6.10b gunstig G ({ledende['navn']} leder): "
                           f'{_GAMMA_G_INF_B:.2f}G + ' + ' + '.join(dele))
                 _saml(navn_g, _GAMMA_G_INF_B, dict(faktorer))
 
