@@ -2902,6 +2902,10 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         supports = [s.model_dump() for s in data.supports]
         loads    = [l.model_dump() for l in data.loads]
         combos      = [c.model_dump() for c in data.combinations]
+        # Lasterne som de staar paa modellen. De skal gemmes her: naar der
+        # kombineres, flyttes de ind i kombinationerne og 'loads' toemmes, og
+        # saa er der ikke laengere noget at tegne et lastbillede af.
+        paasatte_laster = list(loads)
         equal_dofs  = [e.model_dump() for e in data.equal_dofs]
 
         # Baerer lasterne selv en virkning, kombineres de her i stedet for at
@@ -2966,7 +2970,34 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         validate_model(nodes, elements, supports, loads or [], equal_dofs)
 
         model_fig = plot_model(data.title, nodes, elements, supports,
-                               loads or [], ref_size)
+                               paasatte_laster, ref_size)
+
+        # Lastbilleder -- ét pr. lasttilfaelde.
+        #
+        # Den samlede model viser alle laster oven paa hinanden, og med fire
+        # tilfaelde er det ikke en tegning, det er et virvar. Som i RFEM
+        # tegnes hvert tilfaelde for sig, saa man kan se HVAD der blev paasat
+        # og ikke kun hvad der kom ud.
+        #
+        # Det er ogsaa det, en kontrollant skal bruge: en eftervisning kan
+        # kun kontrolleres, hvis lasterne kan ses. Tallene i en tabel siger
+        # ikke, om vindlasten sidder paa den rigtige side af rammen.
+        lastfigurer = []
+        for t in data.load_cases:
+            i_tilfaeldet = [l for l in paasatte_laster if l.get('lc') == t.nr]
+            if not i_tilfaeldet:
+                continue
+            navn = f"LC{t.nr} {(t.navn or '').strip() or 'Lasttilfaelde'}"
+            try:
+                lastfigurer.append({
+                    'navn': navn,
+                    'kategori': t.kategori,
+                    'b64': plot_model(navn, nodes, elements, supports,
+                                      i_tilfaeldet, ref_size),
+                })
+            except Exception:
+                # En figur, der ikke kan tegnes, maa ikke vaelte beregningen.
+                pass
 
         def _sls_afsnit():
             """
@@ -3313,6 +3344,10 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         if _sls_blokke:
             result_blocks = list(result_blocks) + _sls_blokke
             summary['sls'] = _sls_tal
+
+        # Lastbillederne foelger med uanset hvilken af de to veje beregningen
+        # tog. De hoerer til modellen og ikke til kombinationerne.
+        summary['lastfigurer'] = lastfigurer
 
         return {"_figs_b64": figs_b64, "_summary": summary, "_result": result_blocks}
 

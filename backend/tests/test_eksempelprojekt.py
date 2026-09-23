@@ -259,3 +259,52 @@ def test_hele_projektet_kan_bygges_med_fem_resultatet(koersel):
     pdf = build_pdf(projekt, projekt['documents']['A2']['blocks'], doc_id='A2')
     assert pdf[:4] == b'%PDF'
     assert len(pdf) > 20000, 'dokumentet er for lille til at indeholde figurerne'
+
+
+# ── 4. Lastbillederne ───────────────────────────────────────────────────────
+#
+# Den samlede model viser alle laster oven på hinanden, og med fire tilfælde
+# er det ikke en tegning, det er et virvar. Som i RFEM tegnes hvert tilfælde
+# for sig — og det er det, en kontrollant skal bruge: en eftervisning kan kun
+# kontrolleres, hvis lasterne kan ses.
+
+def test_der_er_en_figur_pr_lasttilfaelde(koersel):
+    figurer = koersel['_summary'].get('lastfigurer') or []
+    assert [f['navn'] for f in figurer] == [
+        'LC1 Egenlast', 'LC2 Snelast',
+        'LC3 Vind fra venstre', 'LC4 Vind fra højre']
+    for f in figurer:
+        assert f['b64'], f"{f['navn']} har ingen tegning"
+
+
+def test_et_tomt_lasttilfaelde_faar_ingen_figur(client):
+    """En tegning af en model uden laster siger ingenting om tilfældet."""
+    tilfaelde = LASTTILFAELDE + [
+        {'nr': 9, 'navn': 'Ubrugt', 'kategori': 'imposed'}]
+    r = client.post('/calc/general-frame-fem', json=dict(
+        MODEL, title='Portalramme', loads=LASTER, load_cases=tilfaelde))
+    assert r.status_code == 200, r.text
+    navne = [f['navn'] for f in r.json()['_summary']['lastfigurer']]
+    assert 'LC9 Ubrugt' not in navne
+
+
+def test_lastbillederne_staar_i_rapporten(koersel):
+    projekt = eksempelprojekt(fem_resultat=koersel)
+    pdf = build_pdf(projekt, projekt['documents']['A2']['blocks'], doc_id='A2')
+
+    pdfium = pytest.importorskip('pypdfium2')
+    doc = pdfium.PdfDocument(pdf)
+    tekst = '\n'.join(doc[i].get_textpage().get_text_range()
+                      for i in range(len(doc)))
+    assert 'Lasttilfælde' in tekst
+    for navn in ('LC1 Egenlast', 'LC3 Vind fra venstre'):
+        assert navn in tekst, f'{navn} mangler i rapporten'
+
+
+def test_uden_lasttilfaelde_er_der_ingen_lastbilleder(client):
+    """Et gammelt dokument skal ikke pludselig have et afsnit mere."""
+    gamle = [dict(l, lc=None, virkning='permanent') for l in LASTER[:1]]
+    r = client.post('/calc/general-frame-fem', json=dict(
+        MODEL, title='Portalramme', loads=gamle))
+    assert r.status_code == 200, r.text
+    assert (r.json()['_summary'].get('lastfigurer') or []) == []

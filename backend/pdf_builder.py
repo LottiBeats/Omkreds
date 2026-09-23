@@ -735,6 +735,30 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
         ],
     )
 
+    # ── Lastbilleder ─────────────────────────────────────────────────────────
+    #
+    # Ét pr. lasttilfælde. Den samlede model viser alle laster oven på
+    # hinanden, og med fire tilfælde er det ikke en tegning, det er et virvar.
+    #
+    # De står her, mellem modellen og resultaterne, fordi det er den
+    # rækkefølge en kontrollant læser i: hvad er der påsat, og hvad kom der
+    # ud. En eftervisning kan kun kontrolleres, hvis lasterne kan ses — en
+    # tabel med tal siger ikke, om vindlasten sidder på den rigtige side af
+    # rammen.
+    lastfigurer = summary.get('lastfigurer') or []
+    if lastfigurer:
+        out.append(S("Lasttilfælde"))
+        out.append(T(
+            f"Modellen er påsat {len(lastfigurer)} lasttilfælde. "
+            "Hvert er tegnet for sig med sine karakteristiske laster; "
+            "partialkoefficienterne påsættes i kombinationerne nedenfor."))
+        out += _figs_b64_to_pdf(
+            [f.get('b64') for f in lastfigurer if f.get('b64')],
+            tmp_files,
+            [f.get('navn', '') for f in lastfigurer if f.get('b64')],
+            width_mm=120, max_h_mm=70,
+        )
+
     # ── Headline results ─────────────────────────────────────────────────────
     out.append(S("Hovedresultater"))
     rows = [
