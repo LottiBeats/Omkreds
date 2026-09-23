@@ -36,6 +36,15 @@ _GAMMA_G_A  = 1.2   # 6.10a: γ_G,sup (permanent-only combination)
 _GAMMA_G_B  = 1.0   # 6.10b: γ_G,sup (variable-dominated combination)
 _GAMMA_Q    = 1.5   # variable load factor
 
+# γ_G,inf -- egenlasten som GUNSTIG. Samme tabel, den anden raekke.
+#
+# Vaerdien staar bart: 0,9 uden K_FI. Tabellen skriver 1,2·K_FI i den
+# ugunstige raekke og et bart 1,0 / 0,9 i den gunstige, og load_combo.py
+# regner det praecis saadan -- se tests/test_load_combo.py::
+# test_favourable_ignores_k_fi. De to veje ind i huset skal ikke have hver sin
+# udgave af den samme tabel.
+_GAMMA_G_INF_B = 0.9
+
 # EN 1995-1-1 §2.2.3: governing duration = shortest-duration variable action in combo
 _TYPE_DURATION = {
     'permanent': 'permanent',
@@ -278,7 +287,8 @@ def _navngiv(virkning, variant):
     return f'{n}·{variant}' if variant else n
 
 
-def kombinationer_fra_laster(loads, method='6.10ab', consequence_class='CC2'):
+def kombinationer_fra_laster(loads, method='6.10ab', consequence_class='CC2',
+                             gunstig_egenlast=True):
     """
     Byg EN 1990-kombinationer af laster, der er paasat modellen.
 
@@ -356,6 +366,27 @@ def kombinationer_fra_laster(loads, method='6.10ab', consequence_class='CC2'):
             navn = (f'6.10b ({_navngiv(*ledende)} leder): '
                     f'{g_b:.2f}G + ' + ' + '.join(dele))
             _saml(navn, g_b, faktorer)
+
+            # Den samme kombination med egenlasten som gunstig.
+            #
+            # Loefter vinden i taget, modvirker egenlasten loeftet, og saa er
+            # det den LILLE egenlast, der er farlig. 1,0*G kan skjule et loeft,
+            # som 0,9*G viser. Hvilken vej det falder ud, kan ingen se foer
+            # modellen er regnet -- derfor regnes begge, og indhyldningen tager
+            # den vaerste. Det er ogsaa saadan EN 1990 er skrevet: gunstig og
+            # ugunstig er to eftervisninger, ikke et valg mellem to.
+            #
+            # Kun 6.10b faar en tvilling. 6.10a er de permanente alene, og dér
+            # er svaret lineaert i faktoren: 1,2*K_FI er 1,08 / 1,20 / 1,32 og
+            # dermed altid stoerre end 1,0, saa en gunstig 6.10a kan ikke blive
+            # dimensionsgivende for noget som helst.
+            #
+            # Uden permanente laster ville tvillingen vaere en noejagtig kopi
+            # -- der er ingen G at saette en anden faktor paa.
+            if gunstig_egenlast and permanente:
+                navn_g = (f'6.10b gunstig G ({_navngiv(*ledende)} leder): '
+                          f'{_GAMMA_G_INF_B:.2f}G + ' + ' + '.join(dele))
+                _saml(navn_g, _GAMMA_G_INF_B, dict(faktorer))
 
     return combos
 

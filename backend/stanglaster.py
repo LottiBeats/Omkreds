@@ -215,6 +215,19 @@ def _rødder_i(c2, c1, c0, laengde):
     return [u for u in ud if -1e-12 <= u <= laengde + 1e-12]
 
 
+def _w_i_punkt(segs, L, x):
+    """Den samlede lastintensitet i punktet x -- alle afsnit lagt sammen."""
+    ud = 0.0
+    for seg in segs:
+        s = _klip(seg, L)
+        if s is None:
+            continue
+        w1, w2, a, b = s
+        if a - 1e-12 <= x <= b + 1e-12:
+            ud += w1 + (w2 - w1) * (x - a) / (b - a)
+    return ud
+
+
 def ekstremer(pl, L, segs_y, segs_x):
     """
     Stoerste N, V og M langs stangen, med fortegn og sted -- EKSAKT.
@@ -243,27 +256,44 @@ def ekstremer(pl, L, segs_y, segs_x):
             continue
         steder.add(s[2]); steder.add(s[3])
 
-    # M's toppunkter: V(x) = 0 inden for hvert afsnit.
-    for seg in segs_y:
-        s = _klip(seg, L)
-        if s is None:
+    # M's toppunkter: V(x) = 0 -- paa den SAMLEDE last, ikke paa ét afsnit.
+    #
+    # Her laa fejlen. Roedderne blev soegt inden for hvert afsnit for sig, med
+    # afsnittets egen intensitet som haeldning paa V. Det er rigtigt, saa laenge
+    # der kun er ét afsnit, og forkert saa snart to daekker det samme stykke.
+    #
+    # Og to afsnit paa den samme stang er ikke en saerlig situation: enhver
+    # lastkombination laver ét afsnit pr. virkning. Egenlast og sne paa den
+    # samme bjaelke er to. Paa et let tag med vindsug -- 0,9 ned og 4,5 op --
+    # ledte den efter V = 0 med haeldningen 4,5 alene og fandt x = 2,4 m i
+    # stedet for midten. Momentet blev 15,55 kNm i stedet for 16,20: fire
+    # procent for lidt, i den retning der ikke maa tage fejl, og uden et tegn
+    # paa at noget var galt.
+    #
+    # Mellem to braekpunkter er den samlede last lineaer, V altsaa kvadratisk.
+    # Saa er kandidaterne roedderne af det samlede V paa hvert interval.
+    punkter = sorted(v for v in steder if -1e-9 <= v <= L + 1e-9)
+    for x0, x1 in zip(punkter, punkter[1:]):
+        bredde = x1 - x0
+        if bredde <= 1e-12:
             continue
-        w1, w2, a, b = s
-        # V(a) findes ved at integrere frem til afsnittets begyndelse.
-        V_a = V_i
-        for andet in segs_y:
-            t = _klip(andet, L)
-            if t is None:
-                continue
-            oe = min(a, t[3])
-            if oe > t[2]:
-                V_a += _integrer(t, t[2], oe, lambda _t: 1.0)
-        c = (w2 - w1) / (b - a) if b > a else 0.0
-        for u in _rødder_i(c / 2.0, w1, V_a, b - a):
-            steder.add(a + u)
-        # V's toppunkt: w(x) = 0, hvor en trapezlast skifter fortegn.
-        if abs(w2 - w1) > 1e-14 and w1 * w2 < 0:
-            steder.add(a + (b - a) * (-w1) / (w2 - w1))
+        # To punkter inde i intervallet giver den lineaere w entydigt. Maalt
+        # inde i stykket og ikke paa enderne, hvor et afsnit kan begynde eller
+        # holde op, og hvor den samlede last dermed kan springe.
+        xa = x0 + 1e-6 * bredde
+        xb = x1 - 1e-6 * bredde
+        wa = _w_i_punkt(segs_y, L, xa)
+        wb = _w_i_punkt(segs_y, L, xb)
+        haeldning = (wb - wa) / (xb - xa) if xb > xa else 0.0
+        W0 = wa + haeldning * (x0 - xa)
+        W1 = wa + haeldning * (x1 - xa)
+
+        V0 = snitkraefter(pl, x0, segs_y, segs_x, L)[1]
+        for u in _rødder_i(haeldning / 2.0, W0, V0, bredde):
+            steder.add(x0 + u)
+        # V's toppunkt: hvor den samlede last skifter fortegn.
+        if abs(W1 - W0) > 1e-14 and W0 * W1 < 0:
+            steder.add(x0 + bredde * (-W0) / (W1 - W0))
 
     def _stoerre(ny, hidtil):
         """

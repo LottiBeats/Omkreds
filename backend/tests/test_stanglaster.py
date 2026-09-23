@@ -159,3 +159,93 @@ def test_ekstremerne_rammer_enden_af_en_dellast():
     # Forskydningen springer ved x = L/2; den stoerste er ved x = 0.
     assert abs(e['V_kN']) == pytest.approx(R)
     assert e['M_kNm'] != 0.0
+
+
+# ── To afsnit paa den samme stang ───────────────────────────────────────────
+#
+# Her laa en rigtig fejl. Toppunkterne blev soegt inden for hvert afsnit for
+# sig, med afsnittets EGEN intensitet som haeldning paa V. Det er rigtigt med ét
+# afsnit og forkert, saa snart to daekker det samme stykke.
+#
+# Og to afsnit er ikke en saerlig situation: enhver lastkombination laver ét
+# afsnit pr. virkning, saa egenlast og sne paa den samme bjaelke er to.
+
+def _simpelt_understoettet(w, laengde):
+    """Fastindspaendingsfri endekraefter for en simpelt understoettet bjaelke.
+
+    pl er [N_i, V_i, M_i, ...] som ekstremer() laeser dem: V_i = -wL/2 og
+    M_i = 0 giver M(x) = w·x·(L-x)/2 -- staabiens parabel.
+    """
+    return [0.0, -w * laengde / 2.0, 0.0, 0.0, w * laengde / 2.0, 0.0]
+
+
+def test_to_fulde_afsnit_giver_toppunktet_paa_midten():
+    """Den samlede last er 3,6 -- toppunktet ligger i midten, ikke ved 2,4 m.
+
+    Tallene er det lette tag med vindsug: 0,9 ned og 4,5 op. Den gamle kode
+    loeste V = 0 med 4,5 alene og fandt 2,4 m, og momentet blev 15,552 i
+    stedet for 16,2. Fire procent for lidt, i den retning der ikke maa tage
+    fejl.
+    """
+    segs = [(-0.9, -0.9, 0.0, L), (4.5, 4.5, 0.0, L)]
+    w_net = 3.6
+    pl = _simpelt_understoettet(w_net, L)
+
+    e = sl.ekstremer(pl, L, segs, [])
+    assert e['x_M_m'] == pytest.approx(L / 2, abs=1e-9)
+    assert abs(e['M_kNm']) == pytest.approx(w_net * L ** 2 / 8, rel=1e-9)
+
+
+def test_to_afsnit_giver_det_samme_som_deres_sum():
+    """Uanset hvordan lasten er delt op, er det den samme bjaelke."""
+    delt   = [(2.0, 2.0, 0.0, L), (3.0, 3.0, 0.0, L)]
+    samlet = [(5.0, 5.0, 0.0, L)]
+    pl = _simpelt_understoettet(5.0, L)
+
+    a = sl.ekstremer(pl, L, delt, [])
+    b = sl.ekstremer(pl, L, samlet, [])
+    for felt in ('M_kNm', 'V_kN', 'x_M_m'):
+        assert a[felt] == pytest.approx(b[felt], abs=1e-9), felt
+
+
+def test_to_afsnit_der_kun_overlapper_delvis():
+    """Det ene daekker hele stangen, det andet kun den halve.
+
+    Toppunktet ligger hverken paa midten eller i afsnitsskiftet, og det er
+    netop derfor det skal regnes og ikke gaettes.
+    """
+    segs = [(2.0, 2.0, 0.0, L), (6.0, 6.0, 0.0, L / 2)]
+    # Reaktionen findes af ligevaegt: R_i = (2·6·3 + 6·3·4,5)/6
+    R_i = (2.0 * L * (L / 2) + 6.0 * (L / 2) * (L * 0.75)) / L
+    pl = [0.0, -R_i, 0.0, 0.0, 0.0, 0.0]
+
+    e = sl.ekstremer(pl, L, segs, [])
+    x = e['x_M_m']
+
+    # Toppunktet er der, hvor V = 0. Det efterproeves uafhaengigt af ekstremer:
+    # forskydningen skal skifte fortegn omkring x.
+    V_foer = sl.snitkraefter(pl, x - 1e-4, segs, [], L)[1]
+    V_efter = sl.snitkraefter(pl, x + 1e-4, segs, [], L)[1]
+    assert V_foer * V_efter < 0, (V_foer, V_efter)
+
+    # Og momentet dér er stoerre end paa hver side.
+    M = abs(sl.snitkraefter(pl, x, segs, [], L)[2])
+    for d in (0.05, 0.2, 0.5):
+        assert M >= abs(sl.snitkraefter(pl, x - d, segs, [], L)[2]) - 1e-9
+        assert M >= abs(sl.snitkraefter(pl, x + d, segs, [], L)[2]) - 1e-9
+
+
+def test_tre_afsnit_med_en_trapez_imellem():
+    """Blandingen: konstant plus trekant plus dellast, alle paa samme stang."""
+    segs = [(1.0, 1.0, 0.0, L), (0.0, 4.0, 0.0, L), (3.0, 3.0, 2.0, 4.0)]
+    samlet = 1.0 * L + 0.5 * 4.0 * L + 3.0 * 2.0
+    R_i = samlet / 2.0   # ikke symmetrisk, men bruges kun som en prøvelast
+    pl = [0.0, -R_i, 0.0, 0.0, 0.0, 0.0]
+
+    e = sl.ekstremer(pl, L, segs, [])
+
+    # Et fint gitter kan ikke slaa det eksakte svar, men det kan afsloere et
+    # toppunkt, der er fundet det forkerte sted.
+    bedst = max((abs(sl.snitkraefter(pl, i * L / 20000, segs, [], L)[2])
+                 for i in range(20001)))
+    assert abs(e['M_kNm']) >= bedst - 1e-6

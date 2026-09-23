@@ -56,16 +56,29 @@ def test_to_vindretninger_optraeder_aldrig_sammen():
             'to vindtilfaelde i samme kombination: %s (%s)' % (vind, c['name'])
 
 
-def test_fire_vindvarianter_giver_ni_kombinationer():
+def test_fire_vindvarianter_giver_sytten_kombinationer():
     """
     Niels' tilfaelde: to retninger gange to indvendige tryk.
 
-    6.10a                                  1
-    6.10b, pr. vindvalg (4) x leder (S, W) 8
+    6.10a                                       1
+    6.10b, pr. vindvalg (4) x leder (S, W)      8
+    6.10b med gunstig egenlast, de samme otte   8
+                                               17
+
+    Tvillingerne kom til, da loeft blev regnet med. De fordobler antallet af
+    6.10b, og det er prisen: uden dem kan en vind, der loefter, ikke blive
+    dimensionsgivende, fordi egenlasten staar for hoejt.
     """
     combos = kombinationer_fra_laster(_vindramme({
         'v+': 2.0, 'v-': 2.6, 'h+': -2.0, 'h-': -2.6}))
-    assert len(combos) == 9
+    assert len(combos) == 17
+    assert len([c for c in combos if 'gunstig G' in c['name']]) == 8
+
+    # Uden dem er det de ni, der var foer.
+    uden = kombinationer_fra_laster(
+        _vindramme({'v+': 2.0, 'v-': 2.6, 'h+': -2.0, 'h-': -2.6}),
+        gunstig_egenlast=False)
+    assert len(uden) == 9
 
     for c in combos:
         assert len([a for a in c['aktive'] if a.startswith('W·')]) <= 1
@@ -104,7 +117,9 @@ def test_én_last_med_virkning_er_nok_til_at_taende_det():
     laster = [_udl(1, 'vertical', 5.0),
               _udl(2, 'projected', 4.0, 'snow')]
     combos = kombinationer_fra_laster(laster)
-    assert len(combos) == 2, '6.10a og 6.10b med sne som ledende'
+    assert len(combos) == 3, \
+        '6.10a, 6.10b med sne som ledende, og den med gunstig egenlast'
+    assert len(kombinationer_fra_laster(laster, gunstig_egenlast=False)) == 2
 
 
 # ── DK NA-bogholderiet ──────────────────────────────────────────────────────
@@ -126,7 +141,9 @@ def test_de_permanente_er_med_i_hver_eneste_kombination():
     combos = kombinationer_fra_laster(
         _vindramme({'venstre': 2.0, 'hoejre': -2.0}))
     for c in combos:
-        assert c['factor_table'].get('G', 0.0) > 0.9, \
+        # Mindst 0,9: den gunstige tvilling staar praecis dér, og den er
+        # stadig en kombination MED egenlast. Proeven er, at G ikke falder ud.
+        assert c['factor_table'].get('G', 0.0) >= 0.9 - 1e-12, \
             'egenlasten mangler i %s' % c['name']
 
 
@@ -238,7 +255,8 @@ def test_endepunktet_kombinerer_paasatte_laster(client):
     assert r.status_code == 200, r.text
     summary = r.json()['_summary']
     navne = summary.get('combinations', [])
-    assert len(navne) == 5, navne
+    # 6.10a + fire 6.10b + de fire gunstige tvillinger.
+    assert len(navne) == 9, navne
     assert summary.get('envelope'), 'ingen indhyldning'
 
     for navn in navne:

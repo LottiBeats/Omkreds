@@ -2618,6 +2618,16 @@ class GenFrameFemInput(BaseModel):
     # den blok, der lavede dem.
     method:            str = '6.10ab'   # '6.10ab' | '6.10'
     consequence_class: str = 'CC2'      # CC1 | CC2 | CC3
+    # Skal egenlasten ogsaa regnes som gunstig?
+    #
+    # Loefter vinden i taget, er det den lille egenlast, der er farlig, og saa
+    # er 0,9·G en anden -- og vaerre -- eftervisning end 1,0·G. Slaaet til som
+    # udgangspunkt: en manglende kombination er den forkerte vej at tage fejl,
+    # og prisen er en ekstra lineaer koersel pr. 6.10b.
+    #
+    # Slaas den fra, staar det i dokumentet. Et fravalg af en hel raekke
+    # eftervisninger maa ikke kunne ske i stilhed.
+    gunstig_egenlast:  bool = True
     # Kombinationer, brugeren har slaaet fra i tabellen, angivet ved navn.
     #
     # Et fravalg er en beslutning om konstruktionen -- "her kan vinden ikke
@@ -2781,6 +2791,7 @@ class GenFrameKombiInput(BaseModel):
     loads:             list[GenFrameLoadIn] = []
     method:            str = "6.10ab"
     consequence_class: str = "CC2"
+    gunstig_egenlast:  bool = True
 
 
 @protected.post("/calc/general-frame-fem/kombinationer", tags=["Calculations"])
@@ -2803,7 +2814,8 @@ def kombinationer_general_frame_fem(data: GenFrameKombiInput):
         combos = kombinationer_fra_laster(
             [l.model_dump() for l in data.loads],
             data.method or '6.10ab',
-            data.consequence_class or 'CC2')
+            data.consequence_class or 'CC2',
+            gunstig_egenlast=data.gunstig_egenlast)
         return {"kombinationer": [
             {'name':               c['name'],
              'factor_table':       c['factor_table'],
@@ -2867,7 +2879,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             from frame_load_cases import kombinationer_fra_laster
             egne = kombinationer_fra_laster(
                 loads, data.method or '6.10ab',
-                data.consequence_class or 'CC2')
+                data.consequence_class or 'CC2',
+                gunstig_egenlast=data.gunstig_egenlast)
             if egne:
                 combos = egne
                 # Lasterne ligger nu inde i kombinationerne. Blev de ogsaa
@@ -3171,6 +3184,17 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 # navn. En eftervisning, hvor en kombination er udeladt, er
                 # ikke forkert -- men den er kun kontrollerbar, hvis det staar
                 # der. Uden det ville tabellen ovenfor se komplet ud.
+                # Er de gunstige kombinationer slaaet fra, staar det her.
+                # Uden den linje ser tabellen ud, som om alle relevante
+                # kombinationer er regnet -- og netop de manglende er dem, der
+                # afgoer et loeft.
+                if not data.gunstig_egenlast:
+                    result_blocks.append(N(
+                        'Kombinationer med egenlasten som gunstig '
+                        '(γ_G,inf = 0,90) er slået fra og indgår ikke. '
+                        'De er de dimensionsgivende, hvor en variabel last '
+                        'virker modsat egenlasten — typisk vindsug på et let '
+                        'tag.'))
                 if fravalgt:
                     result_blocks.append(N(
                         'Følgende kombinationer er slået fra i hånden og '

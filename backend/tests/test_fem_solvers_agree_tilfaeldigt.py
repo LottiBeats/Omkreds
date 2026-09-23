@@ -88,21 +88,29 @@ def _tilfaeldig_ramme(rng):
         if el['type'] == 'truss':
             continue
         if rng.random() < 0.6:
-            ld = {'type': 'udl', 'elem_id': el['id'],
-                  'direction': rng.choice(['vertical', 'horizontal',
-                                           'perpendicular']),
-                  'value_kNm': round(rng.uniform(-12.0, 12.0), 2)}
-            # Hver tredje last daekker kun et stykke af stangen, og hver
-            # fjerde varierer langs det. Det er de to ting, der ikke kunne
-            # skrives foer, og de to steder en fastindspaendingsformel er
-            # lettest at tage fejl af.
-            if rng.random() < 0.33:
-                a = rng.uniform(0.0, 0.5)
-                b = a + rng.uniform(0.2, 1.0 - a)
-                ld['x1'], ld['x2'] = a, b        # brøkdele, skaleres nedenfor
-            if rng.random() < 0.25:
-                ld['value_end_kNm'] = round(rng.uniform(-12.0, 12.0), 2)
-            loads.append(ld)
+            # Hver tredje belastede stang faar TO laster oven paa hinanden.
+            #
+            # Det var et hul: generatoren gav hoejst én last pr. stang, og saa
+            # blev to overlappende lastafsnit aldrig regnet. Det er ellers det
+            # almindelige -- en lastkombination laver ét afsnit pr. virkning,
+            # saa egenlast og sne paa den samme bjaelke er to. Toppunktet blev
+            # soegt i hvert afsnit for sig og landede det forkerte sted.
+            for _ in range(2 if rng.random() < 0.33 else 1):
+                ld = {'type': 'udl', 'elem_id': el['id'],
+                      'direction': rng.choice(['vertical', 'horizontal',
+                                               'perpendicular']),
+                      'value_kNm': round(rng.uniform(-12.0, 12.0), 2)}
+                # Hver tredje last daekker kun et stykke af stangen, og hver
+                # fjerde varierer langs det. Det er de to ting, der ikke kunne
+                # skrives foer, og de to steder en fastindspaendingsformel er
+                # lettest at tage fejl af.
+                if rng.random() < 0.33:
+                    a = rng.uniform(0.0, 0.5)
+                    b = a + rng.uniform(0.2, 1.0 - a)
+                    ld['x1'], ld['x2'] = a, b    # brøkdele, skaleres nedenfor
+                if rng.random() < 0.25:
+                    ld['value_end_kNm'] = round(rng.uniform(-12.0, 12.0), 2)
+                loads.append(ld)
     for t in top:
         if rng.random() < 0.4:
             loads.append({'type': 'nodal', 'node_id': t,
