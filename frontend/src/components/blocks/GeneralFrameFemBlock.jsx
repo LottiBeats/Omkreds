@@ -1485,6 +1485,16 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   // lasterne, som de står, eller den gamle virkning/variant-vej.
   const tilfaelde = d.load_cases ?? []
 
+  // k_mod følger den KORTESTE lastvarighed i kombinationen (EN 1995-1-1
+  // §3.1.3). En medvirkende vindlast med ψ₀ = 0,3 ændrer næsten ingenting ved
+  // snitkraften, men løfter k_mod fra 0,90 til 1,10 — altså bæreevnen med
+  // 22 %. Derfor dannes kombinationerne også uden de kortvarige medvirkende.
+  //
+  // Kun når der er træ i modellen. For stål kan de aldrig blive
+  // dimensionsgivende — færre laster, samme bæreevne — så dér ville de kun
+  // være ekstra rækker i rapporten.
+  const harTrae = (d.elements ?? []).some(e => e.material === 'timber')
+
   function saetTilfaelde(liste) { update({ load_cases: liste }) }
   function opdaterTilfaelde(i, v) {
     const a = [...tilfaelde]; a[i] = v; saetTilfaelde(a)
@@ -1648,6 +1658,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
     d.consequence_class ?? 'CC2',
     d.method ?? '6.10ab',
     d.gunstig_egenlast !== false,
+    harTrae,
   ])
 
   useEffect(() => {
@@ -1661,6 +1672,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           method:            d.method ?? '6.10ab',
           consequence_class: d.consequence_class ?? 'CC2',
           gunstig_egenlast:  d.gunstig_egenlast !== false,
+          kmod_varianter:    harTrae,
         })
         if (!afbrudt) { setKombiTabel(r.kombinationer ?? []); setKombiFejl(null) }
       } catch (e) {
@@ -1780,6 +1792,9 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         // derfor !== false og ikke ?? true: et gammelt dokument uden feltet
         // skal have de gunstige kombinationer med, ikke undvære dem.
         gunstig_egenlast: d.gunstig_egenlast !== false,
+        // Samme vaerdi som forhaandsvisningen faar. Divergerede de to, ville
+        // tabellen vise andre kombinationer end dem, der blev eftervist.
+        kmod_varianter:   harTrae,
         service_class: d.service_class ?? 1,
         load_duration: d.load_duration ?? 'medium',
         limit_inst:    d.limit_inst    ?? 400,

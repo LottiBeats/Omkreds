@@ -2656,6 +2656,19 @@ class GenFrameFemInput(BaseModel):
     # Slaas den fra, staar det i dokumentet. Et fravalg af en hel raekke
     # eftervisninger maa ikke kunne ske i stilhed.
     gunstig_egenlast:  bool = True
+    # Skal der ogsaa dannes kombinationer uden de kortvarige medvirkende?
+    #
+    # k_mod foelger den KORTESTE lastvarighed i kombinationen (EN 1995-1-1
+    # 3.1.3). En medvirkende vindlast med psi_0 = 0,3 aendrer naesten ingenting
+    # ved snitkraften, men loefter k_mod fra 0,90 til 1,10 -- altsaa
+    # baereevnen med 22 %. Uden kombinationen UDEN vind kan den lavere k_mod
+    # aldrig blive dimensionsgivende.
+    #
+    # Slaaet til som udgangspunkt. For staal kan de aldrig blive
+    # dimensionsgivende -- faerre laster, samme baereevne -- saa dér er de kun
+    # ekstra raekker, og brugerfladen slaar dem fra, naar intet element er af
+    # trae. Staar de ved et uheld, er det en eftervisning for meget.
+    kmod_varianter:    bool = True
     # Kombinationer, brugeren har slaaet fra i tabellen, angivet ved navn.
     #
     # Et fravalg er en beslutning om konstruktionen -- "her kan vinden ikke
@@ -2814,7 +2827,8 @@ def overlay_general_frame_fem(data: GenFrameOverlayInput):
 
 
 def _kombiner_modellens_laster(loads, load_cases, method,
-                               consequence_class, gunstig_egenlast=True):
+                               consequence_class, gunstig_egenlast=True,
+                               kmod_varianter=True):
     """
     Modellens kombinationer -- uanset hvilken vej lasterne blev identificeret.
 
@@ -2829,7 +2843,8 @@ def _kombiner_modellens_laster(loads, load_cases, method,
                                   kombinationer_fra_laster)
     if load_cases:
         return kombinationer_af_tilfaelde(
-            load_cases, loads, method, consequence_class, gunstig_egenlast)
+            load_cases, loads, method, consequence_class, gunstig_egenlast,
+            kmod_varianter=kmod_varianter)
     return kombinationer_fra_laster(
         loads, method, consequence_class, gunstig_egenlast=gunstig_egenlast)
 
@@ -2842,6 +2857,7 @@ class GenFrameKombiInput(BaseModel):
     method:            str = "6.10ab"
     consequence_class: str = "CC2"
     gunstig_egenlast:  bool = True
+    kmod_varianter:    bool = True
 
 
 @protected.post("/calc/general-frame-fem/kombinationer", tags=["Calculations"])
@@ -2865,7 +2881,8 @@ def kombinationer_general_frame_fem(data: GenFrameKombiInput):
             [t.model_dump() for t in data.load_cases],
             data.method or '6.10ab',
             data.consequence_class or 'CC2',
-            data.gunstig_egenlast)
+            data.gunstig_egenlast,
+            kmod_varianter=data.kmod_varianter)
         return {"kombinationer": [
             {'name':               c['name'],
              'factor_table':       c['factor_table'],
@@ -2934,7 +2951,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 loads, [t.model_dump() for t in data.load_cases],
                 data.method or '6.10ab',
                 data.consequence_class or 'CC2',
-                data.gunstig_egenlast)
+                data.gunstig_egenlast,
+                kmod_varianter=data.kmod_varianter)
             if egne:
                 combos = egne
                 # Lasterne ligger nu inde i kombinationerne. Blev de ogsaa

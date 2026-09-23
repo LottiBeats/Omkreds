@@ -56,6 +56,13 @@ _DURATION_RANK = {
     'permanent': 0, 'long': 1, 'medium': 2, 'short': 3, 'instant': 4,
 }
 
+# Varighedsklassernes danske navne. De staar i kombinationsnavnet, saa den der
+# laeser rapporten kan se HVORFOR to naesten ens kombinationer begge er med.
+_VARIGHED_DK = {
+    'permanent': 'permanent', 'long': 'lang', 'medium': 'middel',
+    'short': 'kort', 'instant': 'øjeblikkelig',
+}
+
 TYPE_LABELS = {
     'permanent': 'G — Permanent',
     'snow':      'S — Snelast',
@@ -367,7 +374,8 @@ def kombinationer_fra_laster(loads, method='6.10ab', consequence_class='CC2',
 
 def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                                consequence_class='CC2',
-                               gunstig_egenlast=True):
+                               gunstig_egenlast=True,
+                               kmod_varianter=False):
     """
     EN 1990-kombinationer af navngivne lasttilfaelde.
 
@@ -409,6 +417,7 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
         if valgmuligheder else [[]]
 
     combos = []
+    set_navne = set()
 
     def _saml(navn, g_fac, faktorer):
         """faktorer: {tilfaeldets nr: faktor} for de variable, der indgaar."""
@@ -428,6 +437,13 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                     _TYPE_DURATION.get(pr_nr[nr]['kategori'], 'medium'))
         governing = (max(varigheder, key=lambda d: _DURATION_RANK.get(d, 0))
                      if varigheder else 'permanent')
+        # Samme navn er samme kombination: navnet baerer baade den ledende og
+        # hver faktor. To vindvalg falder sammen til én, saa snart vinden
+        # skaeres ud af k_mod-hensyn, og saa ville den staa to gange i
+        # rapporten og blive regnet to gange.
+        if navn in set_navne:
+            return
+        set_navne.add(navn)
         combos.append({'name': navn, 'loads': ud, 'factor_table': tabel,
                        'governing_duration': governing,
                        'aktive': [pr_nr[nr]['navn'] for nr in faktorer
@@ -476,6 +492,77 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                 navn_g = (f"6.10b gunstig G ({ledende['navn']} leder): "
                           f'{_GAMMA_G_INF_B:.2f}G + ' + ' + '.join(dele))
                 _saml(navn_g, _GAMMA_G_INF_B, dict(faktorer))
+
+            # k_mod-varianter (EN 1995-1-1 §3.1.3).
+            #
+            # k_mod foelger den KORTESTE lastvarighed i kombinationen. En
+            # medvirkende vindlast med psi_0 = 0,3 aendrer naesten ingenting
+            # ved snitkraften, men loefter k_mod fra 0,90 til 1,10 -- altsaa
+            # baereevnen med 22 %. Uden den kombination, hvor vinden IKKE er
+            # med, kan den lavere k_mod aldrig blive dimensionsgivende, og
+            # eftervisningen er 22 % for gunstig.
+            #
+            # Maalt paa eksempelrammen: med vind M/k_mod = 18,99, uden vind
+            # 23,24. Det er ikke en finesse, det er forskellen paa OK og ikke
+            # OK.
+            #
+            # Derfor: for hver varighedsklasse, der er KORTERE end den
+            # ledendes, dannes kombinationen uden de medvirkende af den klasse
+            # og alt kortere. Det er ikke alle delmaengder -- kun dem, der
+            # faktisk flytter k_mod, og der er højst én pr. klasse.
+            if kmod_varianter:
+                r_led = _DURATION_RANK.get(
+                    _TYPE_DURATION.get(ledende['kategori'], 'medium'), 0)
+                kortere = sorted({
+                    _DURATION_RANK.get(
+                        _TYPE_DURATION.get(pr_nr[nr]['kategori'], 'medium'), 0)
+                    for nr, f in faktorer.items()
+                    if abs(f) > 1e-10 and _DURATION_RANK.get(
+                        _TYPE_DURATION.get(pr_nr[nr]['kategori'], 'medium'), 0) > r_led
+                }, reverse=True)
+
+                for graense in kortere:
+                    skaaret = {}
+                    beholdt_dele = []
+                    for nr, f in faktorer.items():
+                        rang = _DURATION_RANK.get(
+                            _TYPE_DURATION.get(pr_nr[nr]['kategori'], 'medium'), 0)
+                        # Den ledende bliver staaende uanset hvad -- den er
+                        # det, kombinationen hedder efter.
+                        if nr != ledende['nr'] and rang >= graense:
+                            skaaret[nr] = 0.0
+                            continue
+                        skaaret[nr] = f
+                        if abs(f) > 1e-10:
+                            if nr == ledende['nr']:
+                                beholdt_dele.append(f"1,5\u00b7{pr_nr[nr]['navn']}")
+                            else:
+                                psi = _companion_psi0(ledende['kategori'],
+                                                      pr_nr[nr]['kategori'])
+                                beholdt_dele.append(
+                                    f"{psi:.1f}\u00b71,5\u00b7{pr_nr[nr]['navn']}")
+
+                    # Den resulterende varighed: den korteste af dem, der er
+                    # tilbage.
+                    rester = [r_led] + [
+                        _DURATION_RANK.get(
+                            _TYPE_DURATION.get(pr_nr[nr]['kategori'], 'medium'), 0)
+                        for nr, f in skaaret.items() if abs(f) > 1e-10]
+                    ny_rang = max(rester)
+                    ny_varighed = next(k for k, v in _DURATION_RANK.items()
+                                       if v == ny_rang)
+                    maerkat = _VARIGHED_DK.get(ny_varighed, ny_varighed)
+
+                    navn_k = (f"6.10b ({ledende['navn']} leder, k_mod "
+                              f"{maerkat}): {g_b:.2f}G + "
+                              + ' + '.join(beholdt_dele))
+                    _saml(navn_k, g_b, skaaret)
+                    if gunstig_egenlast and permanente:
+                        navn_kg = (f"6.10b gunstig G ({ledende['navn']} leder, "
+                                   f"k_mod {maerkat}): "
+                                   f"{_GAMMA_G_INF_B:.2f}G + "
+                                   + ' + '.join(beholdt_dele))
+                        _saml(navn_kg, _GAMMA_G_INF_B, dict(skaaret))
 
     return combos
 

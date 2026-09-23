@@ -166,7 +166,9 @@ def koersel(client):
 
 def test_rammen_regnes_igennem(koersel):
     s = koersel['_summary']
-    assert len(s['combinations']) == 9
+    # Ni af EN 1990 og to k_mod-varianter: rammen er af træ, så
+    # kombinationen uden de kortvarige medvirkende hører med (§3.1.3).
+    assert len(s['combinations']) == 11
     assert s['envelope'], 'ingen indhyldning'
     # Tre elementer, hver med et dimensionsgivende moment
     assert set(s['envelope']) == {'1', '2', '3'}
@@ -345,6 +347,92 @@ def test_tallene_er_de_samme_som_da_alt_blev_tegnet(koersel):
     det, der udregnede noget. De skal være en gengivelse, ikke et led.
     """
     s = koersel['_summary']
-    assert len(s['combinations']) == 9
-    assert s['envelope']['1']['M_max_kNm'] == pytest.approx(20.89, abs=0.05)
+    assert len(s['combinations']) == 11
+    assert s['envelope']['1']['M_max_kNm'] == pytest.approx(20.92, abs=0.05)
     assert s['envelope']['2']['N_max_kN'] == pytest.approx(25.37, abs=0.05)
+
+
+# ── 6. k_mod-varianterne (EN 1995-1-1 §3.1.3) ───────────────────────────────
+#
+# k_mod følger den KORTESTE lastvarighed i kombinationen. En medvirkende
+# vindlast med ψ₀ = 0,3 ændrer næsten ingenting ved snitkraften, men løfter
+# k_mod fra 0,90 til 1,10 — altså bæreevnen med 22 %.
+#
+# Målt på denne ramme: med vind er M = 20,88 kNm og M/k_mod = 18,99. Uden vind
+# er M = 20,92 og M/k_mod = 23,24. Uden den kombination er eftervisningen 22 %
+# for gunstig, og alle tallene i den ser normale ud.
+
+_KMOD_AK1 = {'permanent': 0.60, 'long': 0.70, 'medium': 0.80,
+             'short': 0.90, 'instant': 1.10}
+
+
+def test_der_dannes_en_kombination_uden_de_kortvarige():
+    combos = kombinationer_af_tilfaelde(LASTTILFAELDE, LASTER,
+                                        kmod_varianter=True)
+    uden = [c for c in combos if 'k_mod kort' in c['name']]
+    assert uden, 'kombinationen uden vind mangler'
+    for c in uden:
+        assert c['governing_duration'] == 'short'
+        assert 'Vind' not in ' '.join(c['aktive'])
+        assert 'Snelast' in c['aktive']
+
+
+def test_den_ledende_bliver_staaende_selv_om_den_er_kortvarig():
+    """Vind som ledende kan ikke skæres væk — så var det ikke den kombination."""
+    combos = kombinationer_af_tilfaelde(LASTTILFAELDE, LASTER,
+                                        kmod_varianter=True)
+    for c in combos:
+        if c['name'].startswith('6.10b (Vind'):
+            assert any('Vind' in a for a in c['aktive']), c['name']
+
+
+def test_de_to_vindvalg_falder_sammen_til_en():
+    """Skæres vinden ud, er de to vindvalg den samme kombination.
+
+    Uden sammenlægningen stod den to gange i rapporten og blev regnet to
+    gange.
+    """
+    combos = kombinationer_af_tilfaelde(LASTTILFAELDE, LASTER,
+                                        kmod_varianter=True)
+    navne = [c['name'] for c in combos]
+    assert len(navne) == len(set(navne)), 'samme kombination står to gange'
+    assert len([n for n in navne if 'k_mod kort' in n]) == 2   # med og uden gunstig G
+
+
+def test_varianten_bliver_dimensionsgivende_for_trae(client):
+    """Prøven på, at det ikke bare er en ekstra række.
+
+    Den dimensionsgivende for træ er den med størst M/k_mod, og det skal være
+    den nye kombination.
+    """
+    r = client.post('/calc/general-frame-fem', json=dict(
+        MODEL, title='Portalramme', loads=LASTER, load_cases=LASTTILFAELDE,
+        service_class=1, kmod_varianter=True))
+    assert r.status_code == 200, r.text
+    trae = r.json()['_summary']['timber_envelope']['1']['1']
+    assert 'k_mod kort' in trae['combo'], trae['combo']
+    assert trae['duration'] == 'short'
+
+
+def test_uden_varianterne_vaelges_den_gunstigere_kombination(client):
+    """Det, der var galt: den med vind vinder, fordi k_mod er 1,10."""
+    r = client.post('/calc/general-frame-fem', json=dict(
+        MODEL, title='Portalramme', loads=LASTER, load_cases=LASTTILFAELDE,
+        service_class=1, kmod_varianter=False))
+    trae = r.json()['_summary']['timber_envelope']['1']['1']
+    assert trae['duration'] == 'instant'
+
+
+def test_forskellen_er_de_22_procent(client):
+    """M/k_mod med og uden varianterne — forskellen skal være reel."""
+    ud = {}
+    for flag in (False, True):
+        r = client.post('/calc/general-frame-fem', json=dict(
+            MODEL, title='Portalramme', loads=LASTER,
+            load_cases=LASTTILFAELDE, service_class=1, kmod_varianter=flag))
+        t = r.json()['_summary']['timber_envelope']['1']['1']
+        ud[flag] = abs(t['M_Ed_kNm']) / _KMOD_AK1[t['duration']]
+
+    assert ud[True] > ud[False] * 1.15, ud
+    assert ud[True] == pytest.approx(23.2, abs=0.3)
+    assert ud[False] == pytest.approx(19.0, abs=0.3)
