@@ -274,3 +274,98 @@ def lasttilfaelde_vind(**kwargs) -> list:
             })
             nr += 1
     return tilfaelde
+
+
+# ── Rammens egen geometri ───────────────────────────────────────────────────
+
+def roller_fra_model(nodes, elements) -> dict:
+    """
+    Hvilken stang er luvvaeg, luvspaer, laespaer og laevaeg -- laest af modellen.
+
+    Der er to grunde til ikke at spoerge om elementnumrene.
+
+    Den ene er, at de allerede staar der: en lodret stang i venstre side ER
+    luvvaeggen, naar vinden kommer fra venstre. Den anden er dyrere: Frame
+    Load Cases spurgte om elementnumre i en blok, der ikke viste modellen, og
+    de blev tastet i blinde og blev staaende, naar FEM'en omnummererede. Den
+    blok er ude af paletten af netop den grund.
+
+    Returnerer ogsaa de maal, vindzonerne skal bruge:
+
+        h_m        kippens hoejde over terraen
+        d_m        rammens spaendvidde -- bygningens dybde PAA LANGS AF VINDEN,
+                   naar den staar vinkelret paa kippen
+        spaer_*_m  de to spaers laengder
+
+    Bygningens bredde b (paa tvaers af vinden, altsaa laengden langs kippen)
+    kan ikke laeses af en 2D-ramme. Den er den ENE maal, brugeren skal give --
+    sammen med rammeafstanden.
+    """
+    knuder = {n['id']: n for n in nodes}
+    mangler = [e.get('id') for e in elements
+               if e.get('ni') not in knuder or e.get('nj') not in knuder]
+    if mangler:
+        raise ValueError(
+            'element %s peger paa en knude, der ikke findes'
+            % ', '.join(str(m) for m in mangler))
+
+    xs = [n['x'] for n in knuder.values()]
+    ys = [n['y'] for n in knuder.values()]
+    if not xs:
+        raise ValueError('modellen har ingen knuder')
+    midte = (min(xs) + max(xs)) / 2.0
+
+    vaegge, spaer = [], []
+    for e in elements:
+        i, j = knuder[e['ni']], knuder[e['nj']]
+        dx, dy = j['x'] - i['x'], j['y'] - i['y']
+        L = (dx * dx + dy * dy) ** 0.5
+        if L <= 1e-9:
+            continue
+        # Lodret nok til at vaere en vaeg: haelder mindre end 45 grader fra
+        # lodret. Et spaer paa 45 grader eller mere er sjaeldent, og er det
+        # der, skal det siges i haanden -- ikke gaettes forkert i stilhed.
+        (vaegge if abs(dy) > abs(dx) else spaer).append(
+            {'id': e['id'], 'x': (i['x'] + j['x']) / 2.0, 'L': L,
+             'y_top': max(i['y'], j['y'])})
+
+    if len(vaegge) != 2 or len(spaer) != 2:
+        raise ValueError(
+            'kan ikke laese en saddeltagsramme: fandt %d lodrette og %d '
+            'skraa staenger, forventede 2 og 2. Er det en anden form, skal '
+            'lasterne paasaettes i haanden.' % (len(vaegge), len(spaer)))
+
+    vaegge.sort(key=lambda s: s['x'])
+    spaer.sort(key=lambda s: s['x'])
+
+    return {
+        'venstre': {'vaeg': vaegge[0]['id'], 'spaer': spaer[0]['id'],
+                    'spaer_L': spaer[0]['L']},
+        'hoejre':  {'vaeg': vaegge[1]['id'], 'spaer': spaer[1]['id'],
+                    'spaer_L': spaer[1]['L']},
+        'h_m': max(ys) - min(ys),
+        'd_m': max(xs) - min(xs),
+    }
+
+
+def lasttilfaelde_fra_model(nodes, elements, q_p_kNm2, b_m, rammeafstand_m,
+                            c_pe, foerste_nr=1, cpi_saet=CPI_SAET) -> list:
+    """
+    De fire vindlasttilfaelde, laest af modellen plus de to maal, den ikke har.
+
+    Brugeren giver: q_p, bygningens laengde langs kippen (b), rammeafstanden
+    og de seks aflaeste c_pe. Alt andet staar i modellen.
+    """
+    r = roller_fra_model(nodes, elements)
+    elementer = {
+        'vaeg_luv':  r['venstre']['vaeg'],
+        'spaer_luv': r['venstre']['spaer'],
+        'spaer_lae': r['hoejre']['spaer'],
+        'vaeg_lae':  r['hoejre']['vaeg'],
+    }
+    return lasttilfaelde_vind(
+        q_p_kNm2=q_p_kNm2, h_m=r['h_m'], b_m=b_m,
+        spaer_luv_m=r['venstre']['spaer_L'],
+        spaer_lae_m=r['hoejre']['spaer_L'],
+        rammeafstand_m=rammeafstand_m, elementer=elementer, c_pe=c_pe,
+        foerste_nr=foerste_nr, cpi_saet=cpi_saet)

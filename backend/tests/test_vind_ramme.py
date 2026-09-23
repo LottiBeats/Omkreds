@@ -238,3 +238,90 @@ def test_tilfaeldene_kan_kombineres_af_motoren():
     for c in combos:
         vindnavne = [a for a in c['aktive'] if a.startswith('Vind')]
         assert len(vindnavne) <= 1, c['name']
+
+
+# ── Rammens geometri læses af modellen ──────────────────────────────────────
+#
+# Elementnumrene skal ikke tastes. Frame Load Cases spurgte om dem i en blok,
+# der ikke viste modellen, de blev tastet i blinde og blev stående, når FEM'en
+# omnummererede — og den blok er ude af paletten af netop den grund.
+
+#        4 ── kip (6,0 m) ── 4
+#       /                     \
+#      3                       5      spær: elem 2 og 3
+#      │                       │
+#      2 ─ tagfod (4,0 m) ─────┤      væg: elem 1 og 4
+#      1                       6
+SADDEL_KNUDER = [
+    {'id': 1, 'x': 0.0,  'y': 0.0},
+    {'id': 2, 'x': 0.0,  'y': 4.0},
+    {'id': 3, 'x': 6.0,  'y': 6.0},     # kip
+    {'id': 4, 'x': 12.0, 'y': 4.0},
+    {'id': 5, 'x': 12.0, 'y': 0.0},
+]
+SADDEL_ELEMENTER = [
+    {'id': 1, 'ni': 1, 'nj': 2},        # venstre væg
+    {'id': 2, 'ni': 2, 'nj': 3},        # venstre spær
+    {'id': 3, 'ni': 3, 'nj': 4},        # højre spær
+    {'id': 4, 'ni': 4, 'nj': 5},        # højre væg
+]
+
+
+def test_rollerne_laeses_af_geometrien():
+    r = vr.roller_fra_model(SADDEL_KNUDER, SADDEL_ELEMENTER)
+    assert r['venstre']['vaeg'] == 1
+    assert r['venstre']['spaer'] == 2
+    assert r['hoejre']['spaer'] == 3
+    assert r['hoejre']['vaeg'] == 4
+
+
+def test_maalene_laeses_af_geometrien():
+    r = vr.roller_fra_model(SADDEL_KNUDER, SADDEL_ELEMENTER)
+    assert r['h_m'] == pytest.approx(6.0)     # kippen over terræn
+    assert r['d_m'] == pytest.approx(12.0)    # spændvidden
+    # Spærlængden: 6,0 vandret og 2,0 lodret
+    assert r['venstre']['spaer_L'] == pytest.approx((6.0**2 + 2.0**2) ** 0.5)
+
+
+def test_en_form_der_ikke_er_en_saddeltagsramme_afvises():
+    """Ikke et gæt. En portalramme med fladt tag har ét spær, ikke to, og
+    zonerne ligger anderledes."""
+    flad = [{'id': 1, 'ni': 1, 'nj': 2}, {'id': 2, 'ni': 2, 'nj': 4},
+            {'id': 3, 'ni': 4, 'nj': 5}]
+    with pytest.raises(ValueError, match='2 og 2'):
+        vr.roller_fra_model(SADDEL_KNUDER, flad)
+
+
+def test_et_element_uden_knude_siges_hoejt():
+    daarlig = SADDEL_ELEMENTER + [{'id': 9, 'ni': 3, 'nj': 99}]
+    with pytest.raises(ValueError, match='99|element 9'):
+        vr.roller_fra_model(SADDEL_KNUDER, daarlig)
+
+
+def test_lasttilfaelde_direkte_fra_modellen():
+    """Brugeren giver q_p, b, rammeafstanden og de seks c_pe. Resten læses."""
+    t = vr.lasttilfaelde_fra_model(
+        SADDEL_KNUDER, SADDEL_ELEMENTER, q_p_kNm2=0.75, b_m=30.0,
+        rammeafstand_m=4.0, c_pe=CPE)
+    assert len(t) == 4
+
+    # e = min(b, 2h) = min(30, 12) = 12 → e/10 = 1,2 m fra tagfoden
+    luv = [l for l in t[0]['laster'] if l['elem_id'] == 2]
+    assert [l['zone'] for l in luv] == ['G', 'H']
+    assert luv[0]['x2'] == pytest.approx(1.2)
+
+    # Læsiden: J ved kippen
+    lae = [l for l in t[0]['laster'] if l['elem_id'] == 3]
+    assert [l['zone'] for l in lae] == ['I', 'J']
+
+
+def test_kun_to_maal_skal_tastes():
+    """Den egentlige pointe: h, d og spærlængderne kommer fra modellen.
+
+    Kaldet lykkes uden at nogen har opgivet dem.
+    """
+    import inspect
+    p = inspect.signature(vr.lasttilfaelde_fra_model).parameters
+    kraevede = [n for n, v in p.items() if v.default is inspect.Parameter.empty]
+    assert kraevede == ['nodes', 'elements', 'q_p_kNm2', 'b_m',
+                        'rammeafstand_m', 'c_pe']
