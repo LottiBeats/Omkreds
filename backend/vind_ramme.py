@@ -3,32 +3,30 @@ vind_ramme.py — vindzoner på en saddeltagsramme, EN 1991-1-4
 
 Hvad
 ----
-Tager rammens geometri og spidshastighedstrykket q_p og giver de linjelaster,
-vinden sætter på hver enkelt stang — zone for zone, med de rigtige
-formfaktorer og med de fire lasttilfælde, en ramme skal eftervises for.
+Du aflæser c_pe i tabel 7.1 og 7.4a. Modulet gør resten: hvor zonegrænserne
+falder på hver enkelt stang, hvad de fire lasttilfælde hedder, og hvilken
+linjelast hver flade får.
 
-Hvorfor
--------
-q_p regnes allerede rigtigt i wind_load.py. Formfaktorerne gjorde ikke: de var
-parametre med standardværdier (c_pe,los = 0,8, c_pe,læ = −0,5), tastet i
-hånden, og der fandtes ingen tagzoner overhovedet. På et saddeltag er det
-netop taget, der afgør rammen — og zonerne dér spænder fra +0,7 til −1,7
-afhængigt af taghældningen.
+Hvorfor formfaktorerne er INPUT og ikke en tabel i koden
+--------------------------------------------------------
+Første udgave havde tabel 7.4a skrevet ind i modulet. Det var forkert tænkt,
+og Niels sagde det: du har standarden liggende, og at aflæse fem tal tager et
+halvt minut. En indkodet tabel flytter ikke arbejdet væk — den flytter
+ansvaret hen et sted, hvor en fejl er sværest at få øje på, og hvor den
+projekterende ikke kan se, hvad der blev brugt.
 
-    ┌─ ADVARSEL ─────────────────────────────────────────────────────────┐
-    │ Tabelværdierne nedenfor er skrevet efter EN 1991-1-4 tabel 7.1 og  │
-    │ 7.4a. De SKAL efterprøves mod standarden, før de bruges i et       │
-    │ dokument, der udstedes. De står ét sted og kun ét, netop for at    │
-    │ den kontrol kan gøres én gang — se _CPE_VAEG og _CPE_SADDELTAG.    │
-    │                                                                     │
-    │ Prøverne i tests/test_vind_ramme.py låser hver eneste værdi fast,   │
-    │ så en rettelse er én linje og en fejlende prøve, ikke en jagt.      │
-    └─────────────────────────────────────────────────────────────────────┘
+Nu står de tal, du har aflæst, i rapporten som dine. Det er også den eneste
+form, en kontrollant kan bruge til noget: c_pe = −0,5 med en henvisning til
+tabel 7.4a kan efterregnes, "programmet slog det op" kan ikke.
+
+forslag_cpe() findes stadig som et udgangspunkt, men INTET kalder den af sig
+selv. Den er et forslag, der skal efterses — ikke et opslag, der skal stoles
+på.
 
 Hvordan
 -------
-Vinden vinkelret på kippen (θ = 0°) er den, der belaster rammen. En
-indvendig ramme ser:
+Vinden vinkelret på kippen (θ = 0°) er den, der belaster rammen. En indvendig
+ramme ser:
 
     væg, luv         zone D
     tagflade, luv    zone G i e/10 fra tagfoden, derefter H
@@ -40,21 +38,27 @@ indvendig ramme ser:
 Zone F og A/B/C hører til gavlene og til vægge parallelt med vinden; en
 indvendig ramme bærer dem ikke.
 
-Det indvendige tryk lægges til alle flader: w = (c_pe − c_pi)·q_p. Med c_pi
-= +0,2 og −0,3 (EN 1991-1-4 §7.2.9(6), når åbningsforholdet ikke er kendt)
-og vind fra hver side giver det fire lasttilfælde — de fire, enhver ramme
-skal eftervises for.
+Det indvendige tryk lægges til alle flader: w = (c_pe − c_pi)·q_p·s, hvor s er
+rammeafstanden. Med c_pi = +0,2 og −0,3 (EN 1991-1-4 §7.2.9(6), når
+åbningsforholdet ikke er kendt) og vind fra hver side giver det fire
+lasttilfælde.
 """
 from __future__ import annotations
 
-# ── EN 1991-1-4 tabel 7.1 — lodrette vægge, c_pe,10 ─────────────────────────
+# ── Et FORSLAG, ikke et opslag ─────────────────────────────────────────────
 #
-# Kun D (luv) og E (læ): A, B og C sidder på de vægge, der er parallelle med
-# vinden, og dem bærer en indvendig ramme ikke.
+# Tallene herunder er skrevet efter EN 1991-1-4 tabel 7.1 og 7.4a. De bruges
+# IKKE af sig selv: vindlaster_paa_ramme() kræver, at c_pe gives med, og den
+# eneste vej hertil er forslag_cpe(), som kalderen selv skal bede om.
 #
-# Nøglen er h/d. Mellem punkterne interpoleres lineært, som noten til tabellen
-# foreskriver.
-_CPE_VAEG = {
+# Det er med vilje. Et forslag, man selv har hentet og set på, er noget andet
+# end en vaerdi, der kom ind bagvejen -- og det er den projekterende, der
+# aflaeser tabellen og staar inde for tallet.
+#
+# Kun D (luv) og E (læ) paa vaeggene: A, B og C sidder paa de vaegge, der er
+# parallelle med vinden, og dem baerer en indvendig ramme ikke. Noeglen er
+# h/d, og mellem punkterne interpoleres lineaert.
+_FORSLAG_VAEG = {
     # h/d:   (D,    E)
     5.00:    (+0.8, -0.7),
     1.00:    (+0.8, -0.5),
@@ -68,7 +72,7 @@ _CPE_VAEG = {
 # Ved de flade haeldninger giver tabellen BÅDE en negativ og en positiv
 # vaerdi, og begge skal eftervises -- "begge fortegn" er ikke et valg, det er
 # to lasttilfaelde. De staar her som to saet.
-_CPE_SADDELTAG_NEG = {
+_FORSLAG_TAG_NEG = {
     #  alfa:  (F,    G,    H,    J,    I)
     5:       (-1.7, -1.2, -0.6, -0.6, -0.6),
     15:      (-0.9, -0.8, -0.3, -1.0, -0.4),
@@ -77,7 +81,7 @@ _CPE_SADDELTAG_NEG = {
     60:      (+0.7, +0.7, +0.7, -0.3, -0.2),
     75:      (+0.8, +0.8, +0.8, -0.3, -0.2),
 }
-_CPE_SADDELTAG_POS = {
+_FORSLAG_TAG_POS = {
     #  alfa:  (F,    G,    H,    J,    I)
     5:       (0.0,  0.0,  0.0,  +0.2, 0.0),
     15:      (+0.2, +0.2, +0.2, 0.0,  0.0),
@@ -108,22 +112,27 @@ def _interpoler(tabel: dict, x: float) -> tuple:
     return tabel[noegler[-1]]
 
 
-def cpe_vaegge(h_m: float, d_m: float) -> dict:
-    """c_pe for luv- og laevaeg (zone D og E) efter h/d."""
+def forslag_vaegge(h_m: float, d_m: float) -> dict:
+    """FORSLAG til c_pe for luv- og laevaeg (zone D og E) efter h/d.
+
+    Efterprøv mod EN 1991-1-4 tabel 7.1, foer det bruges.
+    """
     if d_m <= 0:
         raise ValueError('bygningsdybden d skal vaere positiv')
-    D, E = _interpoler(_CPE_VAEG, h_m / d_m)
+    D, E = _interpoler(_FORSLAG_VAEG, h_m / d_m)
     return {'D': round(D, 3), 'E': round(E, 3)}
 
 
-def cpe_saddeltag(alpha_deg: float, fortegn: str = 'neg') -> dict:
-    """c_pe for tagzonerne F, G, H, J, I ved taghaeldningen alfa.
+def forslag_saddeltag(alpha_deg: float, fortegn: str = 'neg') -> dict:
+    """FORSLAG til c_pe for tagzonerne F, G, H, J, I ved taghaeldningen alfa.
+
+    Efterprøv mod EN 1991-1-4 tabel 7.4a, foer det bruges.
 
     fortegn: 'neg' eller 'pos'. Ved de flade haeldninger giver tabellen begge,
     og begge skal eftervises -- derfor to opslag og ikke ét med et valg
     indbygget.
     """
-    tabel = _CPE_SADDELTAG_POS if fortegn == 'pos' else _CPE_SADDELTAG_NEG
+    tabel = _FORSLAG_TAG_POS if fortegn == 'pos' else _FORSLAG_TAG_NEG
     vaerdier = _interpoler(tabel, abs(float(alpha_deg)))
     return {z: round(v, 3) for z, v in zip(_ZONER, vaerdier)}
 
@@ -162,24 +171,39 @@ def tagzoner_langs_spaer(h_m: float, b_m: float, spaerlaengde_m: float,
     return [('I', 0.0, L - kant), ('J', L - kant, L)]
 
 
-def vindlaster_paa_ramme(q_p_kNm2: float, h_m: float, b_m: float, d_m: float,
-                         alpha_deg: float, spaer_luv_m: float,
-                         spaer_lae_m: float, rammeafstand_m: float,
-                         elementer: dict, fra: str = 'venstre',
-                         c_pi: float = 0.2, fortegn: str = 'neg') -> list:
+_KRAEVEDE_ZONER = ('D', 'E', 'G', 'H', 'I', 'J')
+
+
+def vindlaster_paa_ramme(q_p_kNm2: float, h_m: float, b_m: float,
+                         spaer_luv_m: float, spaer_lae_m: float,
+                         rammeafstand_m: float, elementer: dict,
+                         c_pe: dict, c_pi: float = 0.2) -> list:
     """
     Linjelasterne paa rammens staenger for ÉN vindretning og ÉT c_pi.
 
-    elementer: {'vaeg_luv': id, 'spaer_luv': id, 'spaer_lae': id,
-                'vaeg_lae': id}
+    c_pe      {'D':.., 'E':.., 'G':.., 'H':.., 'I':.., 'J':..} -- de vaerdier,
+              den projekterende har aflaest i EN 1991-1-4 tabel 7.1 og 7.4a.
+              Der er ingen standardvaerdier. En formfaktor, programmet fandt
+              paa, staar i rapporten som om nogen havde slaaet den op.
+    elementer {'vaeg_luv': id, 'spaer_luv': id, 'spaer_lae': id,
+               'vaeg_lae': id}
 
     Returnerer laster i blokkens eget format, med 'direction' = 'perpendicular'
     -- vindtryk virker vinkelret paa fladen, og det gaelder ogsaa et spaer.
 
     Fortegnet: w er positiv som TRYK ind mod fladen. En negativ w er sug.
     """
-    vaeg = cpe_vaegge(h_m, d_m)
-    tag = cpe_saddeltag(alpha_deg, fortegn)
+    mangler = [z for z in _KRAEVEDE_ZONER if z not in (c_pe or {})]
+    if mangler:
+        # Ikke nul for en manglende zone. Nul er en gyldig formfaktor, og en
+        # flade, der stilfaerdigt fik nul, ville se ubelastet ud i en figur
+        # uden at nogen havde besluttet det.
+        raise ValueError(
+            'c_pe mangler for zone ' + ', '.join(mangler)
+            + '. Aflaes dem i EN 1991-1-4 tabel 7.1 (vaegge) og 7.4a (tag).')
+
+    vaeg = {'D': float(c_pe['D']), 'E': float(c_pe['E'])}
+    tag = {z: float(c_pe[z]) for z in ('G', 'H', 'I', 'J')}
     s = float(rammeafstand_m)
 
     def w(c_pe):
@@ -222,7 +246,6 @@ def lasttilfaelde_vind(**kwargs) -> list:
     """
     fra_retning = kwargs.pop('retninger', ('venstre', 'hoejre'))
     cpi_saet = kwargs.pop('cpi_saet', CPI_SAET)
-    fortegn = kwargs.pop('fortegn', 'neg')
 
     tilfaelde = []
     nr = int(kwargs.pop('foerste_nr', 1))
@@ -237,8 +260,7 @@ def lasttilfaelde_vind(**kwargs) -> list:
                     'spaer_luv': elementer['spaer_lae'],
                     'spaer_lae': elementer['spaer_luv'],
                 }
-            argumenter = dict(kwargs, elementer=elementer, c_pi=cpi,
-                              fortegn=fortegn, fra=retning)
+            argumenter = dict(kwargs, elementer=elementer, c_pi=cpi)
             argumenter.pop('foerste_nr', None)
             laster = vindlaster_paa_ramme(**argumenter)
             navn = (f"Vind fra {retning}, "

@@ -1,17 +1,14 @@
 """
 test_vind_ramme.py — vindzoner på en saddeltagsramme
 
-Prøverne her har to formål, og det andet er det vigtigste.
+c_pe er INPUT. Den projekterende aflæser tabel 7.1 og 7.4a og står inde for
+tallene; modulet regner zonegrænser, fortegn og lasttilfælde. Derfor bruger
+prøverne herunder nogle opdigtede, letgenkendelige c_pe-værdier: det, der
+efterprøves, er regnestykket omkring dem, ikke en tabel i koden.
 
-Det første er det sædvanlige: at regnestykket gør, hvad det skal.
-
-Det andet er at LÅSE tabelværdierne. c_pe-tallene i vind_ramme.py er skrevet
-efter EN 1991-1-4 tabel 7.1 og 7.4a og skal efterprøves mod standarden. Når
-de står her én gang til, er en rettelse én linje hvert sted og en fejlende
-prøve — ikke en jagt gennem koden efter, hvor et tal ellers måtte gemme sig.
-
-Så: finder du en forkert værdi, retter du den BEGGE steder. Fejler kun den
-ene, er det prøven, der har ret.
+Prøverne af forslag_*() står for sig selv til sidst. De låser de foreslåede
+værdier, så et forslag ikke kan skride ubemærket — men intet kalder dem af
+sig selv, og et forslag er ikke et opslag.
 """
 import pytest
 
@@ -26,28 +23,28 @@ import vind_ramme as vr
     (0.25, +0.7, -0.3),
 ])
 def test_vaegzonerne_er_tabellens(h_over_d, D, E):
-    c = vr.cpe_vaegge(h_m=h_over_d * 10.0, d_m=10.0)
+    c = vr.forslag_vaegge(h_m=h_over_d * 10.0, d_m=10.0)
     assert c['D'] == pytest.approx(D)
     assert c['E'] == pytest.approx(E)
 
 
 def test_der_interpoleres_mellem_punkterne():
     """Noten til tabel 7.1: mellem værdierne interpoleres lineært."""
-    c = vr.cpe_vaegge(h_m=2.5, d_m=10.0)    # h/d = 0,25 … 1 midtvejs? nej: 0,25
+    c = vr.forslag_vaegge(h_m=2.5, d_m=10.0)    # h/d = 0,25 … 1 midtvejs? nej: 0,25
     assert c['E'] == pytest.approx(-0.3)
 
-    midt = vr.cpe_vaegge(h_m=6.25, d_m=10.0)   # h/d = 0,625, midt mellem 0,25 og 1
+    midt = vr.forslag_vaegge(h_m=6.25, d_m=10.0)   # h/d = 0,625, midt mellem 0,25 og 1
     assert midt['E'] == pytest.approx((-0.3 + -0.5) / 2, abs=1e-6)
 
 
 def test_uden_for_tabellen_bruges_yderpunktet():
     """h/d = 12 er ikke i tabellen; den må ikke ekstrapolere ud i det blå."""
-    assert vr.cpe_vaegge(h_m=120.0, d_m=10.0)['E'] == pytest.approx(-0.7)
+    assert vr.forslag_vaegge(h_m=120.0, d_m=10.0)['E'] == pytest.approx(-0.7)
 
 
 def test_dybde_nul_afvises():
     with pytest.raises(ValueError):
-        vr.cpe_vaegge(h_m=5.0, d_m=0.0)
+        vr.forslag_vaegge(h_m=5.0, d_m=0.0)
 
 
 # ── Tabel 7.4a, saddeltag, θ = 0° ───────────────────────────────────────────
@@ -61,7 +58,7 @@ def test_dybde_nul_afvises():
     (75, +0.8, +0.8, +0.8, -0.3, -0.2),
 ])
 def test_tagzonerne_negative_er_tabellens(alfa, F, G, H, J, I):
-    c = vr.cpe_saddeltag(alfa, 'neg')
+    c = vr.forslag_saddeltag(alfa, 'neg')
     assert (c['F'], c['G'], c['H'], c['J'], c['I']) \
         == pytest.approx((F, G, H, J, I))
 
@@ -73,9 +70,18 @@ def test_tagzonerne_negative_er_tabellens(alfa, F, G, H, J, I):
     (45, +0.7, +0.7, +0.6,  0.0, 0.0),
 ])
 def test_tagzonerne_positive_er_tabellens(alfa, F, G, H, J, I):
-    c = vr.cpe_saddeltag(alfa, 'pos')
+    c = vr.forslag_saddeltag(alfa, 'pos')
     assert (c['F'], c['G'], c['H'], c['J'], c['I']) \
         == pytest.approx((F, G, H, J, I))
+
+
+def test_en_manglende_formfaktor_afvises():
+    """Ikke nul. Nul er en gyldig formfaktor, og en flade, der stilfaerdigt
+    fik nul, ville se ubelastet ud i en figur uden at nogen besluttede det."""
+    uden_J = {k: v for k, v in CPE.items() if k != 'J'}
+    argumenter = dict(RAMME, c_pe=uden_J)
+    with pytest.raises(ValueError, match='J'):
+        vr.vindlaster_paa_ramme(**argumenter, c_pi=0.2)
 
 
 def test_begge_fortegn_findes_ved_de_flade_haeldninger():
@@ -83,8 +89,8 @@ def test_begge_fortegn_findes_ved_de_flade_haeldninger():
 
     Det er ikke et valg mellem to tal — det er to lasttilfælde.
     """
-    neg = vr.cpe_saddeltag(15, 'neg')
-    pos = vr.cpe_saddeltag(15, 'pos')
+    neg = vr.forslag_saddeltag(15, 'neg')
+    pos = vr.forslag_saddeltag(15, 'pos')
     assert neg['H'] < 0 < pos['H']
 
 
@@ -119,10 +125,16 @@ def test_et_kort_spaer_bliver_én_zone():
 
 # ── Lasterne på rammen ──────────────────────────────────────────────────────
 
+# c_pe som den projekterende har aflaest dem. Tallene er valgt saa hver zone
+# kan kendes igen i et resultat -- det er regnestykket, der proeves her.
+CPE = {'D': +0.80, 'E': -0.50, 'G': -1.20, 'H': -0.60,
+       'I': -0.40, 'J': -1.00}
+
 RAMME = dict(
-    q_p_kNm2=0.75, h_m=6.0, b_m=30.0, d_m=12.0, alpha_deg=30.0,
+    q_p_kNm2=0.75, h_m=6.0, b_m=30.0,
     spaer_luv_m=3.5, spaer_lae_m=3.5, rammeafstand_m=4.0,
     elementer={'vaeg_luv': 1, 'spaer_luv': 2, 'spaer_lae': 3, 'vaeg_lae': 4},
+    c_pe=CPE,
 )
 
 
@@ -135,12 +147,10 @@ def test_luvvaeggen_faar_tryk_og_laevaeggen_sug():
 
 
 def test_vaerdien_er_cpe_minus_cpi_gange_qp_gange_rammeafstand():
-    """Håndregnet: h/d = 0,5 → D interpoleret mellem 0,7 og 0,8."""
+    """Håndregnet: (0,80 − 0,20) · 0,75 · 4,0 = 1,80 kN/m."""
     laster = vr.vindlaster_paa_ramme(**RAMME, c_pi=0.2)
-    D = vr.cpe_vaegge(6.0, 12.0)['D']
-    forventet = (D - 0.2) * 0.75 * 4.0
     luv = next(l for l in laster if l['elem_id'] == 1)
-    assert luv['value_kNm'] == pytest.approx(forventet, abs=1e-4)
+    assert luv['value_kNm'] == pytest.approx(1.80, abs=1e-4)
 
 
 def test_spaeret_faar_to_dellaster():
