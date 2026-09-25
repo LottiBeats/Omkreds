@@ -24,6 +24,7 @@ export function makeTimberRoofTemplate() {
     hLoads:       nid(),
     hDead:        nid(),   deadBlock:  nid(),
     hSnow:        nid(),   snowBlock:  nid(),
+    txtHaneN:     nid(),
     hWind:        nid(),   windBlock:  nid(),   txtWind:  nid(),
     hCombos:      nid(),   loadCases:  nid(),
     hTimberCombos: nid(),  timberCases: nid(),
@@ -57,9 +58,10 @@ export function makeTimberRoofTemplate() {
 
   // ── Loads (derived below) ────────────────────────────────────────────────
   // g_k = 0.90 kN/m  (pr. spær, vandret projektion)
-  // s   = 0.63 kN/m  (pr. spær, vandret projektion, μ₁ = 0.70, s_k = 0.90 kN/m²)
-  // W+  = +0.31 kN/m ⊥  (vindtryk på venstre spær,  c_net = +0.47)
-  // W−  = −0.20 kN/m ⊥  (vindsug  på højre spær,    c_net = −0.30)
+  // s   = 0.70 kN/m  (pr. spær, vandret projektion, μ₁ = 0.70, s_k = 1.0 kN/m² — DK NA, hele Danmark)
+  // Vind, w = (c_pe − c_pi)·q_p, c_pi = +0,2 (størst sug på læsiden):
+  // W+  = +0.05 kN/m ⊥  (venstre spær, c_net = 0.27 − 0.20 = +0.07)
+  // W−  = −0.46 kN/m ⊥  (højre spær,   c_net = −0.50 − 0.20 = −0.70)
 
   return [
 
@@ -110,8 +112,7 @@ export function makeTimberRoofTemplate() {
       label:         'SN1',
       roof_type:     'pitched',
       alpha_deg:     33.69,
-      s_k_kNm2:      0.9,
-      dk_zone:       '1',
+      s_k_kNm2:      1.0,     // DS/EN 1991-1-3 DK NA: 1,0 kN/m² i hele Danmark
       C_e:           1.0,
       C_t:           1.0,
       roof_span_m:   6.0,
@@ -146,10 +147,15 @@ export function makeTimberRoofTemplate() {
       'Formfaktorer for saddeltag α = 33,7° (DS/EN 1991-1-4 Tabel 7.4a, θ = 0°):\n' +
       '  Vindsiden (zone H):   c_pe = +0,27  (interpoleret 30°→45°: 0,20→0,50)\n' +
       '  Læsiden  (zone I):    c_pe = −0,50\n' +
-      '  Indvendig overtryk:   c_pi = +0,20  (mest ugunstig for netto vindtryk)\n\n' +
-      'Netto vindtryk pr. spær a = 1,0 m (vinkelret på tagflade):\n' +
-      '  Vindside (venstre):  w₊ = (c_pe + c_pi) × q_p × a = (0,27 + 0,20) × 0,65 × 1,0 = +0,31 kN/m\n' +
-      '  Læside  (højre):     w₋ = (c_pe + c_pi) × q_p × a = (−0,50 + 0,20) × 0,65 × 1,0 = −0,20 kN/m\n\n' +
+      '  Indvendigt tryk:      c_pi = +0,20 og −0,30 (begge undersøges)\n\n' +
+      'Netto vindtryk pr. spær a = 1,0 m (vinkelret på tagflade), w = (c_pe − c_pi) × q_p × a:\n' +
+      '  c_pi = +0,20 (indvendigt overtryk — størst sug på læsiden):\n' +
+      '    Vindside (venstre):  (0,27 − 0,20) × 0,65 × 1,0 = +0,05 kN/m\n' +
+      '    Læside  (højre):     (−0,50 − 0,20) × 0,65 × 1,0 = −0,46 kN/m\n' +
+      '  c_pi = −0,30 (indvendigt undertryk — størst tryk på vindsiden):\n' +
+      '    Vindside (venstre):  (0,27 + 0,30) × 0,65 × 1,0 = +0,37 kN/m\n' +
+      '    Læside  (højre):     (−0,50 + 0,30) × 0,65 × 1,0 = −0,13 kN/m\n' +
+      '  Begge tilfælde skal undersøges; de er alternativer og kombineres ikke.\n\n' +
       'Fortegn: positiv w = tryk MOD overfladen · negativ w = sug FRA overfladen\n' +
       'Belastningen appliceres vinkelret på spærfladen (direction = perpendicular).' } },
 
@@ -167,17 +173,18 @@ export function makeTimberRoofTemplate() {
           { load_type: 'udl', member_id: 2, value_kNm: 0.90, direction: 'projected' },
           { load_type: 'udl', elem_id: 5,   value_kNm: 0.016, direction: 'vertical' },
         ]},
-        // S — snelast på vandret projektion (μ₁ = 0.70, s_k = 0.90 kN/m²)
+        // S — snelast på vandret projektion (μ₁ = 0.70, s_k = 1.0 kN/m²)
         { id: 'S', type: 'snow', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm: 0.63, direction: 'projected' },
-          { load_type: 'udl', member_id: 2, value_kNm: 0.63, direction: 'projected' },
+          { load_type: 'udl', member_id: 1, value_kNm: 0.70, direction: 'projected' },
+          { load_type: 'udl', member_id: 2, value_kNm: 0.70, direction: 'projected' },
         ]},
-        // W — vind fra venstre, vinkelret på tagflade
-        // Vindside (venstre spær, member 1): tryk +0.31 kN/m
-        // Læside  (højre  spær, member 2): sug  −0.20 kN/m
+        // W — vind fra venstre, vinkelret på tagflade, c_pi = +0,2
+        // Vindside (venstre spær, member 1): +0.05 kN/m
+        // Læside  (højre  spær, member 2): −0.46 kN/m
+        // (c_pi = −0,3 giver +0.37 / −0.13 — se teksten ovenfor)
         { id: 'W', type: 'wind', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm:  0.31, direction: 'perpendicular' },
-          { load_type: 'udl', member_id: 2, value_kNm: -0.20, direction: 'perpendicular' },
+          { load_type: 'udl', member_id: 1, value_kNm:  0.05, direction: 'perpendicular' },
+          { load_type: 'udl', member_id: 2, value_kNm: -0.46, direction: 'perpendicular' },
         ]},
       ],
       _exports: null, _result: null,
@@ -197,8 +204,8 @@ export function makeTimberRoofTemplate() {
           { load_type: 'udl', elem_id: 5,   value_kNm: 0.016, direction: 'vertical' },
         ]},
         { id: 'S', type: 'snow', loads: [
-          { load_type: 'udl', member_id: 1, value_kNm: 0.63, direction: 'projected' },
-          { load_type: 'udl', member_id: 2, value_kNm: 0.63, direction: 'projected' },
+          { load_type: 'udl', member_id: 1, value_kNm: 0.70, direction: 'projected' },
+          { load_type: 'udl', member_id: 2, value_kNm: 0.70, direction: 'projected' },
         ]},
       ],
       _exports: null, _result: null,
@@ -276,23 +283,27 @@ export function makeTimberRoofTemplate() {
     // ── Hanebånd — trækcheck (elem 5) ────────────────────────────────────
     { id: ids.hHane, type: 'heading', data: { level: 3,
       text: 'Hanebånd — 45×95 C24 (elem 5, L = 2,40 m) — Trækcheck EN 1995-1-1 §6.1.2' } },
+    // N_Ed står tom med vilje. Den stod som 0, og så gav eftervisningen η = 0 og
+    // "OK" i rapporten for et hanebånd, ingen havde eftervist. Tekstfeltet over
+    // tæller som "mangler", indtil trækkraften er aflæst og indsat.
+    { id: ids.txtHaneN, type: 'text', data: { text:
+      'Trækkraften aflæses i rammeberegningen for element 5 (største N ved træk): ' +
+      'N_Ed = [indsæt N_Ed fra rammeberegningen, element 5] kN.' } },
     { id: ids.chkHane, type: 'custom_calc', data: {
       title: 'Hanebånd 45×95 C24 — Trækcheck',
       items: [
-        { type: 'section', text: 'Materialeparametre — C24 (DS/EN 338)' },
-        { type: 'variable', symbol: 'f_{t,0,k}',  expression: '14',  unit: 'MPa', description: 'Karakteristisk trækstyrke C24' },
-        { type: 'variable', symbol: '\\gamma_M',   expression: '1.3', unit: '—',  description: 'Partialkoefficient træ (KK2)' },
-        { type: 'variable', symbol: 'k_{mod}',     expression: '0.9', unit: '—',  description: 'Modifikationsfaktor (SK2, kortvarig last — sne)' },
-        { type: 'formula',  symbol: 'f_{t,0,d}',   expression: 'k_mod * f_t0k / gamma_M', variables: { k_mod: 0.9, f_t0k: 14, gamma_M: 1.3 }, unit: 'MPa', description: 'Dimensionerende trækstyrke' },
-        { type: 'section', text: 'Tværsnit' },
-        { type: 'variable', symbol: 'b',   expression: '45',  unit: 'mm', description: 'Bredde' },
-        { type: 'variable', symbol: 'h',   expression: '95',  unit: 'mm', description: 'Højde' },
-        { type: 'formula',  symbol: 'A',   expression: 'b * h', variables: { b: 45, h: 95 }, unit: 'mm²', description: 'Nettoareal (ingen udsparinger antaget)' },
-        { type: 'section', text: 'Kapacitet' },
-        { type: 'formula',  symbol: 'N_{t,Rd}', expression: 'f_t0d * A / 1000', variables: { f_t0d: 0.9*14/1.3, A: 45*95 }, unit: 'kN', description: 'Dimensionerende trækkapacitet' },
-        { type: 'section', text: 'Påvirkning — aflæses fra FEM (element 5)' },
-        { type: 'variable', symbol: 'N_{Ed}', expression: '0', unit: 'kN', description: 'Dimensionerende trækraft — OPDATER fra FEM-resultat (element 5, N_i/N_j)' },
-        { type: 'check',    symbol: '\\eta_t', expression: 'N_Ed / N_t_Rd', variables: { N_Ed: 0, N_t_Rd: 0.9*14/1.3*45*95/1000 }, limit: 1.0, description: 'Udnyttelsesgrad trækcheck §6.1.2' },
+        { type: 'heading', content: 'Materialeparametre — C24 (DS/EN 338)' },
+        { type: 'var', name: 'f_t0k',   value: 14,  unit: 'MPa', description: 'Karakteristisk trækstyrke C24' },
+        { type: 'var', name: 'gamma_M', value: 1.3, unit: '-',   description: 'Partialkoefficient, træ' },
+        { type: 'var', name: 'k_mod',   value: 0.9, unit: '-',   description: 'Anvendelsesklasse 2, korttidslast (sne)' },
+        { type: 'formula', expr: 'f_t0d = k_mod * f_t0k / gamma_M', unit: 'MPa' },
+        { type: 'heading', content: 'Tværsnit' },
+        { type: 'var', name: 'b', value: 45, unit: 'mm', description: 'Bredde' },
+        { type: 'var', name: 'h', value: 95, unit: 'mm', description: 'Højde' },
+        { type: 'formula', expr: 'N_tRd = f_t0d * b * h', unit: 'kN' },
+        { type: 'heading', content: 'Påvirkning fra rammeberegningen (element 5)' },
+        { type: 'var', name: 'N_Ed', value: null, unit: 'kN', description: 'Største trækkraft i hanebåndet' },
+        { type: 'check', label: 'Træk parallelt med fibrene, §6.1.2', demand: 'N_Ed', capacity: 'N_tRd', unit: 'kN' },
       ],
       _result: null,
     }},

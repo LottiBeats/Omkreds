@@ -147,15 +147,9 @@ export default function ProjectBasisBlock({ block, onChange }) {
               <option value="IV">IV — Dense urban</option>
             </select>
           </Field>
-          <Field label="Snow zone (DK)">
-            <select style={s.select}
-              value={d.snow_zone ?? 1}
-              onChange={e => update({ snow_zone: parseInt(e.target.value) })}>
-              <option value={1}>Zone 1 — s_k = 0.9 kN/m² (Sjælland, Fyn)</option>
-              <option value={2}>Zone 2 — s_k = 1.0 kN/m² (East Jutland)</option>
-              <option value={3}>Zone 3 — s_k = 1.1 kN/m² (West Jutland)</option>
-              <option value={4}>Zone 4 — s_k = 1.5 kN/m² (Bornholm / elevated)</option>
-            </select>
+          <Field label="Terrænsnelast s_k">
+            {/* DK NA har én værdi for hele landet — der er ingen zoner at vælge */}
+            <div style={{ fontSize: 13, padding: '6px 0' }}>1,0 kN/m² (DS/EN 1991-1-3 DK NA, hele Danmark)</div>
           </Field>
         </div>
       </div>

@@ -31,7 +31,13 @@ const CALC_REVISION = {
   // dimensionsgivende for både et let og et tungt tag — k_mod afgør hvilken
   // (EN 1995-1-1 §2.2.3). Gemte resultater er regnet på det gamle og skal
   // markeres forældet, selv om inddata ikke har flyttet sig.
-  timber_beam: 2,
+  timber_beam: 3,
+  // 3: med snitkræfter fra en rammeberegning blev det største moment brugt med
+  // varigheden fra netop den kombination -- ikke kombinationen med størst
+  // M/k_mod, som FEM-kørslen allerede havde fundet (timber-indhyldningen).
+  // 2 — læsidens vægtryk blev regnet som (c_pe + c_pi)·q_p i stedet for
+  // (c_pe − c_pi)·q_p, så sugningen var for lille ved indvendigt overtryk.
+  wind_load: 2,
 }
 
 export function calcRevision(type) {

@@ -1823,6 +1823,12 @@ def calc_custom(data: CustomCalcInput):
                 name = item.get("name", "").strip()
                 if not name:
                     continue
+                if item.get("value") is None or item.get("value") == "":
+                    # En tom værdi er et felt, der venter på at blive udfyldt --
+                    # ikke et nul. Et nul her gav η = 0 og "OK" i rapporten.
+                    blocks.append(N(f"{name} mangler en værdi og skal udfyldes, "
+                                    "før beregningen kan eftervises."))
+                    continue
                 try:
                     unit_str = item.get("unit", "-")
                     qty      = _parse_qty(float(item.get("value", 0.0)), unit_str)
@@ -1874,6 +1880,9 @@ def calc_custom(data: CustomCalcInput):
                         # Not a plain number — evaluate as an expression
                         capacity = _safe_eval(_preprocess_expr(str(cap_raw).strip()), {**_UNIT_NS, **ns})
                     blocks.append(chk.check(label, demand, capacity))
+                except NameError as exc:
+                    blocks.append(N(f"'{label}' kan ikke eftervises: {exc}".replace(
+                        "name ", "").replace("is not defined", "mangler en værdi")))
                 except Exception as exc:
                     blocks.append(N(f"Check error in '{label}': {exc}"))
 

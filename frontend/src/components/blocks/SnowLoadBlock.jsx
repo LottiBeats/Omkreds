@@ -15,14 +15,9 @@ const ROOF_TYPES = [
   { value: 'mono-pitch', label: 'Mono-pitch (one slope)' },
 ]
 
-const DK_ZONES = [
-  { value: '1', label: 'Zone 1 — Most of DK (1.0 kN/m²)' },
-  { value: '2', label: 'Zone 2 — N. Jutland coast (0.9 kN/m²)' },
-  { value: '3', label: 'Zone 3 — Elevated/hilly (1.5 kN/m²)' },
-]
-
-// Default s_k per zone
-const ZONE_SK = { '1': 1.0, '2': 0.9, '3': 1.5 }
+// DS/EN 1991-1-3 DK NA: s_k = 1,0 kN/m² i hele Danmark. Her stod tidligere
+// fire "snezoner" (0,9–1,5), som ikke findes i DK NA.
+const S_K_DK_NA = 1.0
 
 export default function SnowLoadBlock({ block, onChange }) {
   const d = block.data
@@ -31,10 +26,6 @@ export default function SnowLoadBlock({ block, onChange }) {
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
-  }
-
-  function handleZoneChange(zone) {
-    update({ dk_zone: zone, s_k_kNm2: ZONE_SK[zone] ?? 1.0 })
   }
 
   async function handleRun() {
@@ -76,16 +67,8 @@ export default function SnowLoadBlock({ block, onChange }) {
         <input style={s.input} value={d.label ?? 'SN1'}
           onChange={e => update({ label: e.target.value })} />
       </Field>
-      <Field label="DK snow zone">
-        <select style={s.input} value={d.dk_zone ?? '1'}
-          onChange={e => handleZoneChange(e.target.value)}>
-          {DK_ZONES.map(z => (
-            <option key={z.value} value={z.value}>{z.label}</option>
-          ))}
-        </select>
-      </Field>
-      <Field label="s_k (kN/m²)" hint="Ground snow load">
-        <NumericInput style={s.input} value={d.s_k_kNm2 ?? 1.0}
+      <Field label="s_k (kN/m²)" hint={(d.s_k_kNm2 ?? S_K_DK_NA) < S_K_DK_NA ? 'Under DK NA-værdien 1,0 — skal begrundes' : 'DK NA: 1,0 i hele Danmark'}>
+        <NumericInput style={s.input} value={d.s_k_kNm2 ?? S_K_DK_NA}
           onChange={v => update({ s_k_kNm2: v })} />
       </Field>
       <Field label="Roof type">

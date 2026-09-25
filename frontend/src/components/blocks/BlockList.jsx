@@ -58,7 +58,7 @@ const ProjectBasisBlock = lazy(() => import('./ProjectBasisBlock.jsx'))
 const BLOCK_TYPES = [
   { type: 'project_basis', label: 'Projektgrundlag (A1)', icon: 'A1', color: '#0f172a', component: ProjectBasisBlock,
     default: { title: 'Project Basis', consequence_class: 'CC2', wind_zone: 2, terrain_category: 'II',
-               snow_zone: 1, gamma_M0: 1.00, gamma_M1: 1.00, gamma_M2: 1.25,
+               gamma_M0: 1.00, gamma_M1: 1.00, gamma_M2: 1.25,
                gamma_c: 1.50, gamma_s: 1.15, gamma_M_timber: 1.30, _exports: null } },
   { type: 'heading',       label: 'Overskrift',        icon: 'H',   color: '#64748b', component: HeadingBlock,
     default: { level: 1, text: '' } },
@@ -402,7 +402,6 @@ function BlockPreview({ block, project }) {
       const cc  = d.consequence_class ?? 'CC2'
       const kfi = { CC1: 0.9, CC2: 1.0, CC3: 1.1 }[cc] ?? 1.0
       const wz  = d.wind_zone ?? 2
-      const sz  = d.snow_zone ?? 1
       return (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', fontSize: 13, padding: '2px 0' }}>
           <span style={{ fontWeight: 700, color: '#0f172a' }}>{d.title || 'Project Basis'}</span>
@@ -410,7 +409,7 @@ function BlockPreview({ block, project }) {
           <span style={{ color: '#475569' }}>K_FI = {kfi.toFixed(1)}</span>
           <span style={{ color: '#475569' }}>Wind Z{wz}</span>
           <span style={{ color: '#475569' }}>Terrain {d.terrain_category ?? 'II'}</span>
-          <span style={{ color: '#475569' }}>Snow Z{sz}</span>
+          <span style={{ color: '#475569' }}>s_k 1,0 kN/m²</span>
           <span style={{ color: '#475569' }}>γ_M0={d.gamma_M0 ?? 1.00}  γ_M1={d.gamma_M1 ?? 1.00}  γ_c={d.gamma_c ?? 1.50}</span>
         </div>
       )

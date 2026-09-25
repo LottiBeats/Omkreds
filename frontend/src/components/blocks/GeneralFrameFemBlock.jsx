@@ -200,6 +200,44 @@ async function checkMember(member, actions, settings) {
 }
 
 
+/**
+ * The row check above is a beam check: bending and shear only. A rafter or a
+ * column also carries a normal force, and a green η that leaves it out says
+ * "holder" about a member nobody has checked for compression and buckling.
+ *
+ * So every rated member that carries a normal force is marked as such, from the
+ * member forces the run already exported. The number stays (it is a correct
+ * bending/shear utilisation) but it is no longer presented as the answer.
+ * Done at render time, so results stored before this change are marked too.
+ */
+const AXIAL_NOTE_KN = 0.5
+
+// k_mod for konstruktionstræ, EN 1995-1-1 tabel 3.1 — samme værdier som
+// backend/general_frame_fem.py bruger til at finde den dimensionerende
+// kombination. Bruges kun til at vælge mellem elementerne i et led.
+const KMOD_TIMBER = {
+  1: { permanent: 0.6, long: 0.7, medium: 0.8, short: 0.9, instant: 1.1 },
+  2: { permanent: 0.6, long: 0.7, medium: 0.8, short: 0.9, instant: 1.1 },
+  3: { permanent: 0.5, long: 0.55, medium: 0.65, short: 0.7, instant: 0.9 },
+}
+
+function withAxial(checks, exports) {
+  if (!checks) return checks
+  const byMember = {}
+  for (const e of exports?.elements ?? []) {
+    if (e.id >= 1000 && e.member_id != null) byMember[e.member_id] = e
+  }
+  const out = {}
+  for (const [id, c] of Object.entries(checks)) {
+    const N = byMember[id]?.N_max_kN
+    out[id] = (c && typeof c.eta === 'number' && typeof N === 'number' && Math.abs(N) >= AXIAL_NOTE_KN)
+      ? { ...c, N_kN: N }
+      : c
+  }
+  return out
+}
+
+
 // ── Members ───────────────────────────────────────────────────────────────────
 //
 // A rafter is one member. That it is analysed as four elements is a property of
@@ -245,12 +283,17 @@ function Verdict({ members, checks }) {
   const worst   = rated.reduce((a, b) => (b.c.eta > a.c.eta ? b : a))
   const failed  = rated.filter(x => x.c.eta > 1).length
   const skipped = members.length - rated.length
-  const col = utilColor(worst.c.eta)
+  const axial   = rated.filter(x => x.c.N_kN != null).length
+  // Not "Alle led holder" while a normal force has been left out: amber, and
+  // say which part of the answer is still missing.
+  const col = failed ? utilColor(worst.c.eta) : axial ? '#b45309' : utilColor(worst.c.eta)
 
   return (
     <div style={{ ...s.verdict, borderLeftColor: col }}>
       <strong style={{ color: col }}>
-        {failed === 0 ? 'Alle led holder' : `${failed} af ${rated.length} led holder ikke`}
+        {failed > 0 ? `${failed} af ${rated.length} led holder ikke`
+          : axial > 0 ? `Bøjning og forskydning holder — ${axial} led har normalkraft, der ikke er eftervist her`
+          : 'Alle led holder'}
       </strong>
       <span style={s.verdictDetail}>
         bestemmende: Led {worst.m.id} · η = {worst.c.eta.toFixed(2).replace('.', ',')}
@@ -269,9 +312,13 @@ function Utilisation({ check }) {
   if (check.eta == null) return <span style={s.etaSkipped}>ingen kontrol</span>
 
   const eta = check.eta
-  const col = utilColor(eta)
+  const partial = check.N_kN != null && eta <= 1
+  const col = partial ? '#b45309' : utilColor(eta)
   return (
-    <span style={s.etaWrap} title={eta > 1 ? 'Udnyttelsen overskrider 1,0' : undefined}>
+    <span style={s.etaWrap} title={
+      eta > 1 ? 'Udnyttelsen overskrider 1,0'
+      : partial ? `Kun bøjning og forskydning. N = ${Math.abs(check.N_kN).toFixed(1).replace('.', ',')} kN er ikke medregnet — eftervis leddet som søjle eller bjælke-søjle med N og M.`
+      : undefined}>
       <span style={{ ...s.etaBarTrack }}>
         <span style={{ ...s.etaBarFill,
                        width: `${Math.min(100, eta * 100)}%`, background: col }} />
@@ -279,7 +326,8 @@ function Utilisation({ check }) {
       <span style={{ ...s.etaValue, color: col }}>
         η = {eta.toFixed(2).replace('.', ',')}
       </span>
-      <span style={{ ...s.etaMark, color: col }}>{eta > 1 ? '✗' : '✓'}</span>
+      <span style={{ ...s.etaMark, color: col }}>{eta > 1 ? '✗' : partial ? '!' : '✓'}</span>
+      {partial && <span style={s.etaSkipped}>kun M+V · N ikke medregnet</span>}
     </span>
   )
 }
@@ -1674,6 +1722,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
   // ── Members ─────────────────────────────────────────────────────────────────
   const { members, loose } = groupMembers(elements, nodes)
+  const memberChecks = withAxial(d._member_checks, d._exports)
 
   /** One section for the whole member — it is one piece of timber. */
   function setMemberSection(memberId, patch) {
@@ -1950,17 +1999,21 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         const totalL = subElems.reduce((s, e) => s + e.L_m, 0)
         // For timber: find sub-element with worst M/k_mod ratio (SC2 as representative)
         // timber_envelope stores this per service class
+        // Sammenlignes på M/k_mod, ikke på M: det element med det største
+        // moment er ikke nødvendigvis det dimensionerende, hvis dets moment
+        // kommer fra en kortere lastvarighed.
+        const ratio = (te, sc) => te.M_Ed_kNm / (KMOD_TIMBER[sc]?.[te.duration] ?? 0.9)
         let bestTimberSC2 = { M_Ed_kNm: 0, V_Ed_kN: 0, duration: 'short', combo: '' }
         subElems.forEach(e => {
           const te = timberEnvelope[e.id]?.[2]  // SC2
-          if (te && te.M_Ed_kNm > bestTimberSC2.M_Ed_kNm) bestTimberSC2 = te
+          if (te && ratio(te, 2) > ratio(bestTimberSC2, 2)) bestTimberSC2 = te
         })
         const memberTimber = subElems.reduce((acc, e) => {
           ;[1, 2, 3].forEach(sc => {
             const te = timberEnvelope[e.id]?.[sc]
             if (!te) return
             const prev = acc[sc]
-            if (!prev || te.M_Ed_kNm > prev.M_Ed_kNm) acc[sc] = te
+            if (!prev || ratio(te, sc) > ratio(prev, sc)) acc[sc] = te
           })
           return acc
         }, {})
@@ -2093,11 +2146,11 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           </div>
           {members.map(m => (
             <MemberRow key={m.id} member={m}
-              check={(d._member_checks ?? {})[m.id]}
+              check={(memberChecks ?? {})[m.id]}
               onSection={patch => setMemberSection(m.id, patch)}
               onRemove={() => removeMember(m.id)} />
           ))}
-          <Verdict members={members} checks={d._member_checks} />
+          <Verdict members={members} checks={memberChecks} />
         </>
       )}
 
