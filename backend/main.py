@@ -1440,6 +1440,9 @@ class TimberColumnInput(BaseModel):
     gamma_M:                 float = 1.3
     effective_length_factor: float = 1.0
     l_ef_ltb_m:              float | None = None
+    # Afstivet om den svage akse (fx spær med lægter/krydsfiner): så
+    # eftervises udbøjning kun om den stærke akse. Standard er som før: begge.
+    weak_axis_restrained:    bool = False
     design_situation:        str = "persistent"   # ved ulykke: γ_M = 1,0
 
     # Brand — EN 1995-1-2. For en søjle er den strengere end for en bjælke:
@@ -1489,6 +1492,8 @@ def calc_timber_column(data: TimberColumnInput):
         )
         if data.l_ef_ltb_m is not None:
             kwargs["l_ef_ltb"] = data.l_ef_ltb_m * m
+        if data.weak_axis_restrained:
+            kwargs["check_buckling_axis_2"] = False
 
 
         if data.fire_t_min is not None:
@@ -3181,8 +3186,13 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 make_figs=False, ref_size=ref_size, diagram_scale=scale,
             )
 
+            # Varighed og situation følger med, så en eftervisning i browseren
+            # kan parre N og M fra samme kombination med den k_mod, netop den
+            # kombination har -- og holde sig til brudgrænsetilstanden.
             combo_figs = [{'name': r['name'], 'figs': [],
-                           'state': _diagram_state(r)}
+                           'state': _diagram_state(r),
+                           'duration':  r.get('governing_duration'),
+                           'situation': r.get('situation')}
                           for r in all_results]
 
             # Alle kombinationer i ét plot. Med kun én kombination er der

@@ -73,6 +73,14 @@ const DIRECTIONS = [
 ]
 
 const MAT_COLOR = { timber: '#9a5b1e', steel: '#3b5b7a' }
+
+// Out-of-plane restraint — decides the out-of-plane buckling and lateral-
+// torsional buckling lengths in the member check. Same defaults as the block.
+const BRACING = {
+  timber: [['continuous', 'Kontinuerligt afstivet (lægter, plader)'], ['nodes', 'Afstivet i knuderne'], ['none', 'Uafstivet over hele leddet']],
+  steel:  [['nodes', 'Afstivet i knuderne'], ['none', 'Uafstivet over hele leddet']],
+}
+const defaultBracing = (material) => (material === 'timber' ? 'continuous' : 'nodes')
 const fmt = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d).replace('.', ',') : '—')
 const num = (s) => {
   const v = parseFloat(String(s).replace(',', '.'))
@@ -916,7 +924,16 @@ export default function FemWorkspace({
             <div className="fem-ps">
               <div className="t">Udnyttelse · led {el.member_id}</div>
               <div className="fem-eta"><span className="track"><i style={{ width: `${Math.min(100, c.eta * 100)}%`, background: etaColor(c.eta) }} /></span>η = {fmt(c.eta)}</div>
-              {c.N_kN != null && <p>Kun bøjning og forskydning. N = {fmt(Math.abs(c.N_kN), 1)} kN er ikke medregnet — eftervis leddet som søjle eller bjælke-søjle.</p>}
+              {c.mode === 'column' && (
+                <div className="fem-kv">
+                  <span>N + M (søjle)</span><span>η {fmt(c.etaColumn)}</span>
+                  {c.etaBeam != null && <><span>Bøjning + forskydning</span><span>η {fmt(c.etaBeam)}</span></>}
+                  <span>N_Ed · M_Ed</span><span>{fmt(c.N_Ed_kN, 1)} kN · {fmt(c.M_Ed_kNm, 2)} kNm</span>
+                  <span>L_cr i planen</span><span>{fmt(c.L_cr_m)} m</span>
+                  <span>Kombination</span><span style={{ whiteSpace: 'normal' }}>{c.combo}</span>
+                </div>
+              )}
+              {c.N_kN != null && <p>{c.mode === 'beam' ? `Træk N = ${fmt(Math.abs(c.N_kN), 1)} kN er ikke medregnet — træk og bøjning eftervises særskilt.` : `Kun bøjning og forskydning. N = ${fmt(Math.abs(c.N_kN), 1)} kN er ikke medregnet — regn igen for at få søjleeftervisningen med.`}</p>}
             </div>
           )}
           <div className="fem-ps">
@@ -930,6 +947,16 @@ export default function FemWorkspace({
               </div>
             )}
           </div>
+          {el.material && el.member_id != null && (
+            <div className="fem-ps">
+              <div className="t">Afstivning ud af planen</div>
+              <select className="fem-sel" style={{ height: 30 }} value={(data.member_bracing ?? {})[el.member_id] ?? defaultBracing(el.material)}
+                onChange={e => onModelChange({ member_bracing: { ...(data.member_bracing ?? {}), [el.member_id]: e.target.value } })}>
+                {(BRACING[el.material] ?? BRACING.steel).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+              <p style={{ fontSize: 12, color: 'var(--muted)' }}>Afgør knæk ud af planen og kipning i eftervisningen. Knæk i planen følger af modellen.</p>
+            </div>
+          )}
           {selElems.length === 1 && (
             <div className="fem-ps">
               <div className="t">Stang</div>
