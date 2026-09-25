@@ -21,6 +21,9 @@ import { maxUtilization, utilColor } from '../CalcResultView.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
 import ModelSketch from './ModelSketch.jsx'
+import FemWorkspace from '../fem/FemWorkspace.jsx'
+import { createPortal } from 'react-dom'
+import { isStaleResult } from '../../lib/calcState.js'
 
 /**
  * Handlingskategorierne. Kategorien bærer ψ og lastvarigheden — derfor står
@@ -1615,6 +1618,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
+  const [wsOpen,  setWsOpen]  = useState(false)
 
   const comboBlocks      = blocks.filter(b => b.type === 'load_combo')
   // Vindblokke med et resultat. En uberegnet blok har ingen zoner at hente,
@@ -2116,6 +2120,32 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       <input type="text" value={d.title ?? '2D Frame FEM'}
         onChange={e => update({ title: e.target.value })}
         placeholder="Analysetitel" style={s.titleInput} />
+
+      {/* The model workspace: draw, load and read the results on the model
+          itself, as in RFEM or FEM-Design. It edits this block's data. */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="ui-btn ui-btn--primary" onClick={() => setWsOpen(true)}>
+          ⤢ Åbn modelvindue
+        </button>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+          Tegn modellen, læg laster på og se resultaterne på modellen.
+        </span>
+      </div>
+      {wsOpen && createPortal(
+        <FemWorkspace
+          title={d.title ?? 'Rammeberegning'}
+          data={d}
+          onModelChange={(model) => update(model)}
+          onClose={() => setWsOpen(false)}
+          onRun={handleRun}
+          running={running}
+          error={error}
+          stale={isStaleResult(block)}
+          hasResult={!!(d._result || d._summary)}
+          memberChecks={memberChecks}
+          reactions={d._summary?.reactions}
+        />,
+        document.body)}
 
       {/* Live geometry sketch — instant feedback while editing */}
       <ModelSketch nodes={nodes} elements={elements}

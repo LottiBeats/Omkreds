@@ -669,7 +669,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   useEffect(() => {
     const fn = e => {
       if (!pageRef.current || pageRef.current.contains(e.target)) return
-      if (e.target.closest?.('.ui-overlay, .ui-menu, .ui-toasts')) return
+      if (e.target.closest?.('.ui-overlay, .ui-menu, .ui-toasts, .fem-ws')) return
       setSelectedId(null)
     }
     document.addEventListener('pointerdown', fn)
