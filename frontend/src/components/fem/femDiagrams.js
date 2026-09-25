@@ -80,11 +80,24 @@ export function sampleElement(el, L, state, n = 21) {
   return [...xs].sort((a, b) => a - b).map(x => ({ x, ...sectionForces(pl, x, segs[0], segs[1], L) }))
 }
 
+/**
+ * Is this state a ultimate-limit-state result? A combination with no
+ * situation is one (that is how every model was solved before the
+ * serviceability combinations existed).
+ */
+export const isUls = (st) => !st.situation || String(st.situation).startsWith('uls')
+
+export const SITUATION_LABEL = {
+  sls_karakteristisk: 'Anvendelse, karakteristisk',
+  sls_hyppig:         'Anvendelse, hyppig',
+  sls_kvasi:          'Anvendelse, kvasipermanent',
+}
+
 /** All the results a stored FEM block offers, as named states. */
 export function resultStates(summary) {
   if (!summary) return []
   const combos = summary.combo_figs ?? []
-  if (combos.length) return combos.map(c => ({ name: c.name, state: c.state }))
+  if (combos.length) return combos.map(c => ({ name: c.name, state: c.state, situation: c.situation ?? null }))
   return summary.diagram_state ? [{ name: 'Beregning', state: summary.diagram_state }] : []
 }
 

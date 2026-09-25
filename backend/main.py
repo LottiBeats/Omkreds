@@ -2537,6 +2537,9 @@ class GenFrameLoadCaseIn(BaseModel):
     navn:     str = ""
     kategori: str = "permanent"   # permanent | snow | wind | imposed
     gruppe:   str | None = None
+    # Nyttelastens kategori (A–H efter DS/EN 1991-1-1). Bestemmer ψ efter
+    # DK NA tabel A1.1. Uden den regnes med de største ψ-værdier.
+    nyttelastkategori: str | None = None
 
 
 class GenFrameLoadIn(BaseModel):
@@ -2858,7 +2861,7 @@ def _kombiner_modellens_laster(loads, load_cases, method,
     if load_cases:
         return kombinationer_af_tilfaelde(
             load_cases, loads, method, consequence_class, gunstig_egenlast,
-            kmod_varianter=kmod_varianter)
+            kmod_varianter=kmod_varianter, anvendelse=True)
     return kombinationer_fra_laster(
         loads, method, consequence_class, gunstig_egenlast=gunstig_egenlast)
 
@@ -3198,15 +3201,20 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             # Alle kombinationer i ét plot. Med kun én kombination er der
             # ingenting at sammenligne, og en figur, der lover en
             # sammenligning og viser én kurve, er en figur for meget.
+            # Kun brudkombinationerne: overlejringen læses for styrke, og en
+            # anvendelseskurve i den ville ligne en brudkurve.
+            brud = [r for r in all_results
+                    if not r.get('situation')
+                    or str(r.get('situation')).startswith('uls')]
             overlay_figs = []
-            if len(all_results) > 1:
+            if len(brud) > 1:
                 from fem_diagrams import render_overlay
                 overlay_figs = render_overlay(
                     nodes, elements, supports,
                     [{'navn':       r['name'],
                       'ele_forces': r['ele_forces'],
                       'ele_udl':    r.get('ele_udl', {})}
-                     for r in all_results],
+                     for r in brud],
                     ref_size, scale)
 
             # _figs_b64 = static model + governing combo (backward compat)

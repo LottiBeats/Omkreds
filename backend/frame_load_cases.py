@@ -319,9 +319,29 @@ def _normaliser_tilfaelde(load_cases):
         # kombination; et "alternativ" til den ville betyde noget andet, end
         # den der skrev det regnede med.
         gruppe = None if kategori == 'permanent' else (t.get('gruppe') or kategori)
+        nk = (t.get('nyttelastkategori') or '').strip().upper() or None
         ud.append({'nr': nr, 'navn': navn, 'kategori': kategori,
-                   'gruppe': gruppe})
+                   'gruppe': gruppe, 'nyttelastkategori': nk})
     return ud
+
+
+# ψ₀, ψ₁, ψ₂ efter DS/EN 1990 DK NA tabel A1.1 -- samme tal som load_combo.py.
+# Nyttelast uden kategori får de største værdier i tabellen for A–G, så en
+# glemt kategori giver for store og ikke for små anvendelseslaster.
+_PSI_NYTTE = {
+    'A': (0.5, 0.3, 0.2), 'B': (0.6, 0.4, 0.2), 'C': (0.6, 0.6, 0.5),
+    'D': (0.6, 0.6, 0.5), 'E': (0.8, 0.8, 0.7), 'F': (0.6, 0.6, 0.5),
+    'G': (0.6, 0.4, 0.2), 'H': (0.0, 0.0, 0.0),
+}
+_PSI_UKENDT_NYTTE = (0.7, 0.8, 0.7)
+_PSI_NATUR = {'snow': (0.3, 0.2, 0.0), 'wind': (0.3, 0.2, 0.0)}
+
+
+def _psi(tilfaelde):
+    """(ψ₀, ψ₁, ψ₂) for et tilfaelde."""
+    if tilfaelde['kategori'] == 'imposed':
+        return _PSI_NYTTE.get(tilfaelde.get('nyttelastkategori'), _PSI_UKENDT_NYTTE)
+    return _PSI_NATUR.get(tilfaelde['kategori'], (0.7, 0.7, 0.7))
 
 
 def _tilfaelde_fra_virkning(loads):
@@ -375,7 +395,8 @@ def kombinationer_fra_laster(loads, method='6.10ab', consequence_class='CC2',
 def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                                consequence_class='CC2',
                                gunstig_egenlast=True,
-                               kmod_varianter=False):
+                               kmod_varianter=False,
+                               anvendelse=False):
     """
     EN 1990-kombinationer af navngivne lasttilfaelde.
 
@@ -419,7 +440,7 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
     combos = []
     set_navne = set()
 
-    def _saml(navn, g_fac, faktorer):
+    def _saml(navn, g_fac, faktorer, situation=None):
         """faktorer: {tilfaeldets nr: faktor} for de variable, der indgaar."""
         ud = []
         tabel = {}
@@ -444,10 +465,13 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
         if navn in set_navne:
             return
         set_navne.add(navn)
-        combos.append({'name': navn, 'loads': ud, 'factor_table': tabel,
-                       'governing_duration': governing,
-                       'aktive': [pr_nr[nr]['navn'] for nr in faktorer
-                                  if abs(faktorer[nr]) > 1e-10]})
+        kombi = {'name': navn, 'loads': ud, 'factor_table': tabel,
+                 'governing_duration': governing,
+                 'aktive': [pr_nr[nr]['navn'] for nr in faktorer
+                            if abs(faktorer[nr]) > 1e-10]}
+        if situation:
+            kombi['situation'] = situation
+        combos.append(kombi)
 
     # 6.10a — kun de permanente
     g_a = _GAMMA_G_A * kfi
@@ -563,6 +587,32 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                                    f"{_GAMMA_G_INF_B:.2f}G + "
                                    + ' + '.join(beholdt_dele))
                         _saml(navn_kg, _GAMMA_G_INF_B, dict(skaaret))
+
+    # ── Anvendelsesgrænsetilstanden (DS/EN 1990 6.14b og 6.16b) ───────────
+    #
+    # Uden dem kan en model, der er belastet med lasttilfælde, ikke eftervise
+    # nedbøjning: der findes ingen kombination at måle den i. De får hver deres
+    # situation, så brudindhyldningen ikke bliver blandet med dem -- se
+    # general_frame_fem.solve_combinations.
+    if anvendelse:
+        for valg in udvalg:
+            for ledende in valg:
+                faktorer, dele = {}, []
+                for t in valg:
+                    if t['nr'] == ledende['nr']:
+                        faktorer[t['nr']] = 1.0
+                        dele.append(f"{t['navn']}")
+                    else:
+                        psi0 = _psi(t)[0]
+                        faktorer[t['nr']] = psi0
+                        if psi0 > 0:
+                            dele.append(f"{psi0:.1f}·{t['navn']}")
+                _saml(f"SLS kar. ({ledende['navn']} leder): 1,0G + " + ' + '.join(dele),
+                      1.0, faktorer, situation='sls_karakteristisk')
+            faktorer = {t['nr']: _psi(t)[2] for t in valg}
+            dele = [f"{f:.1f}·{pr_nr[nr]['navn']}" for nr, f in faktorer.items() if f > 0]
+            _saml('SLS kvasi: 1,0G' + (' + ' + ' + '.join(dele) if dele else ''),
+                  1.0, faktorer, situation='sls_kvasi')
 
     return combos
 

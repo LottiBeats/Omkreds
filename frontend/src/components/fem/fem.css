@@ -155,3 +155,7 @@
 .fem-probe span { font: 500 12px var(--font-mono); font-variant-numeric: tabular-nums; }
 .fem-probe small { color: var(--muted); font-size: 11px; }
 .fem-seg button:disabled { color: var(--faint); cursor: not-allowed; }
+.fem-defl { flex-direction: column; gap: 3px; align-items: flex-start; max-width: 60%; }
+.fem-defl span { color: var(--ink-2); font-family: var(--font-mono); font-size: 11.5px; }
+.fem-defl b { font-family: var(--font-sans); font-weight: 600; margin-right: 6px; color: var(--ink); }
+.fem-defl small { font-size: 11px; }

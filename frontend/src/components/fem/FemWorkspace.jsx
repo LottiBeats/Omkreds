@@ -26,7 +26,7 @@ import {
   deleteSelection, updateNode, updateElements, elementLength, bounds, round,
 } from './femModel.js'
 import { GENERATORS } from './femGenerators.js'
-import { resultStates, sampleElement, envelopeSamples } from './femDiagrams.js'
+import { resultStates, sampleElement, envelopeSamples, isUls, SITUATION_LABEL } from './femDiagrams.js'
 import './fem.css'
 
 // ── Vocabulary ────────────────────────────────────────────────────────────────
@@ -56,6 +56,43 @@ const MATERIALS = [
 const STEEL_SECTIONS = [
   'IPE160', 'IPE180', 'IPE200', 'IPE220', 'IPE240', 'IPE270', 'IPE300', 'IPE330', 'IPE360', 'IPE400', 'IPE450', 'IPE500',
   'HEA160', 'HEA180', 'HEA200', 'HEA220', 'HEA240', 'HEA260', 'HEA300', 'HEB160', 'HEB200', 'HEB240', 'HEB300',
+]
+
+/** Result states grouped by design situation, ULS first, keeping their index. */
+function groupStates(states) {
+  const g = new Map()
+  states.forEach((st, i) => {
+    const k = isUls(st) ? 'uls' : st.situation
+    if (!g.has(k)) g.set(k, [])
+    g.get(k).push({ st, i })
+  })
+  return [...g.entries()].sort((a, b) => (a[0] === 'uls' ? -1 : b[0] === 'uls' ? 1 : 0))
+}
+
+/**
+ * The span a deflection is measured against: the member the element belongs
+ * to, end to end, not the element alone (a rafter split at the collar tie is
+ * still one span for L/300).
+ */
+function memberSpan(model, el) {
+  const els = el.member_id != null ? model.elements.filter(e => e.member_id === el.member_id) : [el]
+  const ids = new Set(els.flatMap(e => [e.ni, e.nj]))
+  const pts = model.nodes.filter(n => ids.has(n.id))
+  let L = 0
+  for (const a of pts) for (const b of pts) L = Math.max(L, Math.hypot(a.x - b.x, a.y - b.y))
+  return L
+}
+
+const NYTTE_KAT = [
+  { value: '',  label: 'Ukendt (ψ₀ 0,7 · ψ₂ 0,7)' },
+  { value: 'A', label: 'A  Bolig' },
+  { value: 'B', label: 'B  Kontor' },
+  { value: 'C', label: 'C  Forsamling' },
+  { value: 'D', label: 'D  Butik' },
+  { value: 'E', label: 'E  Lager' },
+  { value: 'F', label: 'F  Køretøjer ≤ 30 kN' },
+  { value: 'G', label: 'G  Køretøjer 30–160 kN' },
+  { value: 'H', label: 'H  Tag' },
 ]
 
 const KATEGORIER = [
@@ -522,7 +559,18 @@ export default function FemWorkspace({
     const i = states.findIndex(st => st.name === envName)
     return i >= 0 ? i : 0
   }, [states, summary])
-  const curIdx = resIdx === 'auto' ? governingIdx : resIdx
+  // The envelope is the ultimate limit state's. A serviceability combination
+  // has no business in a curve that is read for strength.
+  const ulsStates = useMemo(() => states.filter(isUls), [states])
+  const nedb = summary?.nedboejning_pr_situation ?? null
+  // Deformation reads the serviceability combination with the largest
+  // deflection, when there is one; strength diagrams read the governing ULS.
+  const deflIdx = useMemo(() => {
+    const name = nedb?.sls_karakteristisk?.combo
+    const i = name ? states.findIndex(st => st.name === name) : -1
+    return i >= 0 ? i : governingIdx
+  }, [states, nedb, governingIdx])
+  const curIdx = resIdx === 'auto' ? (resView === 'u' ? deflIdx : governingIdx) : resIdx
   const diagramView = resultsOk && ['u', 'M', 'V', 'N'].includes(resView) && states.length > 0
   useEffect(() => {
     if (resultsOk && resView === 'eta' && !memberChecks) setResView('M')
@@ -687,7 +735,7 @@ export default function FemWorkspace({
     for (const el of model.elements) {
       const L = elementLength(model, el)
       if (curIdx === 'env') {
-        const env = envelopeSamples(el, L, states)
+        const env = envelopeSamples(el, L, ulsStates)
         if (env) out[el.id] = { env }
       } else {
         const st = states[curIdx]
@@ -696,7 +744,7 @@ export default function FemWorkspace({
       }
     }
     return out
-  }, [diagramView, resView, curIdx, states, model])
+  }, [diagramView, resView, curIdx, states, ulsStates, model])
 
   const extent = useMemo(() => {
     const b = bounds(model)
@@ -786,10 +834,10 @@ export default function FemWorkspace({
     const L = elementLength(model, h.el)
     const x = h.p.t * L
     if (curIdx === 'env') {
-      const env = envelopeSamples(h.el, L, states)
+      const env = envelopeSamples(h.el, L, ulsStates)
       if (!env) return null
       let best = env[0]; for (const p of env) if (Math.abs(p.x - x) < Math.abs(best.x - x)) best = p
-      return { sx, sy, el: h.el, x: best.x, env: best, name: 'Indhyldning' }
+      return { sx, sy, el: h.el, x: best.x, env: best, name: 'Indhyldning, brudgrænse' }
     }
     const st = states[curIdx]; if (!st) return null
     const pts = sampleElement(h.el, L, st.state)
@@ -1214,8 +1262,12 @@ export default function FemWorkspace({
             {['u', 'M', 'V', 'N'].includes(resView) && states.length > 0 && (
               <>
                 <select className="fem-sel" value={String(curIdx)} onChange={e => setResIdx(e.target.value === 'env' ? 'env' : Number(e.target.value))} aria-label="Kombination" style={{ maxWidth: 260 }}>
-                  {states.map((st, i) => <option key={i} value={i}>{st.name}{i === governingIdx && states.length > 1 ? ' (dimensionerende)' : ''}</option>)}
-                  {states.length > 1 && resView !== 'u' && <option value="env">Indhyldning, alle kombinationer (min/max)</option>}
+                  {groupStates(states).map(([sit, list]) => {
+                    const opts = list.map(({ st, i }) => <option key={i} value={i}>{st.name}{i === governingIdx && states.length > 1 ? ' (dimensionerende)' : ''}</option>)
+                    return sit === 'uls' && !states.some(st => !isUls(st)) ? opts
+                      : <optgroup key={sit} label={sit === 'uls' ? 'Brudgrænse' : (SITUATION_LABEL[sit] ?? sit)}>{opts}</optgroup>
+                  })}
+                  {ulsStates.length > 1 && resView !== 'u' && <option value="env">Indhyldning, brudgrænse (min/max)</option>}
                 </select>
                 <span className="fem-status">Skala</span>
                 <input type="range" min="0.25" max="3" step="0.05" value={ordScale} onChange={e => setOrdScale(Number(e.target.value))} aria-label="Ordinatskala" style={{ width: 90 }} />
@@ -1257,6 +1309,13 @@ export default function FemWorkspace({
               style={{ border: 0, background: 'transparent', font: '500 11px var(--font-mono)', color: 'var(--muted)', width: 36 }} title="Kategori" aria-label="Kategori">
               {KATEGORIER.map(k => <option key={k.value} value={k.value}>{k.label.slice(0, 1)}</option>)}
             </select>
+            {t.kategori === 'imposed' && (
+              <select value={t.nyttelastkategori ?? ''} onChange={e => updateLoadCase(t.nr, { nyttelastkategori: e.target.value || null })} onClick={e => e.stopPropagation()}
+                style={{ border: 0, background: 'transparent', font: '500 11px var(--font-mono)', color: 'var(--muted)', width: 30 }}
+                title="Nyttelastkategori — bestemmer ψ i anvendelses- og følgelastkombinationerne" aria-label="Nyttelastkategori">
+                {NYTTE_KAT.map(k => <option key={k.value} value={k.value}>{k.value || '?'}{' — '}{k.label}</option>)}
+              </select>
+            )}
             <button onClick={e => { e.stopPropagation(); removeLoadCase(t.nr) }} title="Slet lasttilfældet (lasterne bliver stående uden tilfælde)"
               style={{ border: 0, background: 'none', color: 'var(--faint)' }}>✕</button>
           </div>
@@ -1297,6 +1356,22 @@ export default function FemWorkspace({
               ? <span>N = {fmt(probe.p.N)} kN · V = {fmt(probe.p.V)} kN · M = {fmt(probe.p.M)} kNm</span>
               : <span>M {fmt(probe.env.Mmin)} … {fmt(probe.env.Mmax)} kNm · N {fmt(probe.env.Nmin)} … {fmt(probe.env.Nmax)} kN</span>}
             <small>{probe.name}</small>
+          </div>
+        )}
+        {diagramView && resView === 'u' && nedb && Object.keys(nedb).some(k => k && k.startsWith('sls')) && (
+          <div className="fem-legend fem-defl">
+            {Object.entries(nedb).filter(([k]) => k && k.startsWith('sls')).map(([k, v]) => {
+              const el = model.elements.find(e => e.id === v.elem_id)
+              const L = el ? memberSpan(model, el) : 0
+              return (
+                <span key={k} title={v.combo}>
+                  <b>{SITUATION_LABEL[k] ?? k}</b> w<sub>inst</sub> = {fmt(Math.abs(v.w_mm), 1)} mm
+                  {L > 0 && Math.abs(v.w_mm) > 1e-6 ? ` · L/${Math.round(L * 1000 / Math.abs(v.w_mm))}` : ''}
+                  {el ? ` · stang ${el.id}` : ''}
+                </span>
+              )
+            })}
+            <small>Uden krybning (k<sub>def</sub>) — slutnedbøjningen eftervises i nedbøjningsblokken.</small>
           </div>
         )}
         {diagramView && resView !== 'u' && (

@@ -168,7 +168,12 @@ def test_rammen_regnes_igennem(koersel):
     s = koersel['_summary']
     # Ni af EN 1990 og to k_mod-varianter: rammen er af træ, så
     # kombinationen uden de kortvarige medvirkende hører med (§3.1.3).
-    assert len(s['combinations']) == 11
+    # Dertil anvendelsen: én karakteristisk pr. ledende last og én
+    # kvasipermanent pr. lastsæt -- de indgår ikke i brudindhyldningen.
+    brud = [c for c in s['combinations'] if not c.startswith('SLS')]
+    assert len(brud) == 11
+    assert any(c.startswith('SLS kar.') for c in s['combinations'])
+    assert any(c.startswith('SLS kvasi') for c in s['combinations'])
     assert s['envelope'], 'ingen indhyldning'
     # Tre elementer, hver med et dimensionsgivende moment
     assert set(s['envelope']) == {'1', '2', '3'}
@@ -347,7 +352,7 @@ def test_tallene_er_de_samme_som_da_alt_blev_tegnet(koersel):
     det, der udregnede noget. De skal være en gengivelse, ikke et led.
     """
     s = koersel['_summary']
-    assert len(s['combinations']) == 11
+    assert len([c for c in s['combinations'] if not c.startswith('SLS')]) == 11
     assert s['envelope']['1']['M_max_kNm'] == pytest.approx(20.92, abs=0.05)
     assert s['envelope']['2']['N_max_kN'] == pytest.approx(25.37, abs=0.05)
 
