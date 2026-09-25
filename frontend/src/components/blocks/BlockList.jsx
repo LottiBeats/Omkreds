@@ -20,7 +20,10 @@ import { hashCalcInputs, hasCalcResult, isStaleResult, staleReason, calcRevision
 import HeadingBlock      from './HeadingBlock.jsx'
 const TableBlock = lazy(() => import('./TableBlock.jsx'))
 import DocListBlock      from './DocListBlock.jsx'
-import TextBlock         from './TextBlock.jsx'
+// The text editor (TipTap) is loaded on demand; until then the same text is
+// shown formatted by RichTextStatic, so nothing jumps when it arrives.
+const TextBlock = lazy(() => import('./TextBlock.jsx'))
+import RichTextStatic    from './RichTextStatic.jsx'
 const ImageBlock = lazy(() => import('./ImageBlock.jsx'))
 const PythonBlock = lazy(() => import('./PythonBlock.jsx'))
 const CustomCalcBlock = lazy(() => import('./CustomCalcBlock.jsx'))
@@ -352,12 +355,7 @@ function BlockPreview({ block, project }) {
     }
 
     case 'text':
-      return (
-        <p style={{ fontSize: 14, lineHeight: 1.75, margin: 0, whiteSpace: 'pre-wrap',
-                    color: d.text ? '#333' : '#bbb' }}>
-          {d.text || 'Tomt afsnit — klik for at redigere'}
-        </p>
-      )
+      return <RichTextStatic text={d.text} />
 
     case 'image':
       return d.image_b64

@@ -16,6 +16,7 @@ and calc_core expect: {"type": "section"/"text"/"handcalc"/"check"/...}
 This module converts the v2 blocks into that format and calls generate_pdf_holst.
 """
 
+import rich_text
 import base64
 import os
 import re as _re
@@ -52,7 +53,9 @@ def _text(block: dict) -> list:
     text = _pdf_text(block["data"].get("text", ""), keep_greek=True).strip()
     if not text:
         return []
-    return [T(text)]
+    # **fed** / *kursiv* fra editorens tekstfelt -> <b>/<i>. Tekst uden
+    # markering kommer uændret igennem.
+    return [T(rich_text.to_reportlab(text))]
 
 
 def _image(block: dict, tmp_files: list) -> list:

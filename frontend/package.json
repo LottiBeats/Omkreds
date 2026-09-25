@@ -10,11 +10,14 @@
     "check": "node scripts/check-klasser.js && node scripts/check-projekttyper.js && node scripts/check-blokvariabler.js"
   },
   "dependencies": {
+    "@clerk/react": "latest",
+    "@tiptap/pm": "^2.27.3",
+    "@tiptap/react": "^2.27.3",
+    "@tiptap/starter-kit": "^2.27.3",
+    "katex": "^0.16.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.23.1",
-    "katex": "^0.16.10",
-    "@clerk/react": "latest"
+    "react-router-dom": "^6.23.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.0",

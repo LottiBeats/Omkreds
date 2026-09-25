@@ -9,6 +9,7 @@
  * and leave the rest alone, so typing in A2 does not recount A1 or B2.
  */
 import { hasCalcResult, isStaleResult, staleReason } from './calcState.js'
+import { blockPlaceholders } from './placeholders.js'
 
 /** Every block in a document, including its sub-documents, with where it lives. */
 export function allBlocks(doc) {
@@ -38,19 +39,21 @@ const _countCache = new WeakMap()
  *   stale   — results computed from inputs (or a calculation version) that have since changed
  *   unrun   — calculations with no result
  *   fail    — calculations with at least one failing check
+ *   missing — unfilled template placeholders ([adresse], …) in text, headings and tables
  */
 export function docCounts(doc) {
   if (doc && _countCache.has(doc)) return _countCache.get(doc)
-  let blocks = 0, calcs = 0, stale = 0, unrun = 0, fail = 0
+  let blocks = 0, calcs = 0, stale = 0, unrun = 0, fail = 0, missing = 0
   for (const { block } of allBlocks(doc)) {
     blocks++
+    missing += blockPlaceholders(block).length
     if (!isCalc(block)) continue
     calcs++
     if (isStaleResult(block)) stale++
     else if (!hasCalcResult(block)) unrun++
     if (hasFailingCheck(block)) fail++
   }
-  const res = { blocks, calcs, stale, unrun, fail }
+  const res = { blocks, calcs, stale, unrun, fail, missing }
   if (doc) _countCache.set(doc, res)
   return res
 }
@@ -70,7 +73,7 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
 
 /**
  * One status for a document, most urgent first:
- *   fejler → forældet → ikke kørt → udstedt (Rev X) → klar → udkast → ikke startet
+ *   fejler → forældet → ikke kørt → mangler udfyldning → udstedt (Rev X) → klar → udkast → ikke startet
  *
  * "Klar" needs calculations to prove it: a document of only text can't be
  * judged ready by the app, so it stays "Udkast" until it is issued.
@@ -85,6 +88,8 @@ export function documentStatus(doc) {
                         title: plural(c.stale, 'beregning skal', 'beregninger skal') + ' køres igen' }
   if (c.unrun) return { tone: 'warn', label: `${c.unrun} ikke kørt`, key: 'unrun',
                         title: plural(c.unrun, 'beregning er', 'beregninger er') + ' ikke kørt endnu' }
+  if (c.missing) return { tone: 'warn', label: `${c.missing} mangler`, key: 'missing',
+                          title: plural(c.missing, 'felt skal', 'felter skal') + ' udfyldes, fx [adresse] eller …' }
   if (rev)     return { tone: 'rev',  label: `Rev ${rev.rev}`, key: 'issued',
                         title: `Udstedt ${rev.date ?? ''}${rev.description ? ' — ' + rev.description : ''}` }
   if (c.calcs) return { tone: 'ok',   label: 'Klar', key: 'ready', title: 'Alle beregninger er kørt og opdaterede' }
@@ -92,12 +97,19 @@ export function documentStatus(doc) {
 }
 
 /**
- * The calculations that stand between a document and a trustworthy report,
- * by name, so the export and issue dialogs can list them and link to them.
+ * What stands between a document and a trustworthy report — calculations
+ * that are stale or not run, and text with unfilled placeholders — by name,
+ * so the export and issue dialogs can list them and link to them.
  */
 export function docProblems(doc, labelFor = (b) => b.type) {
   const out = []
   for (const { block, sub } of allBlocks(doc)) {
+    const holes = blockPlaceholders(block)
+    if (holes.length) {
+      const shown = [...new Set(holes.map(h => h.label))].slice(0, 3).join(', ')
+      out.push({ id: block.id, sub, name: textName(block), kind: 'missing',
+                 reason: `Udfyld ${shown}${holes.length > 3 ? ` og ${holes.length - 3} mere` : ''}.` })
+    }
     if (!isCalc(block)) continue
     const name = block.data?.title || block.data?.label || labelFor(block)
     if (isStaleResult(block)) {
@@ -107,4 +119,13 @@ export function docProblems(doc, labelFor = (b) => b.type) {
     }
   }
   return out
+}
+
+/** A short name for a text-bearing block: its first words. */
+function textName(block) {
+  const d = block.data ?? {}
+  if (block.type === 'table') return d.caption || 'Tabel'
+  const t = String(d.text ?? '').replace(/[*•]/g, '').replace(/\s+/g, ' ').trim()
+  const kind = block.type === 'heading' ? 'Overskrift' : 'Tekst'
+  return t ? `${kind}: ${t.length > 48 ? t.slice(0, 46) + '…' : t}` : kind
 }
