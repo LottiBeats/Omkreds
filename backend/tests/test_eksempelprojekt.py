@@ -436,3 +436,146 @@ def test_forskellen_er_de_22_procent(client):
     assert ud[True] > ud[False] * 1.15, ud
     assert ud[True] == pytest.approx(23.2, abs=0.3)
     assert ud[False] == pytest.approx(19.0, abs=0.3)
+
+
+# ── 7. Anvendelsesgrænsetilstanden fra lasttilfældene ───────────────────────
+#
+# Hullet: en ramme med lasttilfælde blev regnet til brudgrænsen og fik INGEN
+# nedbøjning. SLS kendte kun vejen fra en lastkombinationsblok, hvor G_k og
+# Q_k kom hver for sig — men med lasttilfælde står den opdeling allerede på
+# tilfældet.
+#
+# En trækonstruktion uden nedbøjningseftervisning er ikke eftervist.
+
+def test_der_regnes_sls_naar_der_er_lasttilfaelde(koersel):
+    sls = koersel['_summary'].get('sls')
+    assert sls, 'ingen nedbøjning regnet'
+    for n in ('w_inst_G_mm', 'w_inst_Q_mm', 'w_inst_mm', 'w_fin_mm',
+              'k_def', 'psi_2'):
+        assert n in sls, n
+    assert sls['w_inst_mm'] > 0
+
+
+def test_w_inst_er_summen_af_de_to_dele(koersel):
+    """§2.2.3(5) kræver delingen: G kryber fuldt, Q kun med sin ψ₂-andel."""
+    sls = koersel['_summary']['sls']
+    assert sls['w_inst_mm'] == pytest.approx(
+        sls['w_inst_G_mm'] + sls['w_inst_Q_mm'], abs=0.01)
+
+
+def test_w_fin_er_stoerre_end_w_inst(koersel):
+    """Krybning kan ikke gøre en bjælke rankere."""
+    sls = koersel['_summary']['sls']
+    assert sls['w_fin_mm'] > sls['w_inst_mm']
+
+
+def test_krybningen_er_haandregnet(koersel):
+    """w_fin = w_G·(1 + k_def) + w_Q·(1 + ψ₂·k_def)."""
+    sls = koersel['_summary']['sls']
+    forventet = (sls['w_inst_G_mm'] * (1 + sls['k_def'])
+                 + sls['w_inst_Q_mm'] * (1 + sls['psi_2'] * sls['k_def']))
+    assert sls['w_fin_mm'] == pytest.approx(forventet, abs=0.01)
+
+
+def test_psi2_er_nul_naar_sne_leder():
+    """DK NA tabel A1.1: ψ₂ for sne og vind er 0."""
+    from frame_load_cases import sls_saet
+    _, saet = sls_saet(LASTTILFAELDE, LASTER)
+    for post in saet:
+        assert post['psi_2'] == pytest.approx(0.0), post['navn']
+
+
+def test_de_to_vindretninger_moedes_heller_ikke_i_sls():
+    """Nedbøjning regnet med sidelast fra begge sider er ikke en
+    konstruktion, der findes."""
+    from frame_load_cases import sls_saet
+    _, saet = sls_saet(LASTTILFAELDE, LASTER)
+    assert saet
+    for post in saet:
+        assert not ('Vind fra venstre' in post['navn']
+                    and 'Vind fra højre' in post['navn']), post['navn']
+
+
+def test_den_permanente_del_er_de_permanente_tilfaelde():
+    from frame_load_cases import sls_saet
+    G, _ = sls_saet(LASTTILFAELDE, LASTER)
+    # LC1 er den eneste permanente, og lasten står ukombineret: faktor 1,0
+    # — altså egenlastens 2,4 kN/m, ikke ganget med noget.
+    assert len(G) == 1
+    assert G[0]['value_kNm'] == pytest.approx(2.4)
+
+
+def test_den_dimensionsgivende_kombination_staar_i_dokumentet(koersel):
+    tekst = ' '.join(str(b.get('content', '')) for b in koersel['_result'])
+    assert 'Dimensionsgivende karakteristisk kombination' in tekst
+
+
+def test_uden_lasttilfaelde_er_der_stadig_ingen_sls(client):
+    """Den gamle vej er uændret: uden en kilde til G_k og Q_k hver for sig
+    er der ingenting at regne, og så skal der ikke opfindes noget."""
+    gamle = [dict(l, lc=None, virkning='permanent') for l in LASTER[:1]]
+    r = client.post('/calc/general-frame-fem', json=dict(
+        MODEL, title='R', loads=gamle))
+    assert r.status_code == 200, r.text
+    assert r.json()['_summary'].get('sls') is None
+
+
+# ── 8. Fire vindtilfælde ────────────────────────────────────────────────────
+#
+# En saddeltagsramme har fire: to retninger gange c_pi = +0,2 og −0,3.
+# Alle fire ligger i gruppen 'vind', så der er præcis ét vindtilfælde i hver
+# kombination — aldrig to. Det er hele grunden til, at grupper findes.
+
+FIRE_VIND = [
+    {'nr': 1, 'navn': 'Egenlast', 'kategori': 'permanent'},
+    {'nr': 2, 'navn': 'Snelast',  'kategori': 'snow'},
+    {'nr': 3, 'navn': 'Vind venstre, c_pi +0,2', 'kategori': 'wind', 'gruppe': 'vind'},
+    {'nr': 4, 'navn': 'Vind venstre, c_pi −0,3', 'kategori': 'wind', 'gruppe': 'vind'},
+    {'nr': 5, 'navn': 'Vind højre, c_pi +0,2',   'kategori': 'wind', 'gruppe': 'vind'},
+    {'nr': 6, 'navn': 'Vind højre, c_pi −0,3',   'kategori': 'wind', 'gruppe': 'vind'},
+]
+FIRE_LASTER = [{'type': 'udl', 'elem_id': 1, 'direction': 'vertical',
+                'value_kNm': 1.0, 'lc': t['nr']} for t in FIRE_VIND]
+
+
+def _vind_i(combo):
+    return [a for a in combo['aktive'] if a.startswith('Vind')]
+
+
+def test_fire_vindtilfaelde_giver_nitten_kombinationer():
+    """6.10a + 8 stk. 6.10b + 8 gunstige + 2 k_mod-varianter.
+
+    De otte er fire vindvalg gange to ledende (sne, vind). k_mod-varianten
+    falder sammen til én, fordi vinden skæres ud — og så er de fire vindvalg
+    den samme kombination.
+    """
+    c = kombinationer_af_tilfaelde(FIRE_VIND, FIRE_LASTER, kmod_varianter=True)
+    assert len(c) == 19
+    assert len([k for k in c if 'k_mod kort' in k['name']]) == 2
+
+
+def test_der_er_hoejst_ét_vindtilfaelde_i_hver_kombination():
+    """Det dyre at tage fejl af. To vindretninger lagt sammen er 70 % for
+    meget sidelast, og det ser helt normalt ud i en tabel.
+    """
+    for k in kombinationer_af_tilfaelde(FIRE_VIND, FIRE_LASTER,
+                                        kmod_varianter=True):
+        assert len(_vind_i(k)) <= 1, k['name']
+
+
+def test_alle_fire_kommer_med_som_ledende():
+    """Falder ét ud, er der en lastretning eller et indvendigt tryk, rammen
+    aldrig blev eftervist for."""
+    c = kombinationer_af_tilfaelde(FIRE_VIND, FIRE_LASTER)
+    ledende = {k['name'].split(' leder')[0].split('(')[-1]
+               for k in c if ' leder' in k['name']}
+    for t in FIRE_VIND[2:]:
+        assert t['navn'] in ledende, t['navn']
+
+
+def test_ogsaa_i_sls_er_der_hoejst_ét():
+    from frame_load_cases import sls_saet
+    _, saet = sls_saet(FIRE_VIND, FIRE_LASTER)
+    assert saet
+    for post in saet:
+        assert post['navn'].count('Vind') <= 1, post['navn']

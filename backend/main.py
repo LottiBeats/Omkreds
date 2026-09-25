@@ -3032,25 +3032,58 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             fra. To rigtige koersler er kortere at forklare end én rigtig og
             en faktor.
             """
-            if not data.loads_sls_G and not data.loads_sls_Q:
-                return [], None
-            try:
+            # Tre veje til de karakteristiske laster, i den raekkefoelge de
+            # er kommet til:
+            #
+            #  1. Modellens lasttilfaelde. Opdelingen i permanent og variabel
+            #     staar allerede paa tilfaeldet, saa den behoever ikke sendes
+            #     med. Det var hullet: en ramme med lasttilfaelde blev regnet
+            #     til brudgraensen og fik INGEN nedboejning, fordi SLS kun
+            #     kendte vejen fra en lastkombinationsblok.
+            #  2. loads_sls_G/Q fra brugerfladen, naar lasterne kommer fra en
+            #     lastkombinationsblok.
+            #  3. Ingen af delene -- saa er der ingen SLS at regne.
+            sls_variabel_navn = ''
+            if data.load_cases:
+                from frame_load_cases import sls_saet
+                lg, saet = sls_saet(
+                    [t.model_dump() for t in data.load_cases],
+                    paasatte_laster)
+                if not saet:
+                    return [], None
+            elif data.loads_sls_G or data.loads_sls_Q:
                 lg = [l.model_dump() for l in data.loads_sls_G]
-                lq = [l.model_dump() for l in data.loads_sls_Q]
+                saet = [{'navn': 'Q_k', 'psi_2': float(data.psi_2 or 0.0),
+                         'laster': [l.model_dump() for l in data.loads_sls_Q]}]
+            else:
+                return [], None
+
+            try:
                 rG = solve(nodes, elements, supports, lg, equal_dofs)
-                rQ = solve(nodes, elements, supports, lq, equal_dofs)
                 wG, elG, xG = stoerste_nedboejning(
                     nodes, elements, rG['ele_forces'], rG.get('ele_segs'),
                     rG['node_disps'])
-                wQ, elQ, xQ = stoerste_nedboejning(
-                    nodes, elements, rQ['ele_forces'], rQ.get('ele_segs'),
-                    rQ['node_disps'])
+
+                # Den vaerste af de variable kombinationer. At gaette hvilken
+                # der giver den stoerste nedboejning er ikke muligt -- vind
+                # kan loefte dér, hvor sne trykker -- og en lineaer loesning
+                # er millisekunder.
+                wQ, elQ, xQ, p2 = 0.0, None, 0.0, 0.0
+                for post in saet:
+                    rQ = solve(nodes, elements, supports, post['laster'],
+                               equal_dofs)
+                    w, el, x = stoerste_nedboejning(
+                        nodes, elements, rQ['ele_forces'], rQ.get('ele_segs'),
+                        rQ['node_disps'])
+                    if abs(w) > abs(wQ):
+                        wQ, elQ, xQ = w, el, x
+                        p2 = float(post.get('psi_2') or 0.0)
+                        sls_variabel_navn = post['navn']
             except Exception:
                 return [], None
 
             from timber_grades import K_DEF
             k_def = K_DEF.get(data.service_class, 0.80)
-            p2 = float(data.psi_2 or 0.0)
 
             w_inst = abs(wG) + abs(wQ)
             w_fin  = abs(wG) * (1 + k_def) + abs(wQ) * (1 + p2 * k_def)
@@ -3065,7 +3098,16 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                     L_ref = math.hypot(float(_nj['x']) - float(_ni['x']),
                                        float(_nj['y']) - float(_ni['y']))
 
-            b = [S('Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2'),
+            b = [S('Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2')]
+            if sls_variabel_navn:
+                b.append(T(
+                    'Dimensionsgivende karakteristisk kombination: '
+                    + sls_variabel_navn + '. Den er fundet ved at regne hver '
+                    'af de karakteristiske kombinationer igennem og tage den '
+                    'største nedbøjning — hvilken der bliver værst kan ikke '
+                    'afgøres på forhånd, fordi vind kan løfte dér, hvor sne '
+                    'trykker.'))
+            b += [
                  T('Lasterne er påsat igen med deres karakteristiske værdier. '
                    'Analysen er lineær, så den permanente og den variable del '
                    'kan holdes hver for sig — det kræver §2.2.3(5), fordi den '

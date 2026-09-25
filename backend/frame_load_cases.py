@@ -638,3 +638,91 @@ def kombinationer_fra_lastmodul(loads, kombinationer, lasttilfaelde,
                                    if abs(tabel.get(navne.get(nr, f'#{nr}'), 0)) > 1e-12],
         })
     return ud
+
+
+# ── Anvendelsesgraensetilstanden ────────────────────────────────────────────
+#
+# DS/EN 1990 DK NA:2024 tabel A1.1, psi_2. Kun de kategorier, tilfaeldene kan
+# have. Vaerdierne er de samme som i load_combo.PSI_DK -- sne og vind har
+# psi_2 = 0, og nyttelast kategori A/B har 0,2.
+_PSI2 = {
+    'permanent': None,
+    'snow':      0.0,
+    'wind':      0.0,
+    'imposed':   0.2,
+}
+
+
+def sls_saet(load_cases, loads):
+    """
+    Lasterne til anvendelsesgraensetilstanden, delt som EN 1995 kraever det.
+
+    Returnerer (G_laster, [{navn, laster, psi_2}]).
+
+    G_laster er de permanente tilfaeldes laster med faktor 1,0.
+
+    Listen er den KARAKTERISTISKE kombinations variable del -- én post pr.
+    ledende variabel: Q_ledende med 1,0 og de medvirkende med psi_0. Og som i
+    brudgraensen vaelges der ét tilfaelde pr. gruppe, saa vind fra venstre og
+    fra hoejre aldrig staar sammen. Uden den regel ville nedboejningen blive
+    regnet med sidelast fra begge sider, og det er ikke en konstruktion, der
+    findes.
+
+    psi_2 er den ledendes -- den, der bestemmer krybningens variable del i
+    §2.2.3(5).
+
+    Kalderen koerer dem og tager den vaerste. Det er billigt: en lineaer
+    loesning er millisekunder, og alternativet er at gaette hvilken der giver
+    den stoerste nedboejning.
+    """
+    tilfaelde = _normaliser_tilfaelde(load_cases)
+    if not tilfaelde:
+        return [], []
+
+    pr_nr = {t['nr']: t for t in tilfaelde}
+    pr_tilfaelde = {}
+    for ld in loads:
+        nr = ld.get('lc')
+        if nr in pr_nr:
+            pr_tilfaelde.setdefault(nr, []).append(ld)
+
+    G = []
+    for t in tilfaelde:
+        if t['kategori'] == 'permanent':
+            G += [_scale_load(l, 1.0) for l in pr_tilfaelde.get(t['nr'], [])]
+
+    variable = [t for t in tilfaelde if t['kategori'] != 'permanent']
+    pr_gruppe = {}
+    for t in variable:
+        pr_gruppe.setdefault(t['gruppe'], []).append(t)
+    valgmuligheder = [sorted(v, key=lambda t: (str(t['navn']), t['nr']))
+                      for v in pr_gruppe.values()]
+
+    import itertools
+    udvalg = [list(u) for u in itertools.product(*valgmuligheder)] \
+        if valgmuligheder else []
+
+    saet = []
+    set_navne = set()
+    for valg in udvalg:
+        for ledende in valg:
+            ud = []
+            dele = []
+            for t in valg:
+                if t['nr'] == ledende['nr']:
+                    f = 1.0
+                else:
+                    f = _companion_psi0(ledende['kategori'], t['kategori'])
+                if abs(f) <= 1e-10:
+                    continue
+                ud += [_scale_load(l, f)
+                       for l in pr_tilfaelde.get(t['nr'], [])]
+                dele.append(t['navn'] if f == 1.0
+                            else f"{f:.1f}·{t['navn']}")
+            navn = 'G + ' + ' + '.join(dele) if dele else 'G'
+            if navn in set_navne:
+                continue
+            set_navne.add(navn)
+            saet.append({'navn': navn, 'laster': ud,
+                         'psi_2': _PSI2.get(ledende['kategori'], 0.0)})
+    return G, saet
