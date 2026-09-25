@@ -536,7 +536,33 @@ const VIRKNINGER = [
   { value: 'wind',      label: 'W  Vind',      hint: 'ψ₀ = 0,3' },
 ]
 
-function LoadRow({ load, onChange, onRemove, comboBlocks, tilfaelde = [] }) {
+/**
+ * Vindblokkene i dokumentet, og opslaget i deres eksport.
+ *
+ * Vinden er regnet FØR modellen og står i sit eget afsnit. Her hentes
+ * resultatet — ikke en ny beregning. Zonetrykket kommer fra den blok, der
+ * står i rapporten, så det tal, der påsættes, er det tal, der er
+ * dokumenteret.
+ */
+function vindZone(vindBlokke, label, zone, c_pi) {
+  const b = vindBlokke.find(x => x.data?._exports?.label === label)
+            ?? vindBlokke[0]
+  const zoner = b?.data?._exports?.zoner ?? []
+  return zoner.find(r => r.zone === zone
+                      && Math.abs((r.c_pi ?? 0) - c_pi) < 1e-9) ?? null
+}
+
+const VIND_ZONER = [
+  { v: 'D', l: 'D — væg, luv' },
+  { v: 'E', l: 'E — væg, læ' },
+  { v: 'G', l: 'G — tag, luv, kantzone' },
+  { v: 'H', l: 'H — tag, luv' },
+  { v: 'I', l: 'I — tag, læ' },
+  { v: 'J', l: 'J — tag, læ, ved kippen' },
+]
+
+function LoadRow({ load, onChange, onRemove, comboBlocks, tilfaelde = [],
+                  vindBlokke = [] }) {
   const lt = load.type ?? 'nodal'
   // Delvis eller varierende last er undtagelsen, ikke reglen. Felterne ligger
   // paa en linje for sig, der kun foldes ud naar de bruges — editoren er
@@ -548,6 +574,16 @@ function LoadRow({ load, onChange, onRemove, comboBlocks, tilfaelde = [] }) {
     ? (comboBlocks.find(b => b.data.label === load.combo_label) ?? comboBlocks[0])
     : null
   const comboW = selCombo?.data?._exports?.E_d_uls
+
+  const selVind = lt === 'vind_udl'
+    ? (vindBlokke.find(b => b.data?._exports?.label === load.vind_label)
+       ?? vindBlokke[0])
+    : null
+  const vindRaekke = lt === 'vind_udl'
+    ? vindZone(vindBlokke, load.vind_label, load.zone ?? 'D',
+               load.c_pi ?? 0.2)
+    : null
+  const kantzone = selVind?.data?._exports?.kantzone_m
 
   // UDL sub-fields
   const udlTarget    = load.target    ?? 'elem'   // 'elem' | 'member'
@@ -563,6 +599,7 @@ function LoadRow({ load, onChange, onRemove, comboBlocks, tilfaelde = [] }) {
             <option value="nodal">Punktlast</option>
             <option value="udl">Linjelast</option>
             <option value="combo_udl">Kombi-linjelast</option>
+            <option value="vind_udl">Vindlast (zone)</option>
           </select>
         </div>
 
@@ -669,6 +706,68 @@ function LoadRow({ load, onChange, onRemove, comboBlocks, tilfaelde = [] }) {
               onChange={e => onChange({ ...load, variant: e.target.value || undefined })} />
           </div>
         )}
+
+        {lt === 'vind_udl' && <>
+          <NumField label="Elem" val={load.elem_id ?? 1}
+            set={v => onChange({ ...load, elem_id: Math.round(v) })} width={50} />
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>Vindlast</label>
+            {vindBlokke.length === 0
+              ? <span style={{ fontSize: 10, color: '#e67e22' }}>
+                  Ingen vindlast-blok — regn vinden først
+                </span>
+              : <select style={{ ...s.smallInput, width: 96 }}
+                  value={selVind?.data?._exports?.label ?? ''}
+                  onChange={e => onChange({ ...load, vind_label: e.target.value })}>
+                  {vindBlokke.map(b => (
+                    <option key={b.id} value={b.data?._exports?.label ?? ''}>
+                      {b.data?._exports?.label ?? b.data?.label}
+                    </option>
+                  ))}
+                </select>}
+          </div>
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>Zone</label>
+            <select style={{ ...s.smallInput, width: 168 }}
+              value={load.zone ?? 'D'}
+              onChange={e => onChange({ ...load, zone: e.target.value })}>
+              {VIND_ZONER.map(z => (
+                <option key={z.v} value={z.v}>{z.l}</option>
+              ))}
+            </select>
+          </div>
+          <div style={s.fieldWrap}>
+            <label style={s.miniLabel}>c<sub>pi</sub></label>
+            <select style={{ ...s.smallInput, width: 64 }}
+              value={String(load.c_pi ?? 0.2)}
+              title="Begge indvendige tryk skal eftervises. Læg dem i hvert sit lasttilfælde."
+              onChange={e => onChange({ ...load, c_pi: Number(e.target.value) })}>
+              <option value="0.2">+0,20</option>
+              <option value="-0.3">−0,30</option>
+            </select>
+          </div>
+          {/* Det tal, der faktisk påsættes. Står det ikke her, er forskellen
+              på en zone og en anden usynlig, indtil FEM'en er kørt. */}
+          <span style={{ fontSize: 11, color: vindRaekke ? '#1D1D1F' : '#e67e22',
+                         alignSelf: 'flex-end', paddingBottom: 4 }}>
+            {vindRaekke
+              ? (vindRaekke.w_kNm != null
+                  ? `w = ${vindRaekke.w_kNm.toFixed(3).replace('.', ',')} kN/m`
+                  : `w = ${vindRaekke.w_kNm2.toFixed(3).replace('.', ',')} kN/m² — sæt rammeafstanden i vindlast-blokken`)
+              : 'zonen findes ikke i den blok — er vinden kørt?'}
+          </span>
+          {kantzone != null && ['G', 'J'].includes(load.zone) && (
+            <button style={s.udvidBtn}
+              title={`Kantzonen er e/10 = ${kantzone} m. G måles fra tagfoden, J fra kippen — vælg selv hvilken ende af stangen det er.`}
+              onClick={() => { setUdvidet(true); onChange({
+                ...load,
+                x1: load.zone === 'G' ? 0 : undefined,
+                x2: load.zone === 'G' ? kantzone : undefined,
+              }) }}>
+              ⇥ kantzone {String(kantzone).replace('.', ',')} m
+            </button>
+          )}
+        </>}
 
         {lt === 'combo_udl' && <>
           <NumField label="Elem" val={load.elem_id ?? 1} set={v => onChange({ ...load, elem_id: Math.round(v) })} width={50} />
@@ -1470,6 +1569,10 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   const [error,   setError]   = useState(null)
 
   const comboBlocks      = blocks.filter(b => b.type === 'load_combo')
+  // Vindblokke med et resultat. En uberegnet blok har ingen zoner at hente,
+  // og at vise den i listen ville love noget, den ikke kan holde.
+  const vindBlokke       = blocks.filter(
+    b => b.type === 'wind_load' && (b.data?._exports?.zoner ?? []).length)
   const loadCaseBlocks   = blocks.filter(b => b.type === 'frame_load_cases')
   const selLoadCaseBlock = loadCaseBlocks.find(b => b.id === d.load_cases_block_id)
                            ?? loadCaseBlocks[0]
@@ -1617,6 +1720,10 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   function addLoad(type)      { update({ loads: [...loads,
     type === 'udl'
       ? { type: 'udl', target: 'elem', elem_id: elements[0]?.id ?? 1, direction: 'vertical', value_kNm: 10 }
+      : type === 'vind_udl'
+      ? { type: 'vind_udl', elem_id: elements[0]?.id ?? 1,
+          vind_label: vindBlokke[0]?.data?._exports?.label ?? '',
+          zone: 'D', c_pi: 0.2 }
       : type === 'combo_udl'
       ? { type: 'combo_udl', elem_id: elements[0]?.id ?? 1, combo_label: comboBlocks[0]?.data?.label ?? '' }
       : { type: 'nodal',     node_id: nodes[0]?.id    ?? 1, Fx_kN: 0, Fy_kN: 0, Mz_kNm: 0 }
@@ -1725,6 +1832,20 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       } else {
         // Simple mode — resolve combo_udl, expand member UDL to per-element loads
         const resolved = loads.flatMap(ld => {
+          if (ld.type === 'vind_udl') {
+            // Zonetrykket hentes i vindblokkens eksport. Findes zonen ikke,
+            // bliver lasten IKKE til nul: den sendes videre som den er, og
+            // serveren afviser den. En vindlast, der stilfærdigt blev nul,
+            // ville se ud som en model uden vind — og alle tal i den ville
+            // se normale ud.
+            const r = vindZone(vindBlokke, ld.vind_label, ld.zone ?? 'D',
+                               ld.c_pi ?? 0.2)
+            if (!r) return [ld]
+            const w = r.w_kNm != null ? r.w_kNm : r.w_kNm2
+            return [{ ...ld, type: 'udl', direction: 'perpendicular',
+                      value_kNm: w, zone: undefined, vind_label: undefined,
+                      c_pi: undefined }]
+          }
           if (ld.type === 'combo_udl') {
             const cb = comboBlocks.find(b => b.data.label === ld.combo_label) ?? comboBlocks[0]
             const w  = cb?.data?._exports?.E_d_uls ?? 0
@@ -2086,9 +2207,15 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           <button style={{ ...s.addBtn, marginLeft: 'auto' }}
             onClick={() => addLoad('nodal')}>+ Punktlast</button>
           <button style={s.addBtn} onClick={() => addLoad('udl')}>+ Linjelast</button>
+          {vindBlokke.length > 0 && (
+            <button style={s.addBtn} onClick={() => addLoad('vind_udl')}>
+              + Vindlast
+            </button>
+          )}
         </div>
         {loads.map((ld, i) => (
           <LoadRow key={i} load={ld} comboBlocks={comboBlocks} tilfaelde={tilfaelde}
+            vindBlokke={vindBlokke}
             onChange={v => updateLoad(i, v)} onRemove={() => removeLoad(i)} />
         ))}
       </>)}
