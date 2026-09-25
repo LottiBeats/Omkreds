@@ -17,3 +17,29 @@ export const DOC_TITLES = {
   B2: 'Statisk kontrolplan',
   B3: 'Statisk kontrolrapport',
 }
+
+/** Short names for the rail, where the full BR18 name doesn't fit. */
+export const DOC_SHORT = {
+  A1: 'Konstruktionsgrundlag',
+  A2: 'Statiske beregninger',
+  A3: 'Tegninger og modeller',
+  A4: 'Konstruktionsændringer',
+  A5: 'Som udført',
+  B1: 'Projektredegørelse',
+  B2: 'Kontrolplan',
+  B3: 'Kontrolrapport',
+}
+
+/**
+ * The documents grouped by when in the job they are written.
+ *
+ * `later` groups belong to the construction phase. They start collapsed in
+ * the editor, and open by themselves once one of their documents has content.
+ */
+export const DOC_PHASES = [
+  { key: 'projektering', label: 'Projektering', docs: ['A1', 'A2', 'A3'] },
+  { key: 'kontrol',      label: 'Kontrol',      docs: ['B1', 'B2'] },
+  { key: 'udfoerelse',   label: 'Udførelse',    docs: ['A4', 'A5', 'B3'], later: true },
+]
+
+export const DOC_IDS = DOC_PHASES.flatMap(p => p.docs)

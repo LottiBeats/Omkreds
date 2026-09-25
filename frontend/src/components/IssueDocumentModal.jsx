@@ -16,6 +16,7 @@
  * is how the documents are delivered and revised in practice.
  */
 import { useEffect, useState } from 'react'
+import { ProblemList } from './editor/ExportCheckDialog.jsx'
 
 const BRAND = '#d94a2b'
 
@@ -45,6 +46,8 @@ export default function IssueDocumentModal({
   metadata = {},
   revisions = [],
   integrity = { stale: 0, unrun: 0 },
+  problems: problemList = [],   // named stale/unrun calculations (docStatus.docProblems)
+  onJump,                       // go to one of them
   busy = false,
   onIssue,
   onClose,
@@ -112,6 +115,11 @@ export default function IssueDocumentModal({
                       ikke kørt endnu</li>
                 )}
               </ul>
+              {problemList.length > 0 && onJump && (
+                <div style={{ margin: '4px 0 10px' }}>
+                  <ProblemList problems={problemList} docId={docId} onJump={onJump} />
+                </div>
+              )}
               <label style={S.checkRow}>
                 <input
                   type="checkbox"
