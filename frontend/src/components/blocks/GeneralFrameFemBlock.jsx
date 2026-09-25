@@ -2144,6 +2144,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           hasResult={!!(d._result || d._summary)}
           memberChecks={memberChecks}
           reactions={d._summary?.reactions}
+          summary={d._summary}
         />,
         document.body)}
 

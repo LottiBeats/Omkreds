@@ -26,6 +26,7 @@ import {
   deleteSelection, updateNode, updateElements, elementLength, bounds, round,
 } from './femModel.js'
 import { GENERATORS } from './femGenerators.js'
+import { resultStates, sampleElement, envelopeSamples } from './femDiagrams.js'
 import './fem.css'
 
 // ── Vocabulary ────────────────────────────────────────────────────────────────
@@ -196,7 +197,7 @@ function SupportGlyph({ x, y, type }) {
 
 export default function FemWorkspace({
   title, data, onModelChange, onClose, onRun, running, error, stale,
-  memberChecks, reactions, hasResult,
+  memberChecks, reactions, hasResult, summary,
 }) {
   const model = useMemo(() => pick(data), [data])
   const commit = useCallback((m) => onModelChange(m), [onModelChange])
@@ -218,6 +219,10 @@ export default function FemWorkspace({
   const [activeLc, setActiveLc] = useState(model.load_cases[0]?.nr ?? null)
   const [showAllLoads, setShowAllLoads] = useState(false)
   const [spaceDown, setSpaceDown] = useState(false)
+  const [resView, setResView] = useState('eta')        // 'model' | 'u' | 'M' | 'V' | 'N' | 'eta'
+  const [resIdx, setResIdx] = useState('auto')         // index into result states, 'env' or 'auto'
+  const [ordScale, setOrdScale] = useState(1)
+  const [probe, setProbe] = useState(null)             // hover readout in result views
   const wrapRef = useRef(null)
   const svgRef = useRef(null)
 
@@ -408,6 +413,8 @@ export default function FemWorkspace({
     }
     const pt = snapped(sx, sy)
     setHover(pt)
+    if (diagramView) setProbe(probeAt(sx, sy))
+    else if (probe) setProbe(null)
   }
 
   function onPointerUp() {
@@ -497,7 +504,21 @@ export default function FemWorkspace({
     for (const el of m.elements) if (el.member_id != null) (g[el.member_id] ??= []).push(el)
     return g
   }, [m.elements])
-  const showResults = hasResult && !stale && memberChecks
+  const resultsOk = !!(hasResult && !stale)
+  const showResults = resultsOk && resView === 'eta' && memberChecks
+  const states = useMemo(() => (resultsOk ? resultStates(summary) : []), [resultsOk, summary])
+  // Which result is drawn: a combination, the envelope over all of them, or —
+  // by default — the governing one (the one the report figures use).
+  const governingIdx = useMemo(() => {
+    const envName = summary?.envelope ? Object.values(summary.envelope).reduce((a, b) => (b.M_max_kNm > (a?.M_max_kNm ?? -1) ? b : a), null)?.M_combo : null
+    const i = states.findIndex(st => st.name === envName)
+    return i >= 0 ? i : 0
+  }, [states, summary])
+  const curIdx = resIdx === 'auto' ? governingIdx : resIdx
+  const diagramView = resultsOk && ['u', 'M', 'V', 'N'].includes(resView) && states.length > 0
+  useEffect(() => {
+    if (resultsOk && resView === 'eta' && !memberChecks) setResView('M')
+  }, [resultsOk, resView, memberChecks])
 
   const visibleLoads = m.loads.map((l, i) => ({ l, i }))
     .filter(({ l }) => showAllLoads || !m.load_cases.length || l.lc === activeLc || (l.lc == null && activeLc == null))
@@ -509,6 +530,7 @@ export default function FemWorkspace({
 
   // ── Render: model ───────────────────────────────────────────────────────
   function elemColor(el) {
+    if (diagramView) return '#a8a29e'
     if (showResults) {
       const c = memberChecks[el.member_id]
       if (c && typeof c.eta === 'number') return c.N_kN != null && c.eta <= 1 ? '#d97706' : etaColor(c.eta)
@@ -642,6 +664,130 @@ export default function FemWorkspace({
       if (showIds) out.push(<text key={`nt${n.id}`} x={x + 7} y={y - 7} fontSize="10.5" fill="#57534e" fontFamily="var(--font-mono)">{n.id}</text>)
     }
     return out
+  }
+
+  // ── Result diagrams ─────────────────────────────────────────────────────
+  const DIAG = {
+    M: { pos: '#1d4ed8', neg: '#1d4ed8', unit: 'kNm', flip: -1, label: 'M' },   // tegnet på trækside
+    V: { pos: '#0f766e', neg: '#0f766e', unit: 'kN',  flip: 1,  label: 'V' },
+    N: { pos: '#2563eb', neg: '#dc2626', unit: 'kN',  flip: 1,  label: 'N' },   // + træk / − tryk
+  }
+
+  const curves = useMemo(() => {
+    if (!diagramView || resView === 'u') return null
+    const out = {}
+    for (const el of model.elements) {
+      const L = elementLength(model, el)
+      if (curIdx === 'env') {
+        const env = envelopeSamples(el, L, states)
+        if (env) out[el.id] = { env }
+      } else {
+        const st = states[curIdx]
+        const pts = st && sampleElement(el, L, st.state)
+        if (pts) out[el.id] = { pts }
+      }
+    }
+    return out
+  }, [diagramView, resView, curIdx, states, model])
+
+  const extent = useMemo(() => {
+    const b = bounds(model)
+    return Math.max(b.maxX - b.minX, b.maxY - b.minY, 1)
+  }, [model])
+
+  function renderDiagrams() {
+    if (resView === 'u') return renderDeformation()
+    const k = resView, st = DIAG[k]
+    let vmax = 0
+    for (const c of Object.values(curves ?? {})) {
+      for (const p of c.pts ?? []) vmax = Math.max(vmax, Math.abs(p[k]))
+      for (const p of c.env ?? []) vmax = Math.max(vmax, Math.abs(p[k + 'max']), Math.abs(p[k + 'min']))
+    }
+    if (vmax < 1e-9) return <text x={size.w / 2} y={size.h - 40} textAnchor="middle" fontSize="12" fill="#78716c">{k} er nul overalt</text>
+    const fac = (0.12 * extent * ordScale) / vmax    // world metres per kN(m)
+    const out = []
+    const labels = []
+    for (const el of model.elements) {
+      const c = curves?.[el.id]; if (!c) continue
+      const a = nodesById[el.ni], b = nodesById[el.nj]; if (!a || !b) continue
+      const L = elementLength(model, el) || 1
+      const ca = (b.x - a.x) / L, sa = (b.y - a.y) / L
+      const ox = -sa * st.flip, oy = ca * st.flip
+      const series = c.pts ? [c.pts.map(p => [p.x, p[k]])] : [c.env.map(p => [p.x, p[k + 'max']]), c.env.map(p => [p.x, p[k + 'min']])]
+      series.forEach((ser, si) => {
+        // A member with nothing of this kind gets no curve — a line lying on
+        // the member reads as the member itself.
+        if (ser.every(([, v]) => Math.abs(v) < vmax * 1e-4)) return
+        const base = ser.map(([x]) => toS(a.x + ca * x, a.y + sa * x))
+        const tip = ser.map(([x, v]) => toS(a.x + ca * x + ox * v * fac, a.y + sa * x + oy * v * fac))
+        const poly = [...base, ...tip.slice().reverse()].map(p => p.join(',')).join(' ')
+        const col = (v) => (v >= 0 ? st.pos : st.neg)
+        const mean = ser.reduce((s2, [, v]) => s2 + v, 0) / ser.length
+        out.push(<polygon key={`f${el.id}-${si}`} points={poly} fill={col(mean)} fillOpacity=".12" stroke="none" />)
+        out.push(<polyline key={`c${el.id}-${si}`} points={tip.map(p => p.join(',')).join(' ')} fill="none" stroke={col(mean)} strokeWidth="1.6" />)
+        // the extreme of this series on this element, labelled once
+        let bi = 0
+        ser.forEach(([, v], i) => { if (Math.abs(v) > Math.abs(ser[bi][1])) bi = i })
+        const [bx, by] = tip[bi]
+        if (Math.abs(ser[bi][1]) > vmax * 0.02) labels.push({ key: `l${el.id}-${si}`, x: bx, y: by, v: ser[bi][1], col: col(ser[bi][1]), member: el.member_id ?? el.id })
+      })
+    }
+    // one label per member and sign, the largest — the rest is noise
+    const best = {}
+    for (const l of labels) {
+      const key = `${l.member}:${l.v >= 0 ? '+' : '-'}`
+      if (!best[key] || Math.abs(l.v) > Math.abs(best[key].v)) best[key] = l
+    }
+    for (const l of Object.values(best)) {
+      out.push(<text key={l.key} x={l.x + 4} y={l.y - 4} fontSize="11" fontWeight="600" fill={l.col} fontFamily="var(--font-mono)">{fmt(l.v)} {st.unit}</text>)
+    }
+    return <g pointerEvents="none">{out}</g>
+  }
+
+  function renderDeformation() {
+    const st = curIdx === 'env' ? states[governingIdx] : states[curIdx]
+    const nd = st?.state?.node_disps
+    if (!nd) return null
+    let umax = 0
+    for (const v of Object.values(nd)) umax = Math.max(umax, Math.hypot(v[0], v[1]))
+    if (umax < 1e-12) return null
+    const fac = (0.08 * extent * ordScale) / umax
+    const out = []
+    for (const el of model.elements) {
+      const a = nodesById[el.ni], b = nodesById[el.nj]; if (!a || !b) continue
+      const da = nd[String(el.ni)] ?? [0, 0], db = nd[String(el.nj)] ?? [0, 0]
+      const [x1, y1] = toS(a.x + da[0] * fac, a.y + da[1] * fac)
+      const [x2, y2] = toS(b.x + db[0] * fac, b.y + db[1] * fac)
+      out.push(<line key={`d${el.id}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#7c3aed" strokeWidth="2.2" strokeLinecap="round" />)
+    }
+    let worst = null
+    for (const [id, v] of Object.entries(nd)) if (!worst || Math.hypot(v[0], v[1]) > Math.hypot(worst.v[0], worst.v[1])) worst = { id, v }
+    const n = nodesById[Number(worst.id)]
+    if (n) {
+      const [x, y] = toS(n.x + worst.v[0] * fac, n.y + worst.v[1] * fac)
+      out.push(<text key="dl" x={Math.min(x + 6, size.w - 210)} y={Math.max(y - 6, 16)} fontSize="11" fontWeight="600" fill="#7c3aed" fontFamily="var(--font-mono)">
+        {`u = ${fmt(Math.hypot(worst.v[0], worst.v[1]) * 1000, 1)} mm (knude ${worst.id})`}</text>)
+    }
+    return <g pointerEvents="none">{out}</g>
+  }
+
+  /** N, V and M at the point of the nearest member under the cursor. */
+  function probeAt(sx, sy) {
+    const h = hitElem(sx, sy)
+    if (!h) return null
+    const L = elementLength(model, h.el)
+    const x = h.p.t * L
+    if (curIdx === 'env') {
+      const env = envelopeSamples(h.el, L, states)
+      if (!env) return null
+      let best = env[0]; for (const p of env) if (Math.abs(p.x - x) < Math.abs(best.x - x)) best = p
+      return { sx, sy, el: h.el, x: best.x, env: best, name: 'Indhyldning' }
+    }
+    const st = states[curIdx]; if (!st) return null
+    const pts = sampleElement(h.el, L, st.state)
+    if (!pts) return null
+    let best = pts[0]; for (const p of pts) if (Math.abs(p.x - x) < Math.abs(best.x - x)) best = p
+    return { sx, sy, el: h.el, x: best.x, p: best, name: st.name }
   }
 
   // rubber band while drawing members, and the hover marker
@@ -1024,6 +1170,32 @@ export default function FemWorkspace({
         </select>
         <button className="fem-tool" onClick={fit} title="F">Vis alt</button>
         <label className="fem-check" style={{ marginLeft: 6 }}><input type="checkbox" checked={showIds} onChange={e => setShowIds(e.target.checked)} /> Numre</label>
+        {resultsOk && (
+          <>
+            <span className="fem-sep" />
+            <span className="fem-seg" role="group" aria-label="Resultatvisning">
+              {[['model', 'Model'], ['u', 'Deformation'], ['M', 'M'], ['V', 'V'], ['N', 'N'], ['eta', 'Udnyttelse']].map(([k, l]) => (
+                <button key={k} className={resView === k ? 'on' : ''} onClick={() => {
+                  setResView(k)
+                  // Reading results with the Last tool still active would add
+                  // a load on the next click.
+                  if (k !== 'model') { setTool('select'); setChainFrom(null) }
+                }}
+                        disabled={k === 'eta' && !memberChecks}>{l}</button>
+              ))}
+            </span>
+            {['u', 'M', 'V', 'N'].includes(resView) && states.length > 0 && (
+              <>
+                <select className="fem-sel" value={String(curIdx)} onChange={e => setResIdx(e.target.value === 'env' ? 'env' : Number(e.target.value))} aria-label="Kombination" style={{ maxWidth: 260 }}>
+                  {states.map((st, i) => <option key={i} value={i}>{st.name}{i === governingIdx && states.length > 1 ? ' (dimensionerende)' : ''}</option>)}
+                  {states.length > 1 && resView !== 'u' && <option value="env">Indhyldning, alle kombinationer (min/max)</option>}
+                </select>
+                <span className="fem-status">Skala</span>
+                <input type="range" min="0.25" max="3" step="0.05" value={ordScale} onChange={e => setOrdScale(Number(e.target.value))} aria-label="Ordinatskala" style={{ width: 90 }} />
+              </>
+            )}
+          </>
+        )}
         {m.load_cases.length > 0 && (
           <>
             <span className="fem-sep" />
@@ -1085,11 +1257,28 @@ export default function FemWorkspace({
         <svg ref={svgRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
              onPointerLeave={() => { setHover(null) }} onWheel={onWheel} onContextMenu={e => { e.preventDefault(); setChainFrom(null) }}>
           {renderGrid()}
-          {visibleLoads.map(renderLoad)}
+          {(!resultsOk || resView === 'model') && visibleLoads.map(renderLoad)}
           {renderModel()}
+          {diagramView && renderDiagrams()}
           {renderOverlay()}
         </svg>
         {hover && <div className="fem-coord">x = {fmt(hover.x)} m · y = {fmt(hover.y)} m</div>}
+        {probe && (
+          <div className="fem-probe" style={{ left: Math.min(probe.sx + 14, size.w - 230), top: Math.max(probe.sy - 70, 8) }}>
+            <b>Stang {probe.el.id}{probe.el.member_id != null ? ` · led ${probe.el.member_id}` : ''} · x = {fmt(probe.x)} m</b>
+            {probe.p
+              ? <span>N = {fmt(probe.p.N)} kN · V = {fmt(probe.p.V)} kN · M = {fmt(probe.p.M)} kNm</span>
+              : <span>M {fmt(probe.env.Mmin)} … {fmt(probe.env.Mmax)} kNm · N {fmt(probe.env.Nmin)} … {fmt(probe.env.Nmax)} kN</span>}
+            <small>{probe.name}</small>
+          </div>
+        )}
+        {diagramView && resView !== 'u' && (
+          <div className="fem-legend">
+            {resView === 'M' && <span>M tegnet på trækside</span>}
+            {resView === 'N' && <><span><i style={{ background: '#2563eb' }} />træk</span><span><i style={{ background: '#dc2626' }} />tryk</span></>}
+            {resView === 'V' && <span>V · + efter stangens lokale akse</span>}
+          </div>
+        )}
         <div className="fem-hint">{chainFrom != null ? `Stang fra knude ${chainFrom} — klik næste punkt · Esc afslutter` : TOOL_HINT[tool]}</div>
         {showResults && (
           <div className="fem-legend">

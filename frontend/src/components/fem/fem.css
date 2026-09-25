@@ -146,3 +146,12 @@
 @media (max-width: 1100px) {
   .fem-ws { grid-template-columns: 190px minmax(0, 1fr) 260px; }
 }
+
+.fem-probe {
+  position: absolute; z-index: 5; display: grid; gap: 2px; min-width: 210px;
+  padding: 7px 10px; border-radius: var(--radius); background: var(--surface);
+  border: 1px solid var(--line-2); box-shadow: var(--shadow-pop); font-size: 12px; pointer-events: none;
+}
+.fem-probe span { font: 500 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.fem-probe small { color: var(--muted); font-size: 11px; }
+.fem-seg button:disabled { color: var(--faint); cursor: not-allowed; }
