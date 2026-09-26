@@ -110,8 +110,8 @@ def rc_beam_bending(
     f_ck=None,
     f_yk=None,
     As_prov=None,
-    gamma_C=1.5,
-    gamma_S=1.15,
+    gamma_C=1.45,           # DS/EN 1992-1-1 DK NA
+    gamma_S=1.20,
     beam_results=None,
     figure_path=None,
     figure_caption="",
