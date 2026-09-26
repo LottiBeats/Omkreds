@@ -74,7 +74,10 @@ const BLOCK_TYPES = [
   { type: 'doclist',       label: 'Dokumentliste',     icon: 'DOC', color: '#64748b', component: null,
     default: {} },
   { type: 'custom_calc',   label: 'Egen beregning',    icon: 'CLC', color: '#7c3aed', component: CustomCalcBlock,
-    default: { title: 'Custom Calculation', items: [], _result: null } },
+    default: { title: 'Egen beregning', version: 2, subst: true,
+               lines: ['# Forudsætninger', 'L = 4,0 m | spændvidde',
+                       'q_d = 5,0 kN/m | regningsmæssig linjelast', 'M_Ed = q_d·L²/8 → kNm'],
+               _result: null } },
   { type: 'python_calc',   label: 'Python script',     icon: 'PY',  color: '#0284c7', component: PythonBlock,
     default: { title: 'Python Script',
                code: 'import numpy as np\n\nx = np.linspace(0, 10, 100)\nprint(f"Max x = {x.max():.1f}")',
@@ -456,7 +459,7 @@ function BlockPreview({ block, project }) {
       else if (block.type === 'timber_column')  sub = [d.label, d.timber_grade, `H=${d.length_m} m`].filter(Boolean).join('  ·  ')
       else if (block.type === 'masonry_wall')   sub = [d.label, `t=${d.thickness_mm} mm`, `H=${d.height_m} m`].filter(Boolean).join('  ·  ')
       else if (block.type === 'python_calc')    sub = (d.code || '').split('\n').length + ' lines'
-      else if (block.type === 'custom_calc')    sub = (d.items || []).length + ' items'
+      else if (block.type === 'custom_calc')    sub = Array.isArray(d.lines) ? `${d.lines.filter(l => String(l).trim()).length} linjer` : `${(d.items || []).length} rækker`
       else if (block.type === 'beam_fem')        sub = `L=${d.L ?? 6} m  ·  E=${d.E_GPa ?? 210} GPa  ·  I=${d.I_cm4 ?? '?'} cm⁴`
       else if (block.type === 'frame_fem')       sub = `${(d.nodes ?? []).length} nodes  ·  ${(d.elements ?? []).length} elements  ·  ${(d.supports ?? []).length} supports`
 
