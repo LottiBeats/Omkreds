@@ -564,10 +564,13 @@ export default function FemWorkspace({
     commit({ ...model, load_cases: [...model.load_cases, lc], loads })
     setActiveLc(nr)
   }
+  const lockedCase = (nr) => model.load_cases.some(t => t.nr === nr && t.kilde === 'rammelaster')
   function updateLoadCase(nr, patch) {
+    if (lockedCase(nr)) return
     commit({ ...model, load_cases: model.load_cases.map(t => (t.nr === nr ? { ...t, ...patch } : t)) })
   }
   function removeLoadCase(nr) {
+    if (lockedCase(nr)) return
     commit({
       ...model,
       load_cases: model.load_cases.filter(t => t.nr !== nr),
@@ -1124,6 +1127,12 @@ export default function FemWorkspace({
                 <F label="F_x (+ mod højre)"><Num value={selLoad.Fx_kN ?? 0} unit="kN" onCommit={v => patchLoad({ Fx_kN: v })} /></F>
                 <F label="F_y (+ opad)"><Num value={selLoad.Fy_kN ?? 0} unit="kN" onCommit={v => patchLoad({ Fy_kN: v })} /></F>
               </div>
+            ) : selLoad.kilde === 'rammelaster' ? (
+              <>
+                <p>Lasten kommer fra <b>Laster på rammen</b>{selLoad.zone ? ` (zone ${selLoad.zone})` : ''}: {fmt(selLoad.value_kNm ?? 0, 3)} kN/m
+                  {selLoad.x1 != null || selLoad.x2 != null ? ` fra ${fmt(selLoad.x1 ?? 0, 2)} til ${selLoad.x2 != null ? fmt(selLoad.x2, 2) + ' m' : 'enden'}` : ''}.</p>
+                <p>Den rettes i lastmodulet i dokumentet, så den står ét sted og følger vind- og snelasten.</p>
+              </>
             ) : selLoad.type === 'udl' ? (
               <>
                 <F label="Retning">
@@ -1255,9 +1264,10 @@ export default function FemWorkspace({
       return (
         <table><thead><tr><th>#</th><th>Lasttilfælde</th><th>Type</th><th>Virker på</th><th>Retning</th><th>Værdi</th><th /></tr></thead><tbody>
           {m.loads.map((l, i) => {
-            const patch = (p) => commit({ ...model, loads: model.loads.map((x, j) => (j === i ? { ...x, ...p } : x)) })
+            const locked = l.kilde === 'rammelaster'
+            const patch = (p) => { if (!locked) commit({ ...model, loads: model.loads.map((x, j) => (j === i ? { ...x, ...p } : x)) }) }
             return (
-              <tr key={i} className={isSel('load', i) ? 'sel' : ''}>
+              <tr key={i} className={(isSel('load', i) ? 'sel' : '') + (locked ? ' locked' : '')} title={locked ? 'Fra "Laster på rammen" — rettes dér' : undefined}>
                 <td className="id" onClick={() => setSel([{ kind: 'load', id: i }])}>{i + 1}</td>
                 <td>{m.load_cases.length
                   ? <select value={l.lc ?? ''} onChange={e => patch({ lc: e.target.value === '' ? undefined : Number(e.target.value) })}>
@@ -1278,7 +1288,9 @@ export default function FemWorkspace({
                       )}
                     </span>
                   : l.type === 'nodal' ? <span style={{ display: 'flex', gap: 4 }}><Num value={l.Fx_kN ?? 0} onCommit={v => patch({ Fx_kN: v })} /><Num value={l.Fy_kN ?? 0} onCommit={v => patch({ Fy_kN: v })} /></span> : null}</td>
-                <td><button className="x" title="Slet lasten" onClick={() => commit(deleteSelection(model, [{ kind: 'load', id: i }]))}>✕</button></td>
+                <td>{locked
+                  ? <span className="fem-status" title="Fra lastmodulet">🔒</span>
+                  : <button className="x" title="Slet lasten" onClick={() => commit(deleteSelection(model, [{ kind: 'load', id: i }]))}>✕</button>}</td>
               </tr>
             )
           })}
@@ -1380,7 +1392,8 @@ export default function FemWorkspace({
         {m.load_cases.map(t => (
           <div key={t.nr} className={'fem-nav-i' + (!showAllLoads && activeLc === t.nr ? ' on' : '')} onClick={() => { setActiveLc(t.nr); setShowAllLoads(false) }} style={{ cursor: 'pointer' }}>
             <span className="lc">LC{t.nr}</span>
-            <input value={t.navn ?? ''} onChange={e => updateLoadCase(t.nr, { navn: e.target.value })} onClick={e => e.stopPropagation()}
+            <input value={t.navn ?? ''} readOnly={t.kilde === 'rammelaster'} title={t.kilde === 'rammelaster' ? 'Fra "Laster på rammen"' : undefined}
+              onChange={e => updateLoadCase(t.nr, { navn: e.target.value })} onClick={e => e.stopPropagation()}
               style={{ border: 0, background: 'transparent', font: 'inherit', color: 'inherit', minWidth: 0, flex: 1 }} aria-label="Navn" />
             <select value={t.kategori ?? 'permanent'} onChange={e => updateLoadCase(t.nr, { kategori: e.target.value })} onClick={e => e.stopPropagation()}
               style={{ border: 0, background: 'transparent', font: '500 11px var(--font-mono)', color: 'var(--muted)', width: 36 }} title="Kategori" aria-label="Kategori">

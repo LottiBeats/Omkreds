@@ -2446,7 +2446,12 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
             </button>
           )}
         </div>
-        {loads.map((ld, i) => (
+        {loads.some(ld => ld.kilde === 'rammelaster') && (
+          <div style={{ fontSize: 12, color: '#555', padding: '6px 0' }}>
+            🔒 {loads.filter(ld => ld.kilde === 'rammelaster').length} laster kommer fra <b>Laster på rammen</b> og rettes dér.
+          </div>
+        )}
+        {loads.map((ld, i) => ld.kilde === 'rammelaster' ? null : (
           <LoadRow key={i} load={ld} comboBlocks={comboBlocks} tilfaelde={tilfaelde}
             vindBlokke={vindBlokke}
             onChange={v => updateLoad(i, v)} onRemove={() => removeLoad(i)} />

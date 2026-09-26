@@ -385,6 +385,14 @@ export const calcRcSlab = (data) =>
 export const calcWindLoad = (data) =>
   request('POST', '/calc/wind-load', data)
 
+/** Forslag til formfaktorer (tabel 7.1, 7.4a, 7.4b) — efterses før brug. */
+export const windForslag = (data) =>
+  request('POST', '/calc/wind-load/forslag', data)
+
+/** Sne og vind sat på en plan rammes led — lasttilfælde og linjelaster. */
+export const calcFrameLoads = (data) =>
+  request('POST', '/calc/frame-loads', data)
+
 /**
  * Run an EN 1991-1-3 + DK NA snow load calculation.
  */

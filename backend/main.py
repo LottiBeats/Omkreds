@@ -1004,6 +1004,15 @@ def calc_steel_column(data: SteelColumnInput):
                                 detail=f"Ukendt stålkvalitet: {data.grade!r}")
         f_y = nominal - 20.0 if p["tf_mm"] > 40.0 else nominal
 
+        # Kataloget har ikke vridningskonstanterne. Skal der regnes kipning,
+        # udledes de af målene (se noten nedenfor).
+        vrid = None
+        if not data.ltb_restrained:
+            h, b, tf, tw = p["h_mm"], p["b_mm"], p["tf_mm"], p["tw_mm"]
+            I_T = (2 * b * tf ** 3 + (h - 2 * tf) * tw ** 3) / 3 / 1e4      # cm⁴
+            I_w = p["Iz_cm4"] * ((h - tf) / 10) ** 2 / 4                   # cm⁶
+            vrid = (I_T, I_w)
+
         _require_force_unit(data.combo_unit, data.combo_label)
 
         blocks = steel_column_check(
@@ -1030,7 +1039,16 @@ def calc_steel_column(data: SteelColumnInput):
             ltb_restrained = data.ltb_restrained,
             L_LTB_m    = data.L_LTB_m,
             C_1        = data.C_1,
+            I_T_cm4    = vrid[0] if vrid else None,
+            I_w_cm6    = vrid[1] if vrid else None,
         )
+        if vrid:
+            blocks.append(NOTE(
+                f"Til kipning er I_T = {vrid[0]:.1f} cm⁴ og I_w = {vrid[1]:.0f} cm⁶ "
+                "udledt af tværsnitsmålene som tyndvægget I-profil uden "
+                "udrundinger: I_T = (2·b·t_f³ + (h − 2t_f)·t_w³)/3 og "
+                "I_w = I_z·(h − t_f)²/4. Uden udrundingerne er I_T lidt for "
+                "lille, og M_cr ligger på den sikre side."))
 
         # Hvor tallene kommer fra hører med i dokumentet. A og I_z står ikke i
         # kataloget og er udledt; det skal læseren kunne se.
@@ -3605,6 +3623,34 @@ class WindLoadInput(BaseModel):
     tagzoner:          dict | None = None
     alpha_deg:         float = 0.0
     rammeafstand_m:    float | None = None
+    tagzoner_tryk:     dict | None = None
+    langs:             dict | None = None
+
+
+class WindForslagInput(BaseModel):
+    alpha_deg: float = 15.0
+    h_m:       float = 8.0
+    d_m:       float = 12.0
+
+
+@protected.post("/calc/wind-load/forslag", tags=["Calculations"])
+def calc_wind_forslag(data: WindForslagInput):
+    """
+    FORSLAG til formfaktorer efter EN 1991-1-4 tabel 7.1, 7.4a og 7.4b.
+
+    Udfylder felterne i vindblokken; den projekterende efterser dem. Intet
+    bruger forslaget af sig selv -- se vind_ramme.py.
+    """
+    import vind_ramme as vr
+    vaeg = vr.forslag_vaegge(data.h_m, data.d_m)
+    sug = vr.forslag_saddeltag(data.alpha_deg, 'neg')
+    tryk = vr.forslag_saddeltag(data.alpha_deg, 'pos')
+    # Tryk-saettet er kun et selvstaendigt tilfaelde, naar det adskiller sig
+    # fra sug-saettet (5-45 grader).
+    har_tryk = any(abs(tryk[z] - sug[z]) > 1e-9 for z in sug) and any(v > 0 for v in tryk.values())
+    return {'vaegge': vaeg, 'tag_sug': sug,
+            'tag_tryk': tryk if har_tryk else None,
+            'langs': vr.forslag_langs(data.alpha_deg)}
 
 
 @protected.post("/calc/wind-load", tags=["Calculations"])
@@ -3630,12 +3676,56 @@ def calc_wind_load(data: WindLoadInput):
             tagzoner         = data.tagzoner,
             alpha_deg        = data.alpha_deg,
             rammeafstand_m   = data.rammeafstand_m,
+            tagzoner_tryk    = data.tagzoner_tryk,
+            langs            = data.langs,
         )
         # Samme moenster som lastkombinationerne: eksporten rejser med som en
         # usynlig blok, saa en anden blok kan hente zonetrykket i stedet for
         # at faa det tastet af igen.
         return [{'type': '_exports', 'exports': eksport}] + blocks
 
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+# ── Laster paa rammen — sne og vind sat paa modellens led ─────────────────────
+
+class FrameLoadsMemberIn(BaseModel):
+    member_id: int
+    rolle:     str = 'ingen'
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+
+class FrameLoadsInput(BaseModel):
+    navn:       str = 'Ramme'
+    led:        list[FrameLoadsMemberIn]
+    s_m:        float
+    x_m:        float | None = None
+    laengde_m:  float | None = None
+    sne:        dict | None = None
+    vind:       dict | None = None
+    g_tag_kNm2: float = 0.0
+
+
+@protected.post("/calc/frame-loads", tags=["Calculations"])
+def calc_frame_loads(data: FrameLoadsInput):
+    """Lasttilfaelde og linjelaster paa en plan ramme fra sne- og vindberegningen."""
+    try:
+        from ramme_laster import laster_paa_ramme
+        if data.s_m <= 0:
+            raise ValueError('Rammeafstanden skal vaere positiv.')
+        r = laster_paa_ramme(
+            [m.model_dump() for m in data.led], s_m=data.s_m, x_m=data.x_m,
+            laengde_m=data.laengde_m, sne=data.sne, vind=data.vind,
+            g_tag_kNm2=data.g_tag_kNm2, navn=data.navn)
+        eksport = {'load_cases': r['load_cases'], 'loads': r['loads'],
+                   'lastbredde_m': r['lastbredde_m']}
+        return [{'type': '_exports', 'exports': eksport}] + r['blocks']
     except HTTPException:
         raise
     except Exception as exc:
