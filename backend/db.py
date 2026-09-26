@@ -81,8 +81,10 @@ AUTOSNAPSHOT_INTERVAL_MIN = 15
 # Automatic snapshots kept per project (oldest pruned first).  Explicit
 # snapshots — issued documents, pre-restore, pre-delete — are kept forever.
 MAX_AUTO_VERSIONS = 40
-# Soft-deleted projects are purged this many days after deletion.
-TRASH_RETENTION_DAYS = 30
+# Hvor længe et slettet projekt ligger i papirkurven, før det fjernes for
+# altid. 0 (standard) = aldrig: projekter er rigtige sager og må ikke
+# forsvinde af sig selv. Sæt TRASH_RETENTION_DAYS for at tømme automatisk.
+TRASH_RETENTION_DAYS = int(_os.environ.get("TRASH_RETENTION_DAYS", "0") or 0)
 
 # Version kinds.  'auto' is prunable; everything else is permanent.
 KIND_AUTO        = "auto"
@@ -574,7 +576,12 @@ def purge_project(project_id: str, path: Path | None = None) -> None:
 
 
 def purge_expired_trash(days: int = TRASH_RETENTION_DAYS, path: Path | None = None) -> int:
-    """Permanently remove projects trashed more than *days* ago. Returns the count."""
+    """Permanently remove projects trashed more than *days* ago. Returns the count.
+
+    days <= 0 betyder aldrig -- intet slettes automatisk.
+    """
+    if not days or days <= 0:
+        return 0
     p = str(path or DB_PATH)
     init_db(path)
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
@@ -862,6 +869,12 @@ def delete_template(template_id: str, path: Path | None = None) -> None:
 
 BACKUP_KEEP_DAYS = int(_os.environ.get("BACKUP_KEEP_DAYS", "7"))
 
+# En backup på samme disk som databasen redder en ødelagt fil, men ikke en
+# død disk eller en slettet server. BACKUP_MIRROR_DIR peger på et andet
+# drev -- fx en monteret Hetzner Storage Box -- og får en kopi af hver dags
+# backup. Der roteres ikke i spejlet; det ryddes af den, der ejer det.
+BACKUP_MIRROR_DIR = _os.environ.get("BACKUP_MIRROR_DIR", "").strip()
+
 
 def backup_dir(path: Path | None = None) -> Path:
     """Directory holding the rotating daily database copies."""
@@ -922,6 +935,16 @@ def backup_database(
             target.close()
             source.close()
     tmp.replace(dest)   # atomic — a partial file is never mistaken for a backup
+
+    if BACKUP_MIRROR_DIR:
+        try:
+            mdir = Path(BACKUP_MIRROR_DIR)
+            mdir.mkdir(parents=True, exist_ok=True)
+            mtmp = mdir / (dest.name + f".part{_os.getpid()}")
+            _shutil.copy2(dest, mtmp)
+            mtmp.replace(mdir / dest.name)
+        except OSError as exc:
+            print(f"[db] could not mirror backup to {BACKUP_MIRROR_DIR}: {exc}")
 
     # Rotate: keep the newest *keep* files, delete the rest.  The glob is
     # anchored on ".db" so a concurrent worker's ".db.part<pid>" is never

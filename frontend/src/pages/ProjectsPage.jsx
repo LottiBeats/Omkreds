@@ -516,7 +516,7 @@ function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate 
 
 // ── projects dashboard ────────────────────────────────────────────────────────
 /**
- * TrashSection — deleted projects, recoverable for 30 days.
+ * TrashSection — deleted projects, recoverable until the owner deletes them for good.
  *
  * Deleting is the one action in the app with no undo inside the editor, so it
  * gets a visible second chance rather than a confirm dialog nobody reads.
@@ -530,7 +530,7 @@ function TrashSection({ trash, loading, onRestore, onPurge }) {
       background: WHITE, border: '1px dashed ' + BORDER, padding: '40px 32px',
       textAlign: 'center', fontFamily: SANS, fontSize: 13, color: MUTED,
     }}>
-      Papirkurven er tom. Slettede projekter havner her og kan gendannes i 30 dage.
+      Papirkurven er tom. Slettede projekter havner her og kan altid gendannes, indtil du selv sletter dem permanent.
     </div>
   )
 
@@ -836,7 +836,7 @@ export default function ProjectsPage() {
     const name = project.metadata.project_name || 'projektet'
     if (!(await confirm({
       title: `Flyt "${name}" til papirkurven?`,
-      body: 'Du kan gendanne det fra Papirkurv i 30 dage.',
+      body: 'Det ligger i Papirkurv, indtil du selv sletter det permanent.',
       confirmLabel: 'Flyt til papirkurv',
       danger: true,
     }))) return

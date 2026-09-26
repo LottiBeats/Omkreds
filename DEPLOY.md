@@ -176,7 +176,9 @@ project, 40 kept). Explicit snapshots — issued documents, pre-restore,
 pre-delete — are never pruned. Users reach these from 🕘 in the editor toolbar.
 
 **Trash** — deleting a project sets `deleted_at` instead of removing the row.
-Users restore from the Papirkurv tab. Purged automatically after 30 days.
+Users restore from the Papirkurv tab. Nothing is purged automatically: a trashed
+project stays until its owner deletes it for good (set `TRASH_RETENTION_DAYS` to
+expire the trash after that many days).
 
 **Database backups** — a daemon thread writes one copy per day to
 `backups/projects-YYYY-MM-DD.db` next to the database, keeping 7. It uses
@@ -201,6 +203,8 @@ Environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `BACKUP_KEEP_DAYS` | `7` | Daily copies retained. |
+| `BACKUP_MIRROR_DIR` | — | Copy each daily backup to this directory as well — mount a Hetzner Storage Box or another drive here, so a lost server disk does not take the backups with it. |
+| `TRASH_RETENTION_DAYS` | `0` | Days before trashed projects are purged. `0` = never. |
 | `DB_MAINTENANCE` | on | Set to `off` to disable the backup/trash-expiry thread. |
 
 Projects embed images as base64, so the database grows faster than the project

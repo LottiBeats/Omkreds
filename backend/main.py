@@ -617,7 +617,7 @@ def save_project(project_id: str, project: dict, user: dict = Depends(get_curren
 
 @protected.delete("/projects/{project_id}", tags=["Projects"])
 def delete_project(project_id: str, user: dict = Depends(get_current_user)):
-    """Move a visible project to the trash (recoverable for 30 days)."""
+    """Move a visible project to the trash. It stays there until the owner empties it."""
     _visible_project(project_id, user)
     _db.delete_project(project_id, user=user["id"])
     return {"status": "deleted", "recoverable": True}
@@ -2069,9 +2069,9 @@ def run_python_script(data: PythonScriptInput, user: dict = Depends(get_current_
     allowed: set[str] = {e.strip().lower() for e in raw_py.split(",") if e.strip()}
     if raw_adm:
         allowed.add(raw_adm.lower())
-    if not allowed:
-        # Fall back to global ALLOWED_EMAILS
-        allowed = {e for e in _ALLOWED_EMAILS}   # already lower-cased
+    # Ingen fallback til ALLOWED_EMAILS: exec() kan læse hele databasen --
+    # alle brugeres projekter -- og må kun køres af dem, der er udpeget til
+    # netop det.
     if not allowed:
         # Nothing configured — deny everyone rather than allow everyone
         raise HTTPException(
