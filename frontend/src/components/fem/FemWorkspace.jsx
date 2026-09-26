@@ -26,6 +26,7 @@ import {
   deleteSelection, updateNode, updateElements, elementLength, bounds, round,
 } from './femModel.js'
 import { GENERATORS } from './femGenerators.js'
+import { expandLoads, loadSpan, isPartial } from './femLoads.js'
 import { resultStates, sampleElement, envelopeSamples, isUls, SITUATION_LABEL } from './femDiagrams.js'
 import './fem.css'
 
@@ -146,6 +147,38 @@ function Num({ value, onCommit, unit, width, title }) {
       onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setTxt(String(value ?? '')); e.currentTarget.blur() } }} />
   )
   return unit ? <span className="fem-unit">{input}<i>{unit}</i></span> : input
+}
+
+/**
+ * Where along the member a line load sits, and whether it varies. Empty
+ * fields mean "the whole length" and "constant", so an ordinary load has
+ * nothing to fill in.
+ */
+function LoadExtent({ load, span, onPatch }) {
+  const partial = load.x1 != null || load.x2 != null || load.value_end_kNm != null
+  const [open, setOpen] = useState(partial)
+  if (!open) {
+    return <button type="button" className="fem-link" onClick={() => setOpen(true)}>Del af længden eller varierende last…</button>
+  }
+  return (
+    <>
+      <div className="fem-row">
+        <F label="Fra (m fra start)"><Num value={load.x1 ?? 0} unit="m" onCommit={v => onPatch({ x1: v <= 0 ? undefined : v })} /></F>
+        <F label="Til (m fra start)"><Num value={load.x2 ?? round(span, 1e-3)} unit="m" onCommit={v => onPatch({ x2: span && v >= span - 1e-6 ? undefined : v })} /></F>
+      </div>
+      <F label="w i slutningen (tom = konstant)">
+        <Num value={load.value_end_kNm ?? load.value_kNm ?? 0} unit="kN/m" onCommit={v => onPatch({ value_end_kNm: Math.abs(v - (load.value_kNm ?? 0)) < 1e-12 ? undefined : v })} />
+      </F>
+      <p style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+        Målt langs {(load.target ?? 'elem') === 'member' ? 'leddet' : 'stangen'} fra dens start{span ? ` · længde ${fmt(span, 2)} m` : ''}. Slutværdien gælder ved "til".
+      </p>
+      {partial && (
+        <button type="button" className="fem-link" onClick={() => { onPatch({ x1: undefined, x2: undefined, value_end_kNm: undefined }); setOpen(false) }}>
+          Hele længden, konstant
+        </button>
+      )}
+    </>
+  )
 }
 
 function F({ label, children }) {
@@ -630,38 +663,72 @@ export default function FemWorkspace({
         </g>
       )
     }
-    if (l.type !== 'udl') return null
-    const targets = (l.target ?? 'elem') === 'member' ? (members[l.member_id] ?? []) : m.elements.filter(e => e.id === l.elem_id)
-    const w = l.value_kNm ?? l.wy_kNm ?? 0
-    const dir = l.direction ?? 'vertical'
-    const parts = targets.map((el, k) => {
-      const a = nodesById[el.ni], b = nodesById[el.nj]; if (!a || !b) return null
+    if (l.type === 'vind_udl') {
+      // A wind-zone load from the block's table: its value lives in the wind
+      // block, so it is drawn as a marker on the element, not to scale.
+      const el = m.elements.find(e => e.id === l.elem_id)
+      const a = el && nodesById[el.ni], b = el && nodesById[el.nj]
+      if (!a || !b) return null
       const [ax, ay] = toS(a.x, a.y), [bx, by] = toS(b.x, b.y)
-      const Ls = Math.hypot(bx - ax, by - ay); if (Ls < 4) return null
-      // arrow direction in screen space (unit vector the load acts along)
+      return (
+        <g key={`l${i}`} onPointerDown={pick} style={{ cursor: tool === 'select' ? 'pointer' : undefined }}>
+          <line x1={ax} y1={ay} x2={bx} y2={by} stroke={color} strokeWidth="6" strokeOpacity=".25" />
+          <text x={(ax + bx) / 2} y={(ay + by) / 2 - 10} fontSize="11" fill={color} textAnchor="middle" fontFamily="var(--font-mono)">
+            vind {l.zone ?? ''} · c_pi {fmt(l.c_pi ?? 0.2, 1)}
+          </text>
+        </g>
+      )
+    }
+    if (l.type !== 'udl') return null
+    const dir = l.direction ?? 'vertical'
+    // A member load is drawn where it acts: cut into the elements under it,
+    // with its own start and end, and arrows scaled to the intensity so a
+    // trapezoid looks like one.
+    const parts = (l.target ?? 'elem') === 'member'
+      ? expandLoads([l], m.elements, m.nodes)
+      : [l]
+    const wmax = Math.max(1e-9, ...parts.flatMap(p => [Math.abs(p.value_kNm ?? p.wy_kNm ?? 0), Math.abs(p.value_end_kNm ?? p.value_kNm ?? p.wy_kNm ?? 0)]))
+    const drawn = parts.map((p, k) => {
+      const el = m.elements.find(e => e.id === p.elem_id)
+      const a = el && nodesById[el.ni], b = el && nodesById[el.nj]; if (!a || !b) return null
+      const L = Math.hypot(b.x - a.x, b.y - a.y) || 1
+      const t1 = Math.max(0, Math.min(1, (p.x1 ?? 0) / L)), t2 = Math.max(0, Math.min(1, (p.x2 ?? L) / L))
+      if (t2 - t1 < 1e-6) return null
+      const w1 = p.value_kNm ?? p.wy_kNm ?? 0, w2 = p.value_end_kNm ?? w1
+      const [Ax, Ay] = toS(a.x, a.y), [Bx, By] = toS(b.x, b.y)
+      const ax = Ax + (Bx - Ax) * t1, ay = Ay + (By - Ay) * t1
+      const bx = Ax + (Bx - Ax) * t2, by = Ay + (By - Ay) * t2
+      const Ls = Math.hypot(bx - ax, by - ay); if (Ls < 3) return null
+      const Le = Math.hypot(Bx - Ax, By - Ay) || 1
+      // unit vector the load acts along for a positive value, in screen space
       let ux = 0, uy = 1
       if (dir === 'horizontal') { ux = 1; uy = 0 }
-      if (dir === 'perpendicular') { ux = -(by - ay) / Ls; uy = (bx - ax) / Ls; if (uy < 0) { ux = -ux; uy = -uy } }
-      const sgn = w < 0 ? -1 : 1
-      ux *= sgn; uy *= sgn
-      const len = 26, n = Math.max(2, Math.round(Ls / 22))
-      const arrows = []
+      // + acts along the element's local −y, as the solver applies it
+      if (dir === 'perpendicular') { ux = -(By - Ay) / Le; uy = (Bx - Ax) / Le }
+      const n = Math.max(2, Math.round(Ls / 22))
+      const arrows = [], tops = []
       for (let j = 0; j <= n; j++) {
-        const px = ax + (bx - ax) * (j / n), py = ay + (by - ay) * (j / n)
-        arrows.push(<Arrow key={j} x1={px - ux * len} y1={py - uy * len} x2={px - ux * 3} y2={py - uy * 3} color={color} />)
+        const f = j / n, w = w1 + (w2 - w1) * f
+        const len = 6 + 22 * Math.abs(w) / wmax, sg = w < 0 ? -1 : 1
+        const px = ax + (bx - ax) * f, py = ay + (by - ay) * f
+        const tx = px - ux * sg * len, ty = py - uy * sg * len
+        tops.push(`${tx},${ty}`)
+        if (Math.abs(w) > 1e-12) arrows.push(<Arrow key={j} x1={tx} y1={ty} x2={px - ux * sg * 3} y2={py - uy * sg * 3} color={color} />)
       }
+      const mid = Math.floor(n / 2), wm = w1 + (w2 - w1) * (mid / n), sm = wm < 0 ? -1 : 1
+      const lx = ax + (bx - ax) * (mid / n) - ux * sm * 38, ly = ay + (by - ay) * (mid / n) - uy * sm * 38
+      const label = Math.abs(w2 - w1) > 1e-9 ? `${fmt(w1, 2)} → ${fmt(w2, 2)} kN/m` : `${fmt(w1, 2)} kN/m`
       return (
         <g key={k}>
-          <line x1={ax - ux * len} y1={ay - uy * len} x2={bx - ux * len} y2={by - uy * len} stroke={color} strokeWidth="1" />
+          <polyline points={tops.join(' ')} fill="none" stroke={color} strokeWidth="1" />
           {arrows}
-          {k === Math.floor(targets.length / 2) && (
-            <text x={(ax + bx) / 2 - ux * (len + 8)} y={(ay + by) / 2 - uy * (len + 8)} fontSize="11" fill={color}
-                  textAnchor="middle" fontFamily="var(--font-mono)">{fmt(Math.abs(w), 2)} kN/m</text>
+          {(k === Math.floor(parts.length / 2) || isPartial(l)) && (
+            <text x={lx} y={ly} fontSize="11" fill={color} textAnchor="middle" fontFamily="var(--font-mono)">{label}</text>
           )}
         </g>
       )
     })
-    return <g key={`l${i}`} onPointerDown={pick} style={{ cursor: tool === 'select' ? 'pointer' : undefined }}>{parts}</g>
+    return <g key={`l${i}`} onPointerDown={pick} style={{ cursor: tool === 'select' ? 'pointer' : undefined }}>{drawn}</g>
   }
 
   function renderModel() {
@@ -1067,7 +1134,10 @@ export default function FemWorkspace({
                 <F label={`w (${DIRECTIONS.find(d => d.value === (selLoad.direction ?? 'vertical'))?.hint})`}>
                   <Num value={selLoad.value_kNm ?? selLoad.wy_kNm ?? 0} unit="kN/m" onCommit={v => patchLoad({ value_kNm: v })} />
                 </F>
+                <LoadExtent load={selLoad} span={loadSpan(selLoad, model.elements, model.nodes)} onPatch={patchLoad} />
               </>
+            ) : selLoad.type === 'vind_udl' ? (
+              <p>Vindlast i zone {selLoad.zone ?? '?'} med c<sub>pi</sub> = {fmt(selLoad.c_pi ?? 0.2, 1)}. Trykket hentes i vindblokken, når der regnes; zone og udstrækning rettes i blokkens lasttabel.</p>
             ) : <p>Denne lasttype redigeres i blokken.</p>}
           </div>
           <div className="fem-ps"><Button size="sm" variant="ghost" onClick={() => { commit(deleteSelection(model, sel)); setSel([]) }}>Slet last (Delete)</Button></div>
@@ -1193,13 +1263,20 @@ export default function FemWorkspace({
                   ? <select value={l.lc ?? ''} onChange={e => patch({ lc: e.target.value === '' ? undefined : Number(e.target.value) })}>
                       <option value="">— intet</option>{m.load_cases.map(t => <option key={t.nr} value={t.nr}>LC{t.nr} {t.navn}</option>)}</select>
                   : <span className="fem-status">—</span>}</td>
-                <td style={{ padding: '0 8px' }}>{l.type === 'nodal' ? 'Punktlast' : l.type === 'udl' ? 'Linjelast' : l.type === 'vind_udl' ? 'Vind (zone)' : l.type}</td>
+                <td style={{ padding: '0 8px' }}>{l.type === 'nodal' ? 'Punktlast' : l.type === 'udl' ? (isPartial(l) ? 'Linjelast, delvis' : 'Linjelast') : l.type === 'vind_udl' ? 'Vind (zone)' : l.type}</td>
                 <td style={{ padding: '0 8px', fontFamily: 'var(--font-mono)' }}>{l.type === 'nodal' ? `knude ${l.node_id}` : (l.target ?? 'elem') === 'member' ? `led ${l.member_id}` : `stang ${l.elem_id}`}</td>
                 <td>{l.type === 'udl'
                   ? <select value={l.direction ?? 'vertical'} onChange={e => patch({ direction: e.target.value })}>{DIRECTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}</select>
                   : l.type === 'nodal' ? <span className="fem-status">F_x / F_y</span> : null}</td>
                 <td>{l.type === 'udl'
-                  ? <Num value={l.value_kNm ?? l.wy_kNm ?? 0} onCommit={v => patch({ value_kNm: v })} />
+                  ? <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <Num value={l.value_kNm ?? l.wy_kNm ?? 0} onCommit={v => patch({ value_kNm: v })} />
+                      {isPartial(l) && (
+                        <span className="fem-status" title="Del af længden / varierende — rettes i egenskabspanelet">
+                          {l.value_end_kNm != null ? `→ ${fmt(l.value_end_kNm, 2)} · ` : ''}{fmt(l.x1 ?? 0, 2)}–{l.x2 != null ? fmt(l.x2, 2) : 'slut'} m
+                        </span>
+                      )}
+                    </span>
                   : l.type === 'nodal' ? <span style={{ display: 'flex', gap: 4 }}><Num value={l.Fx_kN ?? 0} onCommit={v => patch({ Fx_kN: v })} /><Num value={l.Fy_kN ?? 0} onCommit={v => patch({ Fy_kN: v })} /></span> : null}</td>
                 <td><button className="x" title="Slet lasten" onClick={() => commit(deleteSelection(model, [{ kind: 'load', id: i }]))}>✕</button></td>
               </tr>

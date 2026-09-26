@@ -12,6 +12,7 @@
  *   - Summary: max displacements, max moment, reactions
  */
 import React, { useEffect, useState } from 'react'
+import { expandLoads } from '../fem/femLoads.js'
 import { calcGeneralFrameFem, previewGeneralFrameFem,
          redrawGeneralFrameFemDiagrams,
          overlayGeneralFrameFemDiagrams,
@@ -989,7 +990,9 @@ function LoadRow({ load, onChange, onRemove, comboBlocks, tilfaelde = [],
             val={load.value_end_kNm ?? ''}
             set={v => onChange({ ...load, value_end_kNm: v })} />
           <span style={s.dirHint}>
-            tom = hele stangen · tom slutværdi = konstant
+            {(load.target ?? 'elem') === 'member'
+              ? 'målt langs hele leddet fra dets start · tom = hele leddet · tom slutværdi = konstant'
+              : 'tom = hele stangen · tom slutværdi = konstant'}
           </span>
           <button style={s.udvidBtn}
             onClick={() => { setUdvidet(false)
@@ -2033,10 +2036,10 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
             return [{ type: 'udl', elem_id: ld.elem_id ?? 1, wy_kNm: w, wx_kNm: 0 }]
           }
           if (ld.type === 'udl' && ld.target === 'member' && ld.member_id != null) {
-            // Expand member group → one load per element in the group
-            const memberElems = elements.filter(e => e.member_id === ld.member_id)
-            if (memberElems.length === 0) return [ld]
-            return memberElems.map(e => ({ ...ld, target: 'elem', elem_id: e.id, member_id: undefined }))
+            // Member load → the elements under it. Fra/til are measured
+            // along the whole member, so a load on the first e/10 of a rafter
+            // lands on the first element only, however the rafter is split.
+            return expandLoads([ld], elements, nodes)
           }
           return [ld]
         })
