@@ -1323,45 +1323,50 @@ def calc_steel_beam(data: SteelBeamInput):
 # ── EN 1992-1-1 — RC beam ─────────────────────────────────────────────────────
 
 class RcBeamInput(BaseModel):
-    label:       str   = "B1"
-    span_m:      float = 5.0
-    b_mm:        float = 300.0
-    h_mm:        float = 500.0
-    d_mm:        float = 450.0
-    g_k_kNm:     float = 10.0
-    q_k_kNm:     float = 6.0
-    f_ck_MPa:    float = 30.0
-    f_yk_MPa:    float = 500.0
-    As_prov_mm2: float | None = None
-    gamma_C:     float = 1.45   # DS/EN 1992-1-1 DK NA
-    gamma_S:     float = 1.20
+    label:        str   = "B1"
+    span_m:       float = 5.0
+    b_mm:         float = 300.0
+    h_mm:         float = 500.0
+    c_mm:         float = 30.0     # dæklag til bøjlen
+    o_bojle_mm:   float = 8.0
+    n_traek:      int   = 3
+    o_traek_mm:   float = 16.0
+    d_mm:         float | None = None
+    f_ck_MPa:     float = 30.0
+    f_yk_MPa:     float = 500.0
+    gamma_c:      float = 1.45     # DS/EN 1992-1-1 DK NA
+    gamma_s:      float = 1.20
+    alpha_cc:     float = 1.0
+    last:         str   = "linje"  # "linje" | "kombi" | "direkte"
+    g_k_kNm:      float = 10.0
+    q_k_kNm:      float = 6.0
+    consequence_class: str = "CC2"
+    w_Ed_kNm:     float | None = None
+    kombi_label:  str | None = None
+    M_Ed_kNm:     float | None = None
+    V_Ed_kN:      float | None = None
+    bojle_s_mm:   float = 200.0
+    bojle_snit:   int   = 2
 
 
 @protected.post("/calc/rc-beam", tags=["Calculations"])
 def calc_rc_beam(data: RcBeamInput):
-    """EN 1992-1-1 RC beam bending check."""
+    """Armeret betonbjælke efter DS/EN 1992-1-1 DK NA."""
     try:
-        from concrete import rc_beam_bending
-
-        kwargs: dict = dict(
-            label    = data.label,
-            span     = data.span_m   * m,
-            g_k      = data.g_k_kNm  * kN / m,
-            q_k      = data.q_k_kNm  * kN / m,
-            b        = data.b_mm     * mm,
-            h        = data.h_mm     * mm,
-            d        = data.d_mm     * mm,
-            f_ck     = data.f_ck_MPa * MPa,
-            f_yk     = data.f_yk_MPa * MPa,
-            gamma_C  = data.gamma_C,
-            gamma_S  = data.gamma_S,
+        from concrete import rc_bjaelke
+        return rc_bjaelke(
+            label=data.label, span_m=data.span_m,
+            b_mm=data.b_mm, h_mm=data.h_mm, c_mm=data.c_mm,
+            o_bojle_mm=data.o_bojle_mm, n_traek=data.n_traek,
+            o_traek_mm=data.o_traek_mm, d_mm=data.d_mm,
+            f_ck=data.f_ck_MPa, f_yk=data.f_yk_MPa,
+            gamma_c=data.gamma_c, gamma_s=data.gamma_s, alpha_cc=data.alpha_cc,
+            last=data.last, g_k=data.g_k_kNm, q_k=data.q_k_kNm,
+            consequence_class=data.consequence_class,
+            w_Ed=data.w_Ed_kNm, kombi_label=data.kombi_label,
+            M_Ed=data.M_Ed_kNm, V_Ed=data.V_Ed_kN,
+            bojle_s_mm=data.bojle_s_mm, bojle_snit=data.bojle_snit,
         )
-        if data.As_prov_mm2 is not None:
-            kwargs["As_prov"] = data.As_prov_mm2 * mm**2
-
-        blocks = rc_beam_bending(**kwargs)
-        return blocks
-
     except HTTPException:
         raise
     except Exception as exc:

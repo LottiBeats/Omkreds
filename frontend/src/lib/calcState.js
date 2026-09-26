@@ -48,6 +48,10 @@ const CALC_REVISION = {
   // 2 — læsidens vægtryk blev regnet som (c_pe + c_pi)·q_p i stedet for
   // (c_pe − c_pi)·q_p, så sugningen var for lille ved indvendigt overtryk.
   wind_load: 2,
+  // 2 — 2026-09-26: skrevet om efter DK NA. α_cc = 1,0 (var 0,85), 6.10a/b
+  // med K_FI i stedet for 1,35/1,5, bøjningsbæreevne af den faktiske armering,
+  // V_Rd,c, bøjler og nedbøjning ved l/d.
+  rc_beam: 2,
 }
 
 export function calcRevision(type) {

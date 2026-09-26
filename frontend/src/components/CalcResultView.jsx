@@ -60,6 +60,13 @@ function Block({ block }) {
     case 'handcalc':      return <Handcalc block={block} />
     case 'check':         return <Check block={block} />
     case 'calc_row':      return <CalcRow block={block} />
+    // Figuren er en fil på serveren og kommer kun med i PDF og Word.
+    case 'figure':
+      return (
+        <div style={{ fontSize: 11.5, color: '#6b7280', fontStyle: 'italic', padding: '4px 0' }}>
+          Figur: {block.caption || 'vises i rapporten'}
+        </div>
+      )
     default:
       // Silently drop internal sentinel blocks (e.g. _exports from load_combo)
       if (block.type?.startsWith('_')) return null

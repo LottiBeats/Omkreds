@@ -95,9 +95,11 @@ const BLOCK_TYPES = [
                k_y: 1.0, k_z: 1.0, gamma_M0: 1.10, gamma_M1: 1.20,
                ltb_restrained: true, _result: null } },
   { type: 'rc_beam',       label: 'Betonbjælke',       icon: 'RCB', color: '#374151', component: RCBeamBlock,
-    default: { title: 'RC Beam Check', label: 'B1', span_m: 5.0, b_mm: 300, h_mm: 500,
-               d_mm: 450, g_k_kNm: 10.0, q_k_kNm: 6.0, f_ck_MPa: 30, f_yk_MPa: 500,
-               As_prov_mm2: null, gamma_C: 1.5, gamma_S: 1.15, _result: null } },
+    default: { title: 'Betonbjælke', label: 'B1', span_m: 5.0, b_mm: 300, h_mm: 500,
+               c_mm: 30, o_bojle_mm: 8, n_traek: 3, o_traek_mm: 16, d_mm: null,
+               f_ck_MPa: 30, f_yk_MPa: 500, gamma_c: 1.45, gamma_s: 1.20,
+               last: 'linje', g_k_kNm: 10.0, q_k_kNm: 6.0, consequence_class: 'CC2',
+               bojle_s_mm: 200, bojle_snit: 2, _result: null } },
   { type: 'rc_column',     label: 'Betonsøjle',        icon: 'RCC', color: '#374151', component: RCColumnBlock,
     default: { title: 'RC Column Check', label: 'C1', h_mm: 300, b_mm: 300, c_mm: 40,
                fck_mpa: 30, fyk_mpa: 500, gamma_c: 1.45, gamma_s: 1.20,
@@ -298,6 +300,12 @@ const PANEL_GROUPS = [
     // 4.11) siger 0,460 — 6 % for lavt, altså på den forkerte side. Sæt den
     // ind igen når tests/test_beam_column.py er grøn.
     types: ['steel_beam', 'steel_column'],
+  },
+  {
+    // Betonbjælken er gennemgået efter DK NA (2026-09-26). Søjle og dæk står
+    // stadig ude, til de har fået samme tur.
+    label: 'Beton  (EC2)',
+    types: ['rc_beam'],
   },
   {
     label: 'Træ  (EC5)',
