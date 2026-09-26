@@ -2754,10 +2754,12 @@ def redraw_general_frame_fem(data: GenFrameRedrawInput):
     try:
         from fem_diagrams import render_all
         from section_resolver import apply_sections
+        from general_frame_fem import saml_charnierer
 
         nodes    = [n.model_dump() for n in data.nodes]
         elements = apply_sections([e.model_dump() for e in data.elements])
         supports = [s.model_dump() for s in data.supports]
+        elements, _ = saml_charnierer(elements, supports)
         if not nodes or not elements:
             raise ValueError("Ingen model at tegne.")
 
@@ -2813,10 +2815,12 @@ def overlay_general_frame_fem(data: GenFrameOverlayInput):
     try:
         from fem_diagrams import render_overlay
         from section_resolver import apply_sections
+        from general_frame_fem import saml_charnierer
 
         nodes    = [n.model_dump() for n in data.nodes]
         elements = apply_sections([e.model_dump() for e in data.elements])
         supports = [s.model_dump() for s in data.supports]
+        elements, _ = saml_charnierer(elements, supports)
         if not nodes or not elements:
             raise ValueError("Ingen model at tegne.")
         if not data.serier:
@@ -2924,7 +2928,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         from general_frame_fem import (ModelError, solve, solve_combinations,
                                        make_figures, summarise, plot_model,
                                        compute_buckling_lengths, compute_alpha_cr,
-                                       validate_model, stoerste_nedboejning)
+                                       validate_model, stoerste_nedboejning,
+                                       saml_charnierer)
         from section_resolver import apply_sections
         from calc_core import S, T, N, TBL, CALC_ROW, CheckContext
         import math
@@ -2935,6 +2940,11 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         elements = apply_sections([e.model_dump() for e in data.elements])
         supports = [s.model_dump() for s in data.supports]
         loads    = [l.model_dump() for l in data.loads]
+        # Et charnier med udløsning i alle ender regnes med én færre -- samme
+        # konstruktion, men en stivhedsmatrix, der kan løses.
+        elements, _samlede_charnierer = saml_charnierer(
+            elements, supports, loads,
+            [e.model_dump() for e in data.equal_dofs])
         combos      = [c.model_dump() for c in data.combinations]
         # Lasterne som de staar paa modellen. De skal gemmes her: naar der
         # kombineres, flyttes de ind i kombinationerne og 'loads' toemmes, og
