@@ -1025,7 +1025,8 @@ class SteelColumnInput(BaseModel):
     # 2,0 = indspændt/fri.
     k_y:        float = 1.0
     k_z:        float = 1.0
-    gamma_M0:   float = 1.0
+    # DS/EN 1993-1-1 DK NA: γ_M0 = 1,10 og γ_M1 = 1,20 (normal kontrolklasse).
+    gamma_M0:   float = 1.10
     # DS/EN 1993-1-1 DK NA bruger 1,2 til bæreevne mod instabilitet.
     gamma_M1:   float = 1.2
     ltb_restrained: bool = True
@@ -1087,6 +1088,9 @@ def calc_steel_column(data: SteelColumnInput):
             tf_mm      = p["tf_mm"],
             tw_mm      = p["tw_mm"],
             W_pl_y_cm3 = p.get("Wply_cm3"),
+            W_el_y_cm3 = p.get("Wely_cm3"),
+            W_el_z_cm3 = p.get("Welz_cm3"),
+            r_mm       = p.get("r_mm") or 0.0,
             M_y_Ed_kNm = data.M_y_Ed_kNm,
             M_z_Ed_kNm = data.M_z_Ed_kNm,
             f_y_MPa    = f_y,
@@ -1148,8 +1152,15 @@ class SteelBeamInput(BaseModel):
     M_Ed_kNm_direct:    float | None = None  # max moment from Beam FEM block
     V_Ed_kN_direct:     float | None = None  # max shear from Beam FEM block
     fem_label:          str   | None = None  # title of the source FEM block (for display)
-    gamma_M0:           float = 1.0
-    gamma_M1:           float = 1.0
+    # DS/EN 1993-1-1 DK NA: γ_M0 = 1,10 og γ_M1 = 1,20 (normal kontrolklasse).
+    gamma_M0:           float = 1.10
+    gamma_M1:           float = 1.20
+    K_FI:               float = 1.0     # DS/EN 1990 DK NA: CC1 0,9 · CC2 1,0 · CC3 1,1
+    last_paa_overflange: bool = True    # kipning: lasten angriber over forskydningscentret
+    # Momentfaktor for kipning, EN 1993-1-1 NCCI: 1,0 konstant moment (sikkert),
+    # 1,13 jævnt fordelt last, 1,35 punktlast i midten. None: 1,13 i den
+    # lukkede form (den ER jævnt fordelt), ellers 1,0.
+    C1:                 float | None = None
     ltb_restrained:     bool  = False
     ltb_length_m:       float | None = None  # effective LTB length → enables cl. 6.3.2.2 check
     buck_y_restrained:  bool  = False
@@ -1177,7 +1188,7 @@ def calc_steel_beam(data: SteelBeamInput):
 
         # Grade → f_y
         fy_map = {"S235": 235, "S275": 275, "S355": 355, "S420": 420, "S460": 460}
-        f_y = fy_map.get(data.grade.upper(), 355) * MPa
+        f_y_nom = fy_map.get(data.grade.upper(), 355)
 
         span_fp = data.span_m * m
 
@@ -1201,6 +1212,7 @@ def calc_steel_beam(data: SteelBeamInput):
             Iy    = (data.manual_Iy_cm4 * 1e-8 * m**4) if data.manual_Iy_cm4 else None
             b     = None   # no flange width → cross-section classification skipped
             t_f   = None
+            r_rod = None
         else:
             # Catalog lookup — accepts any key from steel_profiles.csv
             db = load_steel_profiles()
@@ -1221,6 +1233,11 @@ def calc_steel_beam(data: SteelBeamInput):
             b     = sec["b_mm"]     * 1e-3 * m
             t_f   = sec["tf_mm"]    * 1e-3 * m
             Iy    = sec["Iy_cm4"]   * 1e-8 * m**4
+            r_rod = sec.get("r_mm")
+
+        # f_y efter tykkelsen (EN 1993-1-1 tabel 3.1): over 40 mm falder den.
+        _tf_mm = float(t_f / mm) if t_f is not None else 0.0
+        f_y = (f_y_nom - 20 if _tf_mm > 40.0 else f_y_nom) * MPa
 
         kwargs_sb: dict = dict(
             label         = data.label,
@@ -1237,6 +1254,12 @@ def calc_steel_beam(data: SteelBeamInput):
             f_y           = f_y,
             gamma_M0      = data.gamma_M0,
             gamma_M1      = data.gamma_M1,
+            K_FI          = data.K_FI,
+            r             = (r_rod * mm) if r_rod else None,
+            load_on_top_flange = data.last_paa_overflange,
+            C1            = (data.C1 if data.C1 is not None else
+                             (1.0 if (data.M_Ed_kNm_direct is not None or data.w_Ed_kNm is not None)
+                              else 1.127)),
             ltb_restrained     = data.ltb_restrained,
             buck_y_restrained  = data.buck_y_restrained,
             buck_x_restrained  = data.buck_x_restrained,
@@ -1361,7 +1384,8 @@ class TimberBeamInput(BaseModel):
     timber_grade:   str   = "C24"
     service_class:  int   = 1
     load_duration:  str   = "medium"
-    gamma_M:        float = 1.3
+    # None: DK NA efter materialet -- 1,35 konstruktionstræ, 1,30 limtræ.
+    gamma_M:        float | None = None
     # K_FI efter DS/EN 1990 DK NA: CC1 = 0,9 · CC2 = 1,0 · CC3 = 1,1.
     # Bruges kun i den lukkede form; kommer lasten fra en lastkombinationsblok
     # eller en rammeberegning, er den allerede ganget på der.
@@ -1383,7 +1407,7 @@ class TimberBeamInput(BaseModel):
     # Brand — EN 1995-1-2, reduceret tværsnitsmetode. Beregningen har ligget i
     # timber.py hele tiden; den kunne bare ikke naas herfra.
     fire_t_min:          float | None = None   # brandvarighed; None = ingen brandeftervisning
-    fire_beta_n_mm:      float = 0.7           # nominel indbrændingshastighed [mm/min]
+    fire_beta_n_mm:      float | None = None  # mm/min; None: 0,8 konstruktionstræ, 0,7 limtræ
     fire_d0_mm:          float = 7.0           # nulstyrkelag
     fire_k0:             float = 1.0
     fire_gamma_M_fi:     float = 1.0
@@ -1400,6 +1424,7 @@ class TimberBeamInput(BaseModel):
 
     compression_edge_restrained:     bool = True
     torsional_restraint_at_supports: bool = True
+    end_distance_mm:   float | None = None   # træets udhæng forbi understøtningen
     support_length_mm: float | None = None   # bearing length at each support → enables ⊥ grain check
 
 
@@ -1437,11 +1462,14 @@ def calc_timber_beam(data: TimberBeamInput):
         )
         if data.support_length_mm is not None:
             kwargs_tb["support_length"] = data.support_length_mm * mm
+            if data.end_distance_mm is not None:
+                kwargs_tb["end_distance"] = data.end_distance_mm * mm
 
         if data.fire_t_min is not None:
             kwargs_tb["fire_design"] = {
                 "t_fire":         data.fire_t_min,
-                "beta_n":         data.fire_beta_n_mm * mm,
+                "beta_n":         (data.fire_beta_n_mm * mm
+                                   if data.fire_beta_n_mm else None),
                 "d0":             data.fire_d0_mm * mm,
                 "k0":             data.fire_k0,
                 "gamma_M_fi":     data.fire_gamma_M_fi,
@@ -1513,7 +1541,7 @@ class TimberColumnInput(BaseModel):
     timber_grade:            str   = "C24"
     service_class:           int   = 1
     load_duration:           str   = "medium"
-    gamma_M:                 float = 1.3
+    gamma_M:                 float | None = None   # None: DK NA efter materialet
     effective_length_factor: float = 1.0
     l_ef_ltb_m:              float | None = None
     # Afstivet om den svage akse (fx spær med lægter/krydsfiner): så
@@ -1524,7 +1552,7 @@ class TimberColumnInput(BaseModel):
     # Brand — EN 1995-1-2. For en søjle er den strengere end for en bjælke:
     # det afbrændte tværsnit er ikke bare svagere, det er også slankere.
     fire_t_min:          float | None = None   # None = ingen brandeftervisning
-    fire_beta_n_mm:      float = 0.7
+    fire_beta_n_mm:      float | None = None
     fire_d0_mm:          float = 7.0
     fire_k0:             float = 1.0
     fire_gamma_M_fi:     float = 1.0
@@ -1575,7 +1603,8 @@ def calc_timber_column(data: TimberColumnInput):
         if data.fire_t_min is not None:
             kwargs["fire_design"] = {
                 "t_fire":     data.fire_t_min,
-                "beta_n":     data.fire_beta_n_mm * mm,
+                "beta_n":     (data.fire_beta_n_mm * mm
+                               if data.fire_beta_n_mm else None),
                 "d0":         data.fire_d0_mm * mm,
                 "k0":         data.fire_k0,
                 "gamma_M_fi": data.fire_gamma_M_fi,
@@ -2695,7 +2724,7 @@ class GenFrameFemInput(BaseModel):
     # varighed i stedet for den her.
     service_class: int = 1
     load_duration: str = 'medium'
-    gamma_M_timber: float = 1.3
+    gamma_M_timber: float | None = None   # None: DK NA efter hver stangs materiale
 
     # Anvendelsesgraensetilstand. Lasterne er de samme, paasat igen med de
     # karakteristiske vaerdier: G alene og Q alene. Analysen er lineaer, saa

@@ -80,8 +80,8 @@ export default function ProjectBasisBlock({ block, onChange }) {
           wind_zone:        nd.wind_zone        ?? 2,
           terrain_category: nd.terrain_category ?? 'II',
           snow_zone:        nd.snow_zone        ?? 1,
-          gamma_M0:         nd.gamma_M0         ?? 1.00,
-          gamma_M1:         nd.gamma_M1         ?? 1.00,
+          gamma_M0:         nd.gamma_M0         ?? 1.10,   // DS/EN 1993-1-1 DK NA
+          gamma_M1:         nd.gamma_M1         ?? 1.20,
           gamma_M2:         nd.gamma_M2         ?? 1.25,
           gamma_c:          nd.gamma_c          ?? 1.50,
           gamma_s:          nd.gamma_s          ?? 1.15,
@@ -161,10 +161,10 @@ export default function ProjectBasisBlock({ block, onChange }) {
         <div style={s.label}>Partial factors</div>
         <div style={s.grid}>
           <Field label="γ_M0 — Steel yield (EC3)">
-            <NumInput value={d.gamma_M0 ?? 1.00} onChange={v => update({ gamma_M0: v })} step={0.05} min={0} />
+            <NumInput value={d.gamma_M0 ?? 1.10} onChange={v => update({ gamma_M0: v })} step={0.05} min={0} />
           </Field>
           <Field label="γ_M1 — Steel buckling (EC3)">
-            <NumInput value={d.gamma_M1 ?? 1.00} onChange={v => update({ gamma_M1: v })} step={0.05} min={0} />
+            <NumInput value={d.gamma_M1 ?? 1.20} onChange={v => update({ gamma_M1: v })} step={0.05} min={0} />
           </Field>
           <Field label="γ_M2 — Steel connections (EC3)">
             <NumInput value={d.gamma_M2 ?? 1.25} onChange={v => update({ gamma_M2: v })} step={0.05} min={0} />

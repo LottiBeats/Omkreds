@@ -20,6 +20,7 @@ import { calcSteelBeam } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
+import DkNaHint from './DkNaHint.jsx'
 
 const GRADES = ['S235', 'S275', 'S355', 'S420', 'S460']
 
@@ -114,8 +115,11 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
         trib_width_m:      d.trib_width_m  ?? 1.0,
         g_k_kNm:  d.g_k_kNm  ?? 5.0,
         q_k_kNm:  d.q_k_kNm  ?? 3.0,
-        gamma_M0:  d.gamma_M0 ?? 1.0,
-        gamma_M1:  d.gamma_M1 ?? 1.0,
+        gamma_M0:  d.gamma_M0 ?? 1.10,   // DS/EN 1993-1-1 DK NA
+        gamma_M1:  d.gamma_M1 ?? 1.20,
+        K_FI:      d.K_FI     ?? 1.0,
+        C1:        d.C1       ?? null,
+        last_paa_overflange: d.last_paa_overflange ?? true,
         ltb_restrained:    d.ltb_restrained    ?? false,
         ltb_length_m:      d.ltb_length_m      ?? null,
         buck_y_restrained: d.buck_y_restrained  ?? false,
@@ -314,21 +318,37 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
       </Field>
 
       {/* ── Lateral stability ────────────────────────────────────────── */}
-      <div style={sec}>Lateral stability</div>
+      <div style={sec}>Kipning og stabilitet</div>
 
-      <Field label="LTB restrained" hint="Compression flange continuously restrained">
+      <Field label="Kipning forhindret" hint="trykflangen fastholdt hele vejen">
         <input type="checkbox" style={{ width: 16, height: 16 }}
           checked={d.ltb_restrained ?? false}
           onChange={e => update({ ltb_restrained: e.target.checked })} />
       </Field>
 
-      <Field label="LTB length (m)" hint="Between lateral restraints — runs cl. 6.3.2.2">
+      <Field label="Kiplængde (m)" hint="mellem sideværts fastholdelser">
         <input style={{ ...inp, background: (d.ltb_restrained ?? false) ? '#f5f5f5' : undefined }}
           type="number" step="any" min="0"
-          placeholder="leave blank = full span"
+          placeholder="tom = hele spændet"
           value={d.ltb_length_m ?? ''}
           disabled={d.ltb_restrained ?? false}
           onChange={e => update({ ltb_length_m: e.target.value !== '' ? parseFloat(e.target.value) : null })} />
+      </Field>
+
+      <Field label="Momentfordeling (C₁)" hint="bestemmer også C₂ ved last på overflangen">
+        <select style={inp} value={d.C1 ?? ''} disabled={d.ltb_restrained ?? false}
+          onChange={e => update({ C1: e.target.value === '' ? null : Number(e.target.value) })}>
+          <option value="">Automatisk (1,13 ved jævn last)</option>
+          <option value={1.0}>1,00 — konstant moment (sikker)</option>
+          <option value={1.127}>1,13 — jævnt fordelt last</option>
+          <option value={1.348}>1,35 — punktlast i midten</option>
+        </select>
+      </Field>
+
+      <Field label="Last på overflangen" hint="destabiliserende — sænker M_cr">
+        <input type="checkbox" style={{ width: 16, height: 16 }}
+          checked={d.last_paa_overflange ?? true} disabled={d.ltb_restrained ?? false}
+          onChange={e => update({ last_paa_overflange: e.target.checked })} />
       </Field>
 
       <Field label="Y-axis buckling restrained">
@@ -344,16 +364,27 @@ export default function SteelBeamBlock({ block, onChange, blocks = [] }) {
       </Field>
 
       {/* ── Partial factors ─────────────────────────────────────────── */}
-      <div style={sec}>Partial factors</div>
+      <div style={sec}>Partialkoefficienter og konsekvensklasse</div>
 
-      <Field label="γ_M0">
-        <NumericInput style={inp} value={d.gamma_M0 ?? 1.0}
+      <Field label="γ_M0" hint="DK NA 1,10">
+        <NumericInput style={inp} value={d.gamma_M0 ?? 1.10}
           onChange={v => update({ gamma_M0: v })} />
+        <DkNaHint value={d.gamma_M0} dk={1.10} onUse={v => update({ gamma_M0: v })} />
       </Field>
 
-      <Field label="γ_M1">
-        <NumericInput style={inp} value={d.gamma_M1 ?? 1.0}
+      <Field label="γ_M1" hint="DK NA 1,20">
+        <NumericInput style={inp} value={d.gamma_M1 ?? 1.20}
           onChange={v => update({ gamma_M1: v })} />
+        <DkNaHint value={d.gamma_M1} dk={1.20} onUse={v => update({ gamma_M1: v })} />
+      </Field>
+
+      <Field label="K_FI" hint="CC1 0,9 · CC2 1,0 · CC3 1,1">
+        <select style={inp} value={d.K_FI ?? 1.0}
+          onChange={e => update({ K_FI: Number(e.target.value) })}>
+          <option value={0.9}>0,9 — CC1</option>
+          <option value={1.0}>1,0 — CC2</option>
+          <option value={1.1}>1,1 — CC3</option>
+        </select>
       </Field>
 
       {/* ── Deflection ──────────────────────────────────────────────── */}

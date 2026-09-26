@@ -168,8 +168,8 @@ def steel_column_check(
     L_LTB_m: float = None,    # unbraced LTB length [m] (default: k_z·L)
     C_1: float = 1.0,         # moment gradient factor for M_cr (Table 6.4)
     f_y_MPa: float = 355.0,
-    gamma_M0: float = 1.0,
-    gamma_M1: float = 1.0,
+    gamma_M0: float = 1.10,   # DS/EN 1993-1-1 DK NA
+    gamma_M1: float = 1.20,
     k_y: float = 1.0,         # effective-length factor y-y
     k_z: float = 1.0,         # effective-length factor z-z
 ):
@@ -234,7 +234,13 @@ def steel_column_check(
     else:
         W_pl_z = None
 
-    # Use elastic modulus for Class 3; warn about Class 4
+    # Klasse 3 regnes elastisk. Mangler W_el, udledes det af I -- aldrig W_pl,
+    # som er det større af de to og dermed på den usikre side.
+    if section_class == 3:
+        if W_el_y_cm3 is None:
+            W_el_y_cm3 = Iy_cm4 / (h_mm / 2.0 / 10.0)
+        if W_el_z_cm3 is None:
+            W_el_z_cm3 = Iz_cm4 / (b_mm / 2.0 / 10.0)
     use_elastic_y = (section_class == 3 and W_el_y_cm3 is not None)
     use_elastic_z = (section_class == 3 and W_el_z_cm3 is not None)
     W_bnd_y = W_el_y_cm3 if use_elastic_y else W_pl_y
@@ -344,17 +350,10 @@ def steel_column_check(
         blocks.append(CALC_ROW("Section class", "dimensionsgivende (største af flange og krop)", cls_label))
 
         if section_class == 3:
-            if W_el_y_cm3 is None:
-                blocks.append(N(
-                    "Tværsnitsklasse 3 — angiv W_el_y_cm3 (og W_el_z_cm3) for at bruge "
-                    "elastic modulus in bending checks. W_pl is used as a conservative "
-                    "approximation until W_el is supplied."
-                ))
-            else:
-                blocks.append(N(
-                    f"Tværsnitsklasse 3 — elastisk modstandsmoment W_el,y = {W_el_y_cm3:.1f} cm³ "
-                    "used for bending resistance."
-                ))
+            blocks.append(N(
+                f"Tværsnitsklasse 3: bøjningsbæreevnen regnes elastisk med "
+                f"W_el,y = {W_el_y_cm3:.1f} cm³ og W_el,z = {W_el_z_cm3:.1f} cm³."
+            ))
         if section_class == 4:
             blocks.append(N(
                 "Tværsnitsklasse 4 — der kræves effektive tværsnitsdata efter "
@@ -422,7 +421,7 @@ def steel_column_check(
                 CALC_ROW("C₁",       "momentfordelingsfaktor",          f"{C_1:.2f}"),
                 CALC_ROW("M_cr",     "elastisk kritisk moment",         f"{M_cr_kNm:.2f} kNm"),
                 CALC_ROW("λ̄_LT",    "= √(W_y · f_y / M_cr)",           f"{lam_LT:.3f}"),
-                CALC_ROW("χ_LT",     f"LTB curve {ltb_curve_name.upper()} — general method",
+                CALC_ROW("χ_LT",     f"modificeret metode §6.3.2.3, kurve {ltb_curve_name.upper()} (tabel 6.5)",
                          f"{chi_LT:.3f}"),
             ]
             blocks.append(N(

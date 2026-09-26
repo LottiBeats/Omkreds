@@ -262,7 +262,7 @@ export function makeTimberRoofTemplate() {
     { id: ids.chkSpærV, type: 'timber_beam', data: {
       title: 'Venstre spær 45×145 C24 — member 1 (worst-case M/V/N)', label: 'S1',
       span_m: 2.163, b_mm: 45, h_mm: 145,
-      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
+      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: null,
       load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 1001, fem_end: 'max',
       compression_edge_restrained: false, torsional_restraint_at_supports: true,
       _result: null,
@@ -274,7 +274,7 @@ export function makeTimberRoofTemplate() {
     { id: ids.chkSpærH, type: 'timber_beam', data: {
       title: 'Højre spær 45×145 C24 — member 2 (worst-case M/V/N)', label: 'S2',
       span_m: 2.163, b_mm: 45, h_mm: 145,
-      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: 1.3,
+      timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: null,
       load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 1002, fem_end: 'max',
       compression_edge_restrained: false, torsional_restraint_at_supports: true,
       _result: null,
@@ -294,7 +294,7 @@ export function makeTimberRoofTemplate() {
       items: [
         { type: 'heading', content: 'Materialeparametre — C24 (DS/EN 338)' },
         { type: 'var', name: 'f_t0k',   value: 14,  unit: 'MPa', description: 'Karakteristisk trækstyrke C24' },
-        { type: 'var', name: 'gamma_M', value: 1.3, unit: '-',   description: 'Partialkoefficient, træ' },
+        { type: 'var', name: 'gamma_M', value: 1.35, unit: '-',  description: 'Partialkoefficient, konstruktionstræ (DS/EN 1995-1-1 DK NA)' },
         { type: 'var', name: 'k_mod',   value: 0.9, unit: '-',   description: 'Anvendelsesklasse 2, korttidslast (sne)' },
         { type: 'formula', expr: 'f_t0d = k_mod * f_t0k / gamma_M', unit: 'MPa' },
         { type: 'heading', content: 'Tværsnit' },

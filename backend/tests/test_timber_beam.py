@@ -2,7 +2,8 @@
 test_timber_beam.py — EN 1995-1-1 + DS/EN 1990 DK NA
 
 Referencetilfælde: 90×220 mm C24, L = 4,0 m, g_k = 3,0 kN/m, q_k = 2,0 kN/m,
-anvendelsesklasse 1, variabel last af middel varighed, γ_M = 1,3.
+anvendelsesklasse 1, variabel last af middel varighed, γ_M = 1,35
+(DS/EN 1995-1-1 DK NA, konstruktionstræ), k_cr = 0,67 (§6.1.7(2)).
 
 LASTKOMBINATIONEN vælges efter EN 1995-1-1 §2.2.3: for træ er den
 dimensionsgivende kombination den med det største w/k_mod, ikke den med den
@@ -14,20 +15,20 @@ A1.2(B+C):
                                                                    → 6.10b styrer
 
     w_Ed = 6,00 kN/m    M_Ed = wL²/8 = 12,00 kNm    V_Ed = wL/2 = 12,00 kN
-    f_m,d = 0,80·24/1,3 = 14,769 MPa
-    f_v,d = 0,80·4,0/1,3 = 2,4615 MPa
+    f_m,d = 0,80·24/1,35 = 14,222 MPa
+    f_v,d = 0,80·4,0/1,35 = 2,3704 MPa
 
 Case A — 90×220:
     W_y   = 90·220²/6 = 726 000 mm³
     σ_m,d = 12,00e6/726000 = 16,529 MPa
-    η     = 16,529/14,769 = 1,119  → FAIL
-    τ_d   = 1,5·12000/19800 = 0,9091 MPa
-    η     = 0,9091/2,4615 = 0,369  → OK
+    η     = 16,529/14,222 = 1,162  → FAIL
+    τ_d   = 1,5·12000/(0,67·19800) = 1,3569 MPa
+    η     = 1,3569/2,3704 = 0,572  → OK
 
 Case B — 150×300:
     W_y   = 150·300²/6 = 2 250 000 mm³
     σ_m,d = 12,00e6/2250000 = 5,333 MPa
-    η     = 5,333/14,769 = 0,361  → OK
+    η     = 5,333/14,222 = 0,375  → OK
 
 Modulet regnede tidligere 1,35·g_k + 1,5·q_k med den varighed brugeren valgte.
 1,35 findes ikke i DK NA, og én fast kombination kan ikke være styrende for
@@ -58,33 +59,33 @@ def test_timber_beam_response_ok(client):
 
 def test_timber_beam_A_bending_fails(client):
     """
-    90×220 C24 ved 4 m er for lille: σ_m,d = 16,53 MPa > f_m,d = 14,77 MPa.
+    90×220 C24 ved 4 m er for lille: σ_m,d = 16,53 MPa > f_m,d = 14,22 MPa.
     """
     blocks = client.post("/calc/timber-beam", json=BASE_A).json()
     chk = find_check(blocks, "bøjning")
     assert chk is not None, "No bending check found"
     assert not passes(chk), "90×220 C24 at 4m should FAIL bending"
-    assert_eta(chk, 1.119)
+    assert_eta(chk, 1.162)
 
 
 def test_timber_beam_A_shear_passes(client):
-    """Forskydningen er langt inden for: η = 0,369."""
+    """Forskydningen er inden for: η = 0,572 med k_cr = 0,67."""
     blocks = client.post("/calc/timber-beam", json=BASE_A).json()
     chk = find_check(blocks, "forskydning")
     assert chk is not None, "No shear check found"
     assert passes(chk), f"Shear check failed: {chk['value']}"
-    assert_eta(chk, 0.369)
+    assert_eta(chk, 0.572)
 
 
 def test_timber_beam_B_bending_passes(client):
-    """150×300: η_bøjning = 0,361 → OK."""
+    """150×300: η_bøjning = 0,375 → OK."""
     blocks = client.post("/calc/timber-beam", json={
         **BASE_A, "b_mm": 150.0, "h_mm": 300.0,
     }).json()
     chk = find_check(blocks, "bøjning")
     assert chk is not None
     assert passes(chk), f"150×300 should PASS bending: {chk['value']}"
-    assert_eta(chk, 0.361)
+    assert_eta(chk, 0.375)
 
 
 def test_timber_beam_service_class_reduces_capacity(client):
@@ -172,12 +173,12 @@ def test_the_governing_choice_moves_with_the_load_ratio(client):
 
 
 def test_permanent_only_uses_k_mod_060(client):
-    """Vinder 6.10a, skal f_m,d falde tilsvarende: 0,60·24/1,3 = 11,08 MPa."""
+    """Vinder 6.10a, skal f_m,d falde tilsvarende: 0,60·24/1,35 = 10,67 MPa."""
     blocks = client.post("/calc/timber-beam", json={
         **BASE_A, "g_k_kNm": 2.5, "q_k_kNm": 0.2, "load_duration": "short",
     }).json()
     f_md = float(_row(blocks, "f_m,d")["result"].split()[0])
-    assert f_md == pytest.approx(0.60 * 24 / 1.3, abs=0.02)
+    assert f_md == pytest.approx(0.60 * 24 / 1.35, abs=0.02)
 
 
 def test_k_fi_scales_both_combinations(client):

@@ -36,7 +36,8 @@ def _u(qty, unit=None, label="", dec=2):
         return str(qty)
 
 from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext, FIG
-from timber_grades import get_timber_grade, E_0_mean, K_DEF
+from timber_grades import (get_timber_grade, E_0_mean, K_DEF, gamma_M_dk,
+                           BETA_N_MM_MIN, K_FI_BRAND, K_CR)
 
 KMOD = {
     (1, "permanent"): 0.60, (1, "long"): 0.70, (1, "medium"): 0.80,
@@ -62,7 +63,7 @@ def timber_beam(
     G_0_05=None,
     service_class=1,
     load_duration="medium",
-    gamma_M=1.3,
+    gamma_M=None,           # None: DK NA efter materialet (1,35 / 1,30)
     K_FI=1.0,
     design_situation="persistent",   # "persistent" | "accidental"
     accidental_type="fire",          # "fire" | "other" — kun ved ulykke
@@ -123,6 +124,10 @@ def timber_beam(
         f_c_90_k = 2.5 * MPa
     if support_material == "solid_timber" and grade_data is not None:
         support_material = grade_data["support_material"]
+    _mattype = grade_data["material_type"] if grade_data is not None else "solid_timber"
+    _gamma_auto = gamma_M is None
+    if gamma_M is None:
+        gamma_M = gamma_M_dk(_mattype)
 
     # DS/EN 1990 DK NA:2024, anneks F punkt (10): "Ved undersoegelser af
     # ulykkesdimensioneringstilfaelde og seismiske dimensioneringstilfaelde
@@ -210,7 +215,9 @@ def timber_beam(
         CALC_ROW("E_0,05",   "5 %-fraktil elasticitetsmodul",   _u(E_0_05, MPa, "MPa", 0)),
         CALC_ROW("G_0,05",   "5 %-fraktil forskydningsmodul",   _u(G_0_05, MPa, "MPa", 0)),
         CALC_ROW("f_c,90,k", "kar. trykstyrke vinkelret på fibrene", _u(f_c_90_k, MPa, "MPa", 1)),
-        CALC_ROW("γ_M",      "partialkoefficient",              f"{gamma_M:.2f}"),
+        CALC_ROW("γ_M",      ("partialkoefficient, DS/EN 1995-1-1 DK NA"
+                              if _gamma_auto else "partialkoefficient"),
+                 f"{gamma_M:.2f}"),
     ]
     if beam_results is not None:
         # Med importerede snitkraefter er varigheden bestemt af den kombination,
@@ -419,65 +426,68 @@ def timber_beam(
     # ── Shear resistance ──────────────────────────────────────────────────────
     blocks.append(S("Forskydning — EN 1995-1-1 pkt. 6.1.7"))
 
-    A     = _kap['A']
+    A_v   = _kap['A_v']
     f_vd  = _kap['f_vd']
-    tau_d = (1.5 * V_Ed) / A
+    tau_d = (1.5 * V_Ed) / A_v
 
     blocks.extend([
-        CALC_ROW("A",     "= b·h",               f"{float(A / _cm**2):.2f} cm²"),
-        CALC_ROW("f_v,d", "= k_mod·f_v,k / γ_M", _u(f_vd, MPa, "MPa")),
-        CALC_ROW("τ_d",   "= 1.5·V_Ed / A",       _u(tau_d, MPa, "MPa")),
+        CALC_ROW("k_cr",  "revnefaktor, §6.1.7(2)", f"{_kap['k_cr']:.2f}"),
+        CALC_ROW("b_ef",  "= k_cr·b",               _u(_kap['k_cr'] * b, mm, "mm", 1)),
+        CALC_ROW("f_v,d", "= k_mod·f_v,k / γ_M",    _u(f_vd, MPa, "MPa")),
+        CALC_ROW("τ_d",   "= 1,5·V_Ed / (b_ef·h)",  _u(tau_d, MPa, "MPa")),
     ])
     blocks.append(cc.check("Forskydning: τ_d / f_v,d", tau_d, f_vd))
 
-    # ── Bearing at support ────────────────────────────────────────────────────
+    # ── Vederlag — tryk vinkelret på fibrene ─────────────────────────────────
+    # EN 1995-1-1 §6.1.5 (A1:2008): σ_c,90,d ≤ k_c,90·f_c,90,d med
+    # σ_c,90,d = F_c,90,d / A_ef. A_ef regnes med en effektiv længde, der er
+    # 30 mm længere end vederlaget ind mod faget, og op til 30 mm mod enden,
+    # hvis træet går så langt ud over understøtningen.
     if support_length is not None:
-        blocks.append(S("Vederlag — EN 1995-1-1 pkt. 6.1.5"))
+        blocks.append(S("Vederlag — EN 1995-1-1 §6.1.5"))
 
         if bearing_force is None:
             bearing_force = V_Ed
-            blocks.append(N("Ingen vederlagskraft angivet — der regnes med reaktionen V_Ed."))
+            _kraft_txt = "reaktionen, lig med V_Ed ved en simpelt understøttet bjælke"
         else:
-            blocks.append(N(f"Angivet vederlagskraft: F_c,90,Ed = {_u(bearing_force, kN, 'kN')}."))
+            _kraft_txt = "angivet vederlagskraft"
 
-        if k_c_90 is None:
-            if load_near_support:
-                k_c_90 = 1.0
-                blocks.append(N("Lasten ligger tæt ved understøtningen → k_c,90 = 1,0."))
-            else:
-                k_c_90 = 1.75 if support_material == "glulam" else 1.5
-                _mat_dk = {"glulam": "limtræ", "solid_timber": "konstruktionstræ"}.get(
-                    support_material, support_material)
-                blocks.append(N(
-                    f"Lasten ligger væk fra understøtningen; k_c,90 = {k_c_90} for {_mat_dk}."
-                ))
+        _a = end_distance if end_distance is not None else 0 * mm
+        _mod_ende = min(float(_a / mm), 30.0) * mm
+        l_ef = support_length + 30 * mm + _mod_ende
+
+        _mat_dk = {"glulam": "limtræ", "solid_timber": "konstruktionstræ"}.get(
+            support_material, support_material)
+        if k_c_90 is not None:
+            _kc_txt = "angivet"
+        elif load_near_support:
+            k_c_90 = 1.0
+            _kc_txt = "last tæt ved understøtningen"
+        elif float(support_length / mm) > 400:
+            k_c_90 = 1.0
+            _kc_txt = "vederlag over 400 mm"
         else:
-            blocks.append(N(f"Angivet vederlagsfaktor: k_c,90 = {k_c_90}."))
+            # Diskret understøtning med l₁ ≥ 2h -- en bjælkeende på en væg
+            # eller en søjle.
+            k_c_90 = 1.75 if support_material == "glulam" else 1.5
+            _kc_txt = f"punktvis understøttet {_mat_dk}, l ≤ 400 mm"
 
-        if end_distance is None:
-            add_length = 30 * mm
-            blocks.append(N("Ingen endeafstand angivet — A_ef = b·(l + 30 mm)."))
-        elif end_distance >= 30 * mm:
-            add_length = 60 * mm
-            blocks.append(N("Endeafstand ≥ 30 mm → A_ef = b·(l + 60 mm)."))
-        else:
-            add_length = 30 * mm
-            blocks.append(N("Endeafstand < 30 mm → A_ef = b·(l + 30 mm)."))
-
-        f_c_90_d   = kmod * f_c_90_k / gamma_M
-        A_ef       = b * (support_length + add_length)
+        f_c_90_d     = kmod * f_c_90_k / gamma_M
+        A_ef         = b * l_ef
         sigma_c_90_d = bearing_force / A_ef
-        F_c_90_Rd  = k_c_90 * f_c_90_d * A_ef
 
         blocks.extend([
-            CALC_ROW("l_sup",       "vederlagslængde",                 _u(support_length, mm, "mm", 0)),
-            CALC_ROW("f_c,90,d",    "= k_mod·f_c,90,k / γ_M",           _u(f_c_90_d, MPa, "MPa")),
-            CALC_ROW("A_ef",        "= b·(l_sup + tillæg)",             f"{float(A_ef / _cm**2):.1f} cm²"),
-            CALC_ROW("σ_c,90,d",    "= F / A_ef",                       _u(sigma_c_90_d, MPa, "MPa")),
-            CALC_ROW("F_c,90,Rd",   "= k_c,90·f_c,90,d·A_ef",           _u(F_c_90_Rd, kN, "kN")),
+            CALC_ROW("F_c,90,d",  _kraft_txt,                        _u(bearing_force, kN, "kN")),
+            CALC_ROW("l",         "vederlagslængde",                 _u(support_length, mm, "mm", 0)),
+            CALC_ROW("a",         "træets udhæng forbi understøtningen", _u(_a, mm, "mm", 0)),
+            CALC_ROW("l_ef",      "= l + 30 mm + min(a; 30 mm)",     _u(l_ef, mm, "mm", 0)),
+            CALC_ROW("A_ef",      "= b·l_ef",                        f"{float(A_ef / _cm**2):.1f} cm²"),
+            CALC_ROW("σ_c,90,d",  "= F_c,90,d / A_ef",               _u(sigma_c_90_d, MPa, "MPa")),
+            CALC_ROW("f_c,90,d",  "= k_mod·f_c,90,k / γ_M",          _u(f_c_90_d, MPa, "MPa")),
+            CALC_ROW("k_c,90",    _kc_txt,                           f"{k_c_90:.2f}"),
         ])
-        blocks.append(cc.check("Vederlag: σ_c,90,d / (k_c,90·f_c,90,d)", sigma_c_90_d, k_c_90 * f_c_90_d))
-        blocks.append(cc.check("Vederlag: F_c,90,Ed / F_c,90,Rd", bearing_force, F_c_90_Rd))
+        blocks.append(cc.check("Vederlag: σ_c,90,d / (k_c,90·f_c,90,d)",
+                               sigma_c_90_d, k_c_90 * f_c_90_d))
 
     # ── Nedbøjning ────────────────────────────────────────────────────────────
     # EN 1995-1-1 §7.2 med krybningen efter §2.2.3(5). Den er tit
@@ -565,7 +575,8 @@ def timber_beam(
         blocks.append(S("Brand — EN 1995-1-2"))
 
         t_fire         = fire_design["t_fire"]
-        beta_n         = fire_design.get("beta_n", 0.7 * mm)
+        beta_n         = fire_design.get("beta_n") or BETA_N_MM_MIN.get(_mattype, 0.8) * mm
+        k_fi           = fire_design.get("k_fi") or K_FI_BRAND.get(_mattype, 1.25)
         d0             = fire_design.get("d0", 7 * mm)
         k0             = fire_design.get("k0", 1.0)
         gamma_M_fi     = fire_design.get("gamma_M_fi", 1.0)
@@ -660,10 +671,12 @@ def timber_beam(
             return blocks
         A_fi     = b_fi * h_fi
         W_y_fi   = (b_fi * h_fi**2) / 6
-        f_md_fi  = kmod_fi * f_mk / gamma_M_fi
-        f_vd_fi  = kmod_fi * f_vk / gamma_M_fi
+        # f_20 = k_fi·f_k: styrken ved brand regnes med 20 %-fraktilen
+        # (EN 1995-1-2 lign. 2.1 og tabel 2.1).
+        f_md_fi  = kmod_fi * k_fi * f_mk / gamma_M_fi
+        f_vd_fi  = kmod_fi * k_fi * f_vk / gamma_M_fi
         sigma_m_d_fi = M_Ed_fi / W_y_fi
-        tau_d_fi     = (1.5 * V_Ed_fi) / A_fi
+        tau_d_fi     = (1.5 * V_Ed_fi) / (K_CR * A_fi)
 
         blocks.extend([
             CALC_ROW("d_char,n",   "= β_n·t_fi + k_0·d_0",           _u(d_char_n, mm, "mm", 1)),
@@ -671,10 +684,11 @@ def timber_beam(
             CALC_ROW("h_fi",       "= h − (under+over)·d_char,n",    _u(h_fi, mm, "mm", 1)),
             CALC_ROW("A_fi",       "= b_fi·h_fi",                     f"{float(A_fi / _cm**2):.1f} cm²"),
             CALC_ROW("W_y,fi",     "= b_fi·h_fi²/6",                  f"{float(W_y_fi / _cm**3):.1f} cm³"),
-            CALC_ROW("f_m,d,fi",   "= k_mod,fi·f_m,k / γ_M,fi",      _u(f_md_fi, MPa, "MPa")),
-            CALC_ROW("f_v,d,fi",   "= k_mod,fi·f_v,k / γ_M,fi",      _u(f_vd_fi, MPa, "MPa")),
+            CALC_ROW("k_fi",       "20 %-fraktil, EN 1995-1-2 tabel 2.1", f"{k_fi:.2f}"),
+            CALC_ROW("f_m,d,fi",   "= k_mod,fi·k_fi·f_m,k / γ_M,fi", _u(f_md_fi, MPa, "MPa")),
+            CALC_ROW("f_v,d,fi",   "= k_mod,fi·k_fi·f_v,k / γ_M,fi", _u(f_vd_fi, MPa, "MPa")),
             CALC_ROW("σ_m,d,fi",   "= M_Ed,fi / W_y,fi",              _u(sigma_m_d_fi, MPa, "MPa")),
-            CALC_ROW("τ_d,fi",     "= 1.5·V_Ed,fi / A_fi",            _u(tau_d_fi, MPa, "MPa")),
+            CALC_ROW("τ_d,fi",     "= 1,5·V_Ed,fi / (k_cr·A_fi)",     _u(tau_d_fi, MPa, "MPa")),
         ])
 
         blocks.append(N(

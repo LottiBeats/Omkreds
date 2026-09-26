@@ -8,7 +8,7 @@ W_y og A afhaenger af tvaersnit, styrkeklasse, k_mod og gamma_M -- ikke af hvor
 paa stangen man staar. Udnyttelsen i et snit er derfor bare
 
     eta_boejning   = (M(x) / W_y) / f_m,d
-    eta_forskydn.  = (1,5·V(x) / A) / f_v,d
+    eta_forskydn.  = (1,5·V(x) / (k_cr·A)) / f_v,d
 
 med de samme tal, eftervisningen selv bruger. Det er dét, der goer en kurve
 langs stangen mulig uden at regne hele eftervisningen 40 gange.
@@ -51,7 +51,7 @@ si.environment('structural', top_level=True)
 # i modulets eget navnerum.
 
 
-def kapaciteter_af(b, h, f_mk, f_vk, kmod, gamma_M):
+def kapaciteter_af(b, h, f_mk, f_vk, kmod, gamma_M, k_cr=0.67):
     """
     De stoerrelser, en udnyttelse i et snit skal bruge — af stoerrelser med
     enheder, som timber.py har dem.
@@ -65,6 +65,10 @@ def kapaciteter_af(b, h, f_mk, f_vk, kmod, gamma_M):
     return {
         'W_y':  (b * h ** 2) / 6,
         'A':    b * h,
+        # Forskydningen regnes paa den effektive bredde k_cr·b (EN 1995-1-1
+        # §6.1.7(2)). Uden den var baereevnen ca. 50 % for stor.
+        'k_cr': k_cr,
+        'A_v':  k_cr * b * h,
         'f_md': kmod * f_mk / gamma_M,
         'f_vd': kmod * f_vk / gamma_M,
     }
@@ -74,7 +78,11 @@ def kapaciteter(b_mm, h_mm, grade_key, kmod, gamma_M):
     """Samme, men slaaet op ud fra en styrkeklasse. Til kurven."""
     from timber_grades import get_timber_grade
 
+    from timber_grades import gamma_M_dk
+
     _, g = get_timber_grade(grade_key)
+    if gamma_M is None:
+        gamma_M = gamma_M_dk(g['material_type'])
     return kapaciteter_af(float(b_mm) * mm, float(h_mm) * mm,
                           g['f_mk'], g['f_vk'], kmod, gamma_M)
 
@@ -88,7 +96,7 @@ def eta_i_snit(M_kNm, V_kN, kap):
     eftervises.
     """
     sigma = abs(float(M_kNm)) * kN * m / kap['W_y']
-    tau = 1.5 * abs(float(V_kN)) * kN / kap['A']
+    tau = 1.5 * abs(float(V_kN)) * kN / kap['A_v']
     return (float(sigma / kap['f_md']), float(tau / kap['f_vd']))
 
 
@@ -119,7 +127,7 @@ def eta_langs_stang(pl, L, segs_y, segs_x, kap, n=60):
 
 
 def kapaciteter_pr_element(elements, service_class=1, load_duration='medium',
-                           gamma_M=1.3):
+                           gamma_M=None):
     """
     {elem_id: kapaciteter} for de elementer, der HAR et traetvaersnit.
 

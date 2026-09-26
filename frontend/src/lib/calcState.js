@@ -25,13 +25,23 @@
 //                          heading "Deformeret form". A stored result carries
 //                          those figures with it, so it has to be re-run.
 const CALC_REVISION = {
-  general_frame_fem: 3,
+  general_frame_fem: 4,
   // 2: den lukkede form regnede 1,35·g + 1,5·q med den varighed brugeren
   // valgte. 1,35 findes ikke i DK NA, og én fast kombination kan ikke være
   // dimensionsgivende for både et let og et tungt tag — k_mod afgør hvilken
   // (EN 1995-1-1 §2.2.3). Gemte resultater er regnet på det gamle og skal
   // markeres forældet, selv om inddata ikke har flyttet sig.
-  timber_beam: 3,
+  timber_beam: 4,
+  // 2 (søjle) / 4 (bjælke) / 4 (ramme) — 2026-09-26: γ_M efter DK NA (1,35
+  // konstruktionstræ, 1,30 limtræ) i stedet for 1,3 for alt; forskydning med
+  // k_cr = 0,67; limtræ efter EN 14080; β_n og k_fi efter materialet ved brand.
+  timber_column: 2,
+  // 2 — 2026-09-26: γ_M0 = 1,10 og γ_M1 = 1,20 efter DK NA; kipning med
+  // tabel 6.5's kurver i den modificerede metode; udrundingsradius i
+  // klassifikationen; klasse 3 med W_el; bjælken med 6.10a/b og K_FI og
+  // lastens angrebshøjde i M_cr.
+  steel_beam: 2,
+  steel_column: 2,
   // 3: med snitkræfter fra en rammeberegning blev det største moment brugt med
   // varigheden fra netop den kombination -- ikke kombinationen med størst
   // M/k_mod, som FEM-kørslen allerede havde fundet (timber-indhyldningen).

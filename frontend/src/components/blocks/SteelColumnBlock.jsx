@@ -10,6 +10,7 @@ import { calcSteelColumn } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
+import DkNaHint from './DkNaHint.jsx'
 
 const SECTIONS = [
   'HEA100','HEA120','HEA140','HEA160','HEA180','HEA200',
@@ -55,7 +56,7 @@ export default function SteelColumnBlock({ block, onChange, blocks = [] }) {
         N_Ed_kN:        d.N_Ed_kN        ?? 500.0,
         k_y:            d.k_y            ?? 1.0,
         k_z:            d.k_z            ?? 1.0,
-        gamma_M0:       d.gamma_M0       ?? 1.0,
+        gamma_M0:       d.gamma_M0       ?? 1.10,   // DS/EN 1993-1-1 DK NA
         gamma_M1:       d.gamma_M1       ?? 1.2,
         ...(fromCombo ? {
           N_Ed_kN:     exports_.E_d_uls,
@@ -146,13 +147,15 @@ export default function SteelColumnBlock({ block, onChange, blocks = [] }) {
         <NumericInput style={s.input} value={d.k_z ?? 1.0}
           onChange={v => update({ k_z: v })} />
       </Field>
-      <Field label="γ_M0">
-        <NumericInput style={s.input} value={d.gamma_M0 ?? 1.0}
+      <Field label="γ_M0" hint="DK NA 1,10">
+        <NumericInput style={s.input} value={d.gamma_M0 ?? 1.10}
           onChange={v => update({ gamma_M0: v })} />
+        <DkNaHint value={d.gamma_M0} dk={1.10} onUse={v => update({ gamma_M0: v })} />
       </Field>
-      <Field label="γ_M1">
-        <NumericInput style={s.input} value={d.gamma_M1 ?? 1.0}
+      <Field label="γ_M1" hint="DK NA 1,20">
+        <NumericInput style={s.input} value={d.gamma_M1 ?? 1.20}
           onChange={v => update({ gamma_M1: v })} />
+        <DkNaHint value={d.gamma_M1} dk={1.20} onUse={v => update({ gamma_M1: v })} />
       </Field>
 
       {/* ── Beam-column moments (leave 0 for pure compression) ── */}

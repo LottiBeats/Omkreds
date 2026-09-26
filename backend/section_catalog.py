@@ -19,6 +19,28 @@ from pathlib import Path
 
 DEFAULT_CSV = Path(__file__).resolve().parent / "steel_profiles.csv"
 
+# Udrundingsradius r [mm] mellem krop og flange, Euronorm 19-57 (IPE) og
+# 53-62 (HE). CSV-filen har den ikke, og uden den bliver c/t for flange og
+# krop for store: HEA200 i S355 blev klasse 3, hvor den er klasse 2.
+ROOT_RADIUS_MM = {
+    'IPE': {80: 5, 100: 7, 120: 7, 140: 7, 160: 9, 180: 9, 200: 12, 220: 12,
+            240: 15, 270: 15, 300: 15, 330: 18, 360: 18, 400: 21, 450: 21,
+            500: 21, 550: 24, 600: 24},
+    'HE':  {100: 12, 120: 12, 140: 12, 160: 15, 180: 15, 200: 18, 220: 18,
+            240: 21, 260: 24, 280: 24, 300: 27, 320: 27, 340: 27, 360: 27,
+            400: 27, 450: 27, 500: 27, 550: 27, 600: 27, 650: 27, 700: 27,
+            800: 30, 900: 30, 1000: 30},
+}
+
+
+def root_radius_mm(designation: str) -> float | None:
+    import re
+    m = re.match(r'^(IPE|HE[ABM])\s*(\d+)', designation.strip().upper())
+    if not m:
+        return None
+    fam = 'IPE' if m.group(1) == 'IPE' else 'HE'
+    return ROOT_RADIUS_MM[fam].get(int(m.group(2)))
+
 
 @lru_cache(maxsize=None)
 def load_steel_profiles(csv_path: str | None = None):
@@ -42,6 +64,7 @@ def load_steel_profiles(csv_path: str | None = None):
                                        float(row['tw_mm']), float(row['tf_mm'])),
                 'weight_kg_per_m': float(row.get('weight_kg_per_m') or 0),
                 'source':          row.get('source', '').strip(),
+                'r_mm':            root_radius_mm(row['designation']),
             }
     return db
 
@@ -133,8 +156,13 @@ def column_properties(designation: str) -> dict:
 
     Iz_mm4 = 2 * (tf * b ** 3 / 12.0) + (h - 2 * tf) * tw ** 3 / 12.0
 
+    r = p.get('r_mm') or 0.0
     return {
         **p,
+        'r_mm':     r,
+        # W_el af katalogets I_y (som har udrundingerne med) og af I_z.
+        'Wely_cm3': p['Iy_cm4'] / (h / 2 / 10.0),
+        'Welz_cm3': (Iz_mm4 / 1e4) / (b / 2 / 10.0),
         'A_cm2':    A_cm2,
         'Iz_cm4':   Iz_mm4 / 1e4,
         'A_source': A_source,

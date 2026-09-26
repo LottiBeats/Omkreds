@@ -14,6 +14,7 @@ import { calcTimberBeam } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
+import GammaMField from './GammaMField.jsx'
 
 const GRADES = [
   'C14','C16','C18','C20','C22','C24','C27','C30','C35','C40',
@@ -128,10 +129,11 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         timber_grade:   d.timber_grade  ?? 'C24',
         service_class:  d.service_class ?? 1,
         load_duration:  d.load_duration ?? 'medium',
-        gamma_M:        d.gamma_M       ?? 1.3,
+        gamma_M:        d.gamma_M       ?? null,   // null: DK NA efter materialet
         compression_edge_restrained:     d.compression_edge_restrained ?? true,
         torsional_restraint_at_supports: d.torsional_restraint_at_supports ?? true,
         support_length_mm: d.support_length_mm ?? null,
+        end_distance_mm:   d.end_distance_mm   ?? null,
 
         // Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2
         // Kommer lasten fra en ulykkeskombination, foelger materialesiden med
@@ -154,7 +156,7 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
 
         // Brand — EN 1995-1-2. Uden en varighed springes afsnittet over.
         fire_t_min:          d.fire_t_min          ?? null,
-        fire_beta_n_mm:      d.fire_beta_n_mm      ?? 0.7,
+        fire_beta_n_mm:      d.fire_beta_n_mm      ?? null,   // null: 0,8 konstruktionstræ, 0,7 limtræ
         fire_d0_mm:          d.fire_d0_mm          ?? 7.0,
         fire_exposed_sides:  d.fire_exposed_sides  ?? 2,
         fire_exposed_bottom: d.fire_exposed_bottom ?? true,
@@ -408,15 +410,13 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
           onChange={e => update({ service_class: Number(e.target.value) })}>
           {SERVICE_CLASSES.map(c => (
             <option key={c} value={c}>
-              {c} — {['Dry interior','Covered outdoor','Exposed'][c-1]}
+              {c} — {['tørt, opvarmet','overdækket, uopvarmet','udendørs'][c-1]}
             </option>
           ))}
         </select>
       </Field>
-      <Field label="γ_M">
-        <NumericInput style={s} value={d.gamma_M ?? 1.3}
-          onChange={v => update({ gamma_M: v })} />
-      </Field>
+      <GammaMField style={s} value={d.gamma_M ?? null} grade={d.timber_grade ?? 'C24'}
+        onChange={v => update({ gamma_M: v })} />
       <Field label="Trykzone fastholdt" hint="udelukker kipning">
         <input type="checkbox"
           checked={d.compression_edge_restrained ?? true}
@@ -477,11 +477,23 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
           onChange={e => update({ fire_exposed_top: e.target.checked })} />
       </Field>
 
-      <Field label="Vederlagslængde (mm)" hint="slår eftervisning for tryk ⊥ fibre til">
+      <div style={{ gridColumn: '1/-1', fontSize: 11, fontWeight: 700,
+                    color: '#6b7280', letterSpacing: '.06em',
+                    textTransform: 'uppercase', marginTop: 8 }}>
+        Vederlag — EN 1995-1-1 §6.1.5
+      </div>
+      <Field label="Vederlagslængde l (mm)" hint="tom = ingen vederlagsundersøgelse">
         <input style={s} inputMode="decimal"
-          placeholder="e.g. 100 — leave blank to skip"
+          placeholder="fx 100"
           value={d.support_length_mm ?? ''}
-          onChange={e => update({ support_length_mm: e.target.value ? parseFloat(e.target.value) : null })} />
+          onChange={e => update({ support_length_mm: e.target.value ? parseFloat(e.target.value.replace(',', '.')) : null })} />
+      </Field>
+      <Field label="Udhæng forbi understøtning a (mm)" hint="op til 30 mm tæller med i l_ef">
+        <input style={s} inputMode="decimal"
+          placeholder="0"
+          disabled={d.support_length_mm == null}
+          value={d.end_distance_mm ?? ''}
+          onChange={e => update({ end_distance_mm: e.target.value ? parseFloat(e.target.value.replace(',', '.')) : null })} />
       </Field>
     </CalcBlockShell>
   )

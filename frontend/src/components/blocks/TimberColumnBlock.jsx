@@ -15,6 +15,7 @@ import { calcTimberColumn } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
+import GammaMField from './GammaMField.jsx'
 
 const GRADES = [
   'C14','C16','C18','C20','C22','C24','C27','C30','C35','C40',
@@ -64,7 +65,7 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
         timber_grade:          d.timber_grade           ?? 'C24',
         service_class:         d.service_class          ?? 1,
         load_duration:         d.load_duration          ?? 'medium',
-        gamma_M:               d.gamma_M                ?? 1.3,
+        gamma_M:               d.gamma_M                ?? null,   // null: DK NA efter materialet
         effective_length_factor: d.effective_length_factor ?? 1.0,
         l_ef_ltb_m:            d.l_ef_ltb_m            ?? null,
 
@@ -224,10 +225,8 @@ export default function TimberColumnBlock({ block, onChange, blocks = [] }) {
         <NumericInput style={s} value={d.effective_length_factor ?? 1.0}
           onChange={v => update({ effective_length_factor: v })} />
       </Field>
-      <Field label="γ_M">
-        <NumericInput style={s} value={d.gamma_M ?? 1.3}
-          onChange={v => update({ gamma_M: v })} />
-      </Field>
+      <GammaMField style={s} value={d.gamma_M ?? null} grade={d.timber_grade ?? 'C24'}
+        onChange={v => update({ gamma_M: v })} />
       <div style={{ gridColumn: '1/-1', fontSize: 11, fontWeight: 700,
                     color: '#6b7280', letterSpacing: '.06em',
                     textTransform: 'uppercase', marginTop: 8 }}>
