@@ -3982,6 +3982,56 @@ def calc_roof_dead_load(data: RoofDeadLoadInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+# ── Egenlast ud fra lagopbygning (EN 1991-1-1) ───────────────────────────────
+# Afløser "Tagets egenlast" i paletten. roof_dead_load bliver stående ovenfor,
+# fordi eksisterende dokumenter har blokken.
+
+class EgenlastLag(BaseModel):
+    beskrivelse: str          = ""
+    type:        str          = "fast"    # "lag" | "ribbe" | "fast"
+    materiale:   str | None   = None
+    t_mm:        float | None = None
+    gamma_kNm3:  float | None = None      # tilsidesætter opslaget
+    b_mm:        float | None = None
+    h_mm:        float | None = None
+    cc_mm:       float | None = None
+    g_kNm2:      float | None = None
+    produkt:     str | None   = None
+
+
+class EgenlastInput(BaseModel):
+    label:       str               = "G1"
+    bygningsdel: str               = "tag"
+    alpha_deg:   float             = 0.0
+    lag:         list[EgenlastLag] = []
+    bredde_m:    float             = 0.0
+
+
+@protected.get("/materials/byggevarer", tags=["Calculations"])
+def list_byggevarer():
+    """Vejledende egenvægt af byggevarer, der ikke står i EN 1991-1-1 bilag A."""
+    from byggevarer import liste
+    return {"byggevarer": liste()}
+
+
+@protected.post("/calc/egenlast", tags=["Calculations"])
+def calc_egenlast(data: EgenlastInput):
+    """Egenlast af tag, dæk eller væg ud fra lagopbygningen → G_k."""
+    try:
+        from egenlast import egenlast
+        blocks, eksport = egenlast(
+            label=data.label, bygningsdel=data.bygningsdel,
+            alpha_deg=data.alpha_deg,
+            lag=[l.model_dump() for l in data.lag],
+            bredde_m=data.bredde_m,
+        )
+        return [{'type': '_exports', 'exports': eksport}] + blocks
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 # ── EN 1997-1 — Foundation bearing ───────────────────────────────────────────
 
 class FoundationInput(BaseModel):

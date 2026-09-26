@@ -13,6 +13,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspens
 import { maxUtilization, utilColor } from '../../lib/utilization.js'
 import { useConfirm } from '../../ui/Dialog.jsx'
 import { hashCalcInputs, hasCalcResult, isStaleResult, staleReason, calcRevision } from '../../lib/calcState.js'
+import { STANDARD_OPBYGNING } from '../../lib/egenlast.js'
 
 // Headings and text are the document itself and render at once. Every other
 // editor is loaded when it is first opened, which keeps the calc modules (and
@@ -44,6 +45,7 @@ const WindLoadBlock = lazy(() => import('./WindLoadBlock.jsx'))
 const FrameLoadsBlock = lazy(() => import('./FrameLoadsBlock.jsx'))
 const SnowLoadBlock = lazy(() => import('./SnowLoadBlock.jsx'))
 const RoofDeadLoadBlock = lazy(() => import('./RoofDeadLoadBlock.jsx'))
+const EgenlastBlock     = lazy(() => import('./EgenlastBlock.jsx'))
 const FoundationBlock = lazy(() => import('./FoundationBlock.jsx'))
 const LoadComboBlock = lazy(() => import('./LoadComboBlock.jsx'))
 const BeamColumnBlock = lazy(() => import('./BeamColumnBlock.jsx'))
@@ -208,6 +210,11 @@ const BLOCK_TYPES = [
                  { description: 'Dampspærre',                  g_kNm2: 0.01 },
                ],
                b_mm: 45.0, h_mm: 145.0, rho_kgm3: 380.0, _result: null } },
+  // Afløser roof_dead_load i paletten. Den gamle står ovenfor, fordi
+  // eksisterende dokumenter har blokken.
+  { type: 'egenlast',      label: 'Egenlast',          icon: 'G',   color: '#0369a1', component: EgenlastBlock,
+    default: { title: 'Egenlast', label: 'G1', bygningsdel: 'tag', alpha_deg: 30.0,
+               bredde_m: 0.6, lag: STANDARD_OPBYGNING, _result: null, _exports: null } },
   { type: 'foundation',    label: 'Fundament',         icon: 'FND', color: '#57534e', component: FoundationBlock,
     default: { title: 'Foundation Bearing Check', label: 'F1',
                B_m: 1.5, L_m: 2.0, D_m: 0.8,
@@ -278,7 +285,11 @@ const PANEL_GROUPS = [
     // Vejen nu: Lastkombinationer -> FEM (Kombi-linjelast). Lasten sidder på
     // modellen, hvor man kan se den, og opdelingen i G og Q følger med, så
     // anvendelsesgrænsetilstanden kan regnes.
-    types: ['roof_dead_load', 'snow_load', 'wind_load', 'load_combo'],
+    //
+    // roof_dead_load er afløst af 'egenlast' (lagopbygning for tag, dæk og
+    // væg, med G_k til lastkombinationerne). Den gamle er taget ud af
+    // panelet, ikke slettet -- samme grund som frame_load_cases.
+    types: ['egenlast', 'snow_load', 'wind_load', 'load_combo'],
   },
   {
     label: 'Stål  (EC3)',

@@ -442,7 +442,7 @@ _CALC_TYPES = {
     "timber_beam", "timber_column",
     "masonry_wall",
     "custom_calc",
-    "wind_load", "snow_load",
+    "wind_load", "snow_load", "roof_dead_load", "egenlast",
     "frame_loads",
     "foundation",
     "load_combo",

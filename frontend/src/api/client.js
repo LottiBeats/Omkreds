@@ -419,6 +419,26 @@ export const fetchMaterialDensities = async () => {
 }
 
 /**
+ * Egenlast af tag, dæk eller væg ud fra lagopbygningen → G_k.
+ * Svarer med en flad liste; første element er _exports-sentinellen.
+ */
+export const calcEgenlast = (data) =>
+  request('POST', '/calc/egenlast', data)
+
+// Vejledende egenvægt af byggevarer, som bilag A ikke har (tagsten, gips,
+// mineraluld). Hentes én gang som densiteterne.
+let _byggevareCache = null
+export const fetchByggevarer = async () => {
+  if (!_byggevareCache) _byggevareCache = request('GET', '/materials/byggevarer')
+  try {
+    return await _byggevareCache
+  } catch (err) {
+    _byggevareCache = null
+    throw err
+  }
+}
+
+/**
  * Run an EN 1997-1 Annex D spread footing bearing capacity check.
  */
 export const calcFoundation = (data) =>
