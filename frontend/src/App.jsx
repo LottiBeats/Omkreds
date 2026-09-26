@@ -2,84 +2,72 @@
  * App.jsx — top-level routing + Clerk auth guards
  *
  * Routes:
- *   /              → ProjectsPage  (requires login)
- *   /projects/:id  → EditorPage    (requires login)
+ *   /                     → ProjectsPage  (landing page, or the dashboard when signed in)
+ *   /projects/:id/*       → EditorPage    (requires login; the rest of the path is
+ *                                           the open document, e.g. /A2 or /A2/2)
+ *
+ * Both pages are loaded on demand, so the editor's code isn't part of the
+ * landing page download and vice versa.
  *
  * Clerk handles everything else: login UI, forgot-password, sessions.
  * Users are managed at dashboard.clerk.com.
  */
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Show, SignInButton, SignUpButton } from '@clerk/react'
 
-import ProjectsPage from './pages/ProjectsPage.jsx'
-import EditorPage   from './pages/EditorPage.jsx'
 import { ClerkTokenBridge } from './api/clerkToken.js'
+import { ToastProvider, ConfirmProvider } from './ui/index.js'
+
+const ProjectsPage = lazy(() => import('./pages/ProjectsPage.jsx'))
+const EditorPage   = lazy(() => import('./pages/EditorPage.jsx'))
 
 
 // ── Login gate shown when the user is not authenticated ───────────────────────
-// Styled to match the Omkreds brand (warm off-white + orange-red).
 function LoginGate() {
-  const BRAND  = '#d94a2b'
-  const BORDER = '#e8e4e0'
   return (
     <div style={{
       minHeight:      '100vh',
-      background:     '#faf9f8',
+      background:     'var(--bg)',
       display:        'flex',
       flexDirection:  'column',
       alignItems:     'center',
       justifyContent: 'center',
       gap:            24,
-      backgroundImage: `linear-gradient(rgba(26,22,20,0.03) 1px, transparent 1px),
-                        linear-gradient(90deg, rgba(26,22,20,0.03) 1px, transparent 1px)`,
+      padding:        16,
+      backgroundImage: `linear-gradient(rgba(28,25,23,0.03) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(28,25,23,0.03) 1px, transparent 1px)`,
       backgroundSize: '64px 64px',
-      fontFamily:     "system-ui, -apple-system, 'Segoe UI', Arial, sans-serif",
     }}>
-      {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', height: 64 }}>
         <img src="/logo.png" alt="Omkreds" style={{ height: 140, width: 'auto', marginTop: -38, marginBottom: -38 }} />
       </div>
 
       <div style={{
-        background:  '#ffffff',
-        border:      '1px solid ' + BORDER,
-        borderTop:   '3px solid ' + BRAND,
-        padding:     '40px 36px',
-        width:       '100%',
-        maxWidth:    380,
-        boxShadow:   '0 16px 48px rgba(26,22,20,0.10)',
-        textAlign:   'center',
+        background:   'var(--surface)',
+        border:       '1px solid var(--line)',
+        borderTop:    '3px solid var(--brand)',
+        borderRadius: 8,
+        padding:      '36px 32px',
+        width:        '100%',
+        maxWidth:     380,
+        boxShadow:    'var(--shadow-pop)',
+        textAlign:    'center',
+        display:      'grid',
+        gap:          10,
       }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1614', marginBottom: 8, letterSpacing: '-0.01em' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--ink)', letterSpacing: '-0.01em' }}>
           Log ind
         </h1>
-        <p style={{ fontSize: 13, color: '#78716c', marginBottom: 28 }}>
+        <p style={{ fontSize: 13.5, color: 'var(--muted)', marginBottom: 16 }}>
           Få adgang til dine projekter og beregninger.
         </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {/* Clerk's SignInButton opens Clerk's hosted sign-in modal */}
-          <SignInButton mode="modal">
-            <button style={{
-              width: '100%', background: BRAND, color: '#fff', border: 'none',
-              padding: '12px 0', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-              letterSpacing: '0.02em',
-            }}>
-              Log ind →
-            </button>
-          </SignInButton>
-
-          <SignUpButton mode="modal">
-            <button style={{
-              width: '100%', background: 'transparent', color: '#78716c',
-              border: '1px solid ' + BORDER, padding: '11px 0',
-              fontSize: 13, cursor: 'pointer',
-            }}>
-              Opret konto
-            </button>
-          </SignUpButton>
-        </div>
+        <SignInButton mode="modal">
+          <button className="ui-btn ui-btn--primary" style={{ width: '100%', height: 40 }}>Log ind</button>
+        </SignInButton>
+        <SignUpButton mode="modal">
+          <button className="ui-btn" style={{ width: '100%', height: 38 }}>Opret konto</button>
+        </SignUpButton>
       </div>
     </div>
   )
@@ -96,6 +84,23 @@ function ProtectedRoute({ children }) {
   )
 }
 
+function PageLoading() {
+  return <div style={{ minHeight: '100vh', background: 'var(--bg)' }} />
+}
+
+/**
+ * The providers every page needs (toasts, confirm dialogs). Split out so the
+ * development harness (devapp.jsx) can render the editor without Clerk.
+ */
+export function AppProviders({ children }) {
+  return (
+    <ToastProvider>
+      <ConfirmProvider>
+        <Suspense fallback={<PageLoading />}>{children}</Suspense>
+      </ConfirmProvider>
+    </ToastProvider>
+  )
+}
 
 export default function App() {
   return (
@@ -103,11 +108,13 @@ export default function App() {
       {/* Keeps the Clerk session token available to api/client.js */}
       <ClerkTokenBridge />
 
-      <Routes>
-        <Route path="/" element={<ProjectsPage />} />
-        <Route path="/projects/:id" element={<ProtectedRoute><EditorPage /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AppProviders>
+        <Routes>
+          <Route path="/" element={<ProjectsPage />} />
+          <Route path="/projects/:id/*" element={<ProtectedRoute><EditorPage /></ProtectedRoute>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AppProviders>
     </BrowserRouter>
   )
 }

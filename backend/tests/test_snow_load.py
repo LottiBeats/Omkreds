@@ -119,3 +119,19 @@ def test_ridge_height_follows_the_pitch(client):
     blocks = snow(client, alpha_deg=30.0, roof_span_m=8.0, eave_height_m=3.0)
     expected = 3.0 + 4.0 * math.tan(math.radians(30.0))
     assert value(blocks, "Rygningshøjde") == pytest.approx(expected, abs=5e-3)
+
+
+# ── DK NA: s_k = 1,0 kN/m² i hele Danmark ──────────────────────────────────────
+
+def test_default_ground_snow_load_is_dk_na_value():
+    import snow_load
+    assert snow_load.S_K_DK_NA == 1.0
+
+
+def test_lower_ground_snow_load_is_flagged():
+    """Den gamle "zone 2" (0,9) ligger på den usikre side og skal ikke stå tavs."""
+    import snow_load
+    out = snow_load.snow_load(s_k_kNm2=0.9)
+    blocks = out[0] if isinstance(out, tuple) else out
+    notes = [b.get("content", "") for b in blocks if b.get("type") == "note"]
+    assert any("lavere end DK NA" in n for n in notes)

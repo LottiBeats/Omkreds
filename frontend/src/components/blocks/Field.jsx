@@ -10,9 +10,12 @@
  */
 import React from 'react'
 
-export default function Field({ label, hint, children }) {
+// `style` is merged onto the wrapper. The calc blocks pass
+// `gridColumn: '1/-1'` for radio groups and pickers that need the full row;
+// before this was passed through they were squeezed into a single grid cell.
+export default function Field({ label, hint, children, style }) {
   return (
-    <div style={styles.field}>
+    <div style={style ? { ...styles.field, ...style } : styles.field}>
       <label style={styles.label}>
         {label}
         {hint && <span style={styles.hint}> — {hint}</span>}

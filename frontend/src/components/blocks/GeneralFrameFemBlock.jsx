@@ -16,11 +16,16 @@ import { calcGeneralFrameFem, previewGeneralFrameFem,
          redrawGeneralFrameFemDiagrams,
          overlayGeneralFrameFemDiagrams,
          kombinationerGeneralFrameFem,
-         calcTimberBeam, calcSteelBeam } from '../../api/client.js'
+         calcTimberBeam, calcSteelBeam,
+         calcTimberColumn, calcSteelColumn } from '../../api/client.js'
+import { sampleElement } from '../fem/femDiagrams.js'
 import { maxUtilization, utilColor } from '../CalcResultView.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
 import ModelSketch from './ModelSketch.jsx'
+import FemWorkspace from '../fem/FemWorkspace.jsx'
+import { createPortal } from 'react-dom'
+import { isStaleResult } from '../../lib/calcState.js'
 
 /**
  * Handlingskategorierne. Kategorien bærer ψ og lastvarigheden — derfor står
@@ -161,42 +166,205 @@ function isAxialOnly(member) {
  * block calls — so the number on the row and the number in the report cannot
  * come from two different calculations.
  */
-async function checkMember(member, actions, settings) {
+async function beamCheck(member, actions, settings) {
   const first = member.els[0] ?? {}
-  if (!first.material || !first.section) return { skipped: 'intet tværsnit' }
-  if (isAxialOnly(member)) {
-    // A bending check on a member that carries no moment reports eta = 0 and
-    // means nothing. Say what it is instead of showing a reassuring zero.
-    return { skipped: 'aksialt led — eftervises særskilt', axial: true }
-  }
-
   const common = {
     label:   `M${member.id}`,
     span_m:  Number(member.L.toFixed(3)),
     M_Ed_kNm_direct: actions.M_max_kNm ?? 0,
     V_Ed_kN_direct:  actions.V_max_kN  ?? 0,
   }
-
   if (first.material === 'timber') {
-    const m = /^\s*(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*$/.exec(first.section ?? '')
-    if (!m) return { skipped: 'tværsnit kan ikke læses' }
+    const dims = timberDims(first.section)
+    if (!dims) return { skipped: 'tværsnit kan ikke læses' }
     const blocks = await calcTimberBeam({
-      ...common,
-      b_mm: parseFloat(m[1].replace(',', '.')),
-      h_mm: parseFloat(m[2].replace(',', '.')),
+      ...common, b_mm: dims.b, h_mm: dims.h,
       timber_grade:  first.grade ?? 'C24',
       service_class: settings.service_class,
       load_duration: actions.M_duration ?? settings.load_duration,
     })
     return { eta: maxUtilization(blocks) }
   }
-
-  const blocks = await calcSteelBeam({
-    ...common,
-    section: first.section,
-    grade:   first.grade ?? 'S355',
-  })
+  const blocks = await calcSteelBeam({ ...common, section: first.section, grade: first.grade ?? 'S355' })
   return { eta: maxUtilization(blocks) }
+}
+
+function timberDims(section) {
+  const m = /^\s*(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*$/.exec(section ?? '')
+  if (!m) return null
+  const a = parseFloat(m[1].replace(',', '.')), c = parseFloat(m[2].replace(',', '.'))
+  return { b: Math.min(a, c), h: Math.max(a, c) }
+}
+
+/**
+ * Per ultimate-limit-state combination: the largest |M|, the largest
+ * compression and the largest tension anywhere in the member. N and M come
+ * from the same combination — the envelope keeps them apart, so pairing the
+ * envelope's N with its M could combine two load cases that never act
+ * together (and its k_mod belongs to neither).
+ */
+function forcesPerCombination(member, states, lengthOf) {
+  return states.map(st => {
+    let M = 0, Nc = 0, Nt = 0
+    for (const el of member.els) {
+      const pts = sampleElement(el, lengthOf(el), st.state)
+      if (!pts) continue
+      for (const p of pts) {
+        M = Math.max(M, Math.abs(p.M))
+        Nc = Math.max(Nc, -p.N)          // N < 0 er tryk
+        Nt = Math.max(Nt, p.N)
+      }
+    }
+    return { name: st.name, duration: st.duration, M, Nc, Nt }
+  })
+}
+
+// k_mod for konstruktionstræ, kun til at vælge kandidatkombinationer.
+const KMOD_PICK = { permanent: 0.6, long: 0.7, medium: 0.8, short: 0.9, instant: 1.1 }
+
+/** Out-of-plane restraint of a member; the default is the usual case per material. */
+export function defaultBracing(material) { return material === 'timber' ? 'continuous' : 'nodes' }
+
+/**
+ * Utilisation for one member.
+ *
+ * Bending and shear come from the beam check, as before. A member that is in
+ * compression in any combination is also checked as a column (EN 1995-1-1
+ * §6.3.2/6.3.3 or EN 1993-1-1 §6.3.3) with N and M from the same combination,
+ * that combination's load duration, and the in-plane buckling length the
+ * analysis found (Wood). Out of plane, the member's restraint decides.
+ *
+ * The number on the row is the larger of the two. Tension with bending is not
+ * checked here and is said so.
+ */
+async function checkMember(member, actions, settings, ctx = {}) {
+  const first = member.els[0] ?? {}
+  if (!first.material || !first.section) return { skipped: 'intet tværsnit' }
+  // A member with no moment (truss bar, or hinged at both ends): a bending
+  // check would report η = 0 and mean nothing. In compression it is still a
+  // column, checked with M = 0; in tension it is said to need its own check.
+  const axial = isAxialOnly(member)
+  if (axial && !ctx.states?.length) return { skipped: 'aksialt led — eftervises særskilt', axial: true }
+
+  const beam = axial ? { eta: 0 } : await beamCheck(member, actions, settings)
+  if (beam.skipped || !ctx.states?.length) return beam
+
+  const per = forcesPerCombination(member, ctx.states, ctx.lengthOf)
+  const NcMax = Math.max(0, ...per.map(p => p.Nc))
+  const NtMax = Math.max(0, ...per.map(p => p.Nt))
+  if (NcMax < AXIAL_NOTE_KN) {
+    if (axial) {
+      return { skipped: NtMax >= AXIAL_NOTE_KN
+        ? `træk N = ${NtMax.toFixed(1).replace('.', ',')} kN — eftervises særskilt`
+        : 'ingen normalkraft', axial: true }
+    }
+    return { ...beam, mode: 'beam', tension: NtMax >= AXIAL_NOTE_KN ? NtMax : null }
+  }
+
+  // Candidate combinations: most compression, most moment, and the largest
+  // combined share (divided by k_mod for timber). At most three checks.
+  const MMax = Math.max(1e-9, ...per.map(p => p.M))
+  const timber = first.material === 'timber'
+  const score = p => (p.Nc / NcMax + p.M / MMax) / (timber ? (KMOD_PICK[p.duration] ?? 0.9) : 1)
+  const comp = per.filter(p => p.Nc >= AXIAL_NOTE_KN)
+  const picks = [...new Set([
+    comp.reduce((a, b) => (b.Nc > a.Nc ? b : a)),
+    comp.reduce((a, b) => (b.M > a.M ? b : a)),
+    comp.reduce((a, b) => (score(b) > score(a) ? b : a)),
+  ])]
+
+  // Buckling lengths: in plane from the analysis, out of plane from the restraint.
+  const bl = ctx.bucklingLengths ?? {}
+  const sway = ctx.sway
+  const Lcr = Math.max(0, ...member.els.map(e => {
+    const r = bl[String(e.id)] ?? bl[e.id]
+    return r ? (sway ? r.L_cr_sw_m : r.L_cr_ns_m) ?? 0 : 0
+  })) || member.L
+  const maxElem = Math.max(...member.els.map(e => ctx.lengthOf(e)))
+  const bracing = ctx.bracing ?? defaultBracing(first.material)
+
+  let best = null
+  for (const p of picks) {
+    let blocks
+    if (timber) {
+      const dims = timberDims(first.section)
+      if (!dims) return beam
+      const Lout = bracing === 'nodes' ? maxElem : member.L
+      blocks = await calcTimberColumn({
+        label: `M${member.id}`,
+        length_m: Number((bracing === 'continuous' ? Lcr : Math.max(Lcr, Lout)).toFixed(3)),
+        N_Ed_kN: Number(p.Nc.toFixed(3)), M_Ed_kNm: Number(p.M.toFixed(3)),
+        b_mm: dims.b, h_mm: dims.h,
+        timber_grade: first.grade ?? 'C24',
+        service_class: settings.service_class,
+        load_duration: p.duration ?? settings.load_duration,
+        weak_axis_restrained: bracing === 'continuous',
+        l_ef_ltb_m: bracing === 'continuous' ? null : Number(Lout.toFixed(3)),
+      })
+    } else {
+      const Lz = bracing === 'nodes' ? maxElem : member.L
+      blocks = await calcSteelColumn({
+        label: `M${member.id}`, section: first.section, grade: first.grade ?? 'S355',
+        length_m: Number(member.L.toFixed(3)),
+        N_Ed_kN: Number(p.Nc.toFixed(3)), M_y_Ed_kNm: Number(p.M.toFixed(3)),
+        k_y: Number((Lcr / member.L).toFixed(4)), k_z: Number((Lz / member.L).toFixed(4)),
+        ltb_restrained: false, L_LTB_m: Number(Lz.toFixed(3)),
+      })
+    }
+    const eta = maxUtilization(blocks)
+    if (eta != null && (!best || eta > best.eta)) best = { eta, combo: p.name, N: p.Nc, M: p.M, duration: p.duration }
+  }
+  if (!best) return { ...beam, mode: 'beam' }
+  return {
+    eta: Math.max(beam.eta ?? 0, best.eta),
+    mode: 'column',
+    etaBeam: axial ? null : beam.eta, etaColumn: best.eta, axial,
+    combo: best.combo, N_Ed_kN: best.N, M_Ed_kNm: best.M, duration: best.duration,
+    L_cr_m: Number(Lcr.toFixed(3)), bracing,
+    tension: NtMax >= AXIAL_NOTE_KN ? NtMax : null,
+  }
+}
+
+
+/**
+ * The row check above is a beam check: bending and shear only. A rafter or a
+ * column also carries a normal force, and a green η that leaves it out says
+ * "holder" about a member nobody has checked for compression and buckling.
+ *
+ * So every rated member that carries a normal force is marked as such, from the
+ * member forces the run already exported. The number stays (it is a correct
+ * bending/shear utilisation) but it is no longer presented as the answer.
+ * Done at render time, so results stored before this change are marked too.
+ */
+const AXIAL_NOTE_KN = 0.5
+
+// k_mod for konstruktionstræ, EN 1995-1-1 tabel 3.1 — samme værdier som
+// backend/general_frame_fem.py bruger til at finde den dimensionerende
+// kombination. Bruges kun til at vælge mellem elementerne i et led.
+const KMOD_TIMBER = {
+  1: { permanent: 0.6, long: 0.7, medium: 0.8, short: 0.9, instant: 1.1 },
+  2: { permanent: 0.6, long: 0.7, medium: 0.8, short: 0.9, instant: 1.1 },
+  3: { permanent: 0.5, long: 0.55, medium: 0.65, short: 0.7, instant: 0.9 },
+}
+
+function withAxial(checks, exports) {
+  if (!checks) return checks
+  const byMember = {}
+  for (const e of exports?.elements ?? []) {
+    if (e.id >= 1000 && e.member_id != null) byMember[e.member_id] = e
+  }
+  const out = {}
+  for (const [id, c] of Object.entries(checks)) {
+    // Checked with N (as a column): nothing left out. Checked as a beam with
+    // a known tension: that tension is what was left out.
+    if (c?.mode === 'column') { out[id] = c; continue }
+    if (c?.mode === 'beam') { out[id] = c.tension != null ? { ...c, N_kN: c.tension } : c; continue }
+    const N = byMember[id]?.N_max_kN
+    out[id] = (c && typeof c.eta === 'number' && typeof N === 'number' && Math.abs(N) >= AXIAL_NOTE_KN)
+      ? { ...c, N_kN: N }
+      : c
+  }
+  return out
 }
 
 
@@ -245,12 +413,17 @@ function Verdict({ members, checks }) {
   const worst   = rated.reduce((a, b) => (b.c.eta > a.c.eta ? b : a))
   const failed  = rated.filter(x => x.c.eta > 1).length
   const skipped = members.length - rated.length
-  const col = utilColor(worst.c.eta)
+  const axial   = rated.filter(x => x.c.N_kN != null).length
+  // Not "Alle led holder" while a normal force has been left out: amber, and
+  // say which part of the answer is still missing.
+  const col = failed ? utilColor(worst.c.eta) : axial ? '#b45309' : utilColor(worst.c.eta)
 
   return (
     <div style={{ ...s.verdict, borderLeftColor: col }}>
       <strong style={{ color: col }}>
-        {failed === 0 ? 'Alle led holder' : `${failed} af ${rated.length} led holder ikke`}
+        {failed > 0 ? `${failed} af ${rated.length} led holder ikke`
+          : axial > 0 ? `Bøjning og forskydning holder — ${axial} led har normalkraft, der ikke er eftervist her`
+          : 'Alle led holder'}
       </strong>
       <span style={s.verdictDetail}>
         bestemmende: Led {worst.m.id} · η = {worst.c.eta.toFixed(2).replace('.', ',')}
@@ -269,9 +442,13 @@ function Utilisation({ check }) {
   if (check.eta == null) return <span style={s.etaSkipped}>ingen kontrol</span>
 
   const eta = check.eta
-  const col = utilColor(eta)
+  const partial = check.N_kN != null && eta <= 1
+  const col = partial ? '#b45309' : utilColor(eta)
   return (
-    <span style={s.etaWrap} title={eta > 1 ? 'Udnyttelsen overskrider 1,0' : undefined}>
+    <span style={s.etaWrap} title={
+      eta > 1 ? 'Udnyttelsen overskrider 1,0'
+      : partial ? `Kun bøjning og forskydning. N = ${Math.abs(check.N_kN).toFixed(1).replace('.', ',')} kN er ikke medregnet — eftervis leddet som søjle eller bjælke-søjle med N og M.`
+      : undefined}>
       <span style={{ ...s.etaBarTrack }}>
         <span style={{ ...s.etaBarFill,
                        width: `${Math.min(100, eta * 100)}%`, background: col }} />
@@ -279,7 +456,9 @@ function Utilisation({ check }) {
       <span style={{ ...s.etaValue, color: col }}>
         η = {eta.toFixed(2).replace('.', ',')}
       </span>
-      <span style={{ ...s.etaMark, color: col }}>{eta > 1 ? '✗' : '✓'}</span>
+      <span style={{ ...s.etaMark, color: col }}>{eta > 1 ? '✗' : partial ? '!' : '✓'}</span>
+      {check.mode === 'column' && <span style={s.etaSkipped} title={`N+M som søjle i ${check.combo} · L_cr = ${check.L_cr_m} m`}>N+M</span>}
+      {partial && <span style={s.etaSkipped}>kun M+V · N ikke medregnet</span>}
     </span>
   )
 }
@@ -1567,6 +1746,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
+  const [wsOpen,  setWsOpen]  = useState(false)
 
   const comboBlocks      = blocks.filter(b => b.type === 'load_combo')
   // Vindblokke med et resultat. En uberegnet blok har ingen zoner at hente,
@@ -1674,6 +1854,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
   // ── Members ─────────────────────────────────────────────────────────────────
   const { members, loose } = groupMembers(elements, nodes)
+  const memberChecks = withAxial(d._member_checks, d._exports)
 
   /** One section for the whole member — it is one piece of timber. */
   function setMemberSection(memberId, patch) {
@@ -1950,17 +2131,21 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         const totalL = subElems.reduce((s, e) => s + e.L_m, 0)
         // For timber: find sub-element with worst M/k_mod ratio (SC2 as representative)
         // timber_envelope stores this per service class
+        // Sammenlignes på M/k_mod, ikke på M: det element med det største
+        // moment er ikke nødvendigvis det dimensionerende, hvis dets moment
+        // kommer fra en kortere lastvarighed.
+        const ratio = (te, sc) => te.M_Ed_kNm / (KMOD_TIMBER[sc]?.[te.duration] ?? 0.9)
         let bestTimberSC2 = { M_Ed_kNm: 0, V_Ed_kN: 0, duration: 'short', combo: '' }
         subElems.forEach(e => {
           const te = timberEnvelope[e.id]?.[2]  // SC2
-          if (te && te.M_Ed_kNm > bestTimberSC2.M_Ed_kNm) bestTimberSC2 = te
+          if (te && ratio(te, 2) > ratio(bestTimberSC2, 2)) bestTimberSC2 = te
         })
         const memberTimber = subElems.reduce((acc, e) => {
           ;[1, 2, 3].forEach(sc => {
             const te = timberEnvelope[e.id]?.[sc]
             if (!te) return
             const prev = acc[sc]
-            if (!prev || te.M_Ed_kNm > prev.M_Ed_kNm) acc[sc] = te
+            if (!prev || ratio(te, sc) > ratio(prev, sc)) acc[sc] = te
           })
           return acc
         }, {})
@@ -2022,13 +2207,31 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
       const memberActions = Object.fromEntries(
         exports_.elements.filter(e => e.id >= 1000)
           .map(e => [e.member_id, e]))
+      // What the column checks need: every ULS combination's state (with its
+      // load duration), the buckling lengths and whether the frame sways.
+      const sm = res._summary ?? {}
+      const allStates = (sm.combo_figs ?? []).length
+        ? sm.combo_figs.map(c => ({ name: c.name, state: c.state, duration: c.duration, situation: c.situation }))
+        : (sm.diagram_state ? [{ name: 'Beregning', state: sm.diagram_state, duration: d.load_duration ?? 'medium' }] : [])
+      const ulsStates = allStates.filter(st => !st.situation || String(st.situation).startsWith('uls'))
+      const nodeById = Object.fromEntries((d.nodes ?? []).map(n => [n.id, n]))
+      const lengthOf = el => {
+        const a = nodeById[el.ni], b = nodeById[el.nj]
+        return a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 0
+      }
+      const klasse = String(sm.alpha_cr?.klasse ?? '')
+      const ctxBase = {
+        states: ulsStates, lengthOf,
+        bucklingLengths: sm.buckling_lengths ?? {},
+        sway: /svajfølsom/.test(klasse) && !/ikke/.test(klasse),
+      }
       const checks = {}
       await Promise.all(members.map(async m => {
         try {
           checks[m.id] = await checkMember(m, memberActions[m.id] ?? {}, {
             service_class: d.service_class ?? 1,
             load_duration: d.load_duration ?? 'medium',
-          })
+          }, { ...ctxBase, bracing: (d.member_bracing ?? {})[m.id] })
         } catch (err) {
           checks[m.id] = { error: err.message }
         }
@@ -2064,6 +2267,33 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         onChange={e => update({ title: e.target.value })}
         placeholder="Analysetitel" style={s.titleInput} />
 
+      {/* The model workspace: draw, load and read the results on the model
+          itself, as in RFEM or FEM-Design. It edits this block's data. */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="ui-btn ui-btn--primary" onClick={() => setWsOpen(true)}>
+          ⤢ Åbn modelvindue
+        </button>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+          Tegn modellen, læg laster på og se resultaterne på modellen.
+        </span>
+      </div>
+      {wsOpen && createPortal(
+        <FemWorkspace
+          title={d.title ?? 'Rammeberegning'}
+          data={d}
+          onModelChange={(model) => update(model)}
+          onClose={() => setWsOpen(false)}
+          onRun={handleRun}
+          running={running}
+          error={error}
+          stale={isStaleResult(block)}
+          hasResult={!!(d._result || d._summary)}
+          memberChecks={memberChecks}
+          reactions={d._summary?.reactions}
+          summary={d._summary}
+        />,
+        document.body)}
+
       {/* Live geometry sketch — instant feedback while editing */}
       <ModelSketch nodes={nodes} elements={elements}
         supports={supports} equalDofs={equalDofs} loads={loads} />
@@ -2093,11 +2323,11 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           </div>
           {members.map(m => (
             <MemberRow key={m.id} member={m}
-              check={(d._member_checks ?? {})[m.id]}
+              check={(memberChecks ?? {})[m.id]}
               onSection={patch => setMemberSection(m.id, patch)}
               onRemove={() => removeMember(m.id)} />
           ))}
-          <Verdict members={members} checks={d._member_checks} />
+          <Verdict members={members} checks={memberChecks} />
         </>
       )}
 

@@ -906,16 +906,14 @@ export function makeA1Template(options = {}, metadata = {}) {
   H(3, '6.4 Naturlaster')
 
   H(3, '6.4.1 Snelast')
-  TBL('Tabel 6.5 — Snelastzoner i Danmark (DS/EN 1991-1-3 DK NA, Figur DK.1)', [
-    ['Zone', 's_k [kN/m²]', 'Geografisk dækning'],
-    ['1', '0,9', 'Sjælland, Fyn, Lolland-Falster og de fleste øer'],
-    ['2', '1,0', 'Det meste af Jylland (øst og centrale dele)'],
-    ['3', '1,1', 'Vest- og nordvestjylland'],
-    ['4', '1,5', 'Bornholm og højt beliggende lokaliteter'],
-  ])
+  T(
+    'Den karakteristiske terrænsnelast er s_k = 1,0 kN/m² i hele Danmark ' +
+    '(DS/EN 1991-1-3 DK NA). En højere værdi, fx for en højtliggende eller ' +
+    'særligt snebelastet lokalitet, begrundes her.'
+  )
   T(
     'Grundet tagets udformning:\n' +
-    '  Snezone: Zone […]   s_k = … kN/m²\n' +
+    '  s_k = 1,0 kN/m² (DK NA)\n' +
     '  Tagtype: [ensidig / tosidig / fladt]   Hældning: α = … °\n' +
     '  Formfaktor: μ₁ = … (fra DK NA Figur DK.3)\n' +
     '  Karakteristisk tagsnelast: s = μ₁ × C_e × C_t × s_k = … kN/m²\n\n' +

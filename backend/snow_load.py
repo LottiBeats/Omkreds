@@ -10,20 +10,20 @@ All inputs plain SI multiples (m, kN/m², degrees).
 import math
 from calc_core import S, T, N, TBL, CALC_ROW, MH, CheckContext
 
-# ── DK NA ground snow load zones (DK NA Table NA.1) ──────────────────────────
-_DK_SNOW_ZONES = {
-    '1': {'s_k': 1.0, 'desc': 'Størstedelen af Danmark (standard)'},
-    '2': {'s_k': 0.9, 'desc': 'Nordjyske kyst (DK NA zone 2)'},
-    '3': {'s_k': 1.5, 'desc': 'Højtliggende/kuperet terræn (DK NA zone 3)'},
-}
+# ── Terrænsnelast, DS/EN 1991-1-3 DK NA ───────────────────────────────────────
+# DK NA fastsætter s_k = 1,0 kN/m² for hele Danmark. Der har tidligere stået
+# tre "snezoner" her (0,9 / 1,0 / 1,5), som ikke findes i DK NA -- og zone 2
+# (0,9) lå 10 % på den usikre side. dk_zone modtages stadig, så ældre
+# dokumenter kan åbnes, men den ændrer ikke længere noget.
+S_K_DK_NA = 1.0
 
 
 def snow_load(
     label:          str   = "SN1",
     roof_type:      str   = "pitched",       # "flat" / "pitched" / "mono-pitch"
     alpha_deg:      float = 20.0,            # roof pitch angle [°]  (0 for flat)
-    s_k_kNm2:       float = 1.0,            # ground snow load [kN/m²] (DK NA zone 1)
-    dk_zone:        str   = "1",             # DK NA snow zone (1 / 2 / 3) if s_k not specified
+    s_k_kNm2:       float = 1.0,            # terrænsnelast [kN/m²], DK NA: 1,0 i hele Danmark
+    dk_zone:        str   = "1",             # ubrugt -- DK NA har én værdi for hele landet
     C_e:            float = 1.0,             # exposure coefficient (EC1-1-3 §5.2)
     C_t:            float = 1.0,             # thermal coefficient (EC1-1-3 §5.2)
     roof_span_m:    float = 8.0,             # horizontal span of roof [m]
@@ -87,11 +87,17 @@ def snow_load(
     ))
 
     blocks.append(S("Terrænsnelast  (DK NA)"))
-    zone_info = _DK_SNOW_ZONES.get(dk_zone, _DK_SNOW_ZONES['1'])
     blocks += [
-        CALC_ROW("Zone",  f"Zone {dk_zone}",             zone_info['desc']),
         CALC_ROW("s_k",   "karakteristisk terrænsnelast", f"{s_k_kNm2:.2f} kN/m²"),
     ]
+    if s_k_kNm2 < S_K_DK_NA - 1e-9:
+        blocks.append(N(
+            f"s_k = {s_k_kNm2:.2f} kN/m² er lavere end DK NA's s_k = {S_K_DK_NA:.1f} kN/m², "
+            "som gælder i hele Danmark. Afvigelsen skal begrundes i A1."))
+    elif s_k_kNm2 > S_K_DK_NA + 1e-9:
+        blocks.append(T(
+            f"s_k er sat højere end DK NA's {S_K_DK_NA:.1f} kN/m² (fx for højtliggende "
+            "lokalitet). Begrundelsen står i A1."))
 
     blocks.append(S("Taggeometri"))
     blocks += [

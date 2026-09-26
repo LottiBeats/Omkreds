@@ -9,40 +9,48 @@
  * • Hover between blocks → blue + add button
  * • ⠿ drag handle to reorder
  */
-import React, { useState, useRef, useEffect } from 'react'
-import { maxUtilization, utilColor } from '../CalcResultView.jsx'
+import React, { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
+import { maxUtilization, utilColor } from '../../lib/utilization.js'
+import { useConfirm } from '../../ui/Dialog.jsx'
+import { hashCalcInputs, hasCalcResult, isStaleResult, staleReason, calcRevision } from '../../lib/calcState.js'
 
+// Headings and text are the document itself and render at once. Every other
+// editor is loaded when it is first opened, which keeps the calc modules (and
+// KaTeX, which the result views need) out of the first download.
 import HeadingBlock      from './HeadingBlock.jsx'
-import TableBlock        from './TableBlock.jsx'
+const TableBlock = lazy(() => import('./TableBlock.jsx'))
 import DocListBlock      from './DocListBlock.jsx'
-import TextBlock         from './TextBlock.jsx'
-import ImageBlock        from './ImageBlock.jsx'
-import PythonBlock       from './PythonBlock.jsx'
-import CustomCalcBlock   from './CustomCalcBlock.jsx'
-import SteelBeamBlock    from './SteelBeamBlock.jsx'
-import SteelColumnBlock  from './SteelColumnBlock.jsx'
-import RCBeamBlock       from './RCBeamBlock.jsx'
-import RCColumnBlock     from './RCColumnBlock.jsx'
-import RCSlabBlock       from './RCSlabBlock.jsx'
-import TimberBeamBlock   from './TimberBeamBlock.jsx'
-import TimberColumnBlock from './TimberColumnBlock.jsx'
-import MasonryWallBlock  from './MasonryWallBlock.jsx'
-import BeamFemBlock      from './BeamFemBlock.jsx'
-import FrameFemBlock          from './FrameFemBlock.jsx'
-import PortalFrameFemBlock    from './PortalFrameFemBlock.jsx'
-import GeneralFrameFemBlock  from './GeneralFrameFemBlock.jsx'
-import FrameLoadCasesBlock  from './FrameLoadCasesBlock.jsx'
-import WindLoadBlock       from './WindLoadBlock.jsx'
-import SnowLoadBlock       from './SnowLoadBlock.jsx'
-import RoofDeadLoadBlock   from './RoofDeadLoadBlock.jsx'
-import FoundationBlock     from './FoundationBlock.jsx'
-import LoadComboBlock      from './LoadComboBlock.jsx'
-import BeamColumnBlock     from './BeamColumnBlock.jsx'
-import BoltConnectionBlock from './BoltConnectionBlock.jsx'
-import PlateGirderBlock    from './PlateGirderBlock.jsx'
-import SavedCalcBlock      from './SavedCalcBlock.jsx'
-import ControlPlanBlock    from './ControlPlanBlock.jsx'
-import ProjectBasisBlock   from './ProjectBasisBlock.jsx'
+// The text editor (TipTap) is loaded on demand; until then the same text is
+// shown formatted by RichTextStatic, so nothing jumps when it arrives.
+const TextBlock = lazy(() => import('./TextBlock.jsx'))
+import RichTextStatic    from './RichTextStatic.jsx'
+const ImageBlock = lazy(() => import('./ImageBlock.jsx'))
+const PythonBlock = lazy(() => import('./PythonBlock.jsx'))
+const CustomCalcBlock = lazy(() => import('./CustomCalcBlock.jsx'))
+const SteelBeamBlock = lazy(() => import('./SteelBeamBlock.jsx'))
+const SteelColumnBlock = lazy(() => import('./SteelColumnBlock.jsx'))
+const RCBeamBlock = lazy(() => import('./RCBeamBlock.jsx'))
+const RCColumnBlock = lazy(() => import('./RCColumnBlock.jsx'))
+const RCSlabBlock = lazy(() => import('./RCSlabBlock.jsx'))
+const TimberBeamBlock = lazy(() => import('./TimberBeamBlock.jsx'))
+const TimberColumnBlock = lazy(() => import('./TimberColumnBlock.jsx'))
+const MasonryWallBlock = lazy(() => import('./MasonryWallBlock.jsx'))
+const BeamFemBlock = lazy(() => import('./BeamFemBlock.jsx'))
+const FrameFemBlock = lazy(() => import('./FrameFemBlock.jsx'))
+const PortalFrameFemBlock = lazy(() => import('./PortalFrameFemBlock.jsx'))
+const GeneralFrameFemBlock = lazy(() => import('./GeneralFrameFemBlock.jsx'))
+const FrameLoadCasesBlock = lazy(() => import('./FrameLoadCasesBlock.jsx'))
+const WindLoadBlock = lazy(() => import('./WindLoadBlock.jsx'))
+const SnowLoadBlock = lazy(() => import('./SnowLoadBlock.jsx'))
+const RoofDeadLoadBlock = lazy(() => import('./RoofDeadLoadBlock.jsx'))
+const FoundationBlock = lazy(() => import('./FoundationBlock.jsx'))
+const LoadComboBlock = lazy(() => import('./LoadComboBlock.jsx'))
+const BeamColumnBlock = lazy(() => import('./BeamColumnBlock.jsx'))
+const BoltConnectionBlock = lazy(() => import('./BoltConnectionBlock.jsx'))
+const PlateGirderBlock = lazy(() => import('./PlateGirderBlock.jsx'))
+const SavedCalcBlock = lazy(() => import('./SavedCalcBlock.jsx'))
+const ControlPlanBlock = lazy(() => import('./ControlPlanBlock.jsx'))
+const ProjectBasisBlock = lazy(() => import('./ProjectBasisBlock.jsx'))
 
 // ── Block registry ────────────────────────────────────────────────────────────
 
@@ -50,7 +58,7 @@ import ProjectBasisBlock   from './ProjectBasisBlock.jsx'
 const BLOCK_TYPES = [
   { type: 'project_basis', label: 'Projektgrundlag (A1)', icon: 'A1', color: '#0f172a', component: ProjectBasisBlock,
     default: { title: 'Project Basis', consequence_class: 'CC2', wind_zone: 2, terrain_category: 'II',
-               snow_zone: 1, gamma_M0: 1.00, gamma_M1: 1.00, gamma_M2: 1.25,
+               gamma_M0: 1.00, gamma_M1: 1.00, gamma_M2: 1.25,
                gamma_c: 1.50, gamma_s: 1.15, gamma_M_timber: 1.30, _exports: null } },
   { type: 'heading',       label: 'Overskrift',        icon: 'H',   color: '#64748b', component: HeadingBlock,
     default: { level: 1, text: '' } },
@@ -317,74 +325,9 @@ const mkBadge = ok => ({
 })
 
 // ── Stale-result detection ────────────────────────────────────────────────────
-// A stored _result corresponds to the inputs the calc was run with.  When a
-// fresh result arrives, updateBlock() stamps a hash of those inputs on the
-// block (_input_hash).  If the inputs later change, the result is stale and
-// must not silently end up in an exported report.
-
-// Inputs are not the only thing a result depends on — the calculation itself
-// changes too. Bump the number here when a fix changes what a block computes
-// from unchanged inputs, and every stored result from before the fix is flagged
-// stale so it cannot be exported without being re-run.
-//
-//   general_frame_fem  2 — 2026-08-13: UDL directions were applied with the
-//                          sign reversed (a downward load acted upwards).
-//   general_frame_fem  3 — 2026-08-14: the section-force diagrams were drawn
-//                          by opsvis, which integrated its own distribution —
-//                          the moment curve could peak somewhere the table did
-//                          not. The figure captions in the PDF were also shifted
-//                          one place, so the moment curve was printed under the
-//                          heading "Deformeret form". A stored result carries
-//                          those figures with it, so it has to be re-run.
-const CALC_REVISION = {
-  general_frame_fem: 3,
-  // 2: den lukkede form regnede 1,35·g + 1,5·q med den varighed brugeren
-  // valgte. 1,35 findes ikke i DK NA, og én fast kombination kan ikke være
-  // dimensionsgivende for både et let og et tungt tag — k_mod afgør hvilken
-  // (EN 1995-1-1 §2.2.3). Gemte resultater er regnet på det gamle og skal
-  // markeres forældet, selv om inddata ikke har flyttet sig.
-  timber_beam: 2,
-}
-
-function calcRevision(type) {
-  return CALC_REVISION[type] ?? 1
-}
-
-export function hashCalcInputs(data) {
-  const entries = Object.entries(data || {})
-    .filter(([k]) => !k.startsWith('_') && k !== 'title')
-    .sort(([a], [b]) => a.localeCompare(b))
-  const str = JSON.stringify(entries)
-  let h = 5381
-  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0
-  return String(h)
-}
-
-export function hasCalcResult(block) {
-  const d = block?.data || {}
-  return !!(d._result || d._summary || d._output_text)
-}
-
-export function isStaleResult(block) {
-  const d = block?.data || {}
-  if (!hasCalcResult(block)) return false
-  // Computed by a superseded version of the calculation — stale whether or not
-  // the inputs have moved, and whether or not it predates the input hash.
-  if ((d._calc_rev ?? 1) !== calcRevision(block?.type)) return true
-  if (!d._input_hash) return false
-  return d._input_hash !== hashCalcInputs(d)
-}
-
-/** Why a result is stale — the two causes need different wording. */
-export function staleReason(block) {
-  const d = block?.data || {}
-  if (!hasCalcResult(block)) return null
-  if ((d._calc_rev ?? 1) !== calcRevision(block?.type))
-    return 'Beregningen er rettet siden resultatet blev regnet — kør den igen.'
-  if (d._input_hash && d._input_hash !== hashCalcInputs(d))
-    return 'Input er ændret siden sidste kørsel — kør beregningen igen.'
-  return null
-}
+// Lives in lib/calcState.js so the editor shell can read block state without
+// importing every block editor. Re-exported here for existing imports.
+export { hashCalcInputs, hasCalcResult, isStaleResult, staleReason }
 
 const staleBadgeStyle = {
   fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 2,
@@ -412,12 +355,7 @@ function BlockPreview({ block, project }) {
     }
 
     case 'text':
-      return (
-        <p style={{ fontSize: 14, lineHeight: 1.75, margin: 0, whiteSpace: 'pre-wrap',
-                    color: d.text ? '#333' : '#bbb' }}>
-          {d.text || 'Tomt afsnit — klik for at redigere'}
-        </p>
-      )
+      return <RichTextStatic text={d.text} />
 
     case 'image':
       return d.image_b64
@@ -464,7 +402,6 @@ function BlockPreview({ block, project }) {
       const cc  = d.consequence_class ?? 'CC2'
       const kfi = { CC1: 0.9, CC2: 1.0, CC3: 1.1 }[cc] ?? 1.0
       const wz  = d.wind_zone ?? 2
-      const sz  = d.snow_zone ?? 1
       return (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', fontSize: 13, padding: '2px 0' }}>
           <span style={{ fontWeight: 700, color: '#0f172a' }}>{d.title || 'Project Basis'}</span>
@@ -472,7 +409,7 @@ function BlockPreview({ block, project }) {
           <span style={{ color: '#475569' }}>K_FI = {kfi.toFixed(1)}</span>
           <span style={{ color: '#475569' }}>Wind Z{wz}</span>
           <span style={{ color: '#475569' }}>Terrain {d.terrain_category ?? 'II'}</span>
-          <span style={{ color: '#475569' }}>Snow Z{sz}</span>
+          <span style={{ color: '#475569' }}>s_k 1,0 kN/m²</span>
           <span style={{ color: '#475569' }}>γ_M0={d.gamma_M0 ?? 1.00}  γ_M1={d.gamma_M1 ?? 1.00}  γ_c={d.gamma_c ?? 1.50}</span>
         </div>
       )
@@ -715,7 +652,8 @@ function AddZone({ onAdd, templates = [], onAddTemplate, clipboard, onPaste }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock, project }) {
+export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock, project, focusRequest }) {
+  const confirm = useConfirm()
   const [selectedId,  setSelectedId]  = useState(null)
   // IDs of selected blocks where the editor is collapsed (preview only, blue border)
   const [minimised,   setMinimised]   = useState(() => new Set())
@@ -726,17 +664,50 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   const [dropId,      setDropId]      = useState(null)
   const pageRef = useRef(null)
 
-  // Click outside page → deselect
+  // Click outside page → deselect. Clicks inside dialogs and menus (rendered
+  // outside the page) must not count as "outside".
   useEffect(() => {
-    const fn = e => { if (pageRef.current && !pageRef.current.contains(e.target)) setSelectedId(null) }
+    const fn = e => {
+      if (!pageRef.current || pageRef.current.contains(e.target)) return
+      if (e.target.closest?.('.ui-overlay, .ui-menu, .ui-toasts, .fem-ws')) return
+      setSelectedId(null)
+    }
     document.addEventListener('pointerdown', fn)
     return () => document.removeEventListener('pointerdown', fn)
   }, [])
 
-  // ── Mutations ──────────────────────────────────────────────────────────
+  // Jump to a block on request (from the export and issue checklists)
+  useEffect(() => {
+    if (!focusRequest) return
+    const id = focusRequest.id
+    if (!blocks.some(b => b.id === id)) return
+    setSelectedId(id)
+    setMinimised(prev => { const s = new Set(prev); s.delete(id); return s })
+    requestAnimationFrame(() => {
+      const el = pageRef.current?.querySelector(`[data-block-id="${id}"]`)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      el.classList.remove('ed-flash'); void el.offsetWidth; el.classList.add('ed-flash')
+    })
+  }, [focusRequest])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  function updateBlock(i, b) {
-    const oldD = blocks[i]?.data || {}
+  // ── Mutations ──────────────────────────────────────────────────────────
+  //
+  // The rows below are memoised, so the handlers they receive must keep their
+  // identity between renders. They live on one stable object and read the
+  // current blocks through a ref; reassigning them every render keeps them
+  // current without giving the rows a reason to re-render.
+  const blocksRef = useRef(blocks)
+  blocksRef.current = blocks
+  const h = useRef({}).current
+
+  const reveal = (id) => setMinimised(prev => { const s = new Set(prev); s.delete(id); return s })
+
+  h.updateBlock = (id, b) => {
+    const cur = blocksRef.current
+    const i = cur.findIndex(x => x.id === id)
+    if (i < 0) return
+    const oldD = cur[i]?.data || {}
     const newD = b.data || {}
     // Fresh result arrived → stamp the input hash it was computed from.
     const gotNewResult =
@@ -753,63 +724,56 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
       const { _input_hash, _calc_rev, ...rest } = newD
       b = { ...b, data: rest }
     }
-    const n = [...blocks]; n[i] = b; onChange(n)
+    const n = [...cur]; n[i] = b; onChange(n)
   }
 
-  function addBlock(type, atIndex) {
+  h.insertAt = (atIndex, nb, select = true) => {
+    const n = [...blocksRef.current]; n.splice(atIndex, 0, nb); onChange(n)
+    if (select) { setSelectedId(nb.id); reveal(nb.id) }
+  }
+
+  h.addBlock = (type, atIndex) => {
     const def = TYPE_MAP[type]; if (!def) return
-    const nb = { id: Date.now(), type, data: { ...def.default } }
-    const n  = [...blocks]; n.splice(atIndex, 0, nb); onChange(n)
-    setSelectedId(nb.id)
-    setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
+    h.insertAt(atIndex, { id: Date.now(), type, data: { ...def.default } })
   }
 
-  function duplicateBlock(i) {
-    const src = blocks[i]
-    const nb  = { ...JSON.parse(JSON.stringify(src)), id: Date.now() }
-    const n   = [...blocks]; n.splice(i + 1, 0, nb); onChange(n)
-    setSelectedId(nb.id)
-    setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
+  h.duplicateBlock = (id) => {
+    const cur = blocksRef.current
+    const i = cur.findIndex(x => x.id === id)
+    if (i < 0) return
+    h.insertAt(i + 1, { ...JSON.parse(JSON.stringify(cur[i])), id: Date.now() })
   }
 
-  function pasteBlock(atIndex) {
+  h.pasteBlock = (atIndex) => {
     if (!clipboard) return
-    const nb = { ...JSON.parse(JSON.stringify(clipboard)), id: Date.now() }
-    const n  = [...blocks]; n.splice(atIndex, 0, nb); onChange(n)
-    setSelectedId(nb.id)
-    setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
+    h.insertAt(atIndex, { ...JSON.parse(JSON.stringify(clipboard)), id: Date.now() })
   }
 
-  function addSavedCalcBlock(template, atIndex) {
-    const nb = {
+  h.addSavedCalcBlock = (template, atIndex) => {
+    h.insertAt(atIndex, {
       id: Date.now(),
       type: 'saved_calc',
       data: { title: template.name, template_id: template.id, params: {}, _result: null },
-    }
-    const n = [...blocks]; n.splice(atIndex, 0, nb); onChange(n)
-    setSelectedId(nb.id)
-    setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
+    })
   }
 
-  function addBlockAfter(blockId, type, customData = {}) {
+  h.addBlockAfter = (blockId, type, customData = {}) => {
     const def = TYPE_MAP[type]; if (!def) return
-    const idx = blocks.findIndex(b => b.id === blockId)
-    const insertAt = idx >= 0 ? idx + 1 : blocks.length
-    const nb = { id: Date.now(), type, data: { ...def.default, ...customData } }
-    const n = [...blocks]; n.splice(insertAt, 0, nb); onChange(n)
-    setSelectedId(nb.id)
-    setMinimised(prev => { const s = new Set(prev); s.delete(nb.id); return s })
+    const idx = blocksRef.current.findIndex(b => b.id === blockId)
+    h.insertAt(idx >= 0 ? idx + 1 : blocksRef.current.length,
+               { id: Date.now(), type, data: { ...def.default, ...customData } })
   }
 
-  function addBlocksAfter(blockId, newBlocks) {
-    const idx = blocks.findIndex(b => b.id === blockId)
-    const insertAt = idx >= 0 ? idx + 1 : blocks.length
+  h.addBlocksAfter = (blockId, newBlocks) => {
+    const cur = blocksRef.current
+    const idx = cur.findIndex(b => b.id === blockId)
+    const insertAt = idx >= 0 ? idx + 1 : cur.length
     const created = newBlocks.map((b, i) => ({
       id: Date.now() + i + 1,
       type: b.type,
       data: { ...(TYPE_MAP[b.type]?.default ?? {}), ...b.data },
     }))
-    const n = [...blocks]; n.splice(insertAt, 0, ...created); onChange(n)
+    const n = [...cur]; n.splice(insertAt, 0, ...created); onChange(n)
     setMinimised(prev => {
       const s = new Set(prev)
       created.forEach(b => s.delete(b.id))
@@ -817,26 +781,45 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     })
   }
 
-  function deleteBlock(i, e) {
-    e.stopPropagation()
-    if (!window.confirm('Delete this block?')) return
-    if (blocks[i].id === selectedId) setSelectedId(null)
-    onChange(blocks.filter((_, j) => j !== i))
+  h.deleteBlock = async (id) => {
+    const b = blocksRef.current.find(x => x.id === id)
+    if (!b) return
+    const name = b.data?.title || b.data?.text || TYPE_MAP[b.type]?.label || 'blokken'
+    const ok = await confirm({
+      title: `Slet "${String(name).slice(0, 60)}"?`,
+      body: 'Du kan fortryde med Ctrl+Z.',
+      confirmLabel: 'Slet blok',
+      danger: true,
+    })
+    if (!ok) return
+    if (id === selectedId) setSelectedId(null)
+    onChange(blocksRef.current.filter(x => x.id !== id))
   }
 
-  function moveUp(i)   { if (i === 0) return; const n = [...blocks]; [n[i-1],n[i]]=[n[i],n[i-1]]; onChange(n) }
-  function moveDown(i) { if (i === blocks.length-1) return; const n = [...blocks]; [n[i],n[i+1]]=[n[i+1],n[i]]; onChange(n) }
+  h.move = (id, dir) => {
+    const n = [...blocksRef.current]
+    const i = n.findIndex(x => x.id === id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= n.length) return
+    ;[n[i], n[j]] = [n[j], n[i]]
+    onChange(n)
+  }
 
-  function toggleMinimise(id, e) {
-    e.stopPropagation()
+  h.toggleMinimise = (id) => {
     setMinimised(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   }
 
-  function selectBlock(id) {
+  h.selectBlock = (id) => {
     setSelectedId(id)
-    // Auto-expand when selecting
-    setMinimised(prev => { const s = new Set(prev); s.delete(id); return s })
+    reveal(id)   // auto-expand when selecting
   }
+
+  h.copyBlock = (id) => {
+    const b = blocksRef.current.find(x => x.id === id)
+    if (b) onCopyBlock?.(b)
+  }
+
+  h.openTemplateEditor = (id) => onOpenTemplateEditor?.(id)
 
   // ── Drag ──────────────────────────────────────────────────────────────
 
@@ -855,30 +838,32 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   // selv -- saa e.target dér er den samme uanset, hvad man tog fat i. Musen
   // ved det, og mousedown kommer foerst.
   const fraHaandtag = useRef(false)
-
-  function onMouseDownBlok(e) {
-    fraHaandtag.current = !!e.target.closest?.('[data-drag-handle]')
-  }
+  const traekId = useRef(null)
 
   function slutTraek() {
-    setDragId(null); setDropId(null); fraHaandtag.current = false
+    setDragId(null); setDropId(null); fraHaandtag.current = false; traekId.current = null
   }
 
-  function onDragStart(e, id) {
+  h.onMouseDownBlok = (e) => {
+    fraHaandtag.current = !!e.target.closest?.('[data-drag-handle]')
+  }
+  h.onDragStart = (e, id) => {
     if (!fraHaandtag.current) { e.preventDefault(); return }
+    traekId.current = id
     setDragId(id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(id))
   }
-  function onDragOver(e, id)  { e.preventDefault(); if (id !== dragId) setDropId(id) }
-  function onDrop(e, id) {
+  h.onDragOver = (e, id) => { e.preventDefault(); setDropId(d => (d === id ? d : id)) }
+  h.onDrop = (e, id) => {
     e.preventDefault()
-    const fra = blocks.findIndex(b => b.id === dragId)
-    const til = blocks.findIndex(b => b.id === id)
+    const cur = blocksRef.current
+    const fra = cur.findIndex(b => b.id === traekId.current)
+    const til = cur.findIndex(b => b.id === id)
     if (fra >= 0 && til >= 0 && fra !== til) {
-      const n = [...blocks]; const [m] = n.splice(fra, 1); n.splice(til, 0, m); onChange(n)
+      const n = [...cur]; const [m] = n.splice(fra, 1); n.splice(til, 0, m); onChange(n)
     }
     slutTraek()
   }
-  function onDragEnd() { slutTraek() }
+  h.onDragEnd = () => slutTraek()
 
   // Nettet under traekket.
   //
@@ -919,10 +904,10 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     <div style={s.outer}>
 
       {/* ── Left block-type panel ── */}
-      <aside style={s.panel}>
+      <aside style={s.panel} aria-label="Tilføj blok">
         {PANEL_GROUPS.map((group, gi) => (
           <div key={group.label}>
-            <div style={{ ...s.panelSection, borderTop: gi === 0 ? 'none' : '1px solid #f0f0f0' }}>
+            <div style={{ ...s.panelSection, borderTop: gi === 0 ? 'none' : '1px solid var(--line)' }}>
               {group.label}
             </div>
             {group.types.map(type => {
@@ -931,24 +916,12 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
               return (
                 <button
                   key={def.type}
+                  className="bl-panel-btn"
                   style={s.panelBtn}
-                  onClick={() => addBlock(def.type, blocks.length)}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.background = '#f1f5f9'
-                    e.currentTarget.style.borderLeftColor = def.color ?? '#1e3a5f'
-                    e.currentTarget.style.color = '#0f172a'
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.background = 'none'
-                    e.currentTarget.style.borderLeftColor = 'transparent'
-                    e.currentTarget.style.color = '#475569'
-                  }}
+                  onClick={() => h.addBlock(def.type, blocks.length)}
+                  title={`Tilføj ${def.label} nederst i dokumentet`}
                 >
-                  <span style={{
-                    ...s.panelIcon,
-                    background: def.color ?? '#64748b',
-                    color: '#fff',
-                  }}>{def.icon}</span>
+                  <span style={{ ...s.panelIcon, background: def.color ?? '#64748b' }}>{def.icon}</span>
                   {def.label}
                 </button>
               )
@@ -958,52 +931,32 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
         {/* ── My Calculations ── */}
         <div>
-          <div style={{ ...s.panelSection, borderTop: '1px solid #f0f0f0' }}>
+          <div style={{ ...s.panelSection, borderTop: '1px solid var(--line)' }}>
             Mine beregninger
           </div>
 
           {templates.length === 0 && (
-            <div style={{ padding: '4px 12px 6px', fontSize: 11, color: '#bbb', fontStyle: 'italic' }}>
-              Ingen skabeloner endnu
+            <div style={{ padding: '4px 12px 6px', fontSize: 11.5, color: 'var(--faint)' }}>
+              Ingen gemte beregninger endnu
             </div>
           )}
 
           {templates.map(tmpl => (
             <button
               key={tmpl.id}
+              className="bl-panel-btn"
               style={s.panelBtn}
-              onClick={() => addSavedCalcBlock(tmpl, blocks.length)}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = '#f5f5f7'
-                e.currentTarget.style.borderLeftColor = '#4a90d9'
-                e.currentTarget.style.color = '#1c1c1e'
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'none'
-                e.currentTarget.style.borderLeftColor = 'transparent'
-                e.currentTarget.style.color = '#555'
-              }}
+              onClick={() => h.addSavedCalcBlock(tmpl, blocks.length)}
             >
-              <span style={{ ...s.panelIcon, background: '#eef2ff', color: '#4a90d9' }}>⚙</span>
+              <span style={{ ...s.panelIcon, background: 'var(--sunk)', color: 'var(--ink-2)' }}>⚙</span>
               {tmpl.name}
             </button>
           ))}
 
           {onManageTemplates && (
-            <button
-              style={{ ...s.panelBtn, color: '#4a90d9', marginTop: 2 }}
-              onClick={onManageTemplates}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = '#f0f7ff'
-                e.currentTarget.style.borderLeftColor = '#4a90d9'
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'none'
-                e.currentTarget.style.borderLeftColor = 'transparent'
-              }}
-            >
-              <span style={{ ...s.panelIcon, background: '#e8f0fe', color: '#4a90d9' }}>✎</span>
-              Administrér skabeloner
+            <button className="bl-panel-btn" style={{ ...s.panelBtn, color: 'var(--brand-ink)', marginTop: 2 }} onClick={onManageTemplates}>
+              <span style={{ ...s.panelIcon, background: 'var(--brand-wash)', color: 'var(--brand-ink)' }}>✎</span>
+              Administrér beregninger
             </button>
           )}
         </div>
@@ -1015,167 +968,193 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
         {blocks.length === 0 && (
           <div style={s.empty}>
-            Vælg en bloktype i panelet til venstre, eller hold musen her og brug <strong>+</strong>
+            Dokumentet er tomt. Vælg en bloktype i panelet til venstre, start fra en skabelon
+            ovenfor, eller hold musen her og brug <strong>+</strong>.
           </div>
         )}
 
         <AddZone
-          onAdd={t => addBlock(t, 0)}
+          onAdd={t => h.addBlock(t, 0)}
           templates={templates}
-          onAddTemplate={t => addSavedCalcBlock(t, 0)}
+          onAddTemplate={t => h.addSavedCalcBlock(t, 0)}
           clipboard={clipboard}
-          onPaste={() => pasteBlock(0)}
+          onPaste={() => h.pasteBlock(0)}
         />
 
-        {blocks.map((block, index) => {
-          const Comp            = TYPE_MAP[block.type]?.component
-          const isSelected      = selectedId === block.id
-          const isMinimised     = minimised.has(block.id)
-          const showEditor      = isSelected && !isMinimised && !!Comp
-          const isInlineEditable = ['text', 'heading'].includes(block.type)
-          const isDragging      = dragId === block.id
-          const isTarget        = dropId === block.id && dragId !== block.id
-
-          return (
-            <React.Fragment key={block.id}>
-              <div
-                draggable
-                onMouseDown={onMouseDownBlok}
-                onDragStart={e => onDragStart(e, block.id)}
-                onDragOver={e  => onDragOver(e, block.id)}
-                onDrop={e      => onDrop(e, block.id)}
-                onDragEnd={onDragEnd}
-                onClick={e => { e.stopPropagation(); selectBlock(block.id) }}
-                style={{
-                  ...s.block,
-                  ...(isSelected ? s.blockSelected : {}),
-                  ...(isTarget   ? { borderTop: '2px solid #4a90d9' } : {}),
-                  opacity: isDragging ? 0.3 : 1,
-                }}
-              >
-                {/* Floating controls — drag handle always, others when selected */}
-                <div style={s.floatControls}>
-                  {/* Det eneste sted, blokken kan trækkes i. Derfor er den
-                      tydeligere end før — et håndtag, der er det eneste, der
-                      virker, må ikke være det svageste på siden. */}
-                  <span
-                    data-drag-handle
-                    style={s.dragHandle}
-                    onPointerDown={e => e.stopPropagation()}
-                    title="Træk for at flytte blokken"
-                  >⠿</span>
-                  {isSelected && (
-                    <span style={s.floatBtns} onClick={e => e.stopPropagation()}>
-                      <button style={s.fb} onClick={e => toggleMinimise(block.id, e)}
-                        title={isMinimised ? 'Expand' : 'Minimise'}>
-                        {isMinimised ? '▼' : '▲'}
-                      </button>
-                      <button style={s.fb} onClick={e => { e.stopPropagation(); moveUp(index) }}   disabled={index === 0}                title="Flyt op">↑</button>
-                      <button style={s.fb} onClick={e => { e.stopPropagation(); moveDown(index) }} disabled={index === blocks.length-1} title="Flyt ned">↓</button>
-                      <button style={s.fb} onClick={e => { e.stopPropagation(); duplicateBlock(index) }} title="Duplikér blok">⧉</button>
-                      <button style={s.fb} onClick={e => { e.stopPropagation(); onCopyBlock?.(blocks[index]) }} title="Kopiér blok (kan indsættes i alle dokumenter)">📋</button>
-                      {clipboard && (
-                        <button style={{ ...s.fb, color: '#4a90d9' }}
-                          onClick={e => { e.stopPropagation(); pasteBlock(index + 1) }}
-                          title="Indsæt kopieret blok efter denne">📋+</button>
-                      )}
-                      <button style={{ ...s.fb, ...s.fbDel }} onClick={e => deleteBlock(index, e)} title="Slet">✕</button>
-                    </span>
-                  )}
-                </div>
-
-                {/* Content */}
-                <div style={s.blockBody}>
-                  {isInlineEditable ? (
-                    /* Text + heading: always render editor inline as the document content */
-                    <div onClick={e => e.stopPropagation()}>
-                      <Comp
-                        block={block}
-                        onChange={b => updateBlock(index, b)}
-                        isSelected={isSelected}
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      {/* Preview is always shown for non-inline blocks */}
-                      <BlockPreview block={block} project={project} />
-
-                      {/* Editor — only when selected AND not minimised */}
-                      {showEditor && (
-                        <div
-                          style={s.editor}
-                          onClick={e => e.stopPropagation()}
-                        >
-                          {isStaleResult(block) && (
-                            <div style={{
-                              background: '#fff7ed', border: '1px solid #fed7aa',
-                              color: '#c2410c', fontSize: 12, fontWeight: 600,
-                              padding: '7px 12px', marginBottom: 10,
-                              display: 'flex', alignItems: 'center', gap: 8,
-                            }}>
-                              <span>⟳</span>
-                              {staleReason(block)}
-                            </div>
-                          )}
-                          <Comp
-                            block={block}
-                            onChange={b => updateBlock(index, b)}
-                            onOpenTemplateEditor={onOpenTemplateEditor}
-                            blocks={blocks}
-                            onAddBlock={(type, data) => addBlockAfter(block.id, type, data)}
-                            onAddBlocks={(arr) => addBlocksAfter(block.id, arr)}
-                          />
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-              </div>
-
-              <AddZone
-                onAdd={t => addBlock(t, index + 1)}
-                templates={templates}
-                onAddTemplate={t => addSavedCalcBlock(t, index + 1)}
-                clipboard={clipboard}
-                onPaste={() => pasteBlock(index + 1)}
-              />
-            </React.Fragment>
-          )
-        })}
+        {blocks.map((block, index) => (
+          <BlockRow
+            key={block.id}
+            block={block}
+            index={index}
+            isFirst={index === 0}
+            isLast={index === blocks.length - 1}
+            isSelected={selectedId === block.id}
+            isMinimised={minimised.has(block.id)}
+            isDragging={dragId === block.id}
+            isTarget={dropId === block.id && dragId !== block.id}
+            // Only the open editor needs the sibling blocks (for its pickers)
+            // and only the document list needs the project — passing them to
+            // every row would re-render every row on every keystroke.
+            blocks={selectedId === block.id ? blocks : null}
+            project={block.type === 'doclist' ? project : null}
+            templates={templates}
+            clipboard={clipboard}
+            h={h}
+          />
+        ))}
 
       </div>
     </div>
   )
 }
 
+// ── One block + the add-zone below it ─────────────────────────────────────────
+
+const BlockRow = React.memo(function BlockRow({
+  block, index, isFirst, isLast, isSelected, isMinimised, isDragging, isTarget,
+  blocks, project, templates, clipboard, h,
+}) {
+  const Comp             = TYPE_MAP[block.type]?.component
+  const showEditor       = isSelected && !isMinimised && !!Comp
+  const isInlineEditable = ['text', 'heading'].includes(block.type)
+  const id = block.id
+  const onBlockChange = useCallback(b => h.updateBlock(id, b), [h, id])
+  const onAddBlock    = useCallback((type, data) => h.addBlockAfter(id, type, data), [h, id])
+  const onAddBlocks   = useCallback((arr) => h.addBlocksAfter(id, arr), [h, id])
+
+  return (
+    <>
+      <div
+        data-block-id={id}
+        draggable
+        onMouseDown={h.onMouseDownBlok}
+        onDragStart={e => h.onDragStart(e, id)}
+        onDragOver={e  => h.onDragOver(e, id)}
+        onDrop={e      => h.onDrop(e, id)}
+        onDragEnd={h.onDragEnd}
+        onClick={e => { e.stopPropagation(); h.selectBlock(id) }}
+        style={{
+          ...s.block,
+          ...(isSelected ? s.blockSelected : {}),
+          ...(isTarget   ? { borderTop: '2px solid var(--brand)' } : {}),
+          opacity: isDragging ? 0.3 : 1,
+        }}
+      >
+        {/* Floating controls — drag handle always, others when selected */}
+        <div style={s.floatControls}>
+          {/* Det eneste sted, blokken kan trækkes i. Derfor er den
+              tydeligere end før — et håndtag, der er det eneste, der
+              virker, må ikke være det svageste på siden. */}
+          <span
+            data-drag-handle
+            style={s.dragHandle}
+            onPointerDown={e => e.stopPropagation()}
+            title="Træk for at flytte blokken"
+          >⠿</span>
+          {isSelected && (
+            <span style={s.floatBtns} onClick={e => e.stopPropagation()}>
+              <button style={s.fb} onClick={() => h.toggleMinimise(id)}
+                title={isMinimised ? 'Vis indtastning' : 'Skjul indtastning'}>
+                {isMinimised ? '▼' : '▲'}
+              </button>
+              <button style={s.fb} onClick={() => h.move(id, -1)} disabled={isFirst} title="Flyt op">↑</button>
+              <button style={s.fb} onClick={() => h.move(id, +1)} disabled={isLast}  title="Flyt ned">↓</button>
+              <button style={s.fb} onClick={() => h.duplicateBlock(id)} title="Duplikér blok">⧉</button>
+              <button style={s.fb} onClick={() => h.copyBlock(id)} title="Kopiér blok (kan indsættes i alle dokumenter)">Kopiér</button>
+              {clipboard && (
+                <button style={s.fb} onClick={() => h.pasteBlock(index + 1)} title="Indsæt kopieret blok efter denne">Indsæt</button>
+              )}
+              <button style={{ ...s.fb, ...s.fbDel }} onClick={() => h.deleteBlock(id)} title="Slet blok">Slet</button>
+            </span>
+          )}
+        </div>
+
+        {/* Content */}
+        <div style={s.blockBody}>
+          {isInlineEditable ? (
+            /* Text + heading: always render editor inline as the document content */
+            <div onClick={e => e.stopPropagation()}>
+              <Suspense fallback={<BlockPreview block={block} project={project} />}>
+                <Comp block={block} onChange={onBlockChange} isSelected={isSelected} />
+              </Suspense>
+            </div>
+          ) : (
+            <>
+              {/* Preview is always shown for non-inline blocks */}
+              <BlockPreview block={block} project={project} />
+
+              {/* Editor — only when selected AND not minimised */}
+              {showEditor && (
+                <div style={s.editor} onClick={e => e.stopPropagation()}>
+                  {isStaleResult(block) && (
+                    <div style={{
+                      background: 'var(--warn-wash)', border: '1px solid #f3d3a4',
+                      color: 'var(--warn)', fontSize: 12, fontWeight: 600,
+                      padding: '7px 12px', marginBottom: 10, borderRadius: 'var(--radius-sm)',
+                      display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
+                      <span>⟳</span>
+                      {staleReason(block)}
+                    </div>
+                  )}
+                  <Suspense fallback={<div style={{ padding: 12, color: 'var(--muted)', fontSize: 12 }}>Indlæser…</div>}>
+                    <Comp
+                      block={block}
+                      onChange={onBlockChange}
+                      onOpenTemplateEditor={h.openTemplateEditor}
+                      blocks={blocks ?? []}
+                      onAddBlock={onAddBlock}
+                      onAddBlocks={onAddBlocks}
+                    />
+                  </Suspense>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <AddZone
+        onAdd={t => h.addBlock(t, index + 1)}
+        templates={templates}
+        onAddTemplate={t => h.addSavedCalcBlock(t, index + 1)}
+        clipboard={clipboard}
+        onPaste={() => h.pasteBlock(index + 1)}
+      />
+    </>
+  )
+})
+
 // ── Styles ────────────────────────────────────────────────────────────────────
+// Hover states for the palette live in editor.css (.bl-panel-btn).
 
 const s = {
   outer: {
     display:    'flex',
-    gap:        24,
+    gap:        20,
     alignItems: 'flex-start',
     minHeight:  '100%',
   },
 
   // ── Left panel ────────────────────────────────────────────────────────
   panel: {
-    width:      172,
-    flexShrink: 0,
-    background: '#fff',
-    border:     '1px solid #e2e8f0',
-    paddingBottom: 12,
-    position:   'sticky',
-    top:        0,
-    maxHeight:  'calc(100vh - 48px)',
-    overflowY:  'auto',
+    width:        184,
+    flexShrink:   0,
+    background:   'var(--surface)',
+    border:       '1px solid var(--line)',
+    borderRadius: 'var(--radius)',
+    paddingBottom: 10,
+    position:     'sticky',
+    top:          0,
+    maxHeight:    'calc(100vh - 140px)',
+    overflowY:    'auto',
   },
   panelSection: {
-    fontSize:      9,
-    fontWeight:    700,
-    color:         '#94a3b8',
-    letterSpacing: '0.1em',
+    fontSize:      10.5,
+    fontWeight:    600,
+    fontFamily:    'var(--font-mono)',
+    color:         'var(--faint)',
+    letterSpacing: '0.08em',
     textTransform: 'uppercase',
     padding:       '12px 12px 4px',
   },
@@ -1184,16 +1163,13 @@ const s = {
     alignItems: 'center',
     gap:        8,
     width:      '100%',
-    background: 'none',
     border:     'none',
-    borderLeft: '3px solid transparent',
     padding:    '5px 12px',
-    fontSize:   11,
-    color:      '#475569',
+    fontSize:   12.5,
+    color:      'var(--ink-2)',
     textAlign:  'left',
     cursor:     'pointer',
     fontFamily: 'inherit',
-    transition: 'background 0.12s, border-color 0.12s, color 0.12s',
   },
   panelIcon: {
     display:        'inline-flex',
@@ -1203,9 +1179,10 @@ const s = {
     height: 18,
     fontSize:   9,
     fontWeight: 700,
-    fontFamily: 'var(--font-mono, monospace)',
+    fontFamily: 'var(--font-mono)',
     letterSpacing: '0.04em',
     flexShrink: 0,
+    borderRadius: 3,
     color: '#fff',
   },
 
@@ -1213,27 +1190,28 @@ const s = {
   page: {
     flex:       1,
     minWidth:   0,
-    maxWidth:   720,
-    background: '#fff',
-    padding:    '48px 64px 80px',
-    boxShadow:  '0 1px 4px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.04)',
+    maxWidth:   760,
+    background: 'var(--surface)',
+    padding:    '44px 56px 80px',
+    boxShadow:  'var(--shadow-doc)',
+    borderRadius: 2,
     boxSizing:  'border-box',
   },
   empty: {
-    color: '#bbb', fontSize: 13, padding: '32px 0 8px', textAlign: 'center',
+    color: 'var(--muted)', fontSize: 13, padding: '32px 0 8px', textAlign: 'center', lineHeight: 1.6,
   },
 
   // ── Individual block ──────────────────────────────────────────────────
   block: {
     position:    'relative',
     paddingLeft: 12,
-    marginLeft:  -12,
+    marginLeft:  -15,
     borderLeft:  '3px solid transparent',
     transition:  'border-color 0.1s',
     cursor:      'pointer',
   },
   blockSelected: {
-    borderLeft: '3px solid #4a90d9',
+    borderLeft: '3px solid var(--brand)',
     cursor:     'default',
   },
 
@@ -1248,19 +1226,19 @@ const s = {
     zIndex:     10,
   },
   dragHandle: {
-    color: '#9A9AA0', cursor: 'grab', fontSize: 14,
+    color: 'var(--faint)', cursor: 'grab', fontSize: 14,
     padding: '2px 4px', userSelect: 'none', lineHeight: 1,
   },
   floatBtns: {
     display: 'flex', gap: 2,
   },
   fb: {
-    background: '#f5f5f7', border: '1px solid #e0e0e0',
-    padding: '2px 6px', fontSize: 10, color: '#666',
+    background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 3,
+    padding: '2px 7px', fontSize: 11, color: 'var(--ink-2)',
     cursor: 'pointer', lineHeight: 1.5,
   },
   fbDel: {
-    color: '#c0392b', background: '#fdf3f2', border: '1px solid #f5c6c6',
+    color: 'var(--fail)', borderColor: '#f1c5c5',
   },
 
   blockBody: {
@@ -1271,6 +1249,6 @@ const s = {
   editor: {
     marginTop:  14,
     paddingTop: 14,
-    borderTop:  '1px solid #eef2f8',
+    borderTop:  '1px solid var(--line)',
   },
 }

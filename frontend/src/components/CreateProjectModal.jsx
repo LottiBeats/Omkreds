@@ -277,7 +277,7 @@ const styles = {
     color:      '#555',
   },
   createBtn: {
-    background:  '#111',
+    background:  'var(--brand)',
     color:       '#fff',
     border:      'none',
     padding:     '9px 20px',
@@ -285,6 +285,6 @@ const styles = {
     fontWeight:  700,
     fontFamily:  'inherit',
     cursor:      'pointer',
-    letterSpacing: '0.04em',
+    borderRadius: 'var(--radius-sm)',
   },
 }

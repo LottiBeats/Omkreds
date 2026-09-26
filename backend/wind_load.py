@@ -87,7 +87,10 @@ def wind_load(
 
     # ── Wall net pressures [kN/m²]
     w_windward = c_pe_windward * q_p - c_pi * q_p   # external - internal
-    w_leeward  = c_pe_leeward  * q_p + c_pi * q_p   # external (suction) + internal suction
+    # Samme fortegnsregel som luvsiden: w = (c_pe − c_pi)·q_p. Her stod der
+    # "+ c_pi", så et indvendigt overtryk (c_pi = +0,2) formindskede sugningen
+    # på læsiden i stedet for at forøge den: −0,3·q_p i stedet for −0,7·q_p.
+    w_leeward  = c_pe_leeward  * q_p - c_pi * q_p   # external - internal
     w_net_total = (c_pe_windward - c_pe_leeward) * q_p  # simplified total horizontal pressure
 
     # ── h/d ratio (for reference)
@@ -144,7 +147,7 @@ def wind_load(
           "(positiv = tryk ind mod fladen)."),
         CALC_ROW("w_los",     "= (c_pe,los − c_pi) · q_p",
                  f"{w_windward:.3f} kN/m²"),
-        CALC_ROW("w_læ",      "= (c_pe,læ + c_pi) · q_p",
+        CALC_ROW("w_læ",      "= (c_pe,læ − c_pi) · q_p",
                  f"{w_leeward:.3f} kN/m²"),
         CALC_ROW("w_i alt",   "= (c_pe,los − c_pe,læ) · q_p  (samlet vandret)",
                  f"{w_net_total:.3f} kN/m²"),

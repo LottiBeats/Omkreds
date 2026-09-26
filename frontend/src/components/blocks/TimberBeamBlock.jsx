@@ -73,10 +73,23 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
   const femE = isGenFem ? selElem?.E_GPa : undefined
   const stivhedIkkeTrae = source === 'fem' && femE != null && femE > 30
 
+  // For træ er det ikke det største moment, der er dimensionerende, men den
+  // kombination, der giver størst M/k_mod (EN 1995-1-1 §2.2.3): et lidt mindre
+  // moment fra en langtidslast kan være værre end det største moment med vind
+  // som ledsagende last. FEM-kørslen har allerede fundet den kombination pr.
+  // anvendelsesklasse (timber-indhyldningen). Før blev M_max brugt sammen med
+  // varigheden fra M_max-kombinationen, hvilket kan ligge på den usikre side.
+  const timberGov = (isGenFem && selEnd === 'max')
+    ? selElem?.timber?.[d.service_class ?? 1] ?? null
+    : null
+
   function getFemMV() {
     if (!selFem) return {}
     if (!isGenFem) return { M: femSummary?.M_Ed_kNm, V: femSummary?.V_Ed_kN }
     if (!selElem) return {}
+    if (timberGov && typeof timberGov.M_Ed_kNm === 'number') {
+      return { M: Math.abs(timberGov.M_Ed_kNm), V: Math.abs(timberGov.V_Ed_kN ?? selElem.V_max_kN), duration: timberGov.duration, combo: timberGov.combo }
+    }
     const M = selEnd === 'i' ? Math.abs(selElem.M_i_kNm)
             : selEnd === 'j' ? Math.abs(selElem.M_j_kNm)
             : selElem.M_max_kNm
@@ -190,16 +203,15 @@ export default function TimberBeamBlock({ block, onChange, blocks = [] }) {
         // via max(E_d / k_mod) — not just max(E_d). EN 1995-1-1 §2.2.3.
         payload.uls_combinations = comboExp.uls_combinations ?? null
       } else if (source === 'fem' && femReady) {
-        const { M, V } = getFemMV()
+        const { M, V, duration, combo } = getFemMV()
         payload.M_Ed_kNm_direct = M
         payload.V_Ed_kN_direct  = V
         payload.fem_label       = isGenFem
-          ? `${selFem?.data?.title ?? 'Frame FEM'} — ${selElem?.label ?? ''}`
+          ? `${selFem?.data?.title ?? 'Frame FEM'} — ${selElem?.label ?? ''}${combo ? ` — ${combo} (størst M/k_mod)` : ''}`
           : selFem?.data?.title ?? 'Beam FEM'
-        // Auto-select k_mod load duration from the governing combination duration
-        if (selElem?.M_duration) {
-          payload.load_duration = selElem.M_duration
-        }
+        // k_mod-varigheden følger den kombination, momentet kommer fra
+        if (duration) payload.load_duration = duration
+        else if (selElem?.M_duration) payload.load_duration = selElem.M_duration
       }
 
       const blocks_result = await calcTimberBeam(payload)

@@ -16,6 +16,7 @@
  * is how the documents are delivered and revised in practice.
  */
 import { useEffect, useState } from 'react'
+import { ProblemList } from './editor/ExportCheckDialog.jsx'
 
 const BRAND = '#d94a2b'
 
@@ -45,6 +46,8 @@ export default function IssueDocumentModal({
   metadata = {},
   revisions = [],
   integrity = { stale: 0, unrun: 0 },
+  problems: problemList = [],   // named stale/unrun calculations (docStatus.docProblems)
+  onJump,                       // go to one of them
   busy = false,
   onIssue,
   onClose,
@@ -55,7 +58,7 @@ export default function IssueDocumentModal({
   const [override,    setOverride]    = useState(false)
   const [reason,      setReason]      = useState('')
 
-  const problems = (integrity.stale || 0) + (integrity.unrun || 0)
+  const problems = (integrity.stale || 0) + (integrity.unrun || 0) + (integrity.missing || 0)
   const blocked  = problems > 0 && !(override && reason.trim())
   const missingSignatures = !metadata.engineer || !metadata.checker
   const canIssue = !busy && !blocked && revision.trim() && description.trim()
@@ -95,7 +98,7 @@ export default function IssueDocumentModal({
           {/* Integrity — the reason issuing is a separate action from exporting */}
           {problems === 0 ? (
             <div style={S.ok}>
-              ✓ Alle beregninger i dokumentet er kørt og opdaterede.
+              ✓ Alle beregninger er kørt og opdaterede, og alle felter er udfyldt.
             </div>
           ) : (
             <div style={S.warn}>
@@ -107,11 +110,20 @@ export default function IssueDocumentModal({
                   <li>{integrity.stale} beregning{integrity.stale > 1 ? 'er' : ''} har
                       ændrede input siden sidste kørsel</li>
                 )}
+                {integrity.missing > 0 && (
+                  <li>{integrity.missing} felt{integrity.missing > 1 ? 'er' : ''} fra
+                      skabelonen er ikke udfyldt (fx [adresse] eller …)</li>
+                )}
                 {integrity.unrun > 0 && (
                   <li>{integrity.unrun} beregning{integrity.unrun > 1 ? 'er' : ''} er
                       ikke kørt endnu</li>
                 )}
               </ul>
+              {problemList.length > 0 && onJump && (
+                <div style={{ margin: '4px 0 10px' }}>
+                  <ProblemList problems={problemList} docId={docId} onJump={onJump} />
+                </div>
+              )}
               <label style={S.checkRow}>
                 <input
                   type="checkbox"

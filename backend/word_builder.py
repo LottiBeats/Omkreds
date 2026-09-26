@@ -29,6 +29,7 @@ from word_builder import build_word
 docx_bytes = build_word(project, blocks, doc_id="A2")
 """
 
+import rich_text
 import base64
 import io
 import os
@@ -464,7 +465,8 @@ def _convert_doc_block(doc: Document, block: dict, tmp_files: list):
     if btype == 'text':
         text = block["data"].get("text", "").strip()
         if text:
-            doc.add_paragraph(text)
+            # **fed** / *kursiv* bliver til rigtige fed/kursiv-runs
+            rich_text.add_docx_runs(doc.add_paragraph(), text)
         return
 
     # ── image ─────────────────────────────────────────────────────────────────

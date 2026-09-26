@@ -193,3 +193,15 @@ def test_k_m_applies_to_the_secondary_axis_only(client):
     b = find_check(blocks, "6.24")
     if a and b:
         assert eta(a) != pytest.approx(eta(b), abs=1e-4)
+
+
+# ── Afstivet om den svage akse ──────────────────────────────────────────────────
+
+def test_weak_axis_restraint_removes_minor_axis_buckling(client):
+    """Et 45×195-spær med lægter knækker ikke ud af planen; uden afstivning gør det."""
+    base = {"label": "S1", "length_m": 2.5, "N_Ed_kN": 8.0, "M_Ed_kNm": 1.0,
+            "b_mm": 45, "h_mm": 195, "timber_grade": "C24"}
+    free = client.post("/calc/timber-column", json=base).json()
+    held = client.post("/calc/timber-column", json={**base, "weak_axis_restrained": True}).json()
+    eta = lambda bl: max((b.get("ratio") or 0) for b in bl if b.get("type") == "check")
+    assert eta(held) < eta(free)

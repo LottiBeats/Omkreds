@@ -142,12 +142,22 @@ def test_unknown_terrain_category_falls_back_to_II(client):
 
 def test_wall_pressures(client):
     """
-    w = c_pe·q_p − c_pi·q_p. Luv: (0,8−0,2)·q_p. Læ: (−0,5+0,2)·q_p, altså sug.
+    w = c_pe·q_p − c_pi·q_p på begge vægge. Luv: (0,8−0,2)·q_p. Læ: (−0,5−0,2)·q_p.
+
+    Læsiden stod før som (−0,5+0,2)·q_p = −0,3·q_p: et indvendigt overtryk
+    formindskede sugningen i stedet for at forøge den.
     """
     blocks = wind(client)
     q_p = value(blocks, "q_p(z)")
     assert value(blocks, "w_los") == pytest.approx(0.6 * q_p, abs=5e-4)
-    assert value(blocks, "w_læ") == pytest.approx(-0.3 * q_p, abs=5e-4)
+    assert value(blocks, "w_læ") == pytest.approx(-0.7 * q_p, abs=1e-3)   # begge tal er afrundede
+
+
+def test_internal_underpressure_reduces_leeward_suction(client):
+    """Med indvendigt undertryk (c_pi = −0,3): læ = (−0,5+0,3)·q_p = −0,2·q_p."""
+    blocks = wind(client, c_pi=-0.3)
+    q_p = value(blocks, "q_p(z)")
+    assert value(blocks, "w_læ") == pytest.approx(-0.2 * q_p, abs=1e-3)
 
 
 def test_leeward_wall_is_always_suction(client):

@@ -1,52 +1,80 @@
 /* ── Fonts ─────────────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 
-/* ── Design tokens ──────────────────────────────────────────────────────────── */
+/* ── Design tokens ──────────────────────────────────────────────────────────
+ *
+ * Én palet for hele appen: Omkreds-rød som eneste accent (den primære handling
+ * og "her er du"), varme stengrå neutraler, og semantiske farver der betyder
+ * det samme overalt — grøn = eftervist/klar, rav = forældet/kræver handling,
+ * rød = ikke eftervist/fejl, grå = ikke startet.
+ *
+ * Nye komponenter bruger tokens (se src/ui/). Gamle inline-farver udskiftes
+ * efterhånden som blokkene flyttes over.
+ */
 :root {
   /* Brand */
-  --navy:    #1e3a5f;
-  --navy-lt: #2a4f82;
-  --blue:    #2563eb;
-  --blue-lt: #eff6ff;
+  --brand:       #d94a2b;
+  --brand-hover: #c2401f;
+  --brand-ink:   #b83d22;   /* brand as text on light ground */
+  --brand-wash:  #fbeee9;
 
-  /* Neutrals */
-  --text:    #0f172a;
-  --muted:   #64748b;
-  --border:  #e2e8f0;
-  --surface: #f8fafc;
-  --white:   #ffffff;
+  /* Neutrals (stone, slightly warm) */
+  --ink:     #1c1917;
+  --ink-2:   #44403c;
+  --muted:   #78716c;
+  --faint:   #a8a29e;
+  --bg:      #f6f4f2;
+  --surface: #ffffff;
+  --sunk:    #efebe7;
+  --line:    #e4dfda;
+  --line-2:  #d6cfc8;
 
   /* Status */
-  --pass:     #16a34a;
-  --pass-bg:  #f0fdf4;
-  --pass-bd:  #bbf7d0;
-  --fail:     #dc2626;
-  --fail-bg:  #fef2f2;
-  --fail-bd:  #fecaca;
+  --ok:        #15803d;
+  --ok-wash:   #e8f5ec;
+  --warn:      #b45309;
+  --warn-wash: #fdf2e3;
+  --fail:      #b91c1c;
+  --fail-wash: #fbeaea;
+  --idle:      #a8a29e;
 
-  /* Amber/warning */
-  --warn:     #d97706;
-  --warn-bg:  #fffbeb;
-  --warn-bd:  #fde68a;
+  /* Legacy names — still read by a few older components */
+  --navy:    var(--ink);
+  --navy-lt: var(--ink-2);
+  --blue:    var(--brand);
+  --blue-lt: var(--brand-wash);
+  --text:    var(--ink);
+  --border:  var(--line);
+  --white:   #ffffff;
+  --pass:    var(--ok);
+  --pass-bg: var(--ok-wash);
+  --pass-bd: #bbf7d0;
+  --fail-bg: var(--fail-wash);
+  --fail-bd: #fecaca;
+  --warn-bg: var(--warn-wash);
+  --warn-bd: #fde68a;
 
-  /* Shadows */
-  --shadow-doc: 0 2px 12px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.04);
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.08);
+  /* Shape */
+  --radius:    6px;
+  --radius-sm: 4px;
+  --shadow-pop: 0 10px 30px rgba(28, 25, 23, 0.14), 0 0 0 1px rgba(28, 25, 23, 0.06);
+  --shadow-doc: 0 1px 3px rgba(28, 25, 23, 0.06), 0 0 0 1px rgba(28, 25, 23, 0.05);
+  --shadow-sm:  0 1px 2px rgba(28, 25, 23, 0.08);
+  --focus:      0 0 0 3px rgba(217, 74, 43, 0.22);
 
   /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Courier New', Courier, monospace;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 }
 
 /* ── Global resets ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
 
 body {
   font-family:  var(--font-sans);
   font-size:    14px;
-  color:        var(--text);
-  background:   var(--surface);
+  color:        var(--ink);
+  background:   var(--bg);
   line-height:  1.5;
   -webkit-font-smoothing:  antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -58,28 +86,29 @@ a { color: inherit; text-decoration: none; }
 
 input:focus, textarea:focus, select:focus {
   outline: none;
-  border-color: var(--navy) !important;
-  box-shadow: 0 0 0 2px rgba(30, 58, 95, 0.1);
+  border-color: var(--brand) !important;
+  box-shadow: var(--focus);
+}
+button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
 }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */
-::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar       { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
 
 /* ── Interaction helpers ────────────────────────────────────────────────────── */
-/* Project card hover */
 .project-card:hover {
-  box-shadow: 0 6px 24px rgba(0,0,0,0.14) !important;
+  box-shadow: 0 6px 24px rgba(28, 25, 23, 0.12) !important;
   transform:  translateY(-2px) !important;
-}
-
-/* Add-block button hover */
-.add-block-btn:hover {
-  background: var(--blue-lt) !important;
-  border-left-color: var(--navy) !important;
 }
 
 /* ── Utility classes ────────────────────────────────────────────────────────── */
 .mono { font-family: var(--font-mono); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

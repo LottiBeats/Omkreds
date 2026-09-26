@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { UserButton, useUser, useClerk, SignInButton, SignUpButton } from '@clerk/react'
 import { getProjects, deleteProject, getProjectTemplates, deleteProjectTemplate, getTrash, restoreProject, purgeProject } from '../api/client.js'
 import CreateProjectModal from '../components/CreateProjectModal.jsx'
+import { useConfirm } from '../ui/index.js'
 
 // ── tokens ────────────────────────────────────────────────────────────────────
 const BRAND      = '#d94a2b'   // Omkreds orange-red
@@ -19,8 +20,8 @@ const BORDER = '#e8e4e0'       // warm border
 const TEXT   = '#1a1614'       // warm near-black
 const MUTED  = '#78716c'       // warm muted
 const GREEN  = '#16a34a'
-const SANS   = "system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
-const MONO   = "'Courier New', Courier, monospace"
+const SANS   = 'var(--font-sans)'
+const MONO   = 'var(--font-mono)'
 
 // ── scroll-reveal ─────────────────────────────────────────────────────────────
 function useReveal(threshold = 0.12) {
@@ -467,7 +468,7 @@ function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate 
           key={tmpl.id}
           style={{
             background: WHITE, border: '1px solid ' + BORDER,
-            borderTop: '2px solid #6366f1',   // indigo — distinguishes templates from projects
+            borderTop: '2px solid ' + TEXT,   // dark rule — distinguishes templates from projects without a second accent
             padding: '20px',
           }}
         >
@@ -492,7 +493,7 @@ function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate 
           <div style={{ borderTop: '1px solid ' + BORDER, paddingTop: 12, display: 'flex', gap: 8 }}>
             <button
               style={{
-                flex: 1, background: '#6366f1', color: WHITE, border: 'none',
+                flex: 1, background: TEXT, color: WHITE, border: 'none',
                 padding: '8px 0', fontFamily: SANS, fontSize: 12, fontWeight: 700,
                 letterSpacing: '0.04em', textTransform: 'uppercase', cursor: 'pointer',
               }}
@@ -730,7 +731,7 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
                           background: '#f3f4f6', border: '1px solid #d1d5db',
                           padding: '2px 6px', whiteSpace: 'nowrap',
                         }}>
-                          Personal
+                          Privat
                         </span>
                       )}
                       {project.metadata.revision && (
@@ -817,6 +818,7 @@ export default function ProjectsPage() {
   // { id, name } when creating from a template; null for blank new project
   const [selectedTemplate,  setSelectedTemplate]  = useState(null)
   const navigate = useNavigate()
+  const confirm = useConfirm()
 
   useEffect(() => {
     if (!isLoaded) return
@@ -841,7 +843,12 @@ export default function ProjectsPage() {
   const onDelete = async (project, e) => {
     e.stopPropagation()
     const name = project.metadata.project_name || 'projektet'
-    if (!window.confirm(`Flyt "${name}" til papirkurven?\n\nDu kan gendanne det i 30 dage.`)) return
+    if (!(await confirm({
+      title: `Flyt "${name}" til papirkurven?`,
+      body: 'Du kan gendanne det fra Papirkurv i 30 dage.',
+      confirmLabel: 'Flyt til papirkurv',
+      danger: true,
+    }))) return
     try {
       await deleteProject(project.id)
       setProjects(projects.filter(p => p.id !== project.id))
@@ -869,10 +876,12 @@ export default function ProjectsPage() {
 
   const onPurge = async (project) => {
     const name = project.metadata?.project_name || 'projektet'
-    if (!window.confirm(
-      `Slet "${name}" permanent?\n\n` +
-      'Projektet og hele dets versionshistorik fjernes. Dette kan IKKE fortrydes.'
-    )) return
+    if (!(await confirm({
+      title: `Slet "${name}" permanent?`,
+      body: 'Projektet og hele dets versionshistorik fjernes. Det kan ikke fortrydes.',
+      confirmLabel: 'Slet permanent',
+      danger: true,
+    }))) return
     try {
       await purgeProject(project.id)
       setTrash((trash ?? []).filter(p => p.id !== project.id))
@@ -881,7 +890,7 @@ export default function ProjectsPage() {
 
   const onDeleteTemplate = async (tmpl) => {
     const name = tmpl._template_name || tmpl.metadata?.project_name || 'denne skabelon'
-    if (!window.confirm(`Slet skabelonen "${name}"?`)) return
+    if (!(await confirm({ title: `Slet skabelonen "${name}"?`, confirmLabel: 'Slet skabelon', danger: true }))) return
     try {
       await deleteProject(tmpl.id)
       setTemplates(templates.filter(t => t.id !== tmpl.id))

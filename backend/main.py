@@ -1440,6 +1440,9 @@ class TimberColumnInput(BaseModel):
     gamma_M:                 float = 1.3
     effective_length_factor: float = 1.0
     l_ef_ltb_m:              float | None = None
+    # Afstivet om den svage akse (fx spær med lægter/krydsfiner): så
+    # eftervises udbøjning kun om den stærke akse. Standard er som før: begge.
+    weak_axis_restrained:    bool = False
     design_situation:        str = "persistent"   # ved ulykke: γ_M = 1,0
 
     # Brand — EN 1995-1-2. For en søjle er den strengere end for en bjælke:
@@ -1489,6 +1492,8 @@ def calc_timber_column(data: TimberColumnInput):
         )
         if data.l_ef_ltb_m is not None:
             kwargs["l_ef_ltb"] = data.l_ef_ltb_m * m
+        if data.weak_axis_restrained:
+            kwargs["check_buckling_axis_2"] = False
 
 
         if data.fire_t_min is not None:
@@ -1823,6 +1828,12 @@ def calc_custom(data: CustomCalcInput):
                 name = item.get("name", "").strip()
                 if not name:
                     continue
+                if item.get("value") is None or item.get("value") == "":
+                    # En tom værdi er et felt, der venter på at blive udfyldt --
+                    # ikke et nul. Et nul her gav η = 0 og "OK" i rapporten.
+                    blocks.append(N(f"{name} mangler en værdi og skal udfyldes, "
+                                    "før beregningen kan eftervises."))
+                    continue
                 try:
                     unit_str = item.get("unit", "-")
                     qty      = _parse_qty(float(item.get("value", 0.0)), unit_str)
@@ -1874,6 +1885,9 @@ def calc_custom(data: CustomCalcInput):
                         # Not a plain number — evaluate as an expression
                         capacity = _safe_eval(_preprocess_expr(str(cap_raw).strip()), {**_UNIT_NS, **ns})
                     blocks.append(chk.check(label, demand, capacity))
+                except NameError as exc:
+                    blocks.append(N(f"'{label}' kan ikke eftervises: {exc}".replace(
+                        "name ", "").replace("is not defined", "mangler en værdi")))
                 except Exception as exc:
                     blocks.append(N(f"Check error in '{label}': {exc}"))
 
@@ -2523,6 +2537,9 @@ class GenFrameLoadCaseIn(BaseModel):
     navn:     str = ""
     kategori: str = "permanent"   # permanent | snow | wind | imposed
     gruppe:   str | None = None
+    # Nyttelastens kategori (A–H efter DS/EN 1991-1-1). Bestemmer ψ efter
+    # DK NA tabel A1.1. Uden den regnes med de største ψ-værdier.
+    nyttelastkategori: str | None = None
 
 
 class GenFrameLoadIn(BaseModel):
@@ -2844,7 +2861,7 @@ def _kombiner_modellens_laster(loads, load_cases, method,
     if load_cases:
         return kombinationer_af_tilfaelde(
             load_cases, loads, method, consequence_class, gunstig_egenlast,
-            kmod_varianter=kmod_varianter)
+            kmod_varianter=kmod_varianter, anvendelse=True)
     return kombinationer_fra_laster(
         loads, method, consequence_class, gunstig_egenlast=gunstig_egenlast)
 
@@ -3214,22 +3231,32 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 make_figs=False, ref_size=ref_size, diagram_scale=scale,
             )
 
+            # Varighed og situation følger med, så en eftervisning i browseren
+            # kan parre N og M fra samme kombination med den k_mod, netop den
+            # kombination har -- og holde sig til brudgrænsetilstanden.
             combo_figs = [{'name': r['name'], 'figs': [],
-                           'state': _diagram_state(r)}
+                           'state': _diagram_state(r),
+                           'duration':  r.get('governing_duration'),
+                           'situation': r.get('situation')}
                           for r in all_results]
 
             # Alle kombinationer i ét plot. Med kun én kombination er der
             # ingenting at sammenligne, og en figur, der lover en
             # sammenligning og viser én kurve, er en figur for meget.
+            # Kun brudkombinationerne: overlejringen læses for styrke, og en
+            # anvendelseskurve i den ville ligne en brudkurve.
+            brud = [r for r in all_results
+                    if not r.get('situation')
+                    or str(r.get('situation')).startswith('uls')]
             overlay_figs = []
-            if len(all_results) > 1:
+            if len(brud) > 1:
                 from fem_diagrams import render_overlay
                 overlay_figs = render_overlay(
                     nodes, elements, supports,
                     [{'navn':       r['name'],
                       'ele_forces': r['ele_forces'],
                       'ele_udl':    r.get('ele_udl', {})}
-                     for r in all_results],
+                     for r in brud],
                     ref_size, scale)
 
             # _figs_b64 = static model + governing combo (backward compat)
