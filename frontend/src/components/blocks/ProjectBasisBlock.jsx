@@ -82,10 +82,10 @@ export default function ProjectBasisBlock({ block, onChange }) {
           snow_zone:        nd.snow_zone        ?? 1,
           gamma_M0:         nd.gamma_M0         ?? 1.10,   // DS/EN 1993-1-1 DK NA
           gamma_M1:         nd.gamma_M1         ?? 1.20,
-          gamma_M2:         nd.gamma_M2         ?? 1.25,
-          gamma_c:          nd.gamma_c          ?? 1.50,
-          gamma_s:          nd.gamma_s          ?? 1.15,
-          gamma_M_timber:   nd.gamma_M_timber   ?? 1.30,
+          gamma_M2:         nd.gamma_M2         ?? 1.35,   // DS/EN 1993-1-8 DK NA
+          gamma_c:          nd.gamma_c          ?? 1.45,   // DS/EN 1992-1-1 DK NA
+          gamma_s:          nd.gamma_s          ?? 1.20,
+          gamma_M_timber:   nd.gamma_M_timber   ?? 1.35,   // konstruktionstræ; limtræ 1,30
         },
       },
     })
@@ -160,23 +160,23 @@ export default function ProjectBasisBlock({ block, onChange }) {
       <div style={s.section}>
         <div style={s.label}>Partial factors</div>
         <div style={s.grid}>
-          <Field label="γ_M0 — Steel yield (EC3)">
+          <Field label="γ_M0 — stål, tværsnit (EC3)">
             <NumInput value={d.gamma_M0 ?? 1.10} onChange={v => update({ gamma_M0: v })} step={0.05} min={0} />
           </Field>
-          <Field label="γ_M1 — Steel buckling (EC3)">
+          <Field label="γ_M1 — stål, stabilitet (EC3)">
             <NumInput value={d.gamma_M1 ?? 1.20} onChange={v => update({ gamma_M1: v })} step={0.05} min={0} />
           </Field>
-          <Field label="γ_M2 — Steel connections (EC3)">
-            <NumInput value={d.gamma_M2 ?? 1.25} onChange={v => update({ gamma_M2: v })} step={0.05} min={0} />
+          <Field label="γ_M2 — stål, samlinger (EC3)">
+            <NumInput value={d.gamma_M2 ?? 1.35} onChange={v => update({ gamma_M2: v })} step={0.05} min={0} />
           </Field>
-          <Field label="γ_c — Concrete (EC2)">
-            <NumInput value={d.gamma_c ?? 1.50} onChange={v => update({ gamma_c: v })} step={0.05} min={0} />
+          <Field label="γ_c — beton (EC2)">
+            <NumInput value={d.gamma_c ?? 1.45} onChange={v => update({ gamma_c: v })} step={0.05} min={0} />
           </Field>
-          <Field label="γ_s — Reinforcement (EC2)">
-            <NumInput value={d.gamma_s ?? 1.15} onChange={v => update({ gamma_s: v })} step={0.05} min={0} />
+          <Field label="γ_s — armering (EC2)">
+            <NumInput value={d.gamma_s ?? 1.20} onChange={v => update({ gamma_s: v })} step={0.05} min={0} />
           </Field>
-          <Field label="γ_M — Timber (EC5)">
-            <NumInput value={d.gamma_M_timber ?? 1.30} onChange={v => update({ gamma_M_timber: v })} step={0.05} min={0} />
+          <Field label="γ_M — konstruktionstræ (EC5; limtræ 1,30)">
+            <NumInput value={d.gamma_M_timber ?? 1.35} onChange={v => update({ gamma_M_timber: v })} step={0.05} min={0} />
           </Field>
         </div>
       </div>

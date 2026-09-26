@@ -1333,8 +1333,8 @@ class RcBeamInput(BaseModel):
     f_ck_MPa:    float = 30.0
     f_yk_MPa:    float = 500.0
     As_prov_mm2: float | None = None
-    gamma_C:     float = 1.5
-    gamma_S:     float = 1.15
+    gamma_C:     float = 1.45   # DS/EN 1992-1-1 DK NA
+    gamma_S:     float = 1.20
 
 
 @protected.post("/calc/rc-beam", tags=["Calculations"])
@@ -3603,8 +3603,8 @@ class RcColumnInput(BaseModel):
     beta_eff:   float = 1.0
     fck_mpa:    float = 30.0
     fyk_mpa:    float = 500.0
-    gamma_c:    float = 1.5
-    gamma_s:    float = 1.15
+    gamma_c:    float = 1.45   # DS/EN 1992-1-1 DK NA
+    gamma_s:    float = 1.20
     da_c_mm:    float = 16.0
     n_c:        int   = 2
     da_t_mm:    float = 16.0
@@ -3661,8 +3661,8 @@ class RcSlabInput(BaseModel):
     fck_MPa:       float = 30.0
     fyk_MPa:       float = 500.0
     As_prov_mm2m:  float | None = None
-    gamma_C:       float = 1.5
-    gamma_S:       float = 1.15
+    gamma_C:       float = 1.45   # DS/EN 1992-1-1 DK NA
+    gamma_S:       float = 1.20
     cover_mm:      float = 35.0
 
 
@@ -4163,7 +4163,7 @@ class BoltGroupInput(BaseModel):
     e2_mm:          float = 40.0
     p1_mm:          float = 60.0
     V_Ed_kN:        float = 100.0
-    gamma_M2:       float = 1.25
+    gamma_M2:       float = 1.35   # DS/EN 1993-1-8 DK NA
 
 class WeldInput(BaseModel):
     label:       str   = "W1"
@@ -4172,7 +4172,7 @@ class WeldInput(BaseModel):
     F_Ed_kN:     float = 80.0
     steel_grade: str   = "S355"
     f_u_MPa:     float | None = None
-    gamma_M2:    float = 1.25
+    gamma_M2:    float = 1.35   # DS/EN 1993-1-8 DK NA
 
 @protected.post("/calc/bolt-group", tags=["Calculations"])
 def calc_bolt_group(data: BoltGroupInput):

@@ -63,7 +63,7 @@ def bolt_group_shear(
     # Design action (total on group)
     V_Ed_kN:      float,
     # Partial factors
-    gamma_M2: float = 1.25,
+    gamma_M2: float = 1.35,   # DS/EN 1993-1-8 DK NA
 ) -> list:
     """
     Returns a list of calc_core blocks.
@@ -159,7 +159,7 @@ def fillet_weld_check(
     steel_grade: str = 'S355',
     # Optional explicit f_u; overrides grade lookup if provided
     f_u_MPa: float | None = None,
-    gamma_M2: float = 1.25,
+    gamma_M2: float = 1.35,   # DS/EN 1993-1-8 DK NA
 ) -> list:
     """
     Directional method per EC3-1-8 §4.5.3.
