@@ -83,6 +83,67 @@ def _rz_stiffness_ends(el):
     return rel not in ('start', 'both'), rel not in ('end', 'both')
 
 
+def saml_charnierer(elements, supports=(), loads=(), equal_dofs=()):
+    """
+    Et charnier, hvor ALLE bjælkeender i knuden er udløst, regnet som RFEM gør.
+
+    Tegner man et kipcharnier ved at udløse begge spær, har knuden en rotation,
+    som ingen stang holder fast -- stivhedsmatricen er singulær, og modellen
+    afvises. Men konstruktionen er den samme som med én udløsning: moment
+    kan ikke gå fra den ene stang til den anden, når der ikke er noget i
+    knuden at gå igennem. n stænger i et charnier har n - 1 udløsninger.
+
+    Så én ende (stangen med laveste id) får sin stivhed tilbage, og snit-
+    kræfterne bliver de samme: moment nul i alle ender ved knuden.
+
+    Undtaget er knuder med et påsat knudemoment -- det skal have en stang at gå
+    i, og hvilken er et valg, brugeren skal træffe -- og knuder, hvis rotation
+    er bundet med equalDOF. De bliver ved validate_model's fejlbesked.
+
+    Returnerer (elementer, [knude-id'er der blev samlet]). Listen ændres ikke.
+    """
+    beam_ends = {}
+    for el in elements:
+        if el.get('type', 'beam') == 'truss':
+            continue
+        si, sj = _rz_stiffness_ends(el)
+        for nid, stiff, end in ((el['ni'], si, 'start'), (el['nj'], sj, 'end')):
+            beam_ends.setdefault(nid, []).append((el['id'], stiff, end))
+    rz_fixed = {s['node_id'] for s in supports if s.get('rz')}
+    tied = set()
+    for eq in (equal_dofs or []):
+        if 3 in {int(d) for d in eq.get('dofs', [1, 2])}:
+            tied.add(eq['r_node']); tied.add(eq['c_node'])
+    moment_nodes = {ld.get('node_id') for ld in (loads or [])
+                    if ld.get('type') == 'nodal' and abs(float(ld.get('Mz_kNm') or 0)) > 1e-12}
+
+    keep = {}     # elem id -> the end that gets its stiffness back
+    samlet = []
+    for nid, ends in beam_ends.items():
+        if (len(ends) < 2 or any(stiff for _, stiff, _ in ends)
+                or nid in rz_fixed or nid in tied or nid in moment_nodes):
+            continue
+        eid, _, end = min(ends, key=lambda t: t[0])
+        if eid in keep:          # begge ender af samme stang -- tag den næste
+            rest = [t for t in ends if t[0] != eid]
+            if not rest:
+                continue
+            eid, _, end = min(rest, key=lambda t: t[0])
+        keep.setdefault(eid, set()).add(end)
+        samlet.append(nid)
+    if not keep:
+        return list(elements), []
+
+    def _uden(rel, ends):
+        s_rel = rel in ('start', 'both') and 'start' not in ends
+        e_rel = rel in ('end', 'both') and 'end' not in ends
+        return 'both' if s_rel and e_rel else 'start' if s_rel else 'end' if e_rel else 'none'
+
+    ud = [dict(el, release=_uden(el.get('release', 'none'), keep[el['id']]))
+          if el['id'] in keep else el for el in elements]
+    return ud, sorted(samlet)
+
+
 def _rigid_body_rank(supports, dict_nodes, equal_dofs):
     """
     Rank of the support constraints against the three rigid-body modes of a

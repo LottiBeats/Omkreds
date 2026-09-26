@@ -927,6 +927,7 @@ _CALC_TYPES = {
     # og den ligger i A2-skabelonen for tagkonstruktioner, saa hvert A2 derfra
     # er eksporteret uden sit egenlastafsnit. Se test_pdf_block_coverage.py.
     "wind_load", "snow_load", "roof_dead_load",
+    "frame_loads",
     "foundation",
     "load_combo",
     "bolt_group", "fillet_weld",

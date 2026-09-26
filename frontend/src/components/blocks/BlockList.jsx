@@ -41,6 +41,7 @@ const PortalFrameFemBlock = lazy(() => import('./PortalFrameFemBlock.jsx'))
 const GeneralFrameFemBlock = lazy(() => import('./GeneralFrameFemBlock.jsx'))
 const FrameLoadCasesBlock = lazy(() => import('./FrameLoadCasesBlock.jsx'))
 const WindLoadBlock = lazy(() => import('./WindLoadBlock.jsx'))
+const FrameLoadsBlock = lazy(() => import('./FrameLoadsBlock.jsx'))
 const SnowLoadBlock = lazy(() => import('./SnowLoadBlock.jsx'))
 const RoofDeadLoadBlock = lazy(() => import('./RoofDeadLoadBlock.jsx'))
 const FoundationBlock = lazy(() => import('./FoundationBlock.jsx'))
@@ -180,6 +181,9 @@ const BLOCK_TYPES = [
                supports: [{ node_id: 1, ux: true, uy: true, rz: false }, { node_id: 2, ux: false, uy: true, rz: false }],
                loads:    [{ type: 'udl', elem_id: 1, wy_kNm: 10.0, wx_kNm: 0.0 }],
                _result: null } },
+  { type: 'frame_loads',   label: 'Laster på rammen',  icon: 'LR',  color: '#0369a1', component: FrameLoadsBlock,
+    default: { title: 'Laster på rammen', s_m: 5.0, placering: 'naeste', g_tag_kNm2: 0,
+               med_sne: true, med_vind: true, roller: {}, _result: null } },
   { type: 'wind_load',     label: 'Vindlast',          icon: 'WND', color: '#0369a1', component: WindLoadBlock,
     default: { title: 'Wind Load', label: 'W1', terrain_category: 'II',
                v_b0_ms: 24.0, z_ref_m: 8.0, h_m: 8.0, b_m: 10.0, d_m: 12.0,
@@ -296,7 +300,7 @@ const PANEL_GROUPS = [
     // validate_model, så de kan stadig regne videre på en mekanisme og
     // returnere grønne tal. De er ude af panelet, ikke ude af TYPE_MAP —
     // eksisterende blokke i gamle dokumenter tegnes og eksporteres som før.
-    types: ['general_frame_fem'],
+    types: ['frame_loads', 'general_frame_fem'],
   },
   {
     label: 'Brugerdefineret',
@@ -703,10 +707,20 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
   const reveal = (id) => setMinimised(prev => { const s = new Set(prev); s.delete(id); return s })
 
-  h.updateBlock = (id, b) => {
-    const cur = blocksRef.current
+  h.updateBlock = (id, b) => h.updateBlocks([[id, b]])
+
+  // Several blocks in one change. "Laster på rammen" writes its own result
+  // and the loads into the frame analysis together; two separate updates
+  // would each start from the same list, and the second would undo the first.
+  h.updateBlocks = (pairs) => {
+    let n = blocksRef.current
+    for (const [id, b] of pairs) n = stampBlock(n, id, b)
+    if (n !== blocksRef.current) onChange(n)
+  }
+
+  function stampBlock(cur, id, b) {
     const i = cur.findIndex(x => x.id === id)
-    if (i < 0) return
+    if (i < 0) return cur
     const oldD = cur[i]?.data || {}
     const newD = b.data || {}
     // Fresh result arrived → stamp the input hash it was computed from.
@@ -724,7 +738,8 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
       const { _input_hash, _calc_rev, ...rest } = newD
       b = { ...b, data: rest }
     }
-    const n = [...cur]; n[i] = b; onChange(n)
+    const n = [...cur]; n[i] = b
+    return n
   }
 
   h.insertAt = (atIndex, nb, select = true) => {
@@ -1020,6 +1035,7 @@ const BlockRow = React.memo(function BlockRow({
   const id = block.id
   const onBlockChange = useCallback(b => h.updateBlock(id, b), [h, id])
   const onAddBlock    = useCallback((type, data) => h.addBlockAfter(id, type, data), [h, id])
+  const onUpdateBlock = useCallback((pairs) => h.updateBlocks(pairs), [h])
   const onAddBlocks   = useCallback((arr) => h.addBlocksAfter(id, arr), [h, id])
 
   return (
@@ -1105,6 +1121,7 @@ const BlockRow = React.memo(function BlockRow({
                       blocks={blocks ?? []}
                       onAddBlock={onAddBlock}
                       onAddBlocks={onAddBlocks}
+                      onUpdateBlock={onUpdateBlock}
                     />
                   </Suspense>
                 </div>

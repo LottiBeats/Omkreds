@@ -88,6 +88,59 @@ _UNIT_NS.update({
 })
 
 
+import ast as _ast
+
+# Hvad et regneudtryk maa bestaa af. Alt andet afvises, FOER det koeres.
+#
+# __builtins__ = {} alene er ikke en sandkasse: ().__class__.__base__ fører
+# fra en tom tuple til hver eneste klasse i processen, og derfra videre til
+# at koere kode paa serveren. Et ingenioerudtryk har ingen brug for at
+# kigge ind i objekter -- kun tal, navne, regnearter og de godkendte
+# funktioner -- saa det er det, der tillades.
+_TILLADTE_NODER = (
+    _ast.Expression, _ast.BinOp, _ast.UnaryOp, _ast.BoolOp, _ast.Compare,
+    _ast.IfExp, _ast.Call, _ast.Name, _ast.Load, _ast.Constant,
+    _ast.Add, _ast.Sub, _ast.Mult, _ast.Div, _ast.FloorDiv, _ast.Mod, _ast.Pow,
+    _ast.USub, _ast.UAdd, _ast.Not, _ast.And, _ast.Or,
+    _ast.Eq, _ast.NotEq, _ast.Lt, _ast.LtE, _ast.Gt, _ast.GtE,
+    _ast.Tuple, _ast.keyword,
+)
+_MAX_EKSPONENT = 64
+
+
+class UdtryksFejl(ValueError):
+    """Et udtryk, der indeholder andet end regning."""
+
+
+def _valider_udtryk(expr: str) -> None:
+    try:
+        trae = _ast.parse(expr, mode='eval')
+    except SyntaxError as exc:
+        raise UdtryksFejl(f"kan ikke læse udtrykket {expr!r}") from exc
+    for node in _ast.walk(trae):
+        if not isinstance(node, _TILLADTE_NODER):
+            raise UdtryksFejl(
+                f"{type(node).__name__} er ikke tilladt i et regneudtryk")
+        if isinstance(node, _ast.Name) and node.id.startswith('_'):
+            raise UdtryksFejl(f"navnet {node.id!r} er ikke tilladt")
+        if isinstance(node, _ast.Call) and not isinstance(node.func, _ast.Name):
+            raise UdtryksFejl("kun navngivne funktioner kan kaldes")
+        if isinstance(node, _ast.Constant) and not isinstance(
+                node.value, (int, float, complex, bool)):
+            raise UdtryksFejl("kun tal er tilladt som konstanter")
+        # 9**9**9 er et lovligt udtryk, der aldrig bliver faerdigt -- og
+        # traaden, der regner det, kan ikke stoppes udefra.
+        if isinstance(node, _ast.BinOp) and isinstance(node.op, _ast.Pow):
+            h = node.right
+            if isinstance(h, _ast.UnaryOp) and isinstance(h.operand, _ast.Constant):
+                h = h.operand
+            if isinstance(h, _ast.Constant):
+                if abs(h.value) > _MAX_EKSPONENT:
+                    raise UdtryksFejl(f"eksponenten {h.value} er for stor")
+            elif isinstance(h, _ast.BinOp) and isinstance(h.op, _ast.Pow):
+                raise UdtryksFejl("potens af en potens er ikke tilladt")
+
+
 def _safe_eval(expr: str, ns: dict, timeout: float = 3.0):
     """
     Evaluate *expr* in namespace *ns* with a wall-clock timeout.
@@ -97,15 +150,20 @@ def _safe_eval(expr: str, ns: dict, timeout: float = 3.0):
     from expressions like  sum(range(10**12))  or  list(range(10**9)).
     """
     import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(eval, expr, ns)
-        try:
-            return future.result(timeout=timeout)
-        except concurrent.futures.TimeoutError:
-            raise TimeoutError(
-                f"Expression took longer than {timeout} s to evaluate. "
-                "Simplify the formula."
-            )
+    _valider_udtryk(expr)
+    ns = {**ns, "__builtins__": {}}
+    # Ikke "with": dens afslutning venter paa traaden, saa en timeout ville
+    # alligevel blive siddende, til udtrykket var regnet faerdigt.
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(eval, compile(expr, '<udtryk>', 'eval'), ns)
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        raise TimeoutError(
+            f"Udtrykket tog mere end {timeout:g} s at regne. Forenkl formlen."
+        )
+    finally:
+        pool.shutdown(wait=False)
 
 
 def _preprocess_expr(expr: str) -> str:
@@ -1004,6 +1062,15 @@ def calc_steel_column(data: SteelColumnInput):
                                 detail=f"Ukendt stålkvalitet: {data.grade!r}")
         f_y = nominal - 20.0 if p["tf_mm"] > 40.0 else nominal
 
+        # Kataloget har ikke vridningskonstanterne. Skal der regnes kipning,
+        # udledes de af målene (se noten nedenfor).
+        vrid = None
+        if not data.ltb_restrained:
+            h, b, tf, tw = p["h_mm"], p["b_mm"], p["tf_mm"], p["tw_mm"]
+            I_T = (2 * b * tf ** 3 + (h - 2 * tf) * tw ** 3) / 3 / 1e4      # cm⁴
+            I_w = p["Iz_cm4"] * ((h - tf) / 10) ** 2 / 4                   # cm⁶
+            vrid = (I_T, I_w)
+
         _require_force_unit(data.combo_unit, data.combo_label)
 
         blocks = steel_column_check(
@@ -1030,7 +1097,16 @@ def calc_steel_column(data: SteelColumnInput):
             ltb_restrained = data.ltb_restrained,
             L_LTB_m    = data.L_LTB_m,
             C_1        = data.C_1,
+            I_T_cm4    = vrid[0] if vrid else None,
+            I_w_cm6    = vrid[1] if vrid else None,
         )
+        if vrid:
+            blocks.append(NOTE(
+                f"Til kipning er I_T = {vrid[0]:.1f} cm⁴ og I_w = {vrid[1]:.0f} cm⁶ "
+                "udledt af tværsnitsmålene som tyndvægget I-profil uden "
+                "udrundinger: I_T = (2·b·t_f³ + (h − 2t_f)·t_w³)/3 og "
+                "I_w = I_z·(h − t_f)²/4. Uden udrundingerne er I_T lidt for "
+                "lille, og M_cr ligger på den sikre side."))
 
         # Hvor tallene kommer fra hører med i dokumentet. A og I_z står ikke i
         # kataloget og er udledt; det skal læseren kunne se.
@@ -1734,7 +1810,7 @@ def _enhed(unit_str: str):
            .replace("^", "**").replace("·", "*").replace("×", "*")
            .replace("²", "**2").replace("³", "**3").replace("⁴", "**4"))
     try:
-        unit = eval(ren, _UNIT_NS, {})
+        unit = _safe_eval(ren, _UNIT_NS)
     except Exception as exc:
         raise EnhedsFejl(f"kender ikke enheden {unit_str!r}") from exc
     if not _har_enhed(unit):
@@ -2754,10 +2830,12 @@ def redraw_general_frame_fem(data: GenFrameRedrawInput):
     try:
         from fem_diagrams import render_all
         from section_resolver import apply_sections
+        from general_frame_fem import saml_charnierer
 
         nodes    = [n.model_dump() for n in data.nodes]
         elements = apply_sections([e.model_dump() for e in data.elements])
         supports = [s.model_dump() for s in data.supports]
+        elements, _ = saml_charnierer(elements, supports)
         if not nodes or not elements:
             raise ValueError("Ingen model at tegne.")
 
@@ -2813,10 +2891,12 @@ def overlay_general_frame_fem(data: GenFrameOverlayInput):
     try:
         from fem_diagrams import render_overlay
         from section_resolver import apply_sections
+        from general_frame_fem import saml_charnierer
 
         nodes    = [n.model_dump() for n in data.nodes]
         elements = apply_sections([e.model_dump() for e in data.elements])
         supports = [s.model_dump() for s in data.supports]
+        elements, _ = saml_charnierer(elements, supports)
         if not nodes or not elements:
             raise ValueError("Ingen model at tegne.")
         if not data.serier:
@@ -2924,7 +3004,8 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         from general_frame_fem import (ModelError, solve, solve_combinations,
                                        make_figures, summarise, plot_model,
                                        compute_buckling_lengths, compute_alpha_cr,
-                                       validate_model, stoerste_nedboejning)
+                                       validate_model, stoerste_nedboejning,
+                                       saml_charnierer)
         from section_resolver import apply_sections
         from calc_core import S, T, N, TBL, CALC_ROW, CheckContext
         import math
@@ -2935,6 +3016,11 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         elements = apply_sections([e.model_dump() for e in data.elements])
         supports = [s.model_dump() for s in data.supports]
         loads    = [l.model_dump() for l in data.loads]
+        # Et charnier med udløsning i alle ender regnes med én færre -- samme
+        # konstruktion, men en stivhedsmatrix, der kan løses.
+        elements, _samlede_charnierer = saml_charnierer(
+            elements, supports, loads,
+            [e.model_dump() for e in data.equal_dofs])
         combos      = [c.model_dump() for c in data.combinations]
         # Lasterne som de staar paa modellen. De skal gemmes her: naar der
         # kombineres, flyttes de ind i kombinationerne og 'loads' toemmes, og
@@ -3595,6 +3681,34 @@ class WindLoadInput(BaseModel):
     tagzoner:          dict | None = None
     alpha_deg:         float = 0.0
     rammeafstand_m:    float | None = None
+    tagzoner_tryk:     dict | None = None
+    langs:             dict | None = None
+
+
+class WindForslagInput(BaseModel):
+    alpha_deg: float = 15.0
+    h_m:       float = 8.0
+    d_m:       float = 12.0
+
+
+@protected.post("/calc/wind-load/forslag", tags=["Calculations"])
+def calc_wind_forslag(data: WindForslagInput):
+    """
+    FORSLAG til formfaktorer efter EN 1991-1-4 tabel 7.1, 7.4a og 7.4b.
+
+    Udfylder felterne i vindblokken; den projekterende efterser dem. Intet
+    bruger forslaget af sig selv -- se vind_ramme.py.
+    """
+    import vind_ramme as vr
+    vaeg = vr.forslag_vaegge(data.h_m, data.d_m)
+    sug = vr.forslag_saddeltag(data.alpha_deg, 'neg')
+    tryk = vr.forslag_saddeltag(data.alpha_deg, 'pos')
+    # Tryk-saettet er kun et selvstaendigt tilfaelde, naar det adskiller sig
+    # fra sug-saettet (5-45 grader).
+    har_tryk = any(abs(tryk[z] - sug[z]) > 1e-9 for z in sug) and any(v > 0 for v in tryk.values())
+    return {'vaegge': vaeg, 'tag_sug': sug,
+            'tag_tryk': tryk if har_tryk else None,
+            'langs': vr.forslag_langs(data.alpha_deg)}
 
 
 @protected.post("/calc/wind-load", tags=["Calculations"])
@@ -3620,12 +3734,56 @@ def calc_wind_load(data: WindLoadInput):
             tagzoner         = data.tagzoner,
             alpha_deg        = data.alpha_deg,
             rammeafstand_m   = data.rammeafstand_m,
+            tagzoner_tryk    = data.tagzoner_tryk,
+            langs            = data.langs,
         )
         # Samme moenster som lastkombinationerne: eksporten rejser med som en
         # usynlig blok, saa en anden blok kan hente zonetrykket i stedet for
         # at faa det tastet af igen.
         return [{'type': '_exports', 'exports': eksport}] + blocks
 
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+# ── Laster paa rammen — sne og vind sat paa modellens led ─────────────────────
+
+class FrameLoadsMemberIn(BaseModel):
+    member_id: int
+    rolle:     str = 'ingen'
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+
+class FrameLoadsInput(BaseModel):
+    navn:       str = 'Ramme'
+    led:        list[FrameLoadsMemberIn]
+    s_m:        float
+    x_m:        float | None = None
+    laengde_m:  float | None = None
+    sne:        dict | None = None
+    vind:       dict | None = None
+    g_tag_kNm2: float = 0.0
+
+
+@protected.post("/calc/frame-loads", tags=["Calculations"])
+def calc_frame_loads(data: FrameLoadsInput):
+    """Lasttilfaelde og linjelaster paa en plan ramme fra sne- og vindberegningen."""
+    try:
+        from ramme_laster import laster_paa_ramme
+        if data.s_m <= 0:
+            raise ValueError('Rammeafstanden skal vaere positiv.')
+        r = laster_paa_ramme(
+            [m.model_dump() for m in data.led], s_m=data.s_m, x_m=data.x_m,
+            laengde_m=data.laengde_m, sne=data.sne, vind=data.vind,
+            g_tag_kNm2=data.g_tag_kNm2, navn=data.navn)
+        eksport = {'load_cases': r['load_cases'], 'loads': r['loads'],
+                   'lastbredde_m': r['lastbredde_m']}
+        return [{'type': '_exports', 'exports': eksport}] + r['blocks']
     except HTTPException:
         raise
     except Exception as exc:

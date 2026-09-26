@@ -442,6 +442,7 @@ _CALC_TYPES = {
     "masonry_wall",
     "custom_calc",
     "wind_load", "snow_load",
+    "frame_loads",
     "foundation",
     "load_combo",
     "bolt_group", "fillet_weld",

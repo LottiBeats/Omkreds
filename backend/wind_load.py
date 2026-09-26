@@ -47,6 +47,12 @@ def wind_load(
     tagzoner:          dict | None = None,  # {'G':..,'H':..,'I':..,'J':..}
     alpha_deg:         float = 0.0,         # taghaeldning, kun til teksten
     rammeafstand_m:    float | None = None,
+    # Et andet saet tagformfaktorer til de flade haeldninger, hvor tabel
+    # 7.4a giver baade sug og tryk -- begge skal eftervises.
+    tagzoner_tryk:     dict | None = None,  # {'F','G','H','I','J'}
+    # Vind paa langs af kippen (theta = 90 grader): vaeggene A/B/C (tabel
+    # 7.1) og taget F/G/H/I (tabel 7.4b).
+    langs:             dict | None = None,  # {'A','B','C','F','G','H','I'}
 ):
     """
     Returnerer (blocks, eksport).
@@ -206,5 +212,32 @@ def wind_load(
         eksport['zoner'] = raekker
         eksport['e_m'] = round(e, 4)
         eksport['kantzone_m'] = round(e / 10.0, 4)
+
+        # Formfaktorerne som saet, til lastmodulet ("Laster paa rammen"), der
+        # selv placerer zonerne paa rammens stænger.
+        saet = [{'navn': 'sug' if tagzoner_tryk else '', 'c_pe': c_pe_alle}]
+        if tagzoner_tryk:
+            tryk = dict(tagzoner_tryk)
+            tryk.setdefault('D', c_pe_windward)
+            tryk.setdefault('E', c_pe_leeward)
+            saet.append({'navn': 'tryk', 'c_pe': tryk})
+            blocks.append(T(
+                'Tagfladen er ogsaa regnet med tabel 7.4a\'s positive vaerdier '
+                '(tryk): ' + ', '.join(f"{z} {float(v):+.2f}" for z, v in
+                                        sorted(tagzoner_tryk.items())) + '.'))
+        eksport['cpe0'] = saet
+
+    if langs:
+        blocks.append(S("Vind paa langs af kippen  (\u03b8 = 90\u00b0)"))
+        e90 = min(d_m, 2 * h_m)
+        blocks.append(T(
+            f"e = min(d; 2h) = min({d_m:.1f}; {2 * h_m:.1f}) = {e90:.2f} m, "
+            "maalt fra gavlen. Formfaktorer aflaest i tabel 7.1 (vaegge "
+            "parallelt med vinden, A/B/C) og 7.4b (tag, F/G/H/I)."))
+        blocks.append(TBL(["Zone", "c_pe", "w (c_pi +0,2)", "w (c_pi \u22120,3)"],
+                          [[z, f"{float(v):+.2f}", f"{(float(v) - 0.2) * q_p:+.3f}",
+                            f"{(float(v) + 0.3) * q_p:+.3f}"]
+                           for z, v in sorted(langs.items())]))
+        eksport['cpe90'] = {z: float(v) for z, v in langs.items()}
 
     return blocks, eksport

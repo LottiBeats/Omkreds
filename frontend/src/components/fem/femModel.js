@@ -190,7 +190,8 @@ export function deleteSelection(m, sel) {
   const nodes = m.nodes.filter(n => !nodeIds.has(n.id) && (used.has(n.id) || m.supports.some(s => s.node_id === n.id && !nodeIds.has(n.id))))
   const liveNode = new Set(nodes.map(n => n.id))
   const loads = m.loads.filter((l, i) => {
-    if (loadIdx.has(i)) return false
+    // Loads from "Laster på rammen" are removed there, not here.
+    if (loadIdx.has(i)) return l.kilde === 'rammelaster'
     if (l.type === 'nodal') return liveNode.has(l.node_id)
     if ((l.target ?? 'elem') === 'member') return members.has(l.member_id)
     return alive.has(l.elem_id)

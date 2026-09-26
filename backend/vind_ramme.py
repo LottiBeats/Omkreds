@@ -216,3 +216,31 @@ def zonetryk(q_p_kNm2: float, c_pe: dict, cpi_saet=CPI_SAET,
                 raekke['w_kNm'] = round(w * float(rammeafstand_m), 4)
             ud.append(raekke)
     return ud
+
+
+# ── Vind paa langs af kippen (theta = 90 grader) — FORSLAG ────────────────
+#
+# Tabel 7.1: vaeggene parallelt med vinden, A/B/C. Vaerdierne er de samme
+# for alle h/d i tabellen.
+_FORSLAG_LANGS_VAEG = {'A': -1.2, 'B': -0.8, 'C': -0.5}
+
+# Tabel 7.4b, saddeltag, theta = 90 grader, c_pe,10: (F, G, H, I).
+_FORSLAG_LANGS_TAG = {
+    5:  (-1.6, -1.3, -0.7, -0.6),
+    15: (-1.3, -1.3, -0.6, -0.5),
+    30: (-1.1, -1.4, -0.8, -0.5),
+    45: (-1.1, -1.4, -0.9, -0.5),
+    60: (-1.1, -1.2, -0.8, -0.5),
+    75: (-1.1, -1.2, -0.8, -0.5),
+}
+
+
+def forslag_langs(alpha_deg: float) -> dict:
+    """FORSLAG til c_pe ved vind paa langs: A/B/C paa vaeggene, F/G/H/I paa taget.
+
+    Efterproev mod EN 1991-1-4 tabel 7.1 og 7.4b, foer det bruges.
+    """
+    F, G, H, I = _interpoler(_FORSLAG_LANGS_TAG, abs(float(alpha_deg)))
+    ud = dict(_FORSLAG_LANGS_VAEG)
+    ud.update({'F': round(F, 3), 'G': round(G, 3), 'H': round(H, 3), 'I': round(I, 3)})
+    return ud
