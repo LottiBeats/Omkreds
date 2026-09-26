@@ -26,6 +26,7 @@ from pathlib import Path
 from calc_core import COVER, TOC, PAGEBREAK, S, T, N, H1, FIG
 from holst_layout import generate_pdf_holst
 
+from figurer import figurtekst, nummerer_figurer
 import pdf_fonts  # noqa: F401  (registrerer IBM Plex)
 from reportlab.lib.units import mm
 from reportlab.lib import colors as rl_colors
@@ -72,8 +73,8 @@ def _image(block: dict, tmp_files: list) -> list:
 
         # SVG: ReportLab cannot render vector images — skip gracefully
         if "svg" in header:
-            return [N("SVG images are not supported in PDF export. "
-                      "Please convert to PNG or JPEG before uploading.")]
+            return [N("SVG-billeder kan ikke sættes i PDF'en. "
+                      "Gem billedet som PNG eller JPG og indsæt det igen.")]
 
         # Use Pillow to open & normalise the image.
         # This handles WebP, HEIC (if pillow-heif is installed), AVIF, RGBA PNGs,
@@ -96,13 +97,16 @@ def _image(block: dict, tmp_files: list) -> list:
         tmp.close()
         tmp_files.append(tmp.name)
 
-        caption   = block["data"].get("caption", "")
-        width_pct = block["data"].get("width_pct", 100)
-        width_mm  = max(40, min(170, int(170 * width_pct / 100)))
+        d         = block["data"]
+        caption   = figurtekst(d.get("_figur_nr"), d.get("caption", ""))
+        width_pct = d.get("width_pct", 100)
+        width_mm  = max(20, min(170, int(170 * width_pct / 100)))
 
-        return [FIG(tmp.name, caption, width_mm=width_mm)]
+        fig = FIG(tmp.name, caption, width_mm=width_mm)
+        fig["align"] = d.get("align", "center")
+        return [fig]
     except Exception as exc:
-        return [N(f"Image could not be embedded: {exc}")]
+        return [N(f"Billedet kunne ikke indsættes: {exc}")]
 
 
 def _python_calc(block: dict, tmp_files: list) -> list:
@@ -1346,7 +1350,7 @@ def build_pdf(project: dict, blocks: list, doc_id: str = "") -> bytes:
     expanded_blocks = _expand_generated_blocks(blocks, project, doc_id)
 
     # Pre-number headings so the TOC and body both show "1.", "1.1." etc.
-    numbered_blocks = _number_headings(expanded_blocks)
+    numbered_blocks = nummerer_figurer(_number_headings(expanded_blocks))
 
     try:
         # Forside, sagsoplysninger, indholdsfortegnelse, indhold.

@@ -1,0 +1,74 @@
+/* ImageBlock.css — billede som i Word: justering, træk i hjørnet, billedtekst */
+
+.imgb { display: grid; gap: 6px; }
+.imgb.over .imgb-box { outline: 2px dashed var(--brand, #d94a2b); outline-offset: 3px; }
+
+.imgb-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 4px 6px; border: 1px solid var(--line, #e7e5e4); border-radius: 6px;
+  background: var(--surface, #fff); margin-top: 4px;
+}
+.imgb-grp { display: inline-flex; border: 1px solid var(--line-2, #d6d3d1); border-radius: 5px; overflow: hidden; }
+.imgb-grp button + button { border-left: 1px solid var(--line-2, #d6d3d1); }
+.imgb-bar button {
+  height: 26px; min-width: 28px; padding: 0 7px; border: 0; background: var(--surface, #fff);
+  color: var(--ink-2, #44403c); font: 500 12px var(--font-sans, inherit); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.imgb-bar > button.txt { border: 1px solid var(--line-2, #d6d3d1); border-radius: 5px; }
+.imgb-bar button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.imgb-bar button:hover { color: var(--brand-ink, #b23a1f); }
+.imgb-bar button.on { background: var(--brand-wash, #fbece8); color: var(--brand-ink, #b23a1f); }
+.imgb-bar button.danger { color: var(--fail, #b91c1c); }
+.imgb-bar button:disabled { opacity: .5; cursor: default; }
+.imgb-num { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2, #44403c); }
+.imgb-num input { accent-color: var(--brand, #d94a2b); }
+.imgb-sp { flex: 1; }
+
+.imgb-col { display: flex; }
+.imgb-left .imgb-col { justify-content: flex-start; }
+.imgb-center .imgb-col { justify-content: center; }
+.imgb-right .imgb-col { justify-content: flex-end; }
+
+.imgb-box { position: relative; min-width: 60px; max-width: 100%; outline: none; }
+.imgb-box img { display: block; width: 100%; height: auto; user-select: none; }
+.imgb.sel .imgb-box { box-shadow: 0 0 0 1px var(--brand, #d94a2b); }
+
+/* Håndtag i de nederste hjørner, kun når billedet er markeret */
+.imgb-h {
+  position: absolute; bottom: -5px; width: 11px; height: 11px; display: none;
+  background: var(--surface, #fff); border: 1.5px solid var(--brand, #d94a2b); border-radius: 2px;
+  touch-action: none;
+}
+.imgb.sel .imgb-h { display: block; }
+.imgb-h.l { left: -5px; cursor: nesw-resize; }
+.imgb-h.r { right: -5px; cursor: nwse-resize; }
+.imgb-pct {
+  position: absolute; right: 8px; top: 8px; padding: 2px 7px; border-radius: 4px;
+  background: rgba(28, 25, 23, .78); color: #fff; font: 600 11px var(--font-mono, monospace);
+}
+
+.imgb-cap { display: flex; align-items: baseline; gap: 6px; }
+.imgb-left .imgb-cap { justify-content: flex-start; }
+.imgb-center .imgb-cap { justify-content: center; }
+.imgb-right .imgb-cap { justify-content: flex-end; }
+.imgb-fig { font: italic 12.5px var(--font-sans, inherit); color: var(--muted, #78716c); white-space: nowrap; }
+.imgb-fig::after { content: ':'; }
+.imgb-cap input {
+  flex: 0 1 auto; max-width: 100%; min-width: 0; border: 0; border-bottom: 1px solid transparent; background: transparent;
+  padding: 2px 0; outline: none; font: italic 12.5px var(--font-sans, inherit); color: var(--ink-2, #44403c);
+}
+.imgb-cap input:hover, .imgb-cap input:focus { border-bottom-color: var(--line-2, #d6d3d1); }
+.imgb-file { font: 400 10.5px var(--font-mono, monospace); color: var(--faint, #a8a29e); }
+
+.imgb-drop {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 28px 16px; border: 1.5px dashed var(--line-2, #d6d3d1); border-radius: 8px;
+  background: var(--sunk, #f5f5f4); cursor: pointer; text-align: center; outline: none;
+}
+.imgb-drop:hover, .imgb-drop:focus-visible, .imgb-drop.over {
+  border-color: var(--brand, #d94a2b); background: var(--brand-wash, #fbece8);
+}
+.imgb-drop-ico { width: 30px; height: 30px; fill: none; stroke: var(--muted, #78716c); stroke-width: 1.4; stroke-linejoin: round; }
+.imgb-drop-t { font: 600 13px var(--font-sans, inherit); color: var(--ink-2, #44403c); }
+.imgb-drop-h { font-size: 12px; color: var(--muted, #78716c); }

@@ -30,6 +30,7 @@ docx_bytes = build_word(project, blocks, doc_id="A2")
 """
 
 import rich_text
+from figurer import figurtekst, nummerer_figurer
 import base64
 import io
 import os
@@ -473,9 +474,12 @@ def _convert_doc_block(doc: Document, block: dict, tmp_files: list):
     # ── image ─────────────────────────────────────────────────────────────────
     if btype == 'image':
         b64     = block["data"].get("image_b64", "")
-        caption = block["data"].get("caption", "")
-        w_pct   = block["data"].get("width_pct", 100)
-        w_cm    = max(4.0, min(17.0, 17.0 * w_pct / 100.0))
+        d       = block["data"]
+        caption = figurtekst(d.get("_figur_nr"), d.get("caption", ""))
+        w_pct   = d.get("width_pct", 100)
+        w_cm    = max(2.0, min(17.0, 17.0 * w_pct / 100.0))
+        align   = {"left": WD_ALIGN_PARAGRAPH.LEFT,
+                   "right": WD_ALIGN_PARAGRAPH.RIGHT}.get(d.get("align"), WD_ALIGN_PARAGRAPH.CENTER)
         if b64:
             try:
                 header, data = b64.split(",", 1)
@@ -485,14 +489,15 @@ def _convert_doc_block(doc: Document, block: dict, tmp_files: list):
                 tmp.close()
                 tmp_files.append(tmp.name)
                 doc.add_picture(tmp.name, width=Cm(w_cm))
+                doc.paragraphs[-1].alignment = align
                 if caption:
                     p = doc.add_paragraph(caption)
-                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    p.alignment = align
                     for run in p.runs:
                         run.italic = True
                         run.font.size = Pt(8)
             except Exception as exc:
-                doc.add_paragraph(f'[Image could not be embedded: {exc}]')
+                doc.add_paragraph(f'[Billedet kunne ikke indsættes: {exc}]')
         return
 
     # ── table (user-created editable table) ──────────────────────────────────
@@ -744,7 +749,7 @@ def build_word(project: dict, blocks: list, doc_id: str = "") -> bytes:
     expanded_blocks = _expand_generated_blocks(blocks, project)
 
     # Number headings
-    numbered_blocks = _number_headings(expanded_blocks)
+    numbered_blocks = nummerer_figurer(_number_headings(expanded_blocks))
 
     for block in numbered_blocks:
         try:

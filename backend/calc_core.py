@@ -27,7 +27,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from reportlab.platypus import (
     BaseDocTemplate, PageTemplate, Frame,
     Paragraph, Spacer, Table, TableStyle,
@@ -1044,16 +1044,21 @@ def build_story(all_blocks, styles):
                     scale = min(scale, (max_h * mm) / img.imageHeight)
                 img.drawWidth  = img.imageWidth * scale
                 img.drawHeight = img.imageHeight * scale
+                align = {"left": "LEFT", "right": "RIGHT"}.get(b.get("align"), "CENTER")
+                img.hAlign = align
                 flow = [img]
                 caption = b.get("caption", "")
                 if caption:
                     flow.append(Spacer(1, 1.2*mm))
-                    flow.append(Paragraph(_para_fmt(caption), styles["note"]))
+                    # Billedteksten står under billedet og følger dets justering.
+                    cap_sty = ParagraphStyle("figcap", parent=styles["note"],
+                        alignment={"LEFT": TA_LEFT, "RIGHT": TA_RIGHT}.get(align, TA_CENTER))
+                    flow.append(Paragraph(_para_fmt(caption), cap_sty))
                 flow.append(Spacer(1, 2.5*mm))
                 story.append(KeepTogether(flow))
             except Exception as _fig_err:
                 story.append(Paragraph(
-                    _para_fmt(f"[Image could not be rendered in PDF: {_fig_err}]"),
+                    _para_fmt(f"[Billedet kunne ikke tegnes i PDF'en: {_fig_err}]"),
                     styles["note"],
                 ))
 
