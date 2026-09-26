@@ -1361,7 +1361,8 @@ class TimberBeamInput(BaseModel):
     timber_grade:   str   = "C24"
     service_class:  int   = 1
     load_duration:  str   = "medium"
-    gamma_M:        float = 1.3
+    # None: DK NA efter materialet -- 1,35 konstruktionstræ, 1,30 limtræ.
+    gamma_M:        float | None = None
     # K_FI efter DS/EN 1990 DK NA: CC1 = 0,9 · CC2 = 1,0 · CC3 = 1,1.
     # Bruges kun i den lukkede form; kommer lasten fra en lastkombinationsblok
     # eller en rammeberegning, er den allerede ganget på der.
@@ -1383,7 +1384,7 @@ class TimberBeamInput(BaseModel):
     # Brand — EN 1995-1-2, reduceret tværsnitsmetode. Beregningen har ligget i
     # timber.py hele tiden; den kunne bare ikke naas herfra.
     fire_t_min:          float | None = None   # brandvarighed; None = ingen brandeftervisning
-    fire_beta_n_mm:      float = 0.7           # nominel indbrændingshastighed [mm/min]
+    fire_beta_n_mm:      float | None = None  # mm/min; None: 0,8 konstruktionstræ, 0,7 limtræ
     fire_d0_mm:          float = 7.0           # nulstyrkelag
     fire_k0:             float = 1.0
     fire_gamma_M_fi:     float = 1.0
@@ -1400,6 +1401,7 @@ class TimberBeamInput(BaseModel):
 
     compression_edge_restrained:     bool = True
     torsional_restraint_at_supports: bool = True
+    end_distance_mm:   float | None = None   # træets udhæng forbi understøtningen
     support_length_mm: float | None = None   # bearing length at each support → enables ⊥ grain check
 
 
@@ -1437,11 +1439,14 @@ def calc_timber_beam(data: TimberBeamInput):
         )
         if data.support_length_mm is not None:
             kwargs_tb["support_length"] = data.support_length_mm * mm
+            if data.end_distance_mm is not None:
+                kwargs_tb["end_distance"] = data.end_distance_mm * mm
 
         if data.fire_t_min is not None:
             kwargs_tb["fire_design"] = {
                 "t_fire":         data.fire_t_min,
-                "beta_n":         data.fire_beta_n_mm * mm,
+                "beta_n":         (data.fire_beta_n_mm * mm
+                                   if data.fire_beta_n_mm else None),
                 "d0":             data.fire_d0_mm * mm,
                 "k0":             data.fire_k0,
                 "gamma_M_fi":     data.fire_gamma_M_fi,
@@ -1513,7 +1518,7 @@ class TimberColumnInput(BaseModel):
     timber_grade:            str   = "C24"
     service_class:           int   = 1
     load_duration:           str   = "medium"
-    gamma_M:                 float = 1.3
+    gamma_M:                 float | None = None   # None: DK NA efter materialet
     effective_length_factor: float = 1.0
     l_ef_ltb_m:              float | None = None
     # Afstivet om den svage akse (fx spær med lægter/krydsfiner): så
@@ -1524,7 +1529,7 @@ class TimberColumnInput(BaseModel):
     # Brand — EN 1995-1-2. For en søjle er den strengere end for en bjælke:
     # det afbrændte tværsnit er ikke bare svagere, det er også slankere.
     fire_t_min:          float | None = None   # None = ingen brandeftervisning
-    fire_beta_n_mm:      float = 0.7
+    fire_beta_n_mm:      float | None = None
     fire_d0_mm:          float = 7.0
     fire_k0:             float = 1.0
     fire_gamma_M_fi:     float = 1.0
@@ -1575,7 +1580,8 @@ def calc_timber_column(data: TimberColumnInput):
         if data.fire_t_min is not None:
             kwargs["fire_design"] = {
                 "t_fire":     data.fire_t_min,
-                "beta_n":     data.fire_beta_n_mm * mm,
+                "beta_n":     (data.fire_beta_n_mm * mm
+                               if data.fire_beta_n_mm else None),
                 "d0":         data.fire_d0_mm * mm,
                 "k0":         data.fire_k0,
                 "gamma_M_fi": data.fire_gamma_M_fi,
@@ -2695,7 +2701,7 @@ class GenFrameFemInput(BaseModel):
     # varighed i stedet for den her.
     service_class: int = 1
     load_duration: str = 'medium'
-    gamma_M_timber: float = 1.3
+    gamma_M_timber: float | None = None   # None: DK NA efter hver stangs materiale
 
     # Anvendelsesgraensetilstand. Lasterne er de samme, paasat igen med de
     # karakteristiske vaerdier: G alene og Q alene. Analysen er lineaer, saa

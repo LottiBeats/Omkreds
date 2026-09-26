@@ -108,8 +108,9 @@ def test_kapaciteterne_udledes_som_i_eftervisningen(grade, sc, dur, kmod):
     assert float(kap['f_vd'] / MPa) == pytest.approx(_tal('f_v,d'), abs=5e-3)
     assert float(kap['W_y'] / (10 * mm) ** 3) == pytest.approx(_tal('W_y'),
                                                                rel=1e-3)
-    assert float(kap['A'] / (10 * mm) ** 2) == pytest.approx(_tal('A'),
-                                                             rel=1e-3)
+    # Forskydningen regnes paa b_ef = k_cr·b (EN 1995-1-1 §6.1.7(2)).
+    assert float(kap['A_v'] / (245 * mm) / mm) == pytest.approx(
+        _tal('b_ef'), abs=0.06)   # b_ef er trykt med én decimal
 
 
 def test_kurven_topper_hvor_momentet_topper():

@@ -105,8 +105,11 @@ def resolve_timber(section: str, grade: str) -> dict:
     if data is None:
         raise KeyError(f"Ukendt trækvalitet '{grade}'.")
 
-    ratio = E05_OVER_EMEAN.get(data.get('material_type'), 0.67)
-    E_mean_GPa = _pa(data['E_0_05']) / ratio / 1e9
+    if data.get('E_0_mean') is not None:
+        E_mean_GPa = _pa(data['E_0_mean']) / 1e9      # tabelværdi (EN 14080)
+    else:
+        ratio = E05_OVER_EMEAN.get(data.get('material_type'), 0.67)
+        E_mean_GPa = _pa(data['E_0_05']) / ratio / 1e9
 
     props = _rect_properties(b_mm, h_mm, E_mean_GPa)
     props.update({

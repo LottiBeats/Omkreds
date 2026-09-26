@@ -216,9 +216,10 @@ def test_the_column_follows_the_same_rule(client):
             "design_situation": situation})
         assert r.status_code == 200, r.text
         return _row(r.json(), "f_c,0,d")
-    # 0,90 · 29 / 1,25 = 20,88 MPa   →   1,10 · 29 / 1,00 = 31,90 MPa
-    assert f_c0d("persistent") == pytest.approx(0.90 * 29 / 1.25, rel=0.01)
-    assert f_c0d("accidental") == pytest.approx(1.10 * 29 / 1.00, rel=0.01)
+    # GL28h har f_c,0,k = 28 MPa efter EN 14080 (29 var EN 1194).
+    # 0,90 · 28 / 1,25 = 20,16 MPa   →   1,10 · 28 / 1,00 = 30,80 MPa
+    assert f_c0d("persistent") == pytest.approx(0.90 * 28 / 1.25, rel=0.01)
+    assert f_c0d("accidental") == pytest.approx(1.10 * 28 / 1.00, rel=0.01)
 
 
 def test_fire_is_computed_without_an_accidental_load(client):

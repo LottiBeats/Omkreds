@@ -26,7 +26,7 @@ import forallpeople as si
 si.environment("structural", top_level=True)
 
 from calc_core import CheckContext, MH, N, S, T, TBL, CALC_ROW
-from timber_grades import get_timber_grade
+from timber_grades import get_timber_grade, gamma_M_dk, BETA_N_MM_MIN, K_FI_BRAND
 
 
 KMOD = {
@@ -78,7 +78,7 @@ def timber_column_bending_and_axial(
     G_0_05=None,
     service_class=1,
     load_duration="medium",
-    gamma_M=1.3,
+    gamma_M=None,            # None: DK NA efter materialet (1,35 / 1,30)
     design_situation="persistent",   # "persistent" | "accidental"
     k_m=0.70,
     material_type="solid_timber",
@@ -107,6 +107,8 @@ def timber_column_bending_and_axial(
     if G_0_05  is None: G_0_05  = grade_data.get("G_0_05", E_0_05 / 16) if grade_data else E_0_05 / 16
     if material_type == "solid_timber" and grade_data is not None:
         material_type = grade_data["material_type"]
+    if gamma_M is None:
+        gamma_M = gamma_M_dk(material_type)
 
     # DS/EN 1990 DK NA:2024, anneks F punkt (10): "Ved undersoegelser af
     # ulykkesdimensioneringstilfaelde og seismiske dimensioneringstilfaelde
@@ -441,7 +443,8 @@ def timber_column_bending_and_axial(
         blocks.append(S("Brand — EN 1995-1-2 pkt. 4.2.2"))
 
         t_fire     = fire_design["t_fire"]
-        beta_n     = fire_design.get("beta_n", 0.7 * mm)
+        beta_n     = fire_design.get("beta_n") or BETA_N_MM_MIN.get(material_type, 0.8) * mm
+        k_fi       = fire_design.get("k_fi") or K_FI_BRAND.get(material_type, 1.25)
         d0         = fire_design.get("d0", 7 * mm)
         k0         = fire_design.get("k0", 1.0)
         gamma_M_fi = fire_design.get("gamma_M_fi", 1.0)
@@ -491,8 +494,9 @@ def timber_column_bending_and_axial(
         i_1_fi = (I_1_fi / A_fi) ** 0.5
         i_2_fi = (I_2_fi / A_fi) ** 0.5
 
-        f_c0d_fi = kmod_fi * f_c0k / gamma_M_fi
-        f_md_fi  = kmod_fi * f_mk  / gamma_M_fi
+        # f_20 = k_fi·f_k (EN 1995-1-2 lign. 2.1, tabel 2.1)
+        f_c0d_fi = kmod_fi * k_fi * f_c0k / gamma_M_fi
+        f_md_fi  = kmod_fi * k_fi * f_mk  / gamma_M_fi
 
         sigma_c0d_fi = eta_fi * N_Ed / A_fi
         sigma_m1d_fi = eta_fi * M_Ed / W_y_fi
@@ -500,7 +504,8 @@ def timber_column_bending_and_axial(
         blocks.extend([
             CALC_ROW("A_fi",      "= b_fi·h_fi",   f"{float(A_fi / _cm**2):.1f} cm²"),
             CALC_ROW("i_2,fi",    "= √(I_2,fi/A_fi)", _u(i_2_fi, mm, "mm", 1)),
-            CALC_ROW("f_c,0,d,fi", "= k_mod,fi·f_c,0,k / γ_M,fi", _u(f_c0d_fi, MPa, "MPa")),
+            CALC_ROW("k_fi",       "20 %-fraktil, EN 1995-1-2 tabel 2.1", f"{k_fi:.2f}"),
+            CALC_ROW("f_c,0,d,fi", "= k_mod,fi·k_fi·f_c,0,k / γ_M,fi", _u(f_c0d_fi, MPa, "MPa")),
             CALC_ROW("σ_c,0,d,fi", "= η_fi·N_Ed / A_fi",          _u(sigma_c0d_fi, MPa, "MPa")),
         ])
 

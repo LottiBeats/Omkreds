@@ -34,20 +34,25 @@ TIMBER_GRADE_DATA = {
     "D50": {"f_mk": 50 * MPa, "f_vk": 4.0 * MPa, "f_c0k": 29 * MPa, "f_c_90_k": 8.0 * MPa, "E_0_05": 11_800 * MPa, "G_0_05":  738 * MPa, "material_type": "solid_timber", "support_material": "solid_timber", "description": "Løvtræ D50"},
     "D60": {"f_mk": 60 * MPa, "f_vk": 4.0 * MPa, "f_c0k": 32 * MPa, "f_c_90_k": 8.0 * MPa, "E_0_05": 13_600 * MPa, "G_0_05":  850 * MPa, "material_type": "solid_timber", "support_material": "solid_timber", "description": "Løvtræ D60"},
     "D70": {"f_mk": 70 * MPa, "f_vk": 4.0 * MPa, "f_c0k": 34 * MPa, "f_c_90_k": 8.0 * MPa, "E_0_05": 14_100 * MPa, "G_0_05":  881 * MPa, "material_type": "solid_timber", "support_material": "solid_timber", "description": "Løvtræ D70"},
-    "GL20H": {"f_mk": 20 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 24 * MPa, "f_c_90_k": 2.4 * MPa, "E_0_05": 8_400 * MPa, "G_0_05":  525 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL20h"},
-    "GL22H": {"f_mk": 22 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 26 * MPa, "f_c_90_k": 2.5 * MPa, "E_0_05": 9_100 * MPa, "G_0_05":  569 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL22h"},
-    "GL24H": {"f_mk": 24 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 24 * MPa, "f_c_90_k": 2.5 * MPa, "E_0_05": 9_400 * MPa, "G_0_05":  588 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL24h"},
-    "GL26H": {"f_mk": 26 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 26.5 * MPa, "f_c_90_k": 2.6 * MPa, "E_0_05": 9_700 * MPa, "G_0_05":  606 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL26h"},
-    "GL28H": {"f_mk": 28 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 29 * MPa, "f_c_90_k": 2.7 * MPa, "E_0_05": 10_100 * MPa, "G_0_05":  631 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL28h"},
-    "GL30H": {"f_mk": 30 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 31 * MPa, "f_c_90_k": 2.7 * MPa, "E_0_05": 10_500 * MPa, "G_0_05":  656 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL30h"},
-    "GL32H": {"f_mk": 32 * MPa, "f_vk": 3.8 * MPa, "f_c0k": 33 * MPa, "f_c_90_k": 2.8 * MPa, "E_0_05": 11_100 * MPa, "G_0_05":  694 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL32h"},
-    "GL20C": {"f_mk": 20 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 24 * MPa, "f_c_90_k": 2.3 * MPa, "E_0_05": 8_400 * MPa, "G_0_05":  525 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL20c"},
-    "GL22C": {"f_mk": 22 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 26 * MPa, "f_c_90_k": 2.4 * MPa, "E_0_05": 9_100 * MPa, "G_0_05":  569 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL22c"},
-    "GL24C": {"f_mk": 24 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 24 * MPa, "f_c_90_k": 2.5 * MPa, "E_0_05": 9_400 * MPa, "G_0_05":  588 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL24c"},
-    "GL26C": {"f_mk": 26 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 26.5 * MPa, "f_c_90_k": 2.6 * MPa, "E_0_05": 9_700 * MPa, "G_0_05":  606 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL26c"},
-    "GL28C": {"f_mk": 28 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 29 * MPa, "f_c_90_k": 2.7 * MPa, "E_0_05": 10_100 * MPa, "G_0_05":  631 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL28c"},
-    "GL30C": {"f_mk": 30 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 31 * MPa, "f_c_90_k": 2.7 * MPa, "E_0_05": 10_500 * MPa, "G_0_05":  656 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL30c"},
-    "GL32C": {"f_mk": 32 * MPa, "f_vk": 3.8 * MPa, "f_c0k": 33 * MPa, "f_c_90_k": 2.8 * MPa, "E_0_05": 11_100 * MPa, "G_0_05":  694 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL32c"},
+    # Limtræ efter EN 14080:2013 tabel 4 (kombineret, c) og 5 (homogent, h).
+    # Tallene stod før efter den tilbagetrukne EN 1194, og GL24c havde
+    # f_c,0,k = 24 MPa, hvor EN 14080 siger 21,5 -- 12 % for højt i en
+    # søjle. E_0,mean står her som tabelværdi, så nedbøjningen ikke skal
+    # udledes af et forhold. G_0,05 = 540 MPa for alle klasser.
+    "GL20H": {"f_mk": 20 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 20 * MPa,   "f_c_90_k": 2.5 * MPa, "E_0_05":  7_000 * MPa, "E_0_mean":  8_400 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL20h"},
+    "GL22H": {"f_mk": 22 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 22 * MPa,   "f_c_90_k": 2.5 * MPa, "E_0_05":  8_800 * MPa, "E_0_mean": 10_500 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL22h"},
+    "GL24H": {"f_mk": 24 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 24 * MPa,   "f_c_90_k": 2.5 * MPa, "E_0_05":  9_600 * MPa, "E_0_mean": 11_500 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL24h"},
+    "GL26H": {"f_mk": 26 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 26 * MPa,   "f_c_90_k": 2.5 * MPa, "E_0_05": 10_100 * MPa, "E_0_mean": 12_100 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL26h"},
+    "GL28H": {"f_mk": 28 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 28 * MPa,   "f_c_90_k": 2.5 * MPa, "E_0_05": 10_500 * MPa, "E_0_mean": 12_600 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL28h"},
+    "GL30H": {"f_mk": 30 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 30 * MPa,   "f_c_90_k": 2.5 * MPa, "E_0_05": 11_300 * MPa, "E_0_mean": 13_600 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL30h"},
+    "GL32H": {"f_mk": 32 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 32 * MPa,   "f_c_90_k": 2.5 * MPa, "E_0_05": 11_800 * MPa, "E_0_mean": 14_200 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL32h"},
+    "GL20C": {"f_mk": 20 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 18.5 * MPa, "f_c_90_k": 2.5 * MPa, "E_0_05":  8_600 * MPa, "E_0_mean": 10_400 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL20c"},
+    "GL22C": {"f_mk": 22 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 20 * MPa,   "f_c_90_k": 2.5 * MPa, "E_0_05":  8_600 * MPa, "E_0_mean": 10_400 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL22c"},
+    "GL24C": {"f_mk": 24 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 21.5 * MPa, "f_c_90_k": 2.5 * MPa, "E_0_05":  9_100 * MPa, "E_0_mean": 11_000 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL24c"},
+    "GL26C": {"f_mk": 26 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 23.5 * MPa, "f_c_90_k": 2.5 * MPa, "E_0_05": 10_000 * MPa, "E_0_mean": 12_000 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL26c"},
+    "GL28C": {"f_mk": 28 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 24 * MPa,   "f_c_90_k": 2.5 * MPa, "E_0_05": 10_400 * MPa, "E_0_mean": 12_500 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL28c"},
+    "GL30C": {"f_mk": 30 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 24.5 * MPa, "f_c_90_k": 2.5 * MPa, "E_0_05": 10_800 * MPa, "E_0_mean": 13_000 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL30c"},
+    "GL32C": {"f_mk": 32 * MPa, "f_vk": 3.5 * MPa, "f_c0k": 24.5 * MPa, "f_c_90_k": 2.5 * MPa, "E_0_05": 11_200 * MPa, "E_0_mean": 13_500 * MPa, "G_0_05": 540 * MPa, "material_type": "glulam", "support_material": "glulam", "description": "Limtræ GL32c"},
 }
 
 
@@ -100,6 +105,9 @@ def E_0_mean(grade_key: str):
     """
     key, data = get_timber_grade(grade_key)
     mtype = data["material_type"]
+    if data.get("E_0_mean") is not None:
+        return data["E_0_mean"], float(data["E_0_05"] / data["E_0_mean"]), \
+            "EN 14080 tabel 4/5 (tabelværdi)"
     if mtype == "glulam":
         forhold, kilde = 0.85, "EN 14080 (E_0,g,05 = 0,85 · E_0,g,mean)"
     elif key.upper().startswith("D"):
@@ -112,3 +120,27 @@ def E_0_mean(grade_key: str):
 # k_def, EN 1995-1-1 tabel 3.2 — konstruktionstræ, limtræ og LVL.
 # Plader har andre værdier; de er ikke i denne tabel.
 K_DEF = {1: 0.60, 2: 0.80, 3: 2.00}
+
+
+# ── Partialkoefficient, DS/EN 1995-1-1 DK NA ─────────────────────────────────
+#
+# γ_M afhænger af materialet: konstruktionstræ 1,35, limtræ 1,30. Modulerne
+# brugte 1,3 for alt -- EN-standardens anbefalede værdi, ikke den danske.
+# Værdierne gælder normal kontrolklasse; ved skærpet eller lempet kontrol
+# ganges med γ_3 (0,95 / 1,10), og så angives γ_M selv.
+GAMMA_M_DK = {"solid_timber": 1.35, "glulam": 1.30}
+
+
+def gamma_M_dk(material_type: str | None) -> float:
+    return GAMMA_M_DK.get(material_type or "solid_timber", 1.35)
+
+
+# Nominel indbrændingshastighed β_n, EN 1995-1-2 tabel 3.1.
+BETA_N_MM_MIN = {"solid_timber": 0.8, "glulam": 0.7}
+
+# k_fi, EN 1995-1-2 tabel 2.1: 20 %-fraktilen af styrken ved brand.
+K_FI_BRAND = {"solid_timber": 1.25, "glulam": 1.15}
+
+# k_cr, EN 1995-1-1 §6.1.7(2) (A1:2008): revner reducerer den effektive
+# bredde ved forskydning. 0,67 for konstruktionstræ og limtræ.
+K_CR = 0.67
