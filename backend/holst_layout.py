@@ -22,6 +22,7 @@ Extra PROJECT dict keys (all optional):
 import copy
 from pathlib import Path
 
+import pdf_fonts  # noqa: F401  (registrerer IBM Plex)
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
@@ -136,14 +137,14 @@ def _draw_logo_or_firm(canvas, project, hl, hb):
     # Text fallback — firm name centred in the logo cell
     firm = project.get("firm", "")
     if firm:
-        canvas.setFont("Helvetica-Bold", 7)
+        canvas.setFont("Plex-SemiBold", 7)
         canvas.setFillColor(colors.black)
         canvas.drawCentredString(hl + _LOGO_W / 2, hb + _HDR_H / 2 - 2.5, firm)
 
 
 def _label(c, x, y, text):
     """Tiny field-name label pinned to the top-left corner of a header cell."""
-    c.setFont("Helvetica", 5.5)
+    c.setFont("Plex", 5.5)
     c.setFillColor(colors.black)
     c.drawString(x + 1.2 * mm, y - 2.0 * mm, text)
 
@@ -152,7 +153,7 @@ def _value(c, cx, cy, cw, ch, text, size=7.5, centered=True, max_chars=None):
     """Value text placed in the lower portion of a header cell (below the label)."""
     if max_chars and len(text) > max_chars:
         text = text[:max_chars - 1] + "…"
-    c.setFont("Helvetica", size)
+    c.setFont("Plex", size)
     c.setFillColor(colors.black)
     # Reserve top 2.8 mm for the label; centre value in remaining space
     label_zone = 2.8 * mm
@@ -275,7 +276,7 @@ def _draw_footer(canvas, doc, project):
         if val:
             parts.append(f"{prefix}{val}")
 
-    canvas.setFont("Helvetica", 6.5)
+    canvas.setFont("Plex", 6.5)
     canvas.setFillColor(colors.black)
     canvas.drawCentredString(W / 2, _FOOT_Y, "    ".join(parts))
     canvas.restoreState()
@@ -358,14 +359,14 @@ def _draw_revision_table(canvas, g, project):
         canvas.line(x, tbl_b, x, tbl_t)
 
     # Header text
-    canvas.setFont("Helvetica-Bold", 6)
+    canvas.setFont("Plex-SemiBold", 6)
     x = tbl_l
     for lbl, cw in zip(col_labels, col_ws):
         canvas.drawCentredString(x + cw / 2, tbl_b + n * ROW_H + HDR_H * 0.35, lbl)
         x += cw
 
     # Data rows — newest revision at top
-    canvas.setFont("Helvetica", 6)
+    canvas.setFont("Plex", 6)
     for i, rev in enumerate(reversed(rows)):
         y_text = tbl_b + (n - i - 0.5) * ROW_H - 2
         x = tbl_l
@@ -407,7 +408,7 @@ def _draw_cover_page(canvas, doc, project):
 
     # ── Standard / ref line just above the revision table ────────────────────────
     ref_line_y = rev_tbl_top + 5 * mm
-    canvas.setFont("Helvetica", 8)
+    canvas.setFont("Plex", 8)
     canvas.setFillColor(colors.HexColor("#595F61"))
     canvas.drawCentredString(
         W / 2,
@@ -445,11 +446,11 @@ def _draw_cover_page(canvas, doc, project):
 
     # ── Large project name ────────────────────────────────────────────────────────
     canvas.setFillColor(colors.black)
-    canvas.setFont("Helvetica-Bold", 24)
+    canvas.setFont("Plex-SemiBold", 24)
     canvas.drawCentredString(W / 2, g["box_top"] - 22 * mm, project.get("project", ""))
 
     # ── Report title — word-wrap at ~38 chars ─────────────────────────────────────
-    canvas.setFont("Helvetica", 15)
+    canvas.setFont("Plex", 15)
     words = project.get("title", "").split()
     lines, line = [], ""
     for word in words:

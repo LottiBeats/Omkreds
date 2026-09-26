@@ -22,6 +22,7 @@ FIG(path, caption)      Embedded figure
 import re
 import unicodedata
 from pathlib import Path
+import pdf_fonts  # noqa: F401  (registrerer IBM Plex)
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
@@ -281,30 +282,30 @@ def _latex_to_plain(latex):
 def make_styles():
     return {
         # ── content styles ──────────────────────────────────
-        "normal":     ParagraphStyle("normal",    fontName="Helvetica",        fontSize=9,   leading=13, textColor=C["text_dark"],  spaceAfter=2),
-        "note":       ParagraphStyle("note",      fontName="Helvetica-Oblique",fontSize=8.5, leading=12, textColor=C["text_mid"],   spaceAfter=2),
-        "section":    ParagraphStyle("section",   fontName="Helvetica-Bold",   fontSize=8,   leading=12, textColor=C["text_mid"],   spaceBefore=5, spaceAfter=1),
-        "hc_var":     ParagraphStyle("hc_var",    fontName="Courier-Bold",     fontSize=9,   leading=12, textColor=C["text_dark"]),
-        "hc_sym":     ParagraphStyle("hc_sym",    fontName="Courier",          fontSize=8.5, leading=12, textColor=C["text_mid"]),
-        "hc_res":     ParagraphStyle("hc_res",    fontName="Courier-Bold",     fontSize=9,   leading=12, textColor=C["text_dark"]),
-        "hc_lbl":     ParagraphStyle("hc_lbl",    fontName="Helvetica",        fontSize=7,   leading=10, textColor=C["text_light"]),
-        "hc_eq":      ParagraphStyle("hc_eq",     fontName="Helvetica",        fontSize=8.5, leading=12, textColor=C["text_light"]),
-        "check_pass": ParagraphStyle("check_pass",fontName="Helvetica-Bold",   fontSize=8.5, leading=11, textColor=C["pass_text"]),
-        "check_fail": ParagraphStyle("check_fail",fontName="Helvetica-Bold",   fontSize=8.5, leading=11, textColor=C["fail_text"]),
-        "th":         ParagraphStyle("th",        fontName="Helvetica-Bold",   fontSize=8,   leading=10, textColor=C["text_dark"], alignment=TA_CENTER),
-        "td":         ParagraphStyle("td",        fontName="Helvetica",        fontSize=8,   leading=10, textColor=C["text_dark"]),
-        "mod_title":  ParagraphStyle("mod_title", fontName="Helvetica-Bold",   fontSize=10,  leading=13, textColor=C["text_dark"]),
-        "mod_sub":    ParagraphStyle("mod_sub",   fontName="Helvetica",        fontSize=7.5, leading=10, textColor=C["text_mid"],  alignment=TA_RIGHT),
+        "normal":     ParagraphStyle("normal",    fontName="Plex",        fontSize=9,   leading=13, textColor=C["text_dark"],  spaceAfter=2),
+        "note":       ParagraphStyle("note",      fontName="Plex-Italic",fontSize=8.5, leading=12, textColor=C["text_mid"],   spaceAfter=2),
+        "section":    ParagraphStyle("section",   fontName="Plex-SemiBold",   fontSize=8,   leading=12, textColor=C["text_mid"],   spaceBefore=5, spaceAfter=1),
+        "hc_var":     ParagraphStyle("hc_var",    fontName="Plex-SemiBold",     fontSize=9,   leading=12, textColor=C["text_dark"]),
+        "hc_sym":     ParagraphStyle("hc_sym",    fontName="Plex",          fontSize=8.5, leading=12, textColor=C["text_mid"]),
+        "hc_res":     ParagraphStyle("hc_res",    fontName="Plex-SemiBold",     fontSize=9,   leading=12, textColor=C["text_dark"]),
+        "hc_lbl":     ParagraphStyle("hc_lbl",    fontName="Plex",        fontSize=7,   leading=10, textColor=C["text_light"]),
+        "hc_eq":      ParagraphStyle("hc_eq",     fontName="Plex",        fontSize=8.5, leading=12, textColor=C["text_light"]),
+        "check_pass": ParagraphStyle("check_pass",fontName="Plex-SemiBold",   fontSize=8.5, leading=11, textColor=C["pass_text"]),
+        "check_fail": ParagraphStyle("check_fail",fontName="Plex-SemiBold",   fontSize=8.5, leading=11, textColor=C["fail_text"]),
+        "th":         ParagraphStyle("th",        fontName="Plex-SemiBold",   fontSize=8,   leading=10, textColor=C["text_dark"], alignment=TA_CENTER),
+        "td":         ParagraphStyle("td",        fontName="Plex",        fontSize=8,   leading=10, textColor=C["text_dark"]),
+        "mod_title":  ParagraphStyle("mod_title", fontName="Plex-SemiBold",   fontSize=10,  leading=13, textColor=C["text_dark"]),
+        "mod_sub":    ParagraphStyle("mod_sub",   fontName="Plex",        fontSize=7.5, leading=10, textColor=C["text_mid"],  alignment=TA_RIGHT),
         # ── free-text heading ────────────────────────────────
-        "h1":         ParagraphStyle("h1",        fontName="Helvetica-Bold",   fontSize=11,  leading=15, textColor=C["text_dark"], spaceBefore=6, spaceAfter=3),
+        "h1":         ParagraphStyle("h1",        fontName="Plex-SemiBold",   fontSize=11,  leading=15, textColor=C["text_dark"], spaceBefore=6, spaceAfter=3),
         # ── TOC styles ───────────────────────────────────────
-        "toc_heading": ParagraphStyle("toc_heading", fontName="Helvetica-Bold", fontSize=16, leading=20,
+        "toc_heading": ParagraphStyle("toc_heading", fontName="Plex-SemiBold", fontSize=16, leading=20,
                                       textColor=C["text_dark"], spaceBefore=0, spaceAfter=10),
-        "toc_entry_0": ParagraphStyle("toc_entry_0", fontName="Helvetica-Bold", fontSize=9.5, leading=16,
+        "toc_entry_0": ParagraphStyle("toc_entry_0", fontName="Plex-SemiBold", fontSize=9.5, leading=16,
                                       textColor=C["text_dark"],  leftIndent=0),
-        "toc_entry_1": ParagraphStyle("toc_entry_1", fontName="Helvetica-Bold", fontSize=8.5, leading=13,
+        "toc_entry_1": ParagraphStyle("toc_entry_1", fontName="Plex-SemiBold", fontSize=8.5, leading=13,
                                       textColor=C["text_mid"], leftIndent=6*mm),
-        "toc_entry_2": ParagraphStyle("toc_entry_2", fontName="Helvetica",      fontSize=8,   leading=12,
+        "toc_entry_2": ParagraphStyle("toc_entry_2", fontName="Plex",      fontSize=8,   leading=12,
                                       textColor=C["text_mid"], leftIndent=14*mm),
     }
 
@@ -392,6 +393,10 @@ _MATHS_NAMES = {
 
 def _unicode_run(mo) -> str:
     run = mo.group()
+    # IBM Plex (se pdf_fonts.py) har græsk og de matematiske tegn selv; kun
+    # et tegn, den mangler, sendes til DejaVu.
+    if all(pdf_fonts.covers(c) for c in run):
+        return run
     if _GREEK_FONT:
         return f'<font name="{_GREEK_FONT}">{run}</font>'
     return ''.join(_GREEK_NAMES.get(c) or _MATHS_NAMES.get(c, c) for c in run)
@@ -469,7 +474,8 @@ def _fmt(s):
     # ── Strip combining characters (Unicode category Mn) ──────────────────
     # e.g. combining macron U+0304 in λ̄ (U+03BB + U+0304) → λ
     # Helvetica has no glyphs for combining chars; they render as ■
-    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    # Et kombinerende tegn, skriften har (overstregen i λ̄), bliver stående.
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn' or pdf_fonts.covers(c))
 
     # ── Greek and maths symbols ────────────────────────────────────────────
     # Before the subscript rule below, so that a spelled-out fallback such as
@@ -481,6 +487,42 @@ def _fmt(s):
     s = re.sub(r'\^(\w+)',       r'<super>\1</super>', s)
     s = _SUB_RE.sub(_subscript, s)
     return s
+
+
+# ── Danske decimaler ─────────────────────────────────────────────────────────
+#
+# Modulerne formaterer tal med punktum ("5.157 MPa"). I en dansk rapport er det
+# komma. Omskrivningen sker her, ét sted, og kun på tal: en henvisning som
+# §6.3.2.3, (6.11), tabel 6.5, lign. 6.61, 6.10a eller anneks A1.4 er ikke et
+# decimaltal og bliver stående.
+# Et lille bogstav bagefter er en kombination som 6.10a; et stort er en
+# koefficient foran en last, som i "1.20G".
+_TAL_RE = re.compile(r'(?<![\w.,§])(\d+)\.(\d+)(?![\d.]|[a-zæøå])')
+_HENVISNING_RE = re.compile(
+    r'(§|lign\.?|ligning|tabel|table|figur|fig\.|pkt\.?|punkt|afsnit|kap\.?|'
+    r'kapitel|anneks|annex|bilag|eq\.?|klasse|version|ver\.?)\s*$', re.I)
+
+
+_TAGSTART_RE = re.compile(r'<[/A-Za-z](?!.*<[/A-Za-z])', re.S)
+
+
+def dk_decimaler(s) -> str:
+    s = str(s)
+
+    def _sub(mo):
+        # Inde i et markup-tag (<font size="8.5">) er tallet en attributværdi.
+        tag = _TAGSTART_RE.search(s, 0, mo.start())
+        if tag and s.rfind('>', 0, mo.start()) < tag.start():
+            return mo.group(0)
+        foran = s[max(0, mo.start() - 12):mo.start()]
+        if _HENVISNING_RE.search(foran):
+            return mo.group(0)
+        # "(6.11)" -- en ligningshenvisning i parentes, ikke et tal.
+        if foran.endswith('(') and s[mo.end():mo.end() + 1] == ')':
+            return mo.group(0)
+        return f'{mo.group(1)},{mo.group(2)}'
+
+    return _TAL_RE.sub(_sub, s)
 
 
 def _para_fmt(s):
@@ -593,7 +635,7 @@ def _draw_cover(canvas, doc, project):
 
     # firm name
     canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica", 11)
+    canvas.setFont("Plex", 11)
     canvas.drawCentredString(W / 2, H - band_h * 0.72, project["firm"])
 
     # orange accent rule at band bottom
@@ -603,12 +645,12 @@ def _draw_cover(canvas, doc, project):
 
     # project name
     canvas.setFillColor(ORANGE)
-    canvas.setFont("Helvetica-Bold", 18)
+    canvas.setFont("Plex-SemiBold", 18)
     canvas.drawCentredString(W / 2, H - band_h - 28 * mm, project["project"])
 
     # report title
     canvas.setFillColor(C["text_dark"])
-    canvas.setFont("Helvetica", 12)
+    canvas.setFont("Plex", 12)
     canvas.drawCentredString(W / 2, H - band_h - 43 * mm, project["title"])
 
     # thin separator
@@ -618,7 +660,7 @@ def _draw_cover(canvas, doc, project):
 
     # ref / revision
     canvas.setFillColor(C["text_mid"])
-    canvas.setFont("Helvetica", 10)
+    canvas.setFont("Plex", 10)
     canvas.drawCentredString(
         W / 2, H - band_h - 64 * mm,
         f"{project['ref']}   ·   Rev {project['revision']}"
@@ -633,16 +675,16 @@ def _draw_cover(canvas, doc, project):
         ("Checker:",  project["checker"]),
         ("Date:",     project["date"]),
     ]:
-        canvas.setFont("Helvetica-Bold", 9)
+        canvas.setFont("Plex-SemiBold", 9)
         canvas.setFillColor(C["text_mid"])
         canvas.drawString(col_label, detail_y, label)
-        canvas.setFont("Helvetica", 9)
+        canvas.setFont("Plex", 9)
         canvas.setFillColor(C["text_dark"])
         canvas.drawString(col_value, detail_y, value)
         detail_y -= 9 * mm
 
     # standards
-    canvas.setFont("Helvetica", 8)
+    canvas.setFont("Plex", 8)
     canvas.setFillColor(C["text_mid"])
     canvas.drawCentredString(W / 2, detail_y - 8 * mm, project["standard"])
 
@@ -654,7 +696,7 @@ def _draw_cover(canvas, doc, project):
     canvas.setLineWidth(0.5)
     canvas.line(0, strip_h, W, strip_h)
     canvas.setFillColor(C["fail_text"])
-    canvas.setFont("Helvetica-Bold", 8.5)
+    canvas.setFont("Plex-SemiBold", 8.5)
     canvas.drawCentredString(W / 2, strip_h / 2 - 3, "PRELIMINARY — NOT FOR CONSTRUCTION")
 
     canvas.restoreState()
@@ -685,7 +727,7 @@ def _draw_header_footer(canvas, doc, project):
 
     # ref + page right-aligned in top bar
     canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica", 7.5)
+    canvas.setFont("Plex", 7.5)
     canvas.drawRightString(W - 13 * mm, ly - 3,
         f"{project['ref']}  ·  Rev {project['revision']}  ·  p. {doc.page}")
 
@@ -694,7 +736,7 @@ def _draw_header_footer(canvas, doc, project):
     canvas.setFillColor(C["gray_light"])
     canvas.rect(0, H - bar_h - sub_h, W, sub_h, fill=1, stroke=0)
     canvas.setFillColor(C["text_mid"])
-    canvas.setFont("Helvetica", 6)
+    canvas.setFont("Plex", 6)
     meta = (f"{project['project']}   ·   {project['title']}   ·   "
             f"Eng: {project['engineer']}   ·   Chk: {project['checker']}   ·   {project['date']}")
     canvas.drawString(13 * mm, H - bar_h - sub_h + 1.6 * mm, meta)
@@ -704,7 +746,7 @@ def _draw_header_footer(canvas, doc, project):
     canvas.setLineWidth(0.4)
     canvas.line(13 * mm, 11 * mm, W - 13 * mm, 11 * mm)
     canvas.setFillColor(C["text_light"])
-    canvas.setFont("Helvetica", 6.5)
+    canvas.setFont("Plex", 6.5)
     canvas.drawString(13 * mm, 7 * mm, f"{project['firm']}  ·  {project['ref']}")
     canvas.drawRightString(W - 13 * mm, 7 * mm, "PRELIMINARY — NOT FOR CONSTRUCTION")
 
@@ -876,11 +918,12 @@ def build_story(all_blocks, styles):
                 color=C["rule_mid"], spaceAfter=1.5))
 
         elif t == "text":
-            story.append(Paragraph(_para_fmt(b["content"]), styles["normal"]))
+            c = b["content"] if b.get("user") else dk_decimaler(b["content"])
+            story.append(Paragraph(_para_fmt(c), styles["normal"]))
 
         elif t == "note":
             # Left-rule only — no filled box
-            tbl = Table([[Paragraph(_para_fmt(b["content"]), styles["note"])]],
+            tbl = Table([[Paragraph(_para_fmt(dk_decimaler(b["content"])), styles["note"])]],
                         colWidths=[170*mm])
             tbl.setStyle(TableStyle([
                 ("LINEBEFORE",   (0,0),(0,-1), 2.5, C["orange"]),
@@ -909,8 +952,9 @@ def build_story(all_blocks, styles):
                     s = s[1:].strip()
                 return s
 
-            formula = _strip_eq(formula)
-            result  = _strip_eq(result)
+            formula = dk_decimaler(_strip_eq(formula))
+            result  = dk_decimaler(_strip_eq(result))
+            name    = dk_decimaler(name)
 
             if formula:
                 cells  = [Paragraph(_fmt(name),    styles["hc_var"]),
@@ -950,8 +994,8 @@ def build_story(all_blocks, styles):
 
             # No background fill — left accent rule + thin bottom line
             tbl = Table(
-                [[Paragraph(_para_fmt(b["label"]), styles["normal"]),
-                  Paragraph(_para_fmt(b["value"]),  sty)]],
+                [[Paragraph(_para_fmt(dk_decimaler(b["label"])), styles["normal"]),
+                  Paragraph(_para_fmt(dk_decimaler(b["value"])),  sty)]],
                 colWidths=[130*mm, 40*mm], rowHeights=[7.5*mm]
             )
             tbl.setStyle(TableStyle([
@@ -969,7 +1013,7 @@ def build_story(all_blocks, styles):
         elif t == "table":
             rows = [[Paragraph(_para_fmt(h), styles["th"]) for h in b["headers"]]]
             for row in b["rows"]:
-                rows.append([Paragraph(_para_fmt(str(c)), styles["td"]) for c in row])
+                rows.append([Paragraph(_para_fmt(dk_decimaler(str(c))), styles["td"]) for c in row])
             cw = 170*mm / len(b["headers"])
             tbl = Table(rows, colWidths=[cw]*len(b["headers"]))
             tbl.setStyle(TableStyle([

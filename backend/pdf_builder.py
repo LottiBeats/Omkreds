@@ -26,6 +26,7 @@ from pathlib import Path
 from calc_core import COVER, TOC, PAGEBREAK, S, T, N, H1, FIG
 from holst_layout import generate_pdf_holst
 
+import pdf_fonts  # noqa: F401  (registrerer IBM Plex)
 from reportlab.lib.units import mm
 from reportlab.lib import colors as rl_colors
 from reportlab.lib.styles import ParagraphStyle
@@ -55,7 +56,8 @@ def _text(block: dict) -> list:
         return []
     # **fed** / *kursiv* fra editorens tekstfelt -> <b>/<i>. Tekst uden
     # markering kommer uændret igennem.
-    return [T(rich_text.to_reportlab(text))]
+    # Brugerens egen tekst: decimaltegn skrives som brugeren skrev dem.
+    return [{**T(rich_text.to_reportlab(text)), "user": True}]
 
 
 def _image(block: dict, tmp_files: list) -> list:
@@ -207,7 +209,7 @@ def _fem_table(rows, has_header=True, col_widths_mm=None, font_pt=8) -> list:
     RULE_H = rl_colors.HexColor("#999999")
     BLACK  = rl_colors.HexColor("#111111")
 
-    hdr_sty  = ParagraphStyle("femHdr",  fontSize=font_pt, fontName="Helvetica-Bold",
+    hdr_sty  = ParagraphStyle("femHdr",  fontSize=font_pt, fontName="Plex-SemiBold",
                                textColor=BLACK, leading=font_pt + 2)
     cell_sty = ParagraphStyle("femCell", fontSize=font_pt,
                                textColor=BLACK, leading=font_pt + 2)
@@ -402,6 +404,16 @@ _TEXT_CHAR_MAP_KEEP_GREEK = {k: v for k, v in _TEXT_CHAR_MAP.items()
                              if not (0x0370 <= k <= 0x03FF)}
 
 
+# IBM Plex har de fleste af tegnene ovenfor (→, ≤, græsk, …). Kun dem, skriften
+# mangler, skrives om; sænkede/hævede cifre bliver stadig til markup, så de
+# tegnes som ægte sub/superscript.
+_SUBSUP = set('₀₁₂₃₄₅₆₇₈₉⁰⁴⁵⁶⁷⁸⁹')
+_TEXT_CHAR_MAP = {k: v for k, v in _TEXT_CHAR_MAP.items()
+                  if chr(k) in _SUBSUP or not pdf_fonts.covers(chr(k))}
+_TEXT_CHAR_MAP_KEEP_GREEK = {k: v for k, v in _TEXT_CHAR_MAP.items()
+                             if not (0x0370 <= k <= 0x03FF)}
+
+
 def _pdf_text(s, keep_greek: bool = False) -> str:
     """Make prose safe for the PDF story renderer without flattening sub/superscripts."""
     table = _TEXT_CHAR_MAP_KEEP_GREEK if keep_greek else _TEXT_CHAR_MAP
@@ -457,10 +469,10 @@ def _table_block(block: dict) -> list:
         font_pt = 6
 
     hdr_style  = ParagraphStyle("tblHdr",  fontSize=font_pt, textColor=BLACK,
-                                 fontName="Helvetica-Bold", leading=font_pt + 2)
+                                 fontName="Plex-SemiBold", leading=font_pt + 2)
     cell_style = ParagraphStyle("tblCell", fontSize=font_pt,
                                  textColor=BLACK, leading=font_pt + 2)
-    cap_style  = ParagraphStyle("tblCap",  fontSize=8, fontName="Helvetica-Oblique",
+    cap_style  = ParagraphStyle("tblCap",  fontSize=8, fontName="Plex-Italic",
                                  textColor=rl_colors.HexColor("#555555"), leading=10,
                                  spaceAfter=2)
 
@@ -543,9 +555,9 @@ def _control_plan(block: dict) -> list:
     AMBER = rl_colors.HexColor("#b45309")
     GREY  = rl_colors.HexColor("#94a3b8")
 
-    hdr_style = ParagraphStyle("cpHdr",  fontSize=8,  textColor=WHITE, fontName="Helvetica-Bold",   leading=10, spaceAfter=0)
+    hdr_style = ParagraphStyle("cpHdr",  fontSize=8,  textColor=WHITE, fontName="Plex-SemiBold",   leading=10, spaceAfter=0)
     cell_style= ParagraphStyle("cpCell", fontSize=8,  textColor=rl_colors.HexColor("#1e293b"),       leading=10, spaceAfter=0)
-    mono_style= ParagraphStyle("cpMono", fontSize=7,  textColor=rl_colors.HexColor("#475569"),       leading=9,  spaceAfter=0, fontName="Courier")
+    mono_style= ParagraphStyle("cpMono", fontSize=7,  textColor=rl_colors.HexColor("#475569"),       leading=9,  spaceAfter=0, fontName="Plex")
 
     # ── Column definitions ────────────────────────────────────────────────────
     # plan  cols: Pos | Beskrivelse | KK | Kontroltype | Ansvarlig | Reference
@@ -618,7 +630,7 @@ def _control_plan(block: dict) -> list:
         # Header row background
         ("BACKGROUND",  (0, 0), (-1, 0),         NAVY),
         ("TEXTCOLOR",   (0, 0), (-1, 0),          WHITE),
-        ("FONTNAME",    (0, 0), (-1, 0),           "Helvetica-Bold"),
+        ("FONTNAME",    (0, 0), (-1, 0),           "Plex-SemiBold"),
         # Alternating rows
         ("BACKGROUND",  (0, 1), (-1, -1),         WHITE),
         # Grid
@@ -655,7 +667,7 @@ def _control_plan(block: dict) -> list:
     ctrl_legend = "  ·  ".join(f"{v[0]} = {v[2:]}" for v in
                                 ["E – Egenkontrol", "U – Uvildig kontrol", "T – Tilsyn"])
     legend_st = ParagraphStyle("legend", fontSize=7, textColor=rl_colors.HexColor("#64748b"),
-                                leading=9, fontName="Helvetica-Oblique")
+                                leading=9, fontName="Plex-Italic")
     result.append(Paragraph(f"Kontroltype: {ctrl_legend}", legend_st))
     result.append(Spacer(1, 2*mm))
 

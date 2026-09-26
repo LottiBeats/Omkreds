@@ -54,9 +54,10 @@ def test_the_unicode_font_is_available():
 
 
 def test_greek_is_wrapped_not_dropped():
+    # IBM Plex har græsk selv; tegnet står direkte i brødskriften.
     out = _fmt("γ_M")
     assert "γ" in out
-    assert "<font" in out
+    assert "<sub>M</sub>" in out
 
 
 def test_maths_symbols_are_wrapped():
