@@ -246,6 +246,41 @@ def init_db(path: Path | None = None) -> None:
                 print(f"[db] migration 003 skipped: {exc}")
             _mark_done("003_fix_transliterated_doc_titles")
 
+        # Migration 004 — alt er privat.
+        # "Nyt projekt" havde "team" som standard, og team betød alle, der kan
+        # logge ind: appen har ingen teams, og uden ALLOWED_EMAILS er det
+        # enhver med en Clerk-konto. Projekter og beregninger bliver private
+        # hos deres ejer. Hvilke der blev ændret, gemmes, så det kan rulles
+        # tilbage, når der findes rigtig deling.
+        if not _migration_done("004_team_to_personal_again"):
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS migration_004_flipped (
+                    tbl TEXT NOT NULL, id TEXT NOT NULL,
+                    PRIMARY KEY (tbl, id)
+                )
+            """)
+            for tbl in ("projects", "calc_library"):
+                conn.execute(
+                    f"INSERT OR IGNORE INTO migration_004_flipped (tbl, id) "
+                    f"SELECT '{tbl}', id FROM {tbl} WHERE visibility = 'team'")
+                conn.execute(
+                    f"UPDATE {tbl} SET visibility = 'personal' WHERE visibility = 'team'")
+            # Projektets JSON bærer også feltet; det skal sige det samme.
+            rows = conn.execute(
+                "SELECT p.id, p.data FROM projects p "
+                "JOIN migration_004_flipped f ON f.tbl = 'projects' AND f.id = p.id"
+            ).fetchall()
+            for pid, data_str in rows:
+                try:
+                    proj = json.loads(data_str)
+                except Exception:
+                    continue
+                if proj.get("visibility") == "team":
+                    proj["visibility"] = "personal"
+                    conn.execute("UPDATE projects SET data = ? WHERE id = ?",
+                                 (json.dumps(proj), pid))
+            _mark_done("004_team_to_personal_again")
+
         conn.commit()
 
 
@@ -271,7 +306,7 @@ def load_all_projects(user_id: str = "", path: Path | None = None) -> list[dict]
         if user_id:
             rows = conn.execute(
                 "SELECT data, rev FROM projects "
-                "WHERE (owner_id = ? OR visibility = 'team') "
+                "WHERE owner_id = ? "
                 "  AND COALESCE(deleted_at, '') = '' "
                 "ORDER BY updated_at DESC",
                 (user_id,),
@@ -298,7 +333,7 @@ def load_deleted_projects(user_id: str = "", path: Path | None = None) -> list[d
         if user_id:
             rows = conn.execute(
                 "SELECT data, rev, deleted_at, deleted_by FROM projects "
-                "WHERE (owner_id = ? OR visibility = 'team') "
+                "WHERE owner_id = ? "
                 "  AND COALESCE(deleted_at, '') != '' "
                 "ORDER BY deleted_at DESC",
                 (user_id,),
@@ -702,7 +737,7 @@ def load_template(template_id: str, path: Path | None = None) -> dict | None:
 
 
 def load_all_templates(user_id: str = "", path: Path | None = None) -> list[dict]:
-    """Return calc templates visible to user_id (own + team), newest first."""
+    """Return calc templates owned by user_id, newest first."""
     p = str(path or DB_PATH)
     init_db(path)
     with _connect(p) as conn:
@@ -711,7 +746,7 @@ def load_all_templates(user_id: str = "", path: Path | None = None) -> list[dict
                 SELECT id, name, description, blocks, parameters, code, created_by,
                        created_at, items, owner_id, visibility
                 FROM calc_library
-                WHERE owner_id = ? OR visibility = 'team'
+                WHERE owner_id = ?
                 ORDER BY created_at DESC
             """, (user_id,)).fetchall()
         else:

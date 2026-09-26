@@ -141,6 +141,15 @@ def get_current_user(
     """
     payload = verify_clerk_token(credentials.credentials)
 
+    # Uden sub er der ingen bruger at filtrere på -- og listefunktionerne i
+    # db.py returnerer ALT, når de får et tomt id. Så hellere afvise.
+    if not payload.get("sub"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token mangler bruger-id (sub)",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # Clerk puts the user's primary email in `email` if you include it in the
     # JWT template, otherwise you get it from `email_addresses[0]` via the API.
     # The `sub` claim is always the Clerk user ID.

@@ -412,7 +412,7 @@ export default function EditorPage() {
     setNameDialog(null)
     try {
       await flushSave(project)
-      await saveProjectAsTemplate(projectId, { name, description: '', visibility: project.visibility || 'team' })
+      await saveProjectAsTemplate(projectId, { name, description: '', visibility: 'personal' })
       toast.ok(`Gemt som skabelon "${name}". Du finder den på forsiden under Skabeloner.`)
     } catch (err) {
       toast.fail('Skabelonen kunne ikke gemmes: ' + err.message)

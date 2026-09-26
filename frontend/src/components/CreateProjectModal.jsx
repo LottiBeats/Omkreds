@@ -19,7 +19,8 @@ const BRAND = '#d94a2b'
 export default function CreateProjectModal({ onCreated, onCancel, templateId = null, templateName = '' }) {
   const [name,       setName]       = useState('')
   const [ref,        setRef]        = useState('')
-  const [visibility, setVisibility] = useState('team')
+  // Projekter er altid private. "Team" betød alle, der kan logge ind.
+  const visibility = 'personal'
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
 
@@ -116,17 +117,9 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
               />
             </div>
 
-            <div style={styles.field}>
-              <label style={styles.label}>Synlighed</label>
-              <select
-                value={visibility}
-                onChange={e => setVisibility(e.target.value)}
-                style={styles.input}
-              >
-                <option value="team">Team — synligt for alle i firmaet</option>
-                <option value="personal">Privat — kun synligt for dig</option>
-              </select>
-            </div>
+            <p style={{ margin: 0, fontSize: 12.5, color: '#78716c' }}>
+              Projektet er privat: kun du kan se og åbne det.
+            </p>
 
           </div>
 

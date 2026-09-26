@@ -725,15 +725,6 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
                       {project.metadata.project_name || 'Unavngivet projekt'}
                     </div>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-                      {project.visibility === 'personal' && (
-                        <span title="Privat — kun synlig for dig" style={{
-                          fontFamily: SANS, fontSize: 10, fontWeight: 700, color: '#4b5563',
-                          background: '#f3f4f6', border: '1px solid #d1d5db',
-                          padding: '2px 6px', whiteSpace: 'nowrap',
-                        }}>
-                          Privat
-                        </span>
-                      )}
                       {project.metadata.revision && (
                         <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: MUTED, background: OFF, padding: '2px 6px', border: '1px solid ' + BORDER, whiteSpace: 'nowrap' }}>
                           Rev {project.metadata.revision}
