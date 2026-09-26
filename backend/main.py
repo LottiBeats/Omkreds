@@ -88,6 +88,59 @@ _UNIT_NS.update({
 })
 
 
+import ast as _ast
+
+# Hvad et regneudtryk maa bestaa af. Alt andet afvises, FOER det koeres.
+#
+# __builtins__ = {} alene er ikke en sandkasse: ().__class__.__base__ fører
+# fra en tom tuple til hver eneste klasse i processen, og derfra videre til
+# at koere kode paa serveren. Et ingenioerudtryk har ingen brug for at
+# kigge ind i objekter -- kun tal, navne, regnearter og de godkendte
+# funktioner -- saa det er det, der tillades.
+_TILLADTE_NODER = (
+    _ast.Expression, _ast.BinOp, _ast.UnaryOp, _ast.BoolOp, _ast.Compare,
+    _ast.IfExp, _ast.Call, _ast.Name, _ast.Load, _ast.Constant,
+    _ast.Add, _ast.Sub, _ast.Mult, _ast.Div, _ast.FloorDiv, _ast.Mod, _ast.Pow,
+    _ast.USub, _ast.UAdd, _ast.Not, _ast.And, _ast.Or,
+    _ast.Eq, _ast.NotEq, _ast.Lt, _ast.LtE, _ast.Gt, _ast.GtE,
+    _ast.Tuple, _ast.keyword,
+)
+_MAX_EKSPONENT = 64
+
+
+class UdtryksFejl(ValueError):
+    """Et udtryk, der indeholder andet end regning."""
+
+
+def _valider_udtryk(expr: str) -> None:
+    try:
+        trae = _ast.parse(expr, mode='eval')
+    except SyntaxError as exc:
+        raise UdtryksFejl(f"kan ikke læse udtrykket {expr!r}") from exc
+    for node in _ast.walk(trae):
+        if not isinstance(node, _TILLADTE_NODER):
+            raise UdtryksFejl(
+                f"{type(node).__name__} er ikke tilladt i et regneudtryk")
+        if isinstance(node, _ast.Name) and node.id.startswith('_'):
+            raise UdtryksFejl(f"navnet {node.id!r} er ikke tilladt")
+        if isinstance(node, _ast.Call) and not isinstance(node.func, _ast.Name):
+            raise UdtryksFejl("kun navngivne funktioner kan kaldes")
+        if isinstance(node, _ast.Constant) and not isinstance(
+                node.value, (int, float, complex, bool)):
+            raise UdtryksFejl("kun tal er tilladt som konstanter")
+        # 9**9**9 er et lovligt udtryk, der aldrig bliver faerdigt -- og
+        # traaden, der regner det, kan ikke stoppes udefra.
+        if isinstance(node, _ast.BinOp) and isinstance(node.op, _ast.Pow):
+            h = node.right
+            if isinstance(h, _ast.UnaryOp) and isinstance(h.operand, _ast.Constant):
+                h = h.operand
+            if isinstance(h, _ast.Constant):
+                if abs(h.value) > _MAX_EKSPONENT:
+                    raise UdtryksFejl(f"eksponenten {h.value} er for stor")
+            elif isinstance(h, _ast.BinOp) and isinstance(h.op, _ast.Pow):
+                raise UdtryksFejl("potens af en potens er ikke tilladt")
+
+
 def _safe_eval(expr: str, ns: dict, timeout: float = 3.0):
     """
     Evaluate *expr* in namespace *ns* with a wall-clock timeout.
@@ -97,15 +150,20 @@ def _safe_eval(expr: str, ns: dict, timeout: float = 3.0):
     from expressions like  sum(range(10**12))  or  list(range(10**9)).
     """
     import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(eval, expr, ns)
-        try:
-            return future.result(timeout=timeout)
-        except concurrent.futures.TimeoutError:
-            raise TimeoutError(
-                f"Expression took longer than {timeout} s to evaluate. "
-                "Simplify the formula."
-            )
+    _valider_udtryk(expr)
+    ns = {**ns, "__builtins__": {}}
+    # Ikke "with": dens afslutning venter paa traaden, saa en timeout ville
+    # alligevel blive siddende, til udtrykket var regnet faerdigt.
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(eval, compile(expr, '<udtryk>', 'eval'), ns)
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        raise TimeoutError(
+            f"Udtrykket tog mere end {timeout:g} s at regne. Forenkl formlen."
+        )
+    finally:
+        pool.shutdown(wait=False)
 
 
 def _preprocess_expr(expr: str) -> str:
@@ -1752,7 +1810,7 @@ def _enhed(unit_str: str):
            .replace("^", "**").replace("·", "*").replace("×", "*")
            .replace("²", "**2").replace("³", "**3").replace("⁴", "**4"))
     try:
-        unit = eval(ren, _UNIT_NS, {})
+        unit = _safe_eval(ren, _UNIT_NS)
     except Exception as exc:
         raise EnhedsFejl(f"kender ikke enheden {unit_str!r}") from exc
     if not _har_enhed(unit):
