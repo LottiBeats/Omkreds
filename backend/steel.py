@@ -27,7 +27,7 @@ def steel_beam_ipe(
     h,
     t_w,
     f_y=None,
-    gamma_M0=1.0,
+    gamma_M0=1.10,          # DS/EN 1993-1-1 DK NA
     beam_results=None,
     figure_path=None,
     figure_caption="",
@@ -36,7 +36,10 @@ def steel_beam_ipe(
     Iy=None,
     l_cr_ltb=None,
     C1=1.0,
-    gamma_M1=1.0,
+    gamma_M1=1.20,          # DS/EN 1993-1-1 DK NA
+    K_FI=1.0,
+    r=None,                 # udrundingsradius; None = 0 (på den sikre side)
+    load_on_top_flange=True,
     ltb_restrained=False,
     buck_y_restrained=False,
     buck_x_restrained=False,
@@ -108,8 +111,9 @@ def steel_beam_ipe(
         f_y_mpa   = float(f_y / MPa)
         eps       = (235.0 / f_y_mpa) ** 0.5
 
-        c_w_val   = float((h - 2 * t_f) / t_w)
-        c_f_val   = float((b - t_w) / (2 * t_f))
+        _r        = r if r is not None else 0 * mm
+        c_w_val   = float((h - 2 * t_f - 2 * _r) / t_w)
+        c_f_val   = float((b - t_w - 2 * _r) / (2 * t_f))
 
         def _classify_web(c_t, e):
             if c_t <= 72  * e: return 1
@@ -151,8 +155,9 @@ def steel_beam_ipe(
             blocks.append(N(
                 f"Section is Class {section_class} — full plastic bending resistance applies "
                 f"(M_Rd = W_pl,y × f_y / γ_M0). "
-                "Note: root fillet radius r is not stored in the catalog; "
-                "c values are slightly conservative (actual class may be lower)."
+                + ("" if r is not None else
+                   "Udrundingsradius r ikke kendt: c er regnet uden, hvilket er "
+                   "på den sikre side.")
             ))
             W_eff = W_ply
 
@@ -163,8 +168,7 @@ def steel_beam_ipe(
                 blocks.append(N(
                     "Section is Class 3 — elastic bending resistance governs: "
                     "M_Rd = W_el,y × f_y / γ_M0. "
-                    f"W_el,y = I_y / (h/2) = {float(W_el / _cm**3):.1f} cm³. "
-                    "Root fillet radius not in catalog — actual class may be Class 2 with fillets included."
+                    f"W_el,y = I_y / (h/2) = {float(W_el / _cm**3):.1f} cm³."
                 ))
             else:
                 W_eff = W_ply * 0.9
@@ -189,12 +193,19 @@ def steel_beam_ipe(
         ))
 
     if beam_results is None:
-        blocks.append(S("ULS loading and design actions"))
-        w_Ed = 1.35 * g_k + 1.5 * q_k
+        blocks.append(S("Laster — brudgrænsetilstand, DS/EN 1990 DK NA"))
+        # DK NA tabel A1.2(B+C). 1,35·g + 1,5·q findes ikke i DK NA, og uden
+        # K_FI blev CC3 regnet for lavt. Stål har ingen k_mod, så den største
+        # last er den dimensionsgivende.
+        w_a = 1.2 * K_FI * g_k
+        w_b = 1.0 * K_FI * g_k + 1.5 * K_FI * q_k
+        w_Ed = w_a if float(w_a / (kN / m)) >= float(w_b / (kN / m)) else w_b
         M_Ed = (w_Ed * span**2) / 8
         V_Ed = (w_Ed * span) / 2
         blocks.extend([
-            CALC_ROW("w_Ed", "= 1.35·g_k + 1.5·q_k", str(w_Ed)),
+            CALC_ROW("6.10a", f"= 1,2·K_FI·g_k   (K_FI = {K_FI:.1f})", f"{float(w_a / (kN / m)):.2f} kN/m"),
+            CALC_ROW("6.10b", "= 1,0·K_FI·g_k + 1,5·K_FI·q_k", f"{float(w_b / (kN / m)):.2f} kN/m"),
+            CALC_ROW("w_Ed", "= den største af 6.10a og 6.10b", str(w_Ed)),
             CALC_ROW("M_Ed", "= w_Ed·L²/8",           str(M_Ed)),
             CALC_ROW("V_Ed", "= w_Ed·L/2",            str(V_Ed)),
         ])
@@ -395,13 +406,25 @@ def steel_beam_ipe(
             CALC_ROW("I_t", "= (2b·t_f³ + (h−2t_f)·t_w³)/3",  f"{float(I_t / _cm**4):.2f} cm⁴"),
         ])
 
+        # Lastens angrebspunkt. En last på overflangen virker destabiliserende
+        # og sænker M_cr (EN 1993-1-1 NCCI / ECCS: C₂·z_g). C₂ følger
+        # momentfordelingen, som C₁ er valgt efter.
+        # En bjælke med tværlast har altid et C₂; C₁ = 1,0 (konstant moment)
+        # er kun en sikker nedre grænse for C₁, ikke et tegn på, at lasten
+        # mangler.
+        C2 = 0.630 if C1 >= 1.25 else 0.454
+        z_g = (h / 2) if load_on_top_flange else 0 * mm
         N_Ez = pi**2 * E_s * I_z / l_cr_ltb**2
-        W_LT = (I_w/I_z + l_cr_ltb**2 * G_s * I_t / (pi**2 * E_s * I_z))**0.5
+        _led = (I_w/I_z + l_cr_ltb**2 * G_s * I_t / (pi**2 * E_s * I_z) + (C2 * z_g)**2)**0.5
+        W_LT = _led - C2 * z_g
         M_cr = C1 * N_Ez * W_LT
         blocks.extend([
+            CALC_ROW("C₂",    ("lastens angrebshøjde, overflange" if load_on_top_flange
+                               else "last i forskydningscentret"), f"{C2:.3f}"),
+            CALC_ROW("z_g",   "= h/2 (overflange)" if load_on_top_flange else "= 0", str(z_g)),
             CALC_ROW("N_Ez",  "= π²·E·I_z / L_cr²",                  str(N_Ez)),
-            CALC_ROW("W_LT",  "= √(I_w/I_z + L_cr²·G·I_t/(π²·E·I_z))", str(W_LT)),
-            CALC_ROW("M_cr",  "= C₁·N_Ez·W_LT",                       str(M_cr)),
+            CALC_ROW("M_cr",  "= C₁·N_Ez·[√(I_w/I_z + L_cr²·G·I_t/(π²·E·I_z) + (C₂·z_g)²) − C₂·z_g]",
+                     str(M_cr)),
         ])
         lambda_bar_LT = float((W_eff * f_y / M_cr)**0.5)
         blocks.append(CALC_ROW("lambda_LT", f"= sqrt({_modulus_note} * f_y / M_cr)", f"{lambda_bar_LT:.3f}"))
@@ -421,7 +444,7 @@ def steel_beam_ipe(
             chi_LT = chi_ltb(lbar, curve_ltb)
             blocks.extend([
                 CALC_ROW("phi_LT", "= 0.5 * (1 + alpha_LT * (lambda_LT - 0.4) + 0.75 * lambda_LT^2)", f"{phi_LT:.3f}"),
-                CALC_ROW("chi_LT", f"modified method, curve {curve_ltb}", f"{chi_LT:.3f}"),
+                CALC_ROW("chi_LT", f"modificeret metode §6.3.2.3, kurve {curve_ltb} (tabel 6.5)", f"{chi_LT:.3f}"),
             ])
 
         M_b_Rd = chi_LT * W_eff * f_y / gamma_M1

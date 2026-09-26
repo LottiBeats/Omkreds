@@ -23,9 +23,20 @@ def chi_flexural(lam_bar: float, curve: str) -> float:
     return min(1.0 / (phi + math.sqrt(max(phi**2 - lam_bar**2, 1e-14))), 1.0)
 
 
-def ltb_curve_hot_rolled(h_mm: float, b_mm: float) -> str:
-    """EC3 Table 6.4 LTB curve for rolled I-sections."""
-    return "a" if h_mm / max(b_mm, 1e-9) <= 2.0 else "b"
+def ltb_curve_hot_rolled(h_mm: float, b_mm: float, modified: bool = True) -> str:
+    """
+    Kipningskurve for valsede I-profiler.
+
+    Den modificerede metode (§6.3.2.3, beta = 0,75, lambda_LT,0 = 0,4) har sin
+    egen tabel, 6.5: h/b <= 2 giver kurve b, h/b > 2 kurve c. Tabel 6.4 (a/b)
+    hører til den generelle metode (§6.3.2.2). Modulerne regnede med den
+    modificerede formel og tabel 6.4's kurver -- chi_LT blev op til ca. 10 %
+    for høj ved lambda_LT omkring 1.
+    """
+    hb = h_mm / max(b_mm, 1e-9)
+    if modified:
+        return "b" if hb <= 2.0 else "c"
+    return "a" if hb <= 2.0 else "b"
 
 
 def chi_ltb(lam_lt: float, curve: str, modified: bool = True) -> float:

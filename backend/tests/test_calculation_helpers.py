@@ -8,8 +8,12 @@ from timber_column import timber_column_side_by_side
 
 
 def test_ltb_curve_for_rolled_sections_matches_shared_ec3_helper():
-    assert ltb_curve_hot_rolled(300, 150) == "a"
-    assert ltb_curve_hot_rolled(500, 200) == "b"
+    # Modificeret metode (§6.3.2.3) bruger tabel 6.5: b / c.
+    assert ltb_curve_hot_rolled(300, 150) == "b"
+    assert ltb_curve_hot_rolled(500, 200) == "c"
+    # Generel metode (§6.3.2.2) bruger tabel 6.4: a / b.
+    assert ltb_curve_hot_rolled(300, 150, modified=False) == "a"
+    assert ltb_curve_hot_rolled(500, 200, modified=False) == "b"
 
 
 def test_flexural_buckling_curve_for_hot_rolled_ipe_like_section():
