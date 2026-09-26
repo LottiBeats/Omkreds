@@ -696,11 +696,13 @@ def _dk(v, d=2):
 def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
     from calc_core import MH, S, T, TBL, N, FIG, H1
     d       = block["data"]
-    title   = d.get("title", "2D Frame FEM")
+    title   = d.get("title", "Rammeberegning")
     summary = d.get("_summary")
     figs    = d.get("_figs_b64", [])
 
-    out = [MH(title, "2D Frame FEM — OpenSeesPy", "general")]
+    # Løseren er ikke nødvendigvis OpenSees (standard er den direkte
+    # stivhedsmetode), så overskriften nævner metoden, ikke et program.
+    out = [MH(title, "Rammeberegning — plan ramme, lineær elastisk FEM", "general")]
 
     if not summary:
         out.append(N("[Beregningen er ikke udført — afsnittet er ufuldstændigt.]"))

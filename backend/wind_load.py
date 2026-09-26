@@ -180,14 +180,14 @@ def wind_load(
 
         blocks.append(S("Saddeltag \u2014 zoner  (EN 1991-1-4 \u00a77.2.5)"))
         blocks.append(T(
-            f"Taghaeldning \u03b1 = {alpha_deg:.0f}\u00b0. "
+            f"Taghældning \u03b1 = {alpha_deg:.0f}\u00b0. "
             f"e = min(b, 2h) = min({b_m:.1f}; {2 * h_m:.1f}) = {e:.2f} m, "
-            f"saa kantzonen er e/10 = {e / 10:.2f} m \u2014 maalt vandret "
-            "fra tagfoden paa luvsiden og fra kippen paa laesiden.\n\n"
-            "Formfaktorerne er aflaest i EN 1991-1-4 tabel 7.1 (vaegge) og "
+            f"så kantzonen er e/10 = {e / 10:.2f} m \u2014 målt vandret "
+            "fra tagfoden på luvsiden og fra kippen på læsiden.\n\n"
+            "Formfaktorerne er aflæst i EN 1991-1-4 tabel 7.1 (vægge) og "
             "7.4a (tag). Begge indvendige tryk er regnet: c_pi = +0,2 og "
             "\u22120,3 (\u00a77.2.9(6)), og begge skal eftervises \u2014 "
-            "hvilket der er vaerst kan ikke afgoeres paa forhaand."))
+            "hvilket der er værst, kan ikke afgøres på forhånd."))
 
         hoved = ["Zone", "Flade", "c_pe", "c_pi", "w  [kN/m\u00b2]"]
         if rammeafstand_m is not None:
@@ -206,8 +206,8 @@ def wind_load(
         blocks.append(TBL(hoved, rows))
         blocks.append(T(
             "Positiv w er tryk ind mod fladen, negativ er sug. Zone F og "
-            "A/B/C hoerer til gavlene og til vaegge parallelt med vinden; en "
-            "indvendig ramme baerer dem ikke."))
+            "A/B/C hører til gavlene og til vægge parallelt med vinden; en "
+            "indvendig ramme bærer dem ikke."))
 
         eksport['zoner'] = raekker
         eksport['e_m'] = round(e, 4)
@@ -222,17 +222,17 @@ def wind_load(
             tryk.setdefault('E', c_pe_leeward)
             saet.append({'navn': 'tryk', 'c_pe': tryk})
             blocks.append(T(
-                'Tagfladen er ogsaa regnet med tabel 7.4a\'s positive vaerdier '
+                'Tagfladen er også regnet med de positive værdier i tabel 7.4a '
                 '(tryk): ' + ', '.join(f"{z} {float(v):+.2f}" for z, v in
                                         sorted(tagzoner_tryk.items())) + '.'))
         eksport['cpe0'] = saet
 
     if langs:
-        blocks.append(S("Vind paa langs af kippen  (\u03b8 = 90\u00b0)"))
+        blocks.append(S("Vind på langs af kippen  (\u03b8 = 90\u00b0)"))
         e90 = min(d_m, 2 * h_m)
         blocks.append(T(
             f"e = min(d; 2h) = min({d_m:.1f}; {2 * h_m:.1f}) = {e90:.2f} m, "
-            "maalt fra gavlen. Formfaktorer aflaest i tabel 7.1 (vaegge "
+            "målt fra gavlen. Formfaktorer aflæst i tabel 7.1 (vægge "
             "parallelt med vinden, A/B/C) og 7.4b (tag, F/G/H/I)."))
         blocks.append(TBL(["Zone", "c_pe", "w (c_pi +0,2)", "w (c_pi \u22120,3)"],
                           [[z, f"{float(v):+.2f}", f"{(float(v) - 0.2) * q_p:+.3f}",
