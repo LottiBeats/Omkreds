@@ -20,6 +20,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { calcCustomCalc, createCalcTemplate } from '../../api/client.js'
 import CalcResultView from '../CalcResultView.jsx'
 import NumericInput from './NumericInput.jsx'
+import CustomCalcEditor from './CustomCalcEditor.jsx'
 
 // ── Template storage (localStorage) ──────────────────────────────────────────
 
@@ -95,7 +96,14 @@ export { UNIT_OPTIONS, TYPE_BADGE, DEFAULT_ITEM, ItemRow, SymbolBar, useSymbolIn
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function CustomCalcBlock({ block, onChange, hideModuleActions }) {
+// Blokken i dokumentet er den nye editor (linje for linje). Den gamle række-
+// editor bruges stadig i skabeloneditoren til "Mine beregninger".
+export default function CustomCalcBlock(props) {
+  if (props.hideModuleActions) return <LegacyCustomCalcBlock {...props} />
+  return <CustomCalcEditor block={props.block} onChange={props.onChange} />
+}
+
+function LegacyCustomCalcBlock({ block, onChange, hideModuleActions }) {
   const d = block.data
   const [running,      setRunning]      = useState(false)
   const [error,        setError]        = useState('')

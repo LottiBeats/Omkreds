@@ -1,0 +1,68 @@
+/* CustomCalcEditor.css — Egen beregning, linje for linje */
+
+.cc2 { display: grid; gap: 10px; }
+.cc2-head { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.cc2-title {
+  flex: 1; min-width: 200px; border: 1px solid var(--line-2, #ddd); border-radius: 6px;
+  padding: 7px 10px; font: 600 14px var(--font-sans, inherit); color: var(--ink, #1c1917); background: var(--surface, #fff);
+}
+.cc2-sum { font: 500 12px var(--font-mono, monospace); color: var(--muted, #78716c); font-variant-numeric: tabular-nums; }
+.cc2-sum.ok { color: var(--ok, #15803d); }
+.cc2-sum.bad { color: var(--fail, #b91c1c); }
+
+.cc2-ed { border: 1px solid var(--line, #e7e5e4); border-radius: 8px; background: var(--surface, #fff); overflow: hidden; }
+.cc2-sym { display: flex; flex-wrap: wrap; gap: 4px; padding: 7px 10px; border-bottom: 1px solid var(--line, #e7e5e4); background: var(--sunk, #f5f5f4); align-items: center; }
+.cc2-sym button {
+  min-width: 28px; height: 26px; padding: 0 7px; border: 1px solid var(--line-2, #d6d3d1); border-radius: 5px;
+  background: var(--surface, #fff); font: 400 14px var(--font-sans, inherit); cursor: pointer; color: var(--ink, #1c1917);
+}
+.cc2-sym button:hover { border-color: var(--brand, #d94a2b); color: var(--brand-ink, #b23a1f); }
+.cc2-sp { flex: 1; }
+.cc2-sym .cc2-link, .cc2-link {
+  border: 0; background: none; min-width: 0; padding: 0; height: auto; color: var(--brand-ink, #b23a1f);
+  font: 500 12.5px var(--font-sans, inherit); cursor: pointer;
+}
+.cc2-link:hover { text-decoration: underline; }
+
+.cc2-guide {
+  display: grid; grid-template-columns: minmax(0, 15em) minmax(0, 1fr); gap: 4px 14px; margin: 0;
+  padding: 10px 12px; border-bottom: 1px solid var(--line, #e7e5e4); font-size: 12.5px;
+}
+.cc2-guide dt { font: 400 12px var(--font-mono, monospace); color: var(--ink, #1c1917); overflow-wrap: anywhere; }
+.cc2-guide dd { margin: 0; color: var(--muted, #78716c); }
+
+.cc2-lines { padding: 4px 0; }
+.cc2-ln {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(80px, auto);
+  gap: 8px; align-items: center; padding: 0 10px 0 2px; min-height: 30px;
+}
+.cc2-ln:focus-within { background: var(--brand-wash, #fbece8); }
+.cc2-ln .no { font: 500 10.5px var(--font-mono, monospace); color: var(--faint, #a8a29e); text-align: right; }
+.cc2-ln input {
+  width: 100%; min-width: 0; border: 0; background: transparent; outline: none; padding: 4px 2px;
+  font: 400 13px/1.4 var(--font-mono, monospace); color: var(--ink, #1c1917);
+}
+.cc2-ln.k-heading input { font-weight: 600; }
+.cc2-ln.k-text input { font-family: var(--font-sans, inherit); color: var(--ink-2, #44403c); }
+.cc2-ln .chip {
+  justify-self: end; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font: 500 12px var(--font-mono, monospace); color: var(--ink-2, #44403c); font-variant-numeric: tabular-nums;
+}
+.cc2-ln .chip.muted { color: var(--faint, #a8a29e); font-family: var(--font-sans, inherit); font-weight: 400; }
+.cc2-ln .chip.ok { color: var(--ok, #15803d); }
+.cc2-ln .chip.fail, .cc2-ln .chip.err { color: var(--fail, #b91c1c); }
+.cc2-ln .chip.err { white-space: normal; font-family: var(--font-sans, inherit); font-size: 11.5px; }
+
+.cc2-foot { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 7px 10px; border-top: 1px solid var(--line, #e7e5e4); }
+.cc2-btn { border: 1px solid var(--line-2, #d6d3d1); background: var(--surface, #fff); border-radius: 6px; padding: 4px 11px; font-size: 12.5px; cursor: pointer; }
+.cc2-btn:hover { border-color: var(--brand, #d94a2b); color: var(--brand-ink, #b23a1f); }
+.cc2-check { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--ink-2, #44403c); }
+.cc2-check input { accent-color: var(--brand, #d94a2b); }
+
+.cc2-report { border-top: 1px dashed var(--line-2, #d6d3d1); padding-top: 8px; }
+
+@media (max-width: 560px) {
+  .cc2-ln { grid-template-columns: 22px minmax(0, 1fr); }
+  .cc2-ln .chip { grid-column: 2; justify-self: start; }
+  .cc2-guide { grid-template-columns: minmax(0, 1fr); }
+}
