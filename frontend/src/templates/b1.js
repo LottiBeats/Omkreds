@@ -106,10 +106,14 @@ export function makeB1Template(options = {}, metadata = {}) {
     'Projekterende for de bærende konstruktioner: ' + (m.firm_name || '…') + '\n' +
     'Udarbejdet af: ' + (m.engineer || '…') + '\n' +
     'Kontrol af projektering: ' + (m.checker || '…') +
-    (kk === 'KK2' ? ' (uafhængig kontrol, jf. DS 1140 for KK2)'
-      : kk === 'KK3' ? ' (ekstern uvildig kontrol, jf. DS 1140 for KK3)' : '') + '\n' +
+    (kk === 'KK2' ? ' (en anden person end den, der har udført delen; BR18 kap. 30)'
+      : kk === 'KK3' ? ' (certificeret statiker, der ikke har deltaget i projekteringen; BR18 kap. 30)'
+      : kk === 'KK4' ? ' (certificeret statiker, der ikke har deltaget i projekteringen, samt tredjepartskontrol; BR18 kap. 30)'
+      : '') + '\n' +
     'Godkendt af: ' + (m.approver || '…') + '\n' +
-    (cc >= 3 ? 'Certificeret statiker: …\n' : '') +
+    // Certificeret statiker kræves i KK2–KK4, ikke kun ved CC3.
+    (['KK2', 'KK3', 'KK4'].includes(kk) ? 'Certificeret statiker: …\n' : '') +
+    (kk === 'KK4' ? 'Tredjepartskontrollant: …\n' : '') +
     '\nAnsvarsfordeling og grænseflader:\n' +
     '[Beskriv hvilke konstruktionsafsnit der projekteres af andre (fx leverandørprojekterede ' +
     'elementer, trapper, altaner), og hvordan grænsefladerne koordineres. Se A1 tabel 1.1.]\n\n' +

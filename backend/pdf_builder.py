@@ -1088,7 +1088,10 @@ def _forside_blokke(project: dict, doc_id: str = "") -> list:
     raekker = [["Rev. nr.", "Dato", "Revision"]]
     for r in revisioner:
         raekker.append([str(r.get("rev", "")), str(r.get("date", "")),
-                        str(r.get("desc") or r.get("note") or "")])
+                        # Udstedelsen gemmer "description"; "desc" og "note"
+                        # er ældre navne. Før blev kun de læst, så forsiden
+                        # altid havde en tom revisionstekst.
+                        str(r.get("description") or r.get("desc") or r.get("note") or "")])
     if not revisioner:
         # Ikke en tom tabel uden forklaring: der staar hvorfor den er tom.
         raekker.append(["—", "—", "Dokumentet er ikke udstedt endnu"])

@@ -379,7 +379,7 @@ export function makeA1Template(options = {}, metadata = {}) {
     ['Standard', 'Titel', 'DK NA udgave'],
     ['BR18', 'Bygningsreglementet', '2018 inkl. ændringer'],
     ['DS/INF 1990', 'Vejledning til konsekvensklasser (Tabel 2)', '2024'],
-    ['DS 1140', 'Dokumentation og kontrol af bærende konstruktioner', '2014'],
+    ['DS 1140', 'Udførelseskontrol af bærende konstruktioner', '2019'],
     ['DS/EN 1990', 'Projekteringsgrundlag (EC0)', 'DK NA:2024'],
     ['DS/EN 1991-1-1', 'Nyttelaster på bygninger (EC1)', 'DK NA:2024'],
     ['DS/EN 1991-1-2', 'Brandlast (EC1)', 'DK NA:2014'],
@@ -501,21 +501,22 @@ export function makeA1Template(options = {}, metadata = {}) {
     'svarende til konstruktionsklasse 2. Nedrykningen letter altså konstruktionsklassen, ' +
     'ikke dokumentationskontrollen.'
   )
-  TBL('Tabel 2.3a — Kontrolkrav pr. konstruktionsklasse (DS 1140:2014)', [
-    ['Klasse', 'Projekteringskontrol', 'Udførelseskontrol', 'Dokumentation'],
-    ['KK1', 'Egenkontrol af projekterende', 'Egenkontrol af udførende', 'Ingen særlige krav'],
-    ['KK2', 'Uafhængig kontrol: A1 skal kontrolleres af en anden person. Beregninger og tegninger kontrolleres af en person, der ikke har udført den pågældende del. Internt i samme firma er tilstrækkeligt.', 'Egenkontrol + systematisk stikprøvekontrol af udførende', 'Kontrolplan B2 + kontrolrapport B3'],
-    ['KK3', 'Ekstern uvildig kontrol af alt projektmateriale — kræver eksternt firma', 'Udvidet ekstern uvildig udførelseskontrol', 'B2 + B3 + tredjepartsgodkendelse af projektgrundlag'],
-    ['KK4', 'Særlig kontrol — aftales individuelt med bygningsmyndigheden', 'Særlig kontrol — aftales individuelt', 'Individuel aftale med bygningsmyndigheden'],
+  TBL('Tabel 2.3a — Kontrol af den statiske dokumentation pr. konstruktionsklasse (BR18 kap. 30)', [
+    ['Klasse', 'Kontrol af projekteringen', 'Udførelse'],
+    ['KK1', 'Egenkontrol. Ingen krav om certificeret statiker.', 'Egenkontrol af den udførende'],
+    ['KK2', 'Den statiske dokumentation kontrolleres af en certificeret statiker. Hver del kontrolleres af en anden person end den, der har udført den.', 'Almen kontrol efter DS 1140; bygherren erklærer, at den er udført'],
+    ['KK3', 'Som KK2, og kontrollen udføres af en certificeret statiker, der ikke har deltaget i projekteringen af konstruktionen.', 'Som KK2'],
+    ['KK4', 'Som KK3 og desuden tredjepartskontrol af en certificeret statiker, der er uafhængig af den projekterende virksomhed.', 'Som KK2 — omfanget aftales med bygningsmyndigheden'],
   ], { highlighted: (() => {
     const idx = ['KK1', 'KK2', 'KK3', 'KK4'].indexOf(kkResult.dokumentationskrav ? 'KK2' : kk) + 1
-    return idx > 0 ? Array.from({ length: 4 }, (_, ci) => `${idx},${ci}`) : []
+    return idx > 0 ? Array.from({ length: 3 }, (_, ci) => `${idx},${ci}`) : []
   })() })
   T(
-    'Nærmere om KK2-kontrolkrav (DS 1140:2014 Tabel B4b, note 2):\n' +
-    '· Konstruktionsgrundlag A1: krav om uafhængig kontrol (en anden person end den, der har udarbejdet den pågældende del).\n' +
-    '· Statiske beregninger A2 og tegninger A3: kontrolleres af en person, der ikke har udført netop den pågældende delberegning eller tegning — internt i firmaet er tilstrækkeligt.\n' +
-    '· Kontrollen dokumenteres i B2 (kontrolplan) og B3 (kontrolrapport).'
+    'Kravene følger BR18 kapitel 30 og Vejledning om statisk dokumentation. ' +
+    'Tredjepartskontrol hører kun til konstruktionsklasse 4. Fra 2025 kontrollerer den ' +
+    'certificerede statiker ikke længere udførelsesdokumentationen; bygherren erklærer i stedet, ' +
+    'at der er udført almen kontrol efter DS 1140.\n' +
+    '· Kontrollen af projekteringen planlægges i B2 (kontrolplan) og dokumenteres i B3 (kontrolrapport).'
   )
 
   H(3, '2.3 Sikkerhed')
@@ -968,7 +969,7 @@ export function makeA1Template(options = {}, metadata = {}) {
   // ── Godkendelse ─────────────────────────────────────────────────────────────
   H(2, 'Godkendelse')
   T(
-    'Konstruktionsgrundlaget (A1) er udarbejdet og kontrolleret iht. DS 1140 og udgør grundlaget for de statiske beregninger (A2).\n\n' +
+    'Konstruktionsgrundlaget (A1) er udarbejdet og kontrolleret iht. BR18 kapitel 30 og udgør grundlaget for de statiske beregninger (A2).\n\n' +
     `Udarbejdet af:   ___________________________   Dato: ____________\n                 ${m.engineer || 'Navn, titel'}\n\n` +
     `Kontrolleret af: ___________________________   Dato: ____________\n                 ${m.checker || 'Navn, titel'}` +
     (kk === 'KK2' ? ' (uafhængig kontrollant, KK2)' : kk === 'KK3' ? ' (ekstern uvildig kontrollant, KK3)' : '') +
