@@ -169,18 +169,18 @@ def timber_column_bending_and_axial(
     _b_display = b if section_properties is None else section_properties.get("width_total", b)
     _h_display = h if section_properties is None else section_properties.get("height_total", h)
     blocks.extend([
-        CALC_ROW("L",       "søjlelængde",          str(length)),
+        CALC_ROW("L",       "søjlelængde",          _u(length, m, "m")),
         CALC_ROW("N_Ed",    "dimensionsgivende normalkraft",     _u(N_Ed, kN, "kN")),
         CALC_ROW("M_y,Ed",  "dimensionsgivende moment",  _u(M_Ed, kN * m, "kNm")),
-        CALC_ROW("b",       "bredde",                  str(_b_display)),
-        CALC_ROW("h",       "højde",                  str(_h_display)),
-        CALC_ROW("Grade",   "",                       grade_key if grade_key else "manual"),
+        CALC_ROW("b",       "bredde",                  _u(_b_display, mm, "mm", 0)),
+        CALC_ROW("h",       "højde",                  _u(_h_display, mm, "mm", 0)),
+        CALC_ROW("Styrkeklasse", "",                  grade_key if grade_key else "manuelt indtastet"),
         CALC_ROW("f_c,0,k", "kar. trykstyrke i fiberretning",   _u(f_c0k, MPa, "MPa", 1)),
         CALC_ROW("f_m,k",   "kar. bøjningsstyrke",       _u(f_mk, MPa, "MPa", 1)),
         CALC_ROW("E_0,05",  "5 %-fraktil elasticitetsmodul", _u(E_0_05, MPa, "MPa", 0)),
         CALC_ROW("G_0,05",  "5 %-fraktil forskydningsmodul", _u(G_0_05, MPa, "MPa", 0)),
-        CALC_ROW("μ",  "søjlelængdefaktor",     str(effective_length_factor)),
-        CALC_ROW("Model",   "",                       material_type),
+        CALC_ROW("μ",  "søjlelængdefaktor",     f"{float(effective_length_factor):.2f}"),
+        CALC_ROW("Materiale", "",                     {"glulam": "limtræ", "solid_timber": "konstruktionstræ"}.get(material_type, material_type)),
     ])
 
     # ------------------------------------------------------------------
@@ -229,8 +229,8 @@ def timber_column_bending_and_axial(
             CALC_ROW("i_2", "fra profilet",  _u(i_2, mm, "mm", 1)),
         ])
         blocks.append(N(
-            "Section properties are imported from a custom composite section. "
-            "Axis 1 is treated as the strong axis and axis 2 as the weak axis."
+            "Tværsnitsdata er hentet fra et sammensat tværsnit. "
+            "Akse 1 er den stærke akse og akse 2 den svage."
         ))
 
     # ------------------------------------------------------------------
@@ -371,13 +371,13 @@ def timber_column_bending_and_axial(
     if check_ltb and l_ef_ltb is not None:
         blocks.append(S("Kipning — EN 1995-1-1 pkt. 6.3.3"))
         blocks.append(T(
-            "LTB is relevant when the compression edge is unrestrained over the member length. "
-            f"Effective length for LTB: l_ef = {l_ef_ltb}."
+            "Kipning er relevant, når trykranden ikke er fastholdt i hele længden. "
+            f"Effektiv kiplængde: l_ef = {_u(l_ef_ltb, m, 'm')}."
         ))
 
         if I_t is None:
             if section_properties is not None:
-                raise ValueError("LTB for a custom section requires I_t to be provided explicitly.")
+                raise ValueError("Kipning af et sammensat tværsnit kræver, at I_t angives.")
 
             if float(b) <= float(h):
                 b_thin, b_wide = b, h
@@ -387,18 +387,17 @@ def timber_column_bending_and_axial(
             ratio = float(b_thin / b_wide)
             I_t   = b_thin**3 * b_wide / 3 * (1.0 - 0.63 * ratio + 0.052 * ratio**5)
             blocks.extend([
-                CALC_ROW("ratio", "= b_thin / b_wide",                  f"{ratio:.4f}"),
-                CALC_ROW("I_t",   "= b³·h/3·(1 − 0.63·r + 0.052·r⁵)", str(I_t)),
+                CALC_ROW("r",     "= b / h (smalle over brede side)",   f"{ratio:.4f}"),
+                CALC_ROW("I_t",   "= b³·h/3·(1 − 0,63·r + 0,052·r⁵)", f"{float(I_t / _cm**4):.1f} cm⁴"),
             ])
         else:
-            blocks.append(CALC_ROW("I_t", "user supplied", str(I_t)))
+            blocks.append(CALC_ROW("I_t", "angivet", f"{float(I_t / _cm**4):.1f} cm⁴"))
 
         # sigma_m,crit
         EI_GI = E_0_05 * I_2 * G_0_05 * I_t
-        blocks.append(CALC_ROW("E·I₂·G·I_t", "= E₀,₀₅·I₂·G₀,₀₅·I_t", str(EI_GI)))
 
         sigma_m_crit = pi * EI_GI**0.5 / (l_ef_ltb * W_y)
-        blocks.append(CALC_ROW("σ_m,crit", "= π·√(E·I₂·G·I_t) / (l_ef·W_y)", str(sigma_m_crit)))
+        blocks.append(CALC_ROW("σ_m,crit", "= π·√(E_0,05·I_2·G_0,05·I_t) / (l_ef·W_y)", _u(sigma_m_crit, MPa, "MPa", 1)))
 
         lambda_rel_m = float((f_mk / sigma_m_crit)**0.5)
         blocks.append(CALC_ROW("λ_rel,m", "= √(f_m,k/σ_m,crit)", f"{lambda_rel_m:.3f}"))
@@ -417,7 +416,7 @@ def timber_column_bending_and_axial(
         # eq. 6.33 – pure bending LTB
         eta_33 = float(sigma_md / (k_crit * f_md))
         blocks.append(CALC_ROW("η_6.33", "= σ_m,d / (k_crit·f_m,d)", f"{eta_33:.3f}"))
-        blocks.append(cc.check("LTB eq. 6.33: σ_m,d / (k_crit f_m,d)", eta_33, 1.0))
+        blocks.append(cc.check("Kipning, lign. 6.33: σ_m,d / (k_crit·f_m,d)", eta_33, 1.0))
 
         # eq. 6.35 – combined LTB + weak-axis buckling
         ratio_m = float(sigma_md / (k_crit * f_md))
@@ -426,7 +425,7 @@ def timber_column_bending_and_axial(
         blocks.append(CALC_ROW("η_6.35",
             "= (σ_m,d/(k_crit·f_m,d))² + σ_c,0,d / (k_c,2·f_c,0,d)",
             f"{eta_35:.3f}"))
-        blocks.append(cc.check("LTB eq. 6.35: combined", eta_35, 1.0))
+        blocks.append(cc.check("Kipning og søjlevirkning, lign. 6.35", eta_35, 1.0))
 
     elif l_ef_ltb is not None and not check_ltb:
         blocks.append(N(

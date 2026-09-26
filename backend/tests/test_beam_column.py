@@ -61,6 +61,10 @@ Verification (EC3 eq. 6.61 and 6.62):
     Eq. 6.62: 0.1385 + 0.981×50/(0.841×182.8) + 0 = 0.139 + 0.319 = 0.458 → PASS
 
 Note: Exact values depend on section catalog. Tests use 2% tolerance.
+
+Since the 2026 steel review χ_LT uses the modified method for rolled
+sections (§6.3.2.3, β = 0.75, λ_LT,0 = 0.4, table 6.5 curve b for h/b ≤ 2):
+χ_LT = 0.882 instead of 0.841, giving Eq. 6.61 ≈ 0.411 and Eq. 6.62 ≈ 0.445.
 """
 from conftest import find_check, passes, assert_eta
 
@@ -97,21 +101,21 @@ def test_beam_column_cross_section_passes(client):
 
 
 def test_beam_column_eq661_passes(client):
-    """EC3 §6.3.3 Eq. 6.61 — expected η ≈ 0.426–0.430."""
+    """EC3 §6.3.3 Eq. 6.61 — expected η ≈ 0.411 (modified χ_LT)."""
     blocks = client.post("/calc/beam-column", json=PAYLOAD).json()
     chk = find_check(blocks, "6.61")
     assert chk is not None, "Eq. 6.61 check not found"
     assert passes(chk), f"Eq. 6.61 failed: {chk['value']}"
-    assert_eta(chk, 0.426, tol=0.02)
+    assert_eta(chk, 0.411, tol=0.02)
 
 
 def test_beam_column_eq662_passes(client):
-    """EC3 §6.3.3 Eq. 6.62 — expected η ≈ 0.458–0.462."""
+    """EC3 §6.3.3 Eq. 6.62 — expected η ≈ 0.445 (modified χ_LT)."""
     blocks = client.post("/calc/beam-column", json=PAYLOAD).json()
     chk = find_check(blocks, "6.62")
     assert chk is not None, "Eq. 6.62 check not found"
     assert passes(chk), f"Eq. 6.62 failed: {chk['value']}"
-    assert_eta(chk, 0.460, tol=0.02)
+    assert_eta(chk, 0.445, tol=0.02)
 
 
 def test_beam_column_overloaded_fails(client):

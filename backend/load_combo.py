@@ -258,7 +258,7 @@ def load_combos(
     # Subtitle: method + consequence class
     method_str  = "6.10a / 6.10b" if method == '6.10ab' else "Eq. 6.10"
     blocks.append(MH(
-        f"{label} — Load Combinations",
+        f"{label} — Lastkombinationer",
         f"EN 1990 DK NA:2019  ·  {method_str}  ·  {consequence_class}  (K_FI = {KFI:.1f})",
         "general",
     ))

@@ -88,7 +88,8 @@ export function makeB2Template(options = null, metadata = {}) {
         // Only name the levels this class actually uses — listing U and T in a
         // KK1 plan invites someone to tick a box the class does not ask for.
         (KK_LEVEL[kk] >= 2 ? ', U = uvildig kontrol' : '') +
-        (KK_LEVEL[kk] >= 3 ? ', T = tredjepartskontrol' : '') + '.'
+        // Tredjepartskontrol hører kun til KK4.
+        (KK_LEVEL[kk] >= 4 ? ', T = tredjepartskontrol' : '') + '.'
       : '') })
 
   push('heading', { level: 2, text: 'Projekteringskontrol' })
@@ -107,10 +108,13 @@ export function makeB2Template(options = null, metadata = {}) {
       'en person, der ikke har deltaget i projekteringen af det pågældende ' +
       'konstruktionsafsnit' +
       (KK_LEVEL[kk] >= 3
+        ? ' og være certificeret statiker'
+        : '') +
+      (KK_LEVEL[kk] >= 4
         ? ', og der skal desuden udføres tredjepartskontrol.'
         : '.') +
       '\n\nUvildig kontrollant: …' +
-      (KK_LEVEL[kk] >= 3 ? '\nTredjepartskontrollant: …' : '') })
+      (KK_LEVEL[kk] >= 4 ? '\nTredjepartskontrollant: …' : '') })
   }
 
   push('heading', { level: 2, text: 'Udførelseskontrol' })

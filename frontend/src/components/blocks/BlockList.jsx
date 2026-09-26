@@ -9,7 +9,7 @@
  * • Hover between blocks → blue + add button
  * • ⠿ drag handle to reorder
  */
-import React, { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import { maxUtilization, utilColor } from '../../lib/utilization.js'
 import { useConfirm } from '../../ui/Dialog.jsx'
 import { hashCalcInputs, hasCalcResult, isStaleResult, staleReason, calcRevision } from '../../lib/calcState.js'
@@ -59,8 +59,8 @@ const ProjectBasisBlock = lazy(() => import('./ProjectBasisBlock.jsx'))
 const BLOCK_TYPES = [
   { type: 'project_basis', label: 'Projektgrundlag (A1)', icon: 'A1', color: '#0f172a', component: ProjectBasisBlock,
     default: { title: 'Project Basis', consequence_class: 'CC2', wind_zone: 2, terrain_category: 'II',
-               gamma_M0: 1.00, gamma_M1: 1.00, gamma_M2: 1.25,
-               gamma_c: 1.50, gamma_s: 1.15, gamma_M_timber: 1.30, _exports: null } },
+               gamma_M0: 1.00, gamma_M1: 1.00, gamma_M2: 1.35,
+               gamma_c: 1.45, gamma_s: 1.20, gamma_M_timber: 1.35, _exports: null } },
   { type: 'heading',       label: 'Overskrift',        icon: 'H',   color: '#64748b', component: HeadingBlock,
     default: { level: 1, text: '' } },
   { type: 'text',          label: 'Tekstafsnit',       icon: 'TXT', color: '#64748b', component: TextBlock,
@@ -98,7 +98,7 @@ const BLOCK_TYPES = [
                As_prov_mm2: null, gamma_C: 1.5, gamma_S: 1.15, _result: null } },
   { type: 'rc_column',     label: 'Betonsøjle',        icon: 'RCC', color: '#374151', component: RCColumnBlock,
     default: { title: 'RC Column Check', label: 'C1', h_mm: 300, b_mm: 300, c_mm: 40,
-               fck_mpa: 30, fyk_mpa: 500, gamma_c: 1.5, gamma_s: 1.15,
+               fck_mpa: 30, fyk_mpa: 500, gamma_c: 1.45, gamma_s: 1.20,
                da_c_mm: 16, n_c: 2, da_t_mm: 16, n_t: 2,
                Ls_mm: 3500, beta_eff: 1.0,
                load_cases: [{ label: 'LC1', NEd_kN: 400, M0Ed_kNm: 20 }], _result: null } },
@@ -227,12 +227,12 @@ const BLOCK_TYPES = [
     default: { title: 'Connection Check', label: 'BG1', mode: 'bolts',
                n_bolts: 4, bolt_class: '8.8', d_mm: 20, shear_plane: 'thread',
                n_shear_planes: 1, t_plate_mm: 10, f_u_plate_MPa: 510,
-               e1_mm: 40, e2_mm: 40, p1_mm: 60, V_Ed_kN: 100, gamma_M2: 1.25,
+               e1_mm: 40, e2_mm: 40, p1_mm: 60, V_Ed_kN: 100, gamma_M2: 1.35,
                _result: null } },
   { type: 'fillet_weld',   label: 'Kantsøm',           icon: 'WLD', color: '#1e3a5f', component: BoltConnectionBlock,
     default: { title: 'Weld Check', label: 'W1', mode: 'weld',
                a_mm: 6, L_mm: 200, F_Ed_kN: 80, steel_grade: 'S355',
-               gamma_M2: 1.25, _result: null } },
+               gamma_M2: 1.35, _result: null } },
   { type: 'plate_girder',  label: 'Pladedrager',        icon: 'PG',  color: '#1e3a5f', component: PlateGirderBlock,
     default: { title: 'Plate Girder Check', label: 'PG1', grade: 'S355',
                h_w_mm: 1200, t_w_mm: 12, b_f_mm: 400, t_f_mm: 25,
@@ -366,9 +366,9 @@ function BlockPreview({ block, project }) {
 
     case 'image':
       return d.image_b64
-        ? <div>
+        ? <div style={{ textAlign: d.align === 'left' ? 'left' : d.align === 'right' ? 'right' : 'center' }}>
             <img src={d.image_b64} alt={d.caption || ''}
-                 style={{ maxWidth: (d.width_pct || 100) + '%', display: 'block' }} />
+                 style={{ width: (d.width_pct || 100) + '%', display: 'inline-block' }} />
             {d.caption && <p style={{ fontSize: 12, color: '#888', marginTop: 6, fontStyle: 'italic' }}>{d.caption}</p>}
           </div>
         : <div style={{ color: '#bbb', fontSize: 13, padding: '10px 0' }}>🖼 Klik for at tilføje et billede</div>
@@ -670,6 +670,28 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   const [dragId,      setDragId]      = useState(null)
   const [dropId,      setDropId]      = useState(null)
   const pageRef = useRef(null)
+  // "Figur n" som i eksporten (backend/figurer.py): billeder med et billede
+  // og nummerering slået til, i dokumentets rækkefølge.
+  const figNos = useMemo(() => {
+    const m = new Map(); let n = 0
+    for (const b of blocks) {
+      if (b.type === 'image' && b.data?.image_b64 && (b.data.numbered ?? true)) m.set(b.id, ++n)
+    }
+    return m
+  }, [blocks])
+  // Overskriftsnumre som i eksporten (pdf_builder._number_headings): en
+  // overskrift, der selv starter med et nummer, tæller ikke med.
+  const headNos = useMemo(() => {
+    const m = new Map(); const c = [0, 0, 0]
+    for (const b of blocks) {
+      if (b.type !== 'heading') continue
+      const lvl = Math.min(3, Math.max(1, b.data?.level ?? 1)), t = (b.data?.text ?? '').trim()
+      if (/^\d+(\.\d+)*\.?\s/.test(t)) continue
+      c[lvl - 1]++; for (let j = lvl; j < 3; j++) c[j] = 0
+      m.set(b.id, c.slice(0, lvl).join('.'))
+    }
+    return m
+  }, [blocks])
 
   // Click outside page → deselect. Clicks inside dialogs and menus (rendered
   // outside the page) must not count as "outside".
@@ -753,6 +775,21 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   h.addBlock = (type, atIndex) => {
     const def = TYPE_MAP[type]; if (!def) return
     h.insertAt(atIndex, { id: Date.now(), type, data: { ...def.default } })
+  }
+
+  // Enter i en overskrift: et tekstafsnit lige under, med markøren i.
+  h.addTextAfter = (id) => {
+    const i = blocksRef.current.findIndex(x => x.id === id)
+    if (i < 0) return
+    const nb = { id: Date.now(), type: 'text', data: { ...TYPE_MAP.text.default } }
+    h.insertAt(i + 1, nb)
+    let tries = 0
+    const focus = () => {
+      const el = pageRef.current?.querySelector(`[data-block-id="${nb.id}"] [contenteditable="true"]`)
+      // The text editor is loaded lazily; the first time it can take a moment.
+      if (el) el.focus(); else if (tries++ < 60) setTimeout(focus, 50)
+    }
+    setTimeout(focus, 0)
   }
 
   h.duplicateBlock = (id) => {
@@ -1004,6 +1041,8 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
             key={block.id}
             block={block}
             index={index}
+            figNo={figNos.get(block.id)}
+            headNo={headNos.get(block.id)}
             isFirst={index === 0}
             isLast={index === blocks.length - 1}
             isSelected={selectedId === block.id}
@@ -1030,11 +1069,11 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
 const BlockRow = React.memo(function BlockRow({
   block, index, isFirst, isLast, isSelected, isMinimised, isDragging, isTarget,
-  blocks, project, templates, clipboard, h,
+  blocks, project, templates, clipboard, h, figNo, headNo,
 }) {
   const Comp             = TYPE_MAP[block.type]?.component
   const showEditor       = isSelected && !isMinimised && !!Comp
-  const isInlineEditable = ['text', 'heading'].includes(block.type)
+  const isInlineEditable = ['text', 'heading', 'image'].includes(block.type)
   const id = block.id
   const onBlockChange = useCallback(b => h.updateBlock(id, b), [h, id])
   const onAddBlock    = useCallback((type, data) => h.addBlockAfter(id, type, data), [h, id])
@@ -1094,7 +1133,8 @@ const BlockRow = React.memo(function BlockRow({
             /* Text + heading: always render editor inline as the document content */
             <div onClick={e => e.stopPropagation()}>
               <Suspense fallback={<BlockPreview block={block} project={project} />}>
-                <Comp block={block} onChange={onBlockChange} isSelected={isSelected} />
+                <Comp block={block} onChange={onBlockChange} isSelected={isSelected} figNo={figNo}
+                      headNo={headNo} onEnter={() => h.addTextAfter(block.id)} />
               </Suspense>
             </div>
           ) : (

@@ -22,8 +22,8 @@ def rc_slab_oneway(
     fck_MPa: float      = 30.0,
     fyk_MPa: float      = 500.0,
     As_prov_mm2m: float = None,     # provided reinforcement [mm²/m]  (None = use req.)
-    gamma_C: float      = 1.5,
-    gamma_S: float      = 1.15,
+    gamma_C: float      = 1.45,   # DS/EN 1992-1-1 DK NA
+    gamma_S: float      = 1.20,
     cover_mm: float     = 35.0,     # nominal cover [mm]
 ):
     chk = CheckContext()

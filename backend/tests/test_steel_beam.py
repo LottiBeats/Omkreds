@@ -9,8 +9,9 @@ Case A  IPE 300, S355, L = 4 m, g_k = 5 kN/m, q_k = 3 kN/m, kipning forhindret
     W_pl,y = 628 cm³, f_y = 355 MPa (t_f = 10,7 mm)
     M_Rd  = 628e3·355/1,10/1e6 = 202,67 kNm   → η = 0,0938
     V_Ed  = 9,5·4/2        = 19,00 kN
-    A_v   = (h − t_f)·t_w  = (300 − 10,7)·7,1 = 2054 mm²  (r = 0 i A_v)
-    V_Rd  = 2054·355/(√3·1,10)/1e3 = 382,7 kN        → η = 0,0496
+    A_v   = A − 2b·t_f + (t_w + 2r)·t_f ≈ (h − t_f)·t_w + 2r·t_f + (4 − π)·r²
+          = 2054 + 321 + 193 = 2568 mm²   (r = 15 mm)
+    V_Rd  = 2568·355/(√3·1,10)/1e3 = 478,5 kN        → η = 0,0397
 
 Case B  IPE 300, S355 — overbelastet ved L = 10 m for at se FAIL.
 
@@ -47,7 +48,7 @@ def test_steel_beam_A_bending_passes(client):
         "span_m": 4.0, "g_k_kNm": 5.0, "q_k_kNm": 3.0,
         "ltb_restrained": True,
     }).json()
-    chk = find_check(blocks, "bending")
+    chk = find_check(blocks, "bøjning")
     assert chk is not None, "No bending check block found"
     assert passes(chk), f"Bending check unexpectedly failed: {chk['value']}"
     assert_eta(chk, 0.0938)
@@ -59,12 +60,12 @@ def test_steel_beam_A_shear_passes(client):
         "span_m": 4.0, "g_k_kNm": 5.0, "q_k_kNm": 3.0,
         "ltb_restrained": True,
     }).json()
-    chk = find_check(blocks, "shear")
+    chk = find_check(blocks, "forskydning")
     assert chk is not None, "No shear check block found"
     assert passes(chk), f"Shear check unexpectedly failed: {chk['value']}"
     # Module uses A_v = (h-t_f)*t_w with r = 0 because the catalog does not
     # store fillet radius. A_v = (300-10.7)*7.1 = 2054 mm2, V_Rd = 421 kN, eta = 0.0535.
-    assert_eta(chk, 0.0496, tol=0.02)
+    assert_eta(chk, 0.0397, tol=0.02)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -78,7 +79,7 @@ def test_steel_beam_B_bending_fails(client):
         "span_m": 10.0, "g_k_kNm": 20.0, "q_k_kNm": 15.0,
         "ltb_restrained": True,
     }).json()
-    chk = find_check(blocks, "bending")
+    chk = find_check(blocks, "bøjning")
     assert chk is not None, "No bending check block found"
     assert not passes(chk), "Bending check should have FAILED for overloaded beam"
 
@@ -93,7 +94,7 @@ def test_steel_beam_C_bending_passes(client):
         "span_m": 8.0, "g_k_kNm": 15.0, "q_k_kNm": 10.0,
         "ltb_restrained": True,
     }).json()
-    chk = find_check(blocks, "bending")
+    chk = find_check(blocks, "bøjning")
     assert chk is not None, "No bending check block found"
     assert passes(chk), f"Bending check failed: {chk['value']}"
     # W_pl,y(IPE500) = 2194 cm³; M_Rd = 2194e3×275/1e6 = 603.4 kNm; η = 282/603.4 = 0.4674

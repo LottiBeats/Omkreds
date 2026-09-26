@@ -42,7 +42,7 @@ def _chi(lam_bar: float, curve: str) -> float:
 
 
 def _chi_LT(lam_LT: float, h_mm: float, b_mm: float) -> float:
-    """EC3 6.3.2.2 LTB reduction factor using the rolled-section curve."""
+    """EC3 6.3.2.3 LTB reduction factor (modified method, table 6.5 curve)."""
     return chi_ltb(lam_LT, ltb_curve_hot_rolled(h_mm, b_mm))
 
 
@@ -252,7 +252,7 @@ def steel_beam_column_check(
     N_b_y_Rd = chi_y * N_Rk / gamma_M1
     N_b_z_Rd = chi_z * N_Rk / gamma_M1
 
-    # ── LTB  (EC3 §6.3.2.2 General method) ───────────────────────────────────
+    # ── LTB  (EC3 §6.3.2.3 modified method, rolled sections) ───────────────────────────────────
     susceptible = not ltb_restrained
 
     if ltb_restrained or My_Ed_kNm <= 0.0:
@@ -397,7 +397,7 @@ def steel_beam_column_check(
         blocks += [
             T(f"L_LTB = {str(L_LTB)}   |   M_cr = {str(M_cr)}  (C₁ = 1.0, conservative)"),
             CALC_ROW("λ̄_LT",  "= √(W_pl,y · f_y / M_cr)",     f"{lam_LTb:.3f}"),
-            CALC_ROW("χ_LT",   "General case, EC3 §6.3.2.2",   f"{chi_LT:.3f}"),
+            CALC_ROW("χ_LT",   f"Modified method, EC3 §6.3.2.3 (curve {ltb_curve_hot_rolled(h_mm, b_mm)})",   f"{chi_LT:.3f}"),
         ]
 
     blocks.append(S(f"Interaction factors  (Annex B {table_ref}, Class 1/2 — {susceptible_txt})"))

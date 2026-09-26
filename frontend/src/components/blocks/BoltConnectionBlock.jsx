@@ -45,7 +45,7 @@ export default function BoltConnectionBlock({ block, onChange }) {
           e2_mm:          d.e2_mm          ?? 40,
           p1_mm:          d.p1_mm          ?? 60,
           V_Ed_kN:        d.V_Ed_kN        ?? 100,
-          gamma_M2:       d.gamma_M2       ?? 1.25,
+          gamma_M2:       d.gamma_M2       ?? 1.35,
         })
       } else {
         blocks = await calcFilletWeld({
@@ -55,7 +55,7 @@ export default function BoltConnectionBlock({ block, onChange }) {
           F_Ed_kN:     d.F_Ed_kN     ?? 80,
           steel_grade: d.steel_grade ?? 'S355',
           f_u_MPa:     d.f_u_MPa     ?? null,
-          gamma_M2:    d.gamma_M2    ?? 1.25,
+          gamma_M2:    d.gamma_M2    ?? 1.35,
         })
       }
       update({ _result: blocks })
@@ -151,7 +151,7 @@ export default function BoltConnectionBlock({ block, onChange }) {
               onChange={v => update({ V_Ed_kN: v })} />
           </Field>
           <Field label="γ_M2">
-            <NumericInput style={s.input} value={d.gamma_M2 ?? 1.25}
+            <NumericInput style={s.input} value={d.gamma_M2 ?? 1.35}
               onChange={v => update({ gamma_M2: v })} />
           </Field>
         </>
@@ -176,7 +176,7 @@ export default function BoltConnectionBlock({ block, onChange }) {
             </select>
           </Field>
           <Field label="γ_M2">
-            <NumericInput style={s.input} value={d.gamma_M2 ?? 1.25}
+            <NumericInput style={s.input} value={d.gamma_M2 ?? 1.35}
               onChange={v => update({ gamma_M2: v })} />
           </Field>
         </>

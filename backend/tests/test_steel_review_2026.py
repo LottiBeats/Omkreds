@@ -30,8 +30,8 @@ def test_hea200_s355_is_class_2_with_root_radius():
         A_cm2=p['A_cm2'], Iy_cm4=p['Iy_cm4'], Iz_cm4=p['Iz_cm4'],
         h_mm=p['h_mm'], b_mm=p['b_mm'], tf_mm=p['tf_mm'], tw_mm=p['tw_mm'],
         r_mm=p['r_mm'], W_pl_y_cm3=p['Wply_cm3'], M_y_Ed_kNm=20)
-    cls = next(b for b in blocks if b.get('name') == 'Section class')
-    assert cls['result'] == 'Class 2'
+    cls = next(b for b in blocks if b.get('name') == 'Tværsnitsklasse')
+    assert cls['result'] == 'Klasse 2'
 
 
 def test_class_3_never_uses_plastic_modulus():

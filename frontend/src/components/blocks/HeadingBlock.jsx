@@ -1,71 +1,63 @@
 /**
- * HeadingBlock.jsx — inline-editable heading block
+ * HeadingBlock.jsx — overskrift som i Word.
  *
- * Renders as a styled heading. Click to edit.
- * H1/H2/H3 selector appears when the block is selected.
+ * Niveauet vælges som typografi ("Overskrift 1/2/3") eller med Tab /
+ * Shift+Tab. Nummeret (1, 1.1, 1.1.1) vises som det kommer til at stå i PDF
+ * og Word; det regnes i BlockList med samme regel som eksporten
+ * (pdf_builder._number_headings). Enter giver et tekstafsnit lige under.
  */
 import React from 'react'
+import './HeadingBlock.css'
 
-const SIZES   = { 1: 26, 2: 20, 3: 16 }
-const WEIGHTS = { 1: 700, 2: 700, 3: 600 }
+const LEVELS = [
+  { v: 1, label: 'Overskrift 1' },
+  { v: 2, label: 'Overskrift 2' },
+  { v: 3, label: 'Overskrift 3' },
+]
 
-export default function HeadingBlock({ block, onChange, isSelected }) {
+export default function HeadingBlock({ block, onChange, isSelected, headNo, onEnter }) {
   const { level = 1, text = '' } = block.data
-  const sz = SIZES[level]  ?? 18
-  const fw = WEIGHTS[level] ?? 600
 
   function update(changes) {
     onChange({ ...block, data: { ...block.data, ...changes } })
   }
 
+  function onKeyDown(e) {
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      update({ level: Math.max(1, Math.min(3, level + (e.shiftKey ? -1 : 1))) })
+    } else if (e.key === 'Enter' && onEnter) {
+      // Blur first, so keys typed before the new paragraph has focus do not
+      // land in the heading.
+      e.preventDefault(); e.currentTarget.blur(); onEnter()
+    }
+  }
+
   return (
-    <div>
-      {/* Level selector — only visible when the block is selected */}
+    <div className={`hdb hdb-${level}`}>
       {isSelected && (
-        <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-          {[1, 2, 3].map(lvl => (
-            <button
-              key={lvl}
-              onMouseDown={e => { e.preventDefault(); update({ level: lvl }) }}
-              style={{
-                fontSize:   10,
-                fontWeight: 700,
-                fontFamily: 'monospace',
-                padding:    '1px 8px',
-                border:     '1px solid ' + (level === lvl ? '#111' : '#e0e0e0'),
-                background: level === lvl ? '#111' : 'none',
-                color:      level === lvl ? '#fff' : '#888',
-                cursor:     'pointer',
-                borderRadius: 2,
-              }}
-            >
-              H{lvl}
-            </button>
-          ))}
+        <div className="hdb-bar" role="toolbar" aria-label="Overskrift">
+          <div className="hdb-grp" role="radiogroup" aria-label="Niveau">
+            {LEVELS.map(l => (
+              <button key={l.v} type="button" role="radio" aria-checked={level === l.v}
+                className={`hdb-sty hdb-sty-${l.v}` + (level === l.v ? ' on' : '')}
+                onMouseDown={e => { e.preventDefault(); update({ level: l.v }) }}>{l.label}</button>
+            ))}
+          </div>
+          <span className="hdb-hint">Tab / Shift+Tab skifter niveau · Enter giver et tekstafsnit</span>
         </div>
       )}
-
-      <input
-        type="text"
-        value={text}
-        onChange={e => update({ text: e.target.value })}
-        placeholder={`Heading ${level}…`}
-        style={{
-          display:    'block',
-          width:      '100%',
-          border:     'none',
-          padding:    0,
-          margin:     0,
-          fontSize:   sz,
-          fontWeight: fw,
-          lineHeight: 1.3,
-          fontFamily: 'inherit',
-          color:      text ? '#1c1c1e' : '#ccc',
-          background: 'transparent',
-          outline:    'none',
-          cursor:     'text',
-        }}
-      />
+      <div className="hdb-row">
+        {headNo && <span className="hdb-no" title="Nummereres automatisk i rapporten">{headNo}</span>}
+        <input
+          type="text"
+          value={text}
+          onChange={e => update({ text: e.target.value })}
+          onKeyDown={onKeyDown}
+          placeholder={`Overskrift ${level}`}
+          aria-label={`Overskrift ${level}`}
+        />
+      </div>
     </div>
   )
 }

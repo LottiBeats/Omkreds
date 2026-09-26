@@ -245,8 +245,8 @@ def concrete_column_rect(
     n_t=3,
     fck_mpa=35.0,
     fyk_mpa=550.0,
-    gamma_c=1.4,
-    gamma_s=1.2,
+    gamma_c=1.45,           # DS/EN 1992-1-1 DK NA
+    gamma_s=1.20,
     alpha_cc=1.0,
     gamma_cE=1.2,
     Ls_mm=4000.0,
