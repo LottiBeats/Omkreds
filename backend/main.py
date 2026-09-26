@@ -239,7 +239,11 @@ app.add_middleware(
 # Danish structural documentation categories (BR18 / DS 1140) — see doc_defs.py
 from doc_defs import DOC_DEFS
 
-VALID_VISIBILITIES = {"personal", "team"}
+# Kun "personal". "team" betød alle, der kan logge ind -- appen har ingen
+# teams -- og var standard i "Nyt projekt", så nye projekter blev synlige for
+# alle. Kommer der rigtig deling, skal den bygges på medlemskab, ikke på et
+# flag, som alle brugere matcher.
+VALID_VISIBILITIES = {"personal"}
 
 # ── Global user allowlist ─────────────────────────────────────────────────────
 # Set ALLOWED_EMAILS=you@firm.com,colleague@firm.com in your .env / server env.
@@ -273,8 +277,9 @@ def _clean_visibility(value: str | None) -> str:
 
 
 def _is_visible(item: dict, user: dict) -> bool:
-    vis = item.get("visibility", "personal")
-    return vis == "team" or item.get("owner_id") == user["id"]
+    # Kun ejeren. Et tomt owner_id matcher ingen -- heller ikke en bruger,
+    # hvis token mangler sub.
+    return bool(user.get("id")) and item.get("owner_id") == user["id"]
 
 
 def _visible_project(project_id: str, user: dict, include_deleted: bool = False) -> dict:
@@ -612,7 +617,7 @@ def save_project(project_id: str, project: dict, user: dict = Depends(get_curren
 
 @protected.delete("/projects/{project_id}", tags=["Projects"])
 def delete_project(project_id: str, user: dict = Depends(get_current_user)):
-    """Move a visible project to the trash (recoverable for 30 days)."""
+    """Move a visible project to the trash. It stays there until the owner empties it."""
     _visible_project(project_id, user)
     _db.delete_project(project_id, user=user["id"])
     return {"status": "deleted", "recoverable": True}
@@ -2064,9 +2069,9 @@ def run_python_script(data: PythonScriptInput, user: dict = Depends(get_current_
     allowed: set[str] = {e.strip().lower() for e in raw_py.split(",") if e.strip()}
     if raw_adm:
         allowed.add(raw_adm.lower())
-    if not allowed:
-        # Fall back to global ALLOWED_EMAILS
-        allowed = {e for e in _ALLOWED_EMAILS}   # already lower-cased
+    # Ingen fallback til ALLOWED_EMAILS: exec() kan læse hele databasen --
+    # alle brugeres projekter -- og må kun køres af dem, der er udpeget til
+    # netop det.
     if not allowed:
         # Nothing configured — deny everyone rather than allow everyone
         raise HTTPException(

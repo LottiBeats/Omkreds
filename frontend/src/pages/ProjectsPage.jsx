@@ -516,7 +516,7 @@ function TemplatesSection({ templates, loading, onUseTemplate, onDeleteTemplate 
 
 // ── projects dashboard ────────────────────────────────────────────────────────
 /**
- * TrashSection — deleted projects, recoverable for 30 days.
+ * TrashSection — deleted projects, recoverable until the owner deletes them for good.
  *
  * Deleting is the one action in the app with no undo inside the editor, so it
  * gets a visible second chance rather than a confirm dialog nobody reads.
@@ -530,7 +530,7 @@ function TrashSection({ trash, loading, onRestore, onPurge }) {
       background: WHITE, border: '1px dashed ' + BORDER, padding: '40px 32px',
       textAlign: 'center', fontFamily: SANS, fontSize: 13, color: MUTED,
     }}>
-      Papirkurven er tom. Slettede projekter havner her og kan gendannes i 30 dage.
+      Papirkurven er tom. Slettede projekter havner her og kan altid gendannes, indtil du selv sletter dem permanent.
     </div>
   )
 
@@ -725,15 +725,6 @@ function ProjectsSection({ projects, templates, templatesLoading, loading, error
                       {project.metadata.project_name || 'Unavngivet projekt'}
                     </div>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-                      {project.visibility === 'personal' && (
-                        <span title="Privat — kun synlig for dig" style={{
-                          fontFamily: SANS, fontSize: 10, fontWeight: 700, color: '#4b5563',
-                          background: '#f3f4f6', border: '1px solid #d1d5db',
-                          padding: '2px 6px', whiteSpace: 'nowrap',
-                        }}>
-                          Privat
-                        </span>
-                      )}
                       {project.metadata.revision && (
                         <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: MUTED, background: OFF, padding: '2px 6px', border: '1px solid ' + BORDER, whiteSpace: 'nowrap' }}>
                           Rev {project.metadata.revision}
@@ -845,7 +836,7 @@ export default function ProjectsPage() {
     const name = project.metadata.project_name || 'projektet'
     if (!(await confirm({
       title: `Flyt "${name}" til papirkurven?`,
-      body: 'Du kan gendanne det fra Papirkurv i 30 dage.',
+      body: 'Det ligger i Papirkurv, indtil du selv sletter det permanent.',
       confirmLabel: 'Flyt til papirkurv',
       danger: true,
     }))) return

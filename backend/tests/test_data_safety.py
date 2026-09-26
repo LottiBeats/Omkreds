@@ -249,9 +249,26 @@ def test_expired_trash_is_purged_but_fresh_trash_is_kept(dbfile):
         conn.execute("UPDATE projects SET deleted_at = ? WHERE id = 'old'", (long_ago,))
         conn.commit()
 
-    assert _db.purge_expired_trash(path=dbfile) == 1
+    # Standard: intet slettes af sig selv, heller ikke gammelt affald.
+    assert _db.purge_expired_trash(path=dbfile) == 0
+    assert _db.load_project("old", path=dbfile, include_deleted=True) is not None
+
+    # Kun med en udtrykkelig frist tømmes papirkurven.
+    assert _db.purge_expired_trash(days=30, path=dbfile) == 1
     assert _db.load_project("old", path=dbfile, include_deleted=True) is None
     assert _db.load_project("new", path=dbfile, include_deleted=True) is not None
+
+
+def test_backup_is_mirrored_to_another_drive(dbfile, tmp_path, monkeypatch):
+    import sqlite3
+    _db.save_project(_project("m1"), user="u1", path=dbfile)
+    mirror = tmp_path / "mirror"
+    monkeypatch.setattr(_db, "BACKUP_MIRROR_DIR", str(mirror))
+    dest = _db.backup_database(path=dbfile, force=True)
+    copy = mirror / dest.name
+    assert copy.exists()
+    with sqlite3.connect(str(copy)) as conn:
+        assert conn.execute("SELECT id FROM projects").fetchall() == [("m1",)]
 
 
 # ── Backups ───────────────────────────────────────────────────────────────────
