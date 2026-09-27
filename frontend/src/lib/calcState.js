@@ -40,8 +40,14 @@ const CALC_REVISION = {
   // tabel 6.5's kurver i den modificerede metode; udrundingsradius i
   // klassifikationen; klasse 3 med W_el; bjælken med 6.10a/b og K_FI og
   // lastens angrebshøjde i M_cr.
-  steel_beam: 2,
-  steel_column: 2,
+  // 3 — 2026-09-27: 18 profiler i stålkataloget havde W_el,y som W_pl,y
+  // (HEB200: 515 i stedet for 642,5 cm³); anneks B: k_zy = 0,6·k_yy i
+  // tabel B.1 og ingen nedre grænse ved λ̄_z < 0,4.
+  steel_beam: 3,
+  steel_column: 3,
+  // 2 — 2026-09-27: regnes af stålsøjlens eftervisning med DK NA-γ og
+  // katalogets rettede W_pl,y.
+  beam_column: 2,
   // 3: med snitkræfter fra en rammeberegning blev det største moment brugt med
   // varigheden fra netop den kombination -- ikke kombinationen med størst
   // M/k_mod, som FEM-kørslen allerede havde fundet (timber-indhyldningen).

@@ -1037,6 +1037,12 @@ class SteelColumnInput(BaseModel):
     ltb_restrained: bool = True
     L_LTB_m:    float | None = None
     C_1:        float = 1.0
+    # Anneks B tabel B.3. 1,0 = konstant moment, på den sikre side.
+    C_my:       float = 1.0
+    C_mz:       float = 1.0
+    C_mLT:      float = 1.0
+    # Længde for udbøjning om z, hvis den afviger (fx afstivning på midten).
+    length_z_m: float | None = None
     # Lastkilde: naar N_Ed kommer fra en lastkombinationsblok, foelger dens
     # navn og enhed med, saa enheden kan kontrolleres og kilden staa i
     # dokumentet. Staal har ingen k_mod, saa den dimensionsgivende kombination
@@ -1106,6 +1112,10 @@ def calc_steel_column(data: SteelColumnInput):
             ltb_restrained = data.ltb_restrained,
             L_LTB_m    = data.L_LTB_m,
             C_1        = data.C_1,
+            C_my       = data.C_my,
+            C_mz       = data.C_mz,
+            C_mLT      = data.C_mLT,
+            length_z_m = data.length_z_m,
             I_T_cm4    = vrid[0] if vrid else None,
             I_w_cm6    = vrid[1] if vrid else None,
         )
@@ -4132,8 +4142,8 @@ class BeamColumnInput(BaseModel):
     N_Ed_kN:    float = 200.0
     My_Ed_kNm:  float = 50.0
     Mz_Ed_kNm:  float = 0.0
-    # Load source: when combo is used, frontend overrides N_Ed_kN directly
-    combo_label: str | None = None  # label of the source combo block (for display)
+    combo_label: str | None = None
+    combo_unit:  str | None = None
     L_y_m:   float = 4.0
     L_z_m:   float = 4.0
     L_LTB_m: float = 4.0
@@ -4142,46 +4152,32 @@ class BeamColumnInput(BaseModel):
     C_my: float = 1.0
     C_mz: float = 1.0
     C_mLT: float = 1.0
+    C_1:  float = 1.0
     ltb_restrained: bool  = False
-    gamma_M0: float = 1.0
-    gamma_M1: float = 1.0
+    gamma_M0: float = 1.10   # DS/EN 1993-1-1 DK NA
+    gamma_M1: float = 1.20
+
 
 @protected.post("/calc/beam-column", tags=["Calculations"])
 def calc_beam_column(data: BeamColumnInput):
-    """EC3 §6.3.3 Method 2 beam-column interaction check."""
-    try:
-        from steel_beam_column import steel_beam_column_check
-        from section_catalog import load_steel_profiles
+    """
+    Bjælke-søjle, EN 1993-1-1 §6.3.3 og anneks B.
 
-        db  = load_steel_profiles()
-        key = data.section.strip().upper().replace(' ', '')
-        sec = db.get(key)
-        if not sec:
-            raise ValueError(f"Section '{data.section}' not in catalog.")
-
-        h_mm     = sec['h_mm'];  b_mm = sec['b_mm']
-        tw_mm    = sec['tw_mm']; tf_mm = sec['tf_mm']
-        Iy_cm4   = sec['Iy_cm4']
-        Wply_cm3 = sec['Wply_cm3']
-        f_y_MPa  = _GRADE_FY.get(data.grade.strip().upper(), 355.0)
-
-        return steel_beam_column_check(
-            label=data.label, section=data.section, grade=data.grade,
-            h_mm=h_mm, b_mm=b_mm, tw_mm=tw_mm, tf_mm=tf_mm,
-            Iy_cm4=Iy_cm4, Wply_cm3=Wply_cm3,
-            N_Ed_kN=data.N_Ed_kN, My_Ed_kNm=data.My_Ed_kNm, Mz_Ed_kNm=data.Mz_Ed_kNm,
-            L_y_m=data.L_y_m, L_z_m=data.L_z_m, L_LTB_m=data.L_LTB_m,
-            k_y=data.k_y, k_z=data.k_z,
-            C_my=data.C_my, C_mz=data.C_mz, C_mLT=data.C_mLT,
-            ltb_restrained=data.ltb_restrained,
-            f_y_MPa=f_y_MPa, gamma_M0=data.gamma_M0, gamma_M1=data.gamma_M1,
-        )
-    except HTTPException:
-        raise
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+    Regnes af den samme eftervisning som stålsøjlen, så der kun er én udgave
+    af interaktionsfaktorerne at holde rigtig. Før havde steel_beam_column.py
+    sin egen kopi, med egne tværsnitsværdier og γ_M = 1,0 som standard.
+    """
+    return calc_steel_column(SteelColumnInput(
+        label=data.label, section=data.section, grade=data.grade,
+        length_m=data.L_y_m, length_z_m=data.L_z_m,
+        N_Ed_kN=data.N_Ed_kN, M_y_Ed_kNm=data.My_Ed_kNm, M_z_Ed_kNm=data.Mz_Ed_kNm,
+        k_y=data.k_y, k_z=data.k_z,
+        gamma_M0=data.gamma_M0, gamma_M1=data.gamma_M1,
+        ltb_restrained=data.ltb_restrained,
+        L_LTB_m=None if data.ltb_restrained else data.L_LTB_m,
+        C_1=data.C_1, C_my=data.C_my, C_mz=data.C_mz, C_mLT=data.C_mLT,
+        combo_label=data.combo_label, combo_unit=data.combo_unit,
+    ))
 
 
 # ── EC3 §6.5–6.6 Bolt group + fillet weld ────────────────────────────────────

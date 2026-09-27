@@ -227,12 +227,12 @@ const BLOCK_TYPES = [
   { type: 'load_combo',    label: 'Lastkombinationer', icon: 'LC',  color: '#9333ea', component: LoadComboBlock,
     default: { title: 'Load Combinations', label: 'LC1', unit: 'kN/m',
                G_k: 5.0, G_fav: false, loads: [], method: '6.10ab', _result: null } },
-  { type: 'beam_column',   label: 'Bjælkesøjle (N+M)', icon: 'BC',  color: '#1e3a5f', component: BeamColumnBlock,
-    default: { title: 'Beam-Column Check', label: 'BC1', section: 'HEB200', grade: 'S355',
+  { type: 'beam_column',   label: 'Bjælke-søjle (N+M)', icon: 'BC',  color: '#1e3a5f', component: BeamColumnBlock,
+    default: { title: 'Bjælke-søjle', label: 'BC1', section: 'HEB200', grade: 'S355',
                N_Ed_kN: 200, My_Ed_kNm: 50, Mz_Ed_kNm: 0,
                L_y_m: 4.0, L_z_m: 4.0, L_LTB_m: 4.0,
-               k_y: 1.0, k_z: 1.0, C_my: 1.0, C_mz: 1.0, C_mLT: 1.0,
-               ltb_restrained: false, gamma_M0: 1.0, gamma_M1: 1.0, _result: null } },
+               k_y: 1.0, k_z: 1.0, C_my: 1.0, C_mz: 1.0, C_mLT: 1.0, C_1: 1.0,
+               ltb_restrained: false, gamma_M0: 1.10, gamma_M1: 1.20, _result: null } },
   { type: 'bolt_group',    label: 'Boltgruppe',        icon: 'BLT', color: '#1e3a5f', component: BoltConnectionBlock,
     default: { title: 'Connection Check', label: 'BG1', mode: 'bolts',
                n_bolts: 4, bolt_class: '8.8', d_mm: 20, shear_plane: 'thread',
@@ -296,11 +296,10 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Stål  (EC3)',
-    // beam_column er stadig ude: den dumper sin egen referencetest. EN 1993-1-1
-    // lign. 6.61/6.62 giver 0,432 hvor Vayas et al. (Springer 2019, tabel
-    // 4.11) siger 0,460 — 6 % for lavt, altså på den forkerte side. Sæt den
-    // ind igen når tests/test_beam_column.py er grøn.
-    types: ['steel_beam', 'steel_column'],
+    // beam_column regnes nu af stålsøjlens eftervisning (anneks B rettet:
+    // k_zy = 0,6·k_yy i tabel B.1, ingen nedre grænse ved λ̄_z < 0,4) og er
+    // eftervist i tests/test_beam_column.py med en uafhængig håndregning.
+    types: ['steel_beam', 'steel_column', 'beam_column'],
   },
   {
     // Bjælke, søjle og dæk er gennemgået og skrevet om efter DK NA
