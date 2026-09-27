@@ -390,12 +390,14 @@ def _draw_revision_table(canvas, g, project):
     return tbl_t   # return top-of-table y so title can avoid it
 
 
-def _draw_cover_page(canvas, doc, project):
+def _draw_cover_page(canvas, doc, project, total_pages=None):
     """Cover page: header table + bordered box + large project title."""
     W, H = A4
     g = _geo(W, H)
 
-    _draw_header(canvas, doc, project, total_pages=None)
+    # Forsiden er side 1 af N som resten; før fik den aldrig totalen og
+    # viste bare "1".
+    _draw_header(canvas, doc, project, total_pages=total_pages)
     _draw_footer(canvas, doc, project)
 
     canvas.saveState()
@@ -505,7 +507,9 @@ class HolstDocTemplate(BaseDocTemplate):
             PageTemplate(
                 id="cover",
                 frames=[cover_frame],
-                onPage=lambda c, d: _draw_cover_page(c, d, self.project),
+                onPage=lambda c, d: _draw_cover_page(
+                    c, d, self.project, total_pages=self._total_pages
+                ),
             ),
             PageTemplate(
                 id="content",

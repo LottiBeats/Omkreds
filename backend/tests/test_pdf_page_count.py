@@ -59,3 +59,12 @@ def test_header_total_matches_the_real_page_count(n_sections):
     assert claimed, "no page carried a 'X af Y' header"
     assert claimed == {real_pages}, (
         f"header claims {sorted(claimed)} pages, document has {real_pages}")
+
+
+def test_forsiden_viser_1_af_n():
+    """Forsiden stod med "1" alene, fordi dens skabelon aldrig fik totalen."""
+    pdfium = pytest.importorskip("pypdfium2")
+    pdf = build_pdf(_project(), _blocks(2), doc_id="A2")
+    doc = pdfium.PdfDocument(pdf)
+    tekst = doc[0].get_textpage().get_text_range()
+    assert f"1 af {len(doc)}" in tekst
