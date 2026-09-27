@@ -101,15 +101,16 @@ const BLOCK_TYPES = [
                last: 'linje', g_k_kNm: 10.0, q_k_kNm: 6.0, consequence_class: 'CC2',
                bojle_s_mm: 200, bojle_snit: 2, _result: null } },
   { type: 'rc_column',     label: 'Betonsøjle',        icon: 'RCC', color: '#374151', component: RCColumnBlock,
-    default: { title: 'RC Column Check', label: 'C1', h_mm: 300, b_mm: 300, c_mm: 40,
+    default: { title: 'Betonsøjle', label: 'C1', h_mm: 300, b_mm: 300, c_mm: 45,
                fck_mpa: 30, fyk_mpa: 500, gamma_c: 1.45, gamma_s: 1.20,
                da_c_mm: 16, n_c: 2, da_t_mm: 16, n_t: 2,
-               Ls_mm: 3500, beta_eff: 1.0,
+               Ls_mm: 3500, beta_eff: 1.0, RH_pct: 50, t0_days: 28, M0Eqp_over_M0Ed: 0.7,
                load_cases: [{ label: 'LC1', NEd_kN: 400, M0Ed_kNm: 20 }], _result: null } },
   { type: 'rc_slab',       label: 'Betondæk',          icon: 'RCS', color: '#374151', component: RCSlabBlock,
-    default: { title: 'RC Slab Check', label: 'D1', span_m: 5.0, h_mm: 200, d_mm: 165,
-               g_k_kNm2: 3.5, q_k_kNm2: 2.5, fck_MPa: 30, fyk_MPa: 500,
-               As_prov_mm2m: null, gamma_C: 1.5, gamma_S: 1.15, cover_mm: 35, _result: null } },
+    default: { title: 'Betondæk', label: 'D1', span_m: 5.0, h_mm: 200, c_mm: 25,
+               o_mm: 10, s_mm: 150, d_mm: null, fck_MPa: 30, fyk_MPa: 500,
+               gamma_C: 1.45, gamma_S: 1.20, last: 'linje', g_k_kNm2: 3.5, q_k_kNm2: 2.5,
+               consequence_class: 'CC2', _result: null } },
   { type: 'timber_beam',   label: 'Træbjælke',         icon: 'TB',  color: '#92400e', component: TimberBeamBlock,
     default: { title: 'Timber Beam Check', label: 'T1', span_m: 4.0, b_mm: 90, h_mm: 220,
                g_k_kNm: 3.0, q_k_kNm: 2.0, timber_grade: 'C24', service_class: 1,
@@ -302,10 +303,10 @@ const PANEL_GROUPS = [
     types: ['steel_beam', 'steel_column'],
   },
   {
-    // Betonbjælken er gennemgået efter DK NA (2026-09-26). Søjle og dæk står
-    // stadig ude, til de har fået samme tur.
+    // Bjælke, søjle og dæk er gennemgået og skrevet om efter DK NA
+    // (2026-09-26). Fundamentet venter på DK NA til EN 1997-1.
     label: 'Beton  (EC2)',
-    types: ['rc_beam'],
+    types: ['rc_beam', 'rc_column', 'rc_slab'],
   },
   {
     label: 'Træ  (EC5)',

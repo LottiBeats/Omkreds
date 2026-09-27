@@ -52,6 +52,13 @@ const CALC_REVISION = {
   // med K_FI i stedet for 1,35/1,5, bøjningsbæreevne af den faktiske armering,
   // V_Rd,c, bøjler og nedbøjning ved l/d.
   rc_beam: 2,
+  // 2 — 2026-09-26: nominel stivhed med K_s = 1 og K_c = k₁·k₂/(1+φ_ef) (før
+  // K_c = 0,3/(1+0,5φ_ef) sammen med K_s = 1, som gav en for stiv søjle);
+  // N_Ed ≥ N_B fanges; N–M-kurven drejer om C ved x > h; §9.5.2.
+  rc_column: 2,
+  // 2 — 2026-09-26: 6.10a/b med K_FI (var 1,35/1,5); (7.16b) og (7.17) rettet;
+  // V_Rd,c og største stangafstand tilføjet; armering som Ø/s.
+  rc_slab: 2,
 }
 
 export function calcRevision(type) {

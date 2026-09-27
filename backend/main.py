@@ -3603,7 +3603,7 @@ class RcColumnInput(BaseModel):
     label:      str   = "C1"
     h_mm:       float = 300.0
     b_mm:       float = 300.0
-    c_mm:       float = 40.0
+    c_mm:       float = 45.0     # kant til armeringens tyngdepunkt
     Ls_mm:      float = 3500.0
     beta_eff:   float = 1.0
     fck_mpa:    float = 30.0
@@ -3614,40 +3614,30 @@ class RcColumnInput(BaseModel):
     n_c:        int   = 2
     da_t_mm:    float = 16.0
     n_t:        int   = 2
+    RH_pct:     float = 50.0
+    t0_days:    float = 28.0
+    M0Eqp_over_M0Ed: float = 0.7
     load_cases: list  = []   # [{"label":"LC1","NEd_kN":400,"M0Ed_kNm":20}, ...]
 
 
 @protected.post("/calc/rc-column", tags=["Calculations"])
 def calc_rc_column(data: RcColumnInput):
-    """EN 1992-1-1 RC column check (bending + axial + slenderness)."""
+    """Armeret betonsøjle efter DS/EN 1992-1-1 DK NA."""
     try:
         from concrete_column import concrete_column_rect
-
-        load_cases_fmt = [
-            {"label": lc.get("label", "LC"), "NEd_kN": lc.get("NEd_kN", 0.0),
-             "M0Ed_kNm": lc.get("M0Ed_kNm", 0.0)}
-            for lc in (data.load_cases or [])
-        ] or None
-
-        blocks = concrete_column_rect(
-            label    = data.label,
-            h_mm     = data.h_mm,
-            b_mm     = data.b_mm,
-            c_mm     = data.c_mm,
-            da_c_mm  = data.da_c_mm,
-            n_c      = data.n_c,
-            da_t_mm  = data.da_t_mm,
-            n_t      = data.n_t,
-            fck_mpa  = data.fck_mpa,
-            fyk_mpa  = data.fyk_mpa,
-            gamma_c  = data.gamma_c,
-            gamma_s  = data.gamma_s,
-            Ls_mm    = data.Ls_mm,
-            beta_eff = data.beta_eff,
-            load_cases = load_cases_fmt,
+        lcs = [{"label": lc.get("label", "LC"), "NEd_kN": float(lc.get("NEd_kN", 0.0)),
+                "M0Ed_kNm": float(lc.get("M0Ed_kNm", 0.0))}
+               for lc in (data.load_cases or [])]
+        return concrete_column_rect(
+            label=data.label, h_mm=data.h_mm, b_mm=data.b_mm, c_mm=data.c_mm,
+            da_c_mm=data.da_c_mm, n_c=data.n_c, da_t_mm=data.da_t_mm, n_t=data.n_t,
+            fck_mpa=data.fck_mpa, fyk_mpa=data.fyk_mpa,
+            gamma_c=data.gamma_c, gamma_s=data.gamma_s,
+            Ls_mm=data.Ls_mm, beta_eff=data.beta_eff,
+            RH=data.RH_pct / 100, t0_days=data.t0_days,
+            M0Eqp_over_M0Ed=data.M0Eqp_over_M0Ed,
+            load_cases=lcs,
         )
-        return blocks
-
     except HTTPException:
         raise
     except Exception as exc:
@@ -3660,39 +3650,30 @@ class RcSlabInput(BaseModel):
     label:         str   = "D1"
     span_m:        float = 5.0
     h_mm:          float = 200.0
-    d_mm:          float = 165.0
-    g_k_kNm2:      float = 3.5
-    q_k_kNm2:      float = 2.5
+    c_mm:          float = 25.0
+    o_mm:          float = 10.0
+    s_mm:          float = 150.0
+    d_mm:          float | None = None
     fck_MPa:       float = 30.0
     fyk_MPa:       float = 500.0
-    As_prov_mm2m:  float | None = None
     gamma_C:       float = 1.45   # DS/EN 1992-1-1 DK NA
     gamma_S:       float = 1.20
-    cover_mm:      float = 35.0
+    last:          str   = "linje"   # "linje" | "kombi" | "direkte"
+    g_k_kNm2:      float = 3.5
+    q_k_kNm2:      float = 2.5
+    consequence_class: str = "CC2"
+    w_Ed_kNm2:     float | None = None
+    kombi_label:   str | None = None
+    M_Ed_kNmm:     float | None = None
+    V_Ed_kNm:      float | None = None
 
 
 @protected.post("/calc/rc-slab", tags=["Calculations"])
 def calc_rc_slab(data: RcSlabInput):
-    """EN 1992-1-1 one-way simply supported RC slab check."""
+    """Enkeltspændt betondæk efter DS/EN 1992-1-1 DK NA."""
     try:
         from rc_slab import rc_slab_oneway
-
-        blocks = rc_slab_oneway(
-            label         = data.label,
-            span_m        = data.span_m,
-            h_mm          = data.h_mm,
-            d_mm          = data.d_mm,
-            g_k_kNm2      = data.g_k_kNm2,
-            q_k_kNm2      = data.q_k_kNm2,
-            fck_MPa       = data.fck_MPa,
-            fyk_MPa       = data.fyk_MPa,
-            As_prov_mm2m  = data.As_prov_mm2m,
-            gamma_C       = data.gamma_C,
-            gamma_S       = data.gamma_S,
-            cover_mm      = data.cover_mm,
-        )
-        return blocks
-
+        return rc_slab_oneway(**data.model_dump())
     except HTTPException:
         raise
     except Exception as exc:
