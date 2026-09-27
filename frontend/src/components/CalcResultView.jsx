@@ -342,24 +342,68 @@ function fmtCalcText(text) {
   // so step 3b regex never sees — or partially re-matches — already-built HTML.
   const vault  = []
   const stash  = (html) => { vault.push(html); return `\x02${vault.length - 1}\x02` }
-  const unstash = (s)   => s.replace(/\x02(\d+)\x02/g, (_, i) => vault[+i])
+  // En brøk kan ligge i en anden brøk, så der pakkes ud til der ikke er flere.
+  const unstash = (s) => {
+    for (let n = 0; n < 50 && s.includes('\x02'); n++)
+      s = s.replace(/\x02(\d+)\x02/g, (_, i) => vault[+i])
+    return s
+  }
 
-  // 3a. Handle  (num / den)suffix  — e.g. (σ_c,0,d / f_c,0,d)²
-  //     Keeps the outer parens and any trailing suffix (², ³, …) outside the fraction.
-  //     numerator/denominator must not themselves contain parens or whitespace.
-  body = body.replace(
-    /\(([^\s()]+)\s+\/\s+([^\s()]+)\)([\S]*)/g,
-    (_, num, den, suffix) => stash('(' + frac(num, den) + ')' + suffix)
-  )
-
-  // 3b. Replace every remaining  token / token  with a stacked fraction.
-  //     Slashes without surrounding spaces (kN/m, b·h²/6) are left untouched.
-  //     \x02 is excluded from token chars so placeholders from 3a are never
-  //     split and their closing ")" never becomes a dangling numerator.
-  body = body.replace(
-    /([^\s\x02]+)\s+\/\s+([^\s\x02]+)/g,
-    (_, num, den) => stash(frac(num, den))
-  )
+  // 3. Brøker. Samme regel som backend/formler.py, så skærm og PDF er enige:
+  //    den inderste " / " først; en operand går til nærmeste mellemrum eller
+  //    uparrede parentes, men en hel parentes springes over — også med
+  //    mellemrum i: "b·z / (cot θ + tan θ)" har hele parentesen som nævner.
+  //    En hel parentes om tælleren eller nævneren fjernes; brøkstregen
+  //    grupperer allerede. Skråstreg uden mellemrum (kN/m) står urørt.
+  const depthAt = (str, k) => {
+    let d = 0
+    for (let q = 0; q < k; q++) d += str[q] === '(' ? 1 : str[q] === ')' ? -1 : 0
+    return d
+  }
+  const matchBack = (str, k) => {
+    let d = 0
+    for (; k >= 0; k--) {
+      d += str[k] === ')' ? 1 : str[k] === '(' ? -1 : 0
+      if (d === 0) return k
+    }
+    return -1
+  }
+  const matchFwd = (str, k) => {
+    let d = 0
+    for (; k < str.length; k++) {
+      d += str[k] === '(' ? 1 : str[k] === ')' ? -1 : 0
+      if (d === 0) return k
+    }
+    return str.length
+  }
+  const unwrap = (t) => {
+    if (!(t.startsWith('(') && t.endsWith(')'))) return t
+    return matchFwd(t, 0) === t.length - 1 ? t.slice(1, -1) : t
+  }
+  for (let guard = 0; guard < 50; guard++) {
+    const hits = [...body.matchAll(/\s+\/\s+/g)]
+      .filter(m => m.index > 0 && m.index + m[0].length < body.length)
+    if (!hits.length) break
+    const m = hits.reduce((best, h) =>
+      depthAt(body, h.index) > depthAt(body, best.index) ? h : best)
+    const i = m.index, j = m.index + m[0].length
+    let a = i - 1
+    while (a >= 0 && !/\s/.test(body[a]) && body[a] !== '(') {
+      if (body[a] === ')') { const k = matchBack(body, a); if (k < 0) break; a = k }
+      a--
+    }
+    a++
+    let b = j
+    while (b < body.length && !/\s/.test(body[b]) && body[b] !== ')') {
+      if (body[b] === '(') b = matchFwd(body, b)
+      b++
+    }
+    let den = body.slice(j, b), suffix = ''
+    const sm = den.match(/^(\(.*\))(\S+)$/)
+    if (sm && matchFwd(sm[1], 0) === sm[1].length - 1) { den = sm[1]; suffix = sm[2] }
+    const html = frac(unwrap(body.slice(a, i)), unwrap(den)) + suffix
+    body = body.slice(0, a) + stash(html) + body.slice(b)
+  }
 
   return prefix + unstash(body)
 }
