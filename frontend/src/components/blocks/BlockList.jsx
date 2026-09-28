@@ -354,6 +354,8 @@ const mkBadge = ok => ({
 // Lives in lib/calcState.js so the editor shell can read block state without
 // importing every block editor. Re-exported here for existing imports.
 export { hashCalcInputs, hasCalcResult, isStaleResult, staleReason }
+// Standardværdierne for en ny blok — femapp.jsx opretter en rammeberegning med dem.
+export { TYPE_MAP }
 
 const staleBadgeStyle = {
   fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 2,

@@ -1745,7 +1745,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
 
 // ── Main block ────────────────────────────────────────────────────────────────
 
-export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onAddBlock, onAddBlocks }) {
+export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onAddBlock, onAddBlocks, standalone = null }) {
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
@@ -2261,6 +2261,28 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
     } finally {
       setRunning(false)
     }
+  }
+
+  // Det selvstændige program (femapp.jsx) viser kun modelvinduet, fyldt ud
+  // over hele skærmen, med programmets egne knapper (Ny, Åbn, Gem, PDF) i
+  // stedet for "Tilbage til dokumentet".
+  if (standalone) {
+    return (
+      <FemWorkspace
+        title={d.title ?? 'Rammeberegning'}
+        data={d}
+        onModelChange={(model) => update(model)}
+        onRun={handleRun}
+        running={running}
+        error={error}
+        stale={isStaleResult(block)}
+        hasResult={!!(d._result || d._summary)}
+        memberChecks={memberChecks}
+        reactions={d._summary?.reactions}
+        summary={d._summary}
+        actions={standalone.actions}
+      />
+    )
   }
 
   return (

@@ -276,6 +276,7 @@ function SupportGlyph({ x, y, type }) {
 export default function FemWorkspace({
   title, data, onModelChange, onClose, onRun, running, error, stale,
   memberChecks, reactions, hasResult, summary,
+  actions = null,   // ekstra knapper i topbjælken (det selvstændige program)
 }) {
   const model = useMemo(() => pick(data), [data])
   const commit = useCallback((m) => onModelChange(m), [onModelChange])
@@ -1302,7 +1303,8 @@ export default function FemWorkspace({
 
   // ── Status ──────────────────────────────────────────────────────────────
   const status = running ? { cls: '', text: 'Regner…' }
-    : error ? { cls: 'err', text: 'Beregningen fejlede — se fejlen i blokken' }
+    : error ? { cls: 'err', text: onClose ? 'Beregningen fejlede — se fejlen i blokken'
+                                          : `Beregningen fejlede: ${error}` }
     : !hasResult ? { cls: '', text: 'Ikke regnet' }
     : stale ? { cls: 'warn', text: 'Modellen er ændret — regn igen' }
     : { cls: '', text: 'Regnet · resultaterne vises på modellen' }
@@ -1312,12 +1314,13 @@ export default function FemWorkspace({
   return (
     <div className="fem-ws" role="dialog" aria-modal="true" aria-label={`Model: ${title}`}>
       <header className="fem-bar">
+        {actions}
         <h1>{title}</h1>
         <span className="sub">Rammeberegning · 2D</span>
         <span className="fem-sp" />
         <span className={`fem-status ${status.cls}`}>{status.text}</span>
         <Button size="sm" onClick={() => setGenOpen(true)}>Generér system…</Button>
-        <Button size="sm" onClick={onClose}>Tilbage til dokumentet</Button>
+        {onClose && <Button size="sm" onClick={onClose}>Tilbage til dokumentet</Button>}
         <Button size="sm" variant="primary" busy={running} onClick={onRun} title="F5">▶ Regn</Button>
       </header>
 
