@@ -775,8 +775,11 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
       (newD._summary     && newD._summary     !== oldD._summary) ||
       (newD._output_text && newD._output_text !== oldD._output_text)
     if (gotNewResult) {
-      b = { ...b, data: { ...newD,
-        _input_hash: hashCalcInputs(newD),
+      // _run_hash: hashen af de inddata, der faktisk blev regnet på (sat af
+      // blokke, hvor man kan rette imens, der regnes — rammeberegningen).
+      const { _run_hash, ...rest } = newD
+      b = { ...b, data: { ...rest,
+        _input_hash: _run_hash ?? hashCalcInputs(rest),
         _calc_rev:   calcRevision(b.type),
       } }
     } else if (newD._input_hash && !newD._result && !newD._summary && !newD._output_text) {

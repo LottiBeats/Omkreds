@@ -1444,6 +1444,9 @@ class TimberBeamInput(BaseModel):
 
     compression_edge_restrained:     bool = True
     torsional_restraint_at_supports: bool = True
+    # Effektiv kiplængde. None: 0,9·L + 2h (tabel 6.1). Bruges kun, når
+    # trykranden ikke er fastholdt.
+    l_ef_m:            float | None = None
     end_distance_mm:   float | None = None   # træets udhæng forbi understøtningen
     support_length_mm: float | None = None   # bearing length at each support → enables ⊥ grain check
 
@@ -1479,6 +1482,7 @@ def calc_timber_beam(data: TimberBeamInput):
             limit_net_fin = data.limit_net_fin,
             compression_edge_restrained     = data.compression_edge_restrained,
             torsional_restraint_at_supports = data.torsional_restraint_at_supports,
+            l_ef = (data.l_ef_m * m) if data.l_ef_m else None,
         )
         if data.support_length_mm is not None:
             kwargs_tb["support_length"] = data.support_length_mm * mm

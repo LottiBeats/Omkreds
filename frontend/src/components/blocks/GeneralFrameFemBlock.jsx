@@ -11,7 +11,7 @@
  *   - 3 matplotlib figures: deformed shape, bending moment, shear
  *   - Summary: max displacements, max moment, reactions
  */
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { expandLoads } from '../fem/femLoads.js'
 import { calcGeneralFrameFem, previewGeneralFrameFem,
          redrawGeneralFrameFemDiagrams,
@@ -26,7 +26,7 @@ import NumericInput from './NumericInput.jsx'
 import ModelSketch from './ModelSketch.jsx'
 import FemWorkspace from '../fem/FemWorkspace.jsx'
 import { createPortal } from 'react-dom'
-import { isStaleResult } from '../../lib/calcState.js'
+import { isStaleResult, hashCalcInputs } from '../../lib/calcState.js'
 
 /**
  * Handlingskategorierne. Kategorien bærer ψ og lastvarigheden — derfor står
@@ -167,7 +167,7 @@ function isAxialOnly(member) {
  * block calls — so the number on the row and the number in the report cannot
  * come from two different calculations.
  */
-async function beamCheck(member, actions, settings) {
+async function beamCheck(member, actions, settings, ltb = {}) {
   const first = member.els[0] ?? {}
   const common = {
     label:   `M${member.id}`,
@@ -175,6 +175,12 @@ async function beamCheck(member, actions, settings) {
     M_Ed_kNm_direct: actions.M_max_kNm ?? 0,
     V_Ed_kN_direct:  actions.V_max_kN  ?? 0,
   }
+  // Kipning følger leddets afstivning ud af planen, som søjleeftervisningen
+  // gør. Før blev stålbjælken eftervist helt uden kipning og træbjælken med
+  // fastholdt trykrand, uanset hvad der var valgt: en 8 m uafstivet IPE300
+  // med M = 200 kNm gav η = 0,99 i stedet for ca. 3.
+  const bracing = ltb.bracing ?? defaultBracing(first.material)
+  const L_LT = bracing === 'nodes' ? (ltb.maxElem ?? member.L) : member.L
   if (first.material === 'timber') {
     const dims = timberDims(first.section)
     if (!dims) return { skipped: 'tværsnit kan ikke læses' }
@@ -183,12 +189,17 @@ async function beamCheck(member, actions, settings) {
       timber_grade:  first.grade ?? 'C24',
       service_class: settings.service_class,
       load_duration: actions.M_duration ?? settings.load_duration,
+      compression_edge_restrained: bracing === 'continuous',
+      l_ef_m: bracing === 'continuous' ? null : Number(L_LT.toFixed(3)),
     })
     // Beregningen gemmes med, så den kan vises, når leddet vælges i
     // modelvinduet (som "detaljerede resultater" i FEM-Design).
     return { eta: maxUtilization(blocks), blocksBeam: blocks }
   }
-  const blocks = await calcSteelBeam({ ...common, section: first.section, grade: first.grade ?? 'S355' })
+  const blocks = await calcSteelBeam({
+    ...common, section: first.section, grade: first.grade ?? 'S355',
+    ltb_restrained: false, ltb_length_m: Number(L_LT.toFixed(3)),
+  })
   return { eta: maxUtilization(blocks), blocksBeam: blocks }
 }
 
@@ -249,7 +260,10 @@ async function checkMember(member, actions, settings, ctx = {}) {
   const axial = isAxialOnly(member)
   if (axial && !ctx.states?.length) return { skipped: 'aksialt led — eftervises særskilt', axial: true }
 
-  const beam = axial ? { eta: 0 } : await beamCheck(member, actions, settings)
+  const bracingLtb = ctx.bracing ?? defaultBracing(first.material)
+  const maxElemLtb = ctx.lengthOf ? Math.max(...member.els.map(e => ctx.lengthOf(e))) : member.L
+  const beam = axial ? { eta: 0 } : await beamCheck(member, actions, settings,
+    { bracing: bracingLtb, maxElem: maxElemLtb })
   if (beam.skipped || !ctx.states?.length) return beam
 
   const per = forcesPerCombination(member, ctx.states, ctx.lengthOf)
@@ -1825,6 +1839,16 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
     onChange({ ...block, data: { ...d, ...changes } })
   }
 
+  // Et resultat kommer ind flere sekunder efter, der blev trykket Regn. Det
+  // skal flettes ind i blokken, som den ser ud NU — ellers slettes alt, der
+  // blev rettet imens (en knude tilføjet under kørslen forsvandt igen).
+  const seneste = useRef(block)
+  seneste.current = block
+  function opdaterSeneste(changes) {
+    const b = seneste.current
+    onChange({ ...b, data: { ...b.data, ...changes } })
+  }
+
   async function handlePreview() {
     setPreviewing(true)
     try {
@@ -2001,6 +2025,10 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
   async function handleRun() {
     setRunning(true); setError(null)
+    // Hashen af de inddata, der regnes på. Resultatet stemples med den (og
+    // ikke med blokkens inddata, når svaret kommer), så en ændring under
+    // kørslen markerer resultatet som forældet i stedet for at skjule det.
+    const koertHash = hashCalcInputs(d)
     try {
       let resolvedLoads = []
       let combinations  = []
@@ -2243,7 +2271,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         }
       }))
 
-      update({
+      opdaterSeneste({
         _figs_b64:        res._figs_b64,
         _summary:         res._summary,
         _result:          res._result,
@@ -2251,12 +2279,13 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         _member_checks:   checks,
         _alpha_cr:        res._summary?.alpha_cr ?? null,
         _buckling_lengths:res._summary?.buckling_lengths   ?? {},
+        _run_hash:        koertHash,
       })
     } catch (err) {
       setError(err.message)
       // Drop the previous run's results. Leaving them on screen next to an
       // error message is how a rejected model ends up quoted in a report.
-      update({
+      opdaterSeneste({
         _figs_b64: null, _summary: null, _result: null,
         _exports: null, _member_checks: null,
         _alpha_cr: null, _buckling_lengths: {},

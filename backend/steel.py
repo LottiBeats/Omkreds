@@ -339,6 +339,12 @@ def steel_beam_ipe(
                 CALC_ROW("δ_lim", f"= L / {deflection_limit}",     _u(delta_lim, mm, "mm", 1)),
             ]
             blocks.append(cc.check(f"Nedbøjning: δ / (L/{deflection_limit})", delta_imp, delta_lim))
+        elif beam_results is not None:
+            # Snitkræfterne er hentet fra en rammeberegning: lasterne her er
+            # ikke modellens, og 5·w·L⁴/384EI gælder ikke for rammens form. Før
+            # blev endpointets standardlaster (5 + 3 kN/m) regnet og godkendt.
+            blocks.append(N("Nedbøjningen er ikke eftervist her: snitkræfterne er hentet fra "
+                            "rammeberegningen, hvor nedbøjningen aflæses i deformationsvisningen."))
         else:
             w_sls = g_k + q_k
             delta_mid = 5 * w_sls * span**4 / (384 * E_sls * Iy)

@@ -1337,7 +1337,7 @@ export default function FemWorkspace({
   // ── Status ──────────────────────────────────────────────────────────────
   const status = running ? { cls: '', text: 'Regner…' }
     : error ? { cls: 'err', text: onClose ? 'Beregningen fejlede — se fejlen i blokken'
-                                          : `Beregningen fejlede: ${error}` }
+                                          : 'Beregningen fejlede — se nedenfor' }
     : !hasResult ? { cls: '', text: 'Ikke regnet' }
     : stale ? { cls: 'warn', text: 'Modellen er ændret — regn igen' }
     : { cls: '', text: 'Regnet · resultaterne vises på modellen' }
@@ -1414,6 +1414,20 @@ export default function FemWorkspace({
           </>
         )}
       </div>
+
+      {/* Den fulde fejltekst under værktøjslinjen, med ombrydning. I
+          statusfeltet i topbjælken lagde en lang tekst sig hen over knapperne
+          (Ny, Åbn, Gem, PDF), så de ikke kunne klikkes. */}
+      {error && !onClose && (
+        <div role="alert" style={{
+          position: 'absolute', top: 96, left: 240, right: 308, zIndex: 20,
+          padding: '8px 14px', background: 'var(--fail-wash, #fef2f2)', color: 'var(--fail, #991b1b)',
+          border: '1px solid #fecaca', borderRadius: 6, fontSize: 13, lineHeight: 1.45,
+          whiteSpace: 'pre-wrap', boxShadow: '0 4px 14px rgba(0,0,0,.08)', maxHeight: '40vh', overflow: 'auto',
+        }}>
+          <b>Beregningen fejlede.</b> {String(error).replace(/^Modellen kan ikke regnes:\s*/, '')}
+        </div>
+      )}
 
       <nav className="fem-nav" aria-label="Navigator">
         <div className="fem-nav-g">Model</div>

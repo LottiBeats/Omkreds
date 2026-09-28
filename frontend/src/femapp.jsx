@@ -21,7 +21,7 @@ import { TYPE_MAP } from './components/blocks/BlockList.jsx'
 import GeneralFrameFemBlock from './components/blocks/GeneralFrameFemBlock.jsx'
 import { desktopPdf } from './api/client.js'
 import { lavModel, gem, aabn, gemPdf } from './lib/femFile.js'
-import { hashCalcInputs, calcRevision } from './lib/calcState.js'
+import { hashCalcInputs, calcRevision, isStaleResult, hasCalcResult } from './lib/calcState.js'
 import useBlockUndo from './hooks/useBlockUndo.js'
 
 const TOM_META = { project_name: '', project_ref: '', engineer: '', checker: '', client: '' }
@@ -105,6 +105,12 @@ function FemApp() {
 
   const lavPdf = async () => {
     const { meta, blocks } = state.current
+    // En PDF er en dokumentation af et bestemt regnet resultat. Er modellen
+    // ændret siden, eller er den ikke regnet, ville rapporten vise tal for en
+    // anden konstruktion end den, der står på skærmen — uden at sige det.
+    const fem = blocks.find(b => b.type === 'general_frame_fem')
+    if (fem && !hasCalcResult(fem)) { vis('Regn modellen (F5), før der laves en PDF.', true); return }
+    if (fem && isStaleResult(fem)) { vis('Modellen er ændret siden sidste beregning — regn igen (F5), før der laves en PDF.', true); return }
     setTravl(true)
     try {
       const blob = await desktopPdf(meta, blocks)
@@ -171,7 +177,8 @@ function FemApp() {
     const gl = bs[i]?.data ?? {}
     const d = nb.data ?? {}
     const nyt = (d._result && d._result !== gl._result) || (d._summary && d._summary !== gl._summary)
-    const b = nyt ? { ...nb, data: { ...d, _input_hash: hashCalcInputs(d), _calc_rev: calcRevision(nb.type) } } : nb
+    const { _run_hash, ...dRest } = d
+    const b = nyt ? { ...nb, data: { ...dRest, _input_hash: _run_hash ?? hashCalcInputs(dRest), _calc_rev: calcRevision(nb.type) } } : nb
     const nyeBs = bs.map((x, j) => (j === i ? b : x))
     // Kun ændringer af modellen kan fortrydes — et resultat, der kommer ind
     // efter "Regn", er ikke et skridt, man vil tilbage over.
