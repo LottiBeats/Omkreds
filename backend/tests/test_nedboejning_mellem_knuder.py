@@ -110,10 +110,12 @@ def test_sls_regnes_naar_lasterne_paasaettes_igen(client):
     """
     L = 4.0
     nodes = [{'id': i + 1, 'x': L * i, 'y': 0} for i in range(3)]
+    # Trae (E = 11 GPa): krybningen efter EN 1995 gaelder kun trae. Med
+    # staalets E stod der foer en krybning, staal ikke har.
     els = [{'id': 1, 'ni': 1, 'nj': 2, 'type': 'beam', 'release': 'none',
-            'E_GPa': 210, 'A_cm2': 39.1, 'Iz_cm4': 3892},
+            'E_GPa': 11, 'A_cm2': 243, 'Iz_cm4': 14762},
            {'id': 2, 'ni': 2, 'nj': 3, 'type': 'beam', 'release': 'none',
-            'E_GPa': 210, 'A_cm2': 39.1, 'Iz_cm4': 3892}]
+            'E_GPa': 11, 'A_cm2': 243, 'Iz_cm4': 14762}]
     sup = [{'node_id': i, 'ux': i == 1, 'uy': True, 'rz': False}
            for i in (1, 2, 3)]
     udl = lambda e, w: {'type': 'udl', 'elem_id': e, 'wy_kNm': w, 'wx_kNm': 0}

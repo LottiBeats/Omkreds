@@ -12,7 +12,7 @@
  *   - Summary: max displacements, max moment, reactions
  */
 import React, { useEffect, useRef, useState } from 'react'
-import { expandLoads } from '../fem/femLoads.js'
+import { expandLoads, loadSpan } from '../fem/femLoads.js'
 import { calcGeneralFrameFem, previewGeneralFrameFem,
          redrawGeneralFrameFemDiagrams,
          overlayGeneralFrameFemDiagrams,
@@ -2042,6 +2042,21 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
     // kørslen markerer resultatet som forældet i stedet for at skjule det.
     const koertHash = hashCalcInputs(d)
     try {
+      // En dellast med Fra >= Til blev stille til ingenting, når den blev delt
+      // ud på stangens elementer, og en Til ud over stangen blev klippet af.
+      const dk = (v) => Number(v).toFixed(2).replace('.', ',')
+      const fejl = []
+      for (const ld of loads) {
+        if (ld.type !== 'udl' || (ld.x1 == null && (ld.x2 == null || ld.x2 === ''))) continue
+        const L = loadSpan(ld, elements, nodes)
+        if (!(L > 0)) continue
+        const f = Number(ld.x1 ?? 0), t = ld.x2 != null && ld.x2 !== '' ? Number(ld.x2) : L
+        const hvor = (ld.target ?? 'elem') === 'member' ? `stang ${ld.member_id}` : `element ${ld.elem_id}`
+        if (f < -1e-6 || t > L + 1e-6) fejl.push(`Linjelasten på ${hvor} går fra x = ${dk(f)} til ${dk(t)} m, men ${hvor} er ${dk(L)} m lang.`)
+        else if (t - f <= 1e-9) fejl.push(`Linjelasten på ${hvor} går fra x = ${dk(f)} til ${dk(t)} m. "Fra" skal være mindre end "Til".`)
+      }
+      if (fejl.length) throw new Error('Modellen kan ikke regnes:\n· ' + fejl.join('\n· '))
+
       let resolvedLoads = []
       let combinations  = []
       // Erklæret HER og ikke inde i else-grenen. Den bruges i kaldet nedenfor,

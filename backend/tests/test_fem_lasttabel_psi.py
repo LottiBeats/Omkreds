@@ -70,3 +70,43 @@ def test_for_svag_bjaelke_regnes_med_advarsel():
     s = r.json()['_summary']
     assert 'Meget stor flytning' in s['advarsler'][0]
     assert s['loads_table'][0]['vaerdi'] == '25,00 kN/m'
+
+
+def _klient():
+    from fastapi.testclient import TestClient
+    import desktop_app
+    return TestClient(desktop_app.lav_app())
+
+
+_BJ = dict(nodes=[dict(id=1, x=0, y=0), dict(id=2, x=6, y=0)],
+           supports=[dict(node_id=1, ux=True, uy=True, rz=False),
+                     dict(node_id=2, ux=False, uy=True, rz=False)],
+           load_cases=[dict(nr=1, navn='G', kategori='permanent'),
+                       dict(nr=2, navn='Q', kategori='imposed', nyttelastkategori='A')],
+           loads=[dict(type='udl', elem_id=1, direction='vertical', value_kNm=2, lc=1),
+                  dict(type='udl', elem_id=1, direction='vertical', value_kNm=2, lc=2)],
+           service_class=1)
+
+
+def test_staal_kryber_ikke_i_anvendelsesafsnittet():
+    c = _klient()
+    st = c.post('/api/calc/general-frame-fem', json={**_BJ, 'elements': [dict(
+        id=1, ni=1, nj=2, member_id=1, material='steel', section='IPE300', grade='S355')]}).json()
+    assert st['_summary']['sls']['k_def'] == 0.0
+    assert st['_summary']['sls']['w_fin_mm'] == st['_summary']['sls']['w_inst_mm']
+    tr = c.post('/api/calc/general-frame-fem', json={**_BJ, 'elements': [dict(
+        id=1, ni=1, nj=2, member_id=1, material='timber', section='90x270', grade='GL24h')]}).json()
+    s = tr['_summary']['sls']
+    assert s['k_def'] == 0.6
+    assert abs(s['w_fin_mm'] - (s['w_inst_G_mm'] * 1.6 + s['w_inst_Q_mm'] * 1.12)) < 0.01
+
+
+def test_tom_model_og_forkert_dellast_afvises_paent():
+    c = _klient()
+    r = c.post('/api/calc/general-frame-fem', json=dict(nodes=[], elements=[], supports=[], loads=[]))
+    assert r.status_code == 422 and 'ingen knuder' in r.json()['detail']
+    el = [dict(id=1, ni=1, nj=2)]
+    for x1, x2, tekst in ((4, 2, '"Fra" skal være mindre'), (1, 8, 'm langt')):
+        r = c.post('/api/calc/general-frame-fem', json={**_BJ, 'elements': el, 'loads': [
+            dict(type='udl', elem_id=1, direction='vertical', value_kNm=5, x1=x1, x2=x2, lc=1)]})
+        assert r.status_code == 422 and tekst in r.json()['detail']

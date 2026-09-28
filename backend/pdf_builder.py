@@ -786,7 +786,12 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
         ["Største vandrette flytning δ_x",
          f"{_dk(summary['max_ux_mm'])} mm", f"Knude {summary['max_ux_node']}"],
         ["Største lodrette flytning δ_y",
-         f"{_dk(summary['max_uy_mm'])} mm", f"Knude {summary['max_uy_node']}"],
+         f"{_dk(summary['max_uy_mm'])} mm",
+         # Ligger den stoerste nedboejning inde i et fag, er der ingen knude
+         # at pege paa -- "Knude 1" var en understoetning.
+         (f"Element {summary['max_uy_elem']}, x = {_dk(summary.get('max_uy_x_m') or 0)} m"
+          if summary.get('max_uy_elem') is not None
+          else f"Knude {summary['max_uy_node']}")],
         ["Største moment M",
          f"{_dk(summary['max_moment_kNm'])} kNm",
          f"Element {summary['max_moment_ele']}"],
@@ -849,7 +854,7 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
              "M_max (kNm)", "x (m)"],
             [
                 [
-                    str(e["id"]), e["type"], f"{e['L_m']:.2f}",
+                    str(e["id"]), {"beam": "bjælke", "truss": "gitterstang"}.get(e["type"], e["type"]), f"{e['L_m']:.2f}",
                     str(e["A_cm2"]),
                     str(e["Iz_cm4"]) if e["type"] == "beam" else "—",
                     f"{e['N_i_kN']:.2f}", f"{e['V_i_kN']:.2f}", f"{e['M_i_kNm']:.2f}",

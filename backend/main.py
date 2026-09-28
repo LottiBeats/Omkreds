@@ -3147,16 +3147,18 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                     "Slaa mindst én til, ellers er der ingenting at eftervise.")
             combos = beholdt
 
-        xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
-        ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
-
         # Modellen efterses FOER der tegnes.
         #
         # plot_model laa foerst, og et element, der pegede paa en knude, der
         # ikke fandtes, gav en KeyError med traceback i stedet for
         # validate_models forklaring. Fejlen var den samme; det eneste, der
         # skiftede, var om brugeren kunne laese den.
-        validate_model(nodes, elements, supports, loads or [], equal_dofs)
+        # Lasterne, som de staar paa modellen: naar der kombineres, er 'loads'
+        # allerede toemt, og saa blev ingen last efterset.
+        validate_model(nodes, elements, supports, paasatte_laster, equal_dofs)
+
+        xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
+        ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
 
         model_fig = plot_model(data.title, nodes, elements, supports,
                                paasatte_laster, ref_size)
@@ -3253,15 +3255,23 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             except Exception:
                 return [], None
 
-            from timber_grades import K_DEF
-            k_def = K_DEF.get(data.service_class, 0.80)
+            # Spaendet maales paa det led, hvor nedboejningen er stoerst -- og
+            # det er ogsaa dets materiale, der afgoer krybningen. Foer fik en
+            # staalramme traeets k_def (0,6) og en w_fin, staal ikke har.
+            _dn = {n['id']: n for n in nodes}
+            _el = next((e for e in elements if e['id'] == (elG or elQ)), None)
+            _mat = (_el or {}).get('material')
+            er_trae = _mat == 'timber' or (
+                _mat is None and float((_el or {}).get('E_GPa', 210.0)) < 30.0)
+            if er_trae:
+                from timber_grades import K_DEF
+                k_def = K_DEF.get(data.service_class, 0.80)
+            else:
+                k_def = 0.0
 
             w_inst = abs(wG) + abs(wQ)
             w_fin  = abs(wG) * (1 + k_def) + abs(wQ) * (1 + p2 * k_def)
 
-            # Spaendet maales paa det led, hvor nedboejningen er stoerst.
-            _dn = {n['id']: n for n in nodes}
-            _el = next((e for e in elements if e['id'] == (elG or elQ)), None)
             L_ref = 0.0
             if _el is not None:
                 _ni, _nj = _dn.get(_el['ni']), _dn.get(_el['nj'])
@@ -3269,7 +3279,11 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                     L_ref = math.hypot(float(_nj['x']) - float(_ni['x']),
                                        float(_nj['y']) - float(_ni['y']))
 
-            b = [S('Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2')]
+            b = [S('Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2' if er_trae
+                   else 'Anvendelsesgrænsetilstand — EN 1990 A1.4')]
+            if not er_trae:
+                b.append(T('Den største nedbøjning ligger i en stålstang. Stål '
+                           'kryber ikke, så k_def = 0 og w_fin = w_inst.'))
             if sls_variabel_navn:
                 b.append(T(
                     'Dimensionsgivende karakteristisk kombination: '
@@ -3281,9 +3295,10 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             b += [
                  T('Lasterne er påsat igen med deres karakteristiske værdier. '
                    'Analysen er lineær, så den permanente og den variable del '
-                   'kan holdes hver for sig — det kræver §2.2.3(5), fordi den '
-                   'permanente del kryber fuldt og den variable kun med sin '
-                   'kvasi-permanente andel.'),
+                   'kan holdes hver for sig'
+                   + (' — det kræver §2.2.3(5), fordi den '
+                      'permanente del kryber fuldt og den variable kun med sin '
+                      'kvasi-permanente andel.' if er_trae else '.')),
                  CALC_ROW('w_inst,G', '= nedbøjning af G_k alene',
                           f'{abs(wG) * 1e3:.2f} mm'.replace('.', ',')),
                  CALC_ROW('w_inst,Q', '= nedbøjning af Q_k alene',

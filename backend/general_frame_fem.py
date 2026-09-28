@@ -284,6 +284,27 @@ def validate_model(nodes, elements, supports, loads=None, equal_dofs=None):
         elif ld.get('type') == 'udl':
             if ld.get('elem_id') not in elem_ids:
                 errors.append(f'Der er en linjelast på element {ld.get("elem_id")}, som ikke findes.')
+                continue
+            # En dellast med Fra >= Til blev stille til nul, og en Til ud over
+            # stangen blev stille klippet af. Begge er en tastefejl, der skal
+            # siges.
+            x1, x2 = ld.get('x1'), ld.get('x2')
+            if x1 is None and x2 is None:
+                continue
+            el = next(e for e in elements if e['id'] == ld['elem_id'])
+            a, b = dict_nodes.get(el['ni']), dict_nodes.get(el['nj'])
+            if a is None or b is None:
+                continue
+            L = math.hypot(float(b['x']) - float(a['x']), float(b['y']) - float(a['y']))
+            f = float(x1 or 0.0)
+            t = float(x2) if x2 is not None else L
+            dk = lambda v: f'{v:.2f}'.replace('.', ',')
+            if f < -1e-6 or t > L + 1e-6:
+                errors.append(f'Linjelasten på element {el["id"]} går fra x = {dk(f)} til '
+                              f'{dk(t)} m, men elementet er {dk(L)} m langt.')
+            elif t - f <= 1e-9:
+                errors.append(f'Linjelasten på element {el["id"]} går fra x = {dk(f)} til '
+                              f'{dk(t)} m. "Fra" skal være mindre end "Til".')
 
     # ── Floating nodes ────────────────────────────────────────────────────────
     connected = set()

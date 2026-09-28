@@ -177,6 +177,12 @@ function LoadExtent({ load, span, onPatch }) {
       <F label="w i slutningen (tom = konstant)">
         <Num value={load.value_end_kNm ?? load.value_kNm ?? 0} unit="kN/m" onCommit={v => onPatch({ value_end_kNm: Math.abs(v - (load.value_kNm ?? 0)) < 1e-12 ? undefined : v })} />
       </F>
+      {(() => {
+        const f = Number(load.x1 ?? 0), t = load.x2 != null ? Number(load.x2) : span
+        if (span && (f < 0 || t > span + 1e-6)) return <p role="alert" style={{ fontSize: 12, color: 'var(--fail, #b91c1c)' }}>Lasten går ud over {(load.target ?? 'elem') === 'member' ? 'leddet' : 'stangen'} ({fmt(span, 2)} m).</p>
+        if (span && t - f <= 1e-9) return <p role="alert" style={{ fontSize: 12, color: 'var(--fail, #b91c1c)' }}>"Fra" skal være mindre end "Til" — ellers er der ingen last.</p>
+        return null
+      })()}
       <p style={{ fontSize: 11.5, color: 'var(--muted)' }}>
         Målt langs {(load.target ?? 'elem') === 'member' ? 'leddet' : 'stangen'} fra dens start{span ? ` · længde ${fmt(span, 2)} m` : ''}. Slutværdien gælder ved "til".
       </p>
@@ -201,10 +207,30 @@ function GeneratorDialog({ hasModel, onApply, onClose }) {
   const [vals, setVals] = useState(() => Object.fromEntries(GENERATORS.map(g => [g.key, Object.fromEntries(g.params.map(p => [p.key, p.def]))])))
   const v = vals[key]
   const set = (k, x) => setVals(all => ({ ...all, [key]: { ...all[key], [k]: x } }))
+  // Et spænd på 0 gav knuder med x = NaN, og den ødelagte model blev sat ind.
+  // Systemet laves her og efterses, før knappen kan bruges.
+  const { model: genModel, fejl } = useMemo(() => {
+    try {
+      const g = gen.make(v)
+      const nb = Object.fromEntries(g.nodes.map(n => [n.id, n]))
+      if (g.nodes.some(n => !Number.isFinite(n.x) || !Number.isFinite(n.y))) return { fejl: 'Målene giver ikke en gyldig geometri — kontrollér spænd, højde og hældning.' }
+      for (const e of g.elements) {
+        const a = nb[e.ni], b = nb[e.nj]
+        if (!a || !b || Math.hypot(b.x - a.x, b.y - a.y) < 1e-3) return { fejl: 'Målene giver en stang uden længde — kontrollér spænd, højde og hældning.' }
+      }
+      for (const p of gen.params) {
+        if (p.text && p.unit === 'mm' && !/^\s*\d+(\.\d+)?\s*[x×*]\s*\d+(\.\d+)?\s*$/i.test(String(v[p.key] ?? ''))) return { fejl: `${p.label}: skriv tværsnittet som b×h i mm, fx 45x195.` }
+      }
+      return { model: g }
+    } catch (e) {
+      return { fejl: e.message }
+    }
+  }, [gen, v])
   return (
     <Dialog title="Generér system" width={640} onClose={onClose} actions={<>
+      {fejl && <span role="alert" style={{ color: 'var(--fail, #b91c1c)', fontSize: 12.5, marginRight: 'auto', maxWidth: 380 }}>{fejl}</span>}
       <Button onClick={onClose}>Annullér</Button>
-      <Button variant="primary" onClick={() => onApply(gen.make(v))}>{hasModel ? 'Erstat modellen' : 'Indsæt'}</Button>
+      <Button variant="primary" disabled={!!fejl} onClick={() => genModel && onApply(genModel)}>{hasModel ? 'Erstat modellen' : 'Indsæt'}</Button>
     </>}>
       <div className="fem-gen">
         <div className="fem-gen-list">
@@ -213,7 +239,7 @@ function GeneratorDialog({ hasModel, onApply, onClose }) {
           ))}
         </div>
         <div className="fem-gen-form">
-          <p>{gen.hint}{hasModel ? ' Den nuværende geometri erstattes; laster og lasttilfælde bevares. Ctrl+Z fortryder.' : ''}</p>
+          <p>{gen.hint}{hasModel ? ' Den nuværende model og dens laster erstattes; lasttilfældene bevares. Ctrl+Z fortryder.' : ''}</p>
           {gen.params.map(p => (
             <F key={p.key} label={p.label}>
               {p.bool ? (
@@ -1565,7 +1591,14 @@ export default function FemWorkspace({
                 </span>
               )
             })}
-            <small>Uden krybning (k<sub>def</sub>) — slutnedbøjningen eftervises i nedbøjningsblokken.</small>
+            {summary?.sls ? (
+              <span>
+                <b>Slutnedbøjning</b> w<sub>fin</sub> = {fmt(summary.sls.w_fin_mm, 1)} mm
+                {' '}(k<sub>def</sub> = {fmt(summary.sls.k_def, 2)}, ψ<sub>2</sub> = {fmt(summary.sls.psi_2, 1)})
+              </span>
+            ) : (
+              <small>Uden krybning (k<sub>def</sub>).</small>
+            )}
           </div>
         )}
         {diagramView && resView !== 'u' && (
