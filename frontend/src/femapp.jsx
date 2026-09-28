@@ -124,6 +124,20 @@ function FemApp() {
     return () => { window.removeEventListener('keydown', tast); window.removeEventListener('beforeunload', luk) }
   })
 
+  // I skrivebordsprogrammet lukkes vinduet af Tauri, og beforeunload bliver
+  // ikke spurgt. Spørg selv, og luk kun, når modellen er gemt eller opgivet.
+  useEffect(() => {
+    const w = window.__TAURI__?.window?.getCurrentWindow?.()
+    if (!w) return
+    let fjern = null
+    w.onCloseRequested(async (e) => {
+      if (!state.current.aendret) return
+      e.preventDefault()
+      if (window.confirm('Modellen er ændret og ikke gemt. Luk alligevel?')) await w.destroy()
+    }).then(f => { fjern = f })
+    return () => { if (fjern) fjern() }
+  }, [])
+
   useEffect(() => {
     document.title = `${aendret ? '• ' : ''}${fil.navn ?? 'Ny model'} — Omkreds FEM`
   }, [fil.navn, aendret])

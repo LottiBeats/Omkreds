@@ -16,8 +16,8 @@ Start:
     python desktop_app.py                 # vælger en ledig port og åbner browseren
     python desktop_app.py --port 8765 --no-browser
 
-Tauri-skallen starter den som sidecar med --no-browser og læser porten på den
-første linje, der begynder med "OMKREDS_PORT=".
+Skrivebordsprogrammet (desktop/src-tauri) vælger selv en ledig port, starter
+den med --port N --no-browser og venter, til /fem.html svarer.
 """
 import argparse
 import os
@@ -25,6 +25,14 @@ import socket
 import sys
 import tempfile
 from pathlib import Path
+
+# Uden konsol (Windows-programmet er pakket med console=False) er stdout og
+# stderr None, og så fejler både print og uvicorns logning. Skriv til en
+# logfil i stedet; den er også det, man beder brugeren om ved en fejl.
+if sys.stdout is None or sys.stderr is None:
+    _log = open(Path(tempfile.gettempdir()) / "omkreds_fem.log", "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stdout or _log
+    sys.stderr = sys.stderr or _log
 
 # Skal være sat, før main importeres.
 os.environ.setdefault("DATABASE_PATH", str(Path(tempfile.gettempdir()) / "omkreds_desktop.db"))

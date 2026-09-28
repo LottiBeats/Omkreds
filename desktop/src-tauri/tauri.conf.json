@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Omkreds FEM",
+  "version": "0.1.0",
+  "identifier": "dk.omkreds.fem",
+  "build": {
+    "frontendDist": "../loading"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Omkreds",
+    "shortDescription": "Rammeberegning efter Eurocode",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "resources": {
+      "../build-py/dist/omkreds-backend/": "backend/"
+    },
+    "fileAssociations": [
+      { "ext": ["omkfem"], "name": "Omkreds FEM-model", "description": "Omkreds FEM-model", "role": "Editor" }
+    ],
+    "windows": {
+      "webviewInstallMode": { "type": "embedBootstrapper" },
+      "nsis": { "installMode": "currentUser", "languages": ["Danish", "English"] }
+    }
+  }
+}
