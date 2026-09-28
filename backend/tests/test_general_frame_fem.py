@@ -342,15 +342,27 @@ def test_all_faults_are_reported_in_one_pass():
 
 def test_absurd_displacement_is_rejected():
     """
-    The 60 m deflection from a 2 kN/m load: linear small-displacement theory
-    cannot describe that, so it must not be reported as a deflection.
+    More than a hundred times the structure's size is numerical nonsense, not
+    a deflection, and is still refused.
     """
     nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 6, 'y': 0}]
-    disps = {1: [0.0, 0.0, 0.0], 2: [0.0, -60.0, 0.0]}
+    disps = {1: [0.0, 0.0, 0.0], 2: [0.0, -700.0, 0.0]}
     forces = {1: [0.0] * 6}
     with pytest.raises(ModelError) as exc:
         gf.check_results(nodes, disps, forces, ref_size=6.0)
     assert 'singulær' in str(exc.value)
+
+
+def test_large_displacement_is_a_warning_not_a_mechanism():
+    """
+    A far too weak beam (60 m over 6 m) used to be refused as "a near-singular
+    stiffness matrix". Singular matrices are caught by the condition number in
+    the solver; here the user must see η ≫ 1 and a warning.
+    """
+    nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 6, 'y': 0}]
+    disps = {1: [0.0, 0.0, 0.0], 2: [0.0, -60.0, 0.0]}
+    adv = gf.check_results(nodes, disps, {1: [0.0] * 6}, ref_size=6.0)
+    assert len(adv) == 1 and 'Meget stor flytning' in adv[0]
 
 
 def test_realistic_displacement_is_accepted():

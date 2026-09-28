@@ -408,9 +408,10 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
     xs = [float(node['x']) for node in nodes]
     ys = [float(node['y']) for node in nodes]
     ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
-    check_results(nodes, node_disps, ele_forces, ref_size)
+    advarsler = check_results(nodes, node_disps, ele_forces, ref_size)
 
     return {
+        'advarsler':      advarsler,
         'node_disps':     node_disps,
         'node_reactions': node_reactions,
         'ele_forces':     ele_forces,

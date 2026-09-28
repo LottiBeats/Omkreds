@@ -25,7 +25,11 @@
 //                          heading "Deformeret form". A stored result carries
 //                          those figures with it, so it has to be re-run.
 const CALC_REVISION = {
-  general_frame_fem: 4,
+  // 5 — 2026-09-28: stængernes bjælkeeftervisning med kipning efter
+  // afstivningen (før: stål uden kipning, træ med fastholdt trykrand); ψ₀ og
+  // ψ₂ for nyttelast efter kategorien (før fast 0,7 / 0,2); lasttabellen i
+  // rapporten med værdierne (før 0,00).
+  general_frame_fem: 5,
   // 2: den lukkede form regnede 1,35·g + 1,5·q med den varighed brugeren
   // valgte. 1,35 findes ikke i DK NA, og én fast kombination kan ikke være
   // dimensionsgivende for både et let og et tungt tag — k_mod afgør hvilken

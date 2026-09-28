@@ -304,6 +304,13 @@ export default function FemWorkspace({
   const [section, setSection] = useState({ material: 'timber', section: '45x195', grade: 'C24' })
   const [loadCfg, setLoadCfg] = useState({ direction: 'vertical', value: 1.0, pointDir: 'down', P: 5.0 })
   const [activeLc, setActiveLc] = useState(model.load_cases[0]?.nr ?? null)
+  // Efter en kørsel skal et klik på en stang vise dens udnyttelse -- ikke
+  // lægge en ny last på den, fordi last-værktøjet stadig var valgt.
+  const koerteFoer = useRef(running)
+  useEffect(() => {
+    if (koerteFoer.current && !running) setTool('select')
+    koerteFoer.current = running
+  }, [running])
   const [showAllLoads, setShowAllLoads] = useState(false)
   const [spaceDown, setSpaceDown] = useState(false)
   const [resView, setResView] = useState('eta')        // 'model' | 'u' | 'M' | 'V' | 'N' | 'eta'
@@ -586,12 +593,23 @@ export default function FemWorkspace({
   }
   function removeLoadCase(nr) {
     if (lockedCase(nr)) return
+    // En last uden tilfælde indgår ikke i nogen kombination, når der er andre
+    // tilfælde. At lade dem stå var at fjerne dem fra beregningen uden at
+    // fjerne dem fra tegningen. Lasterne slettes med tilfældet.
+    const n = model.loads.filter(l => l.lc === nr).length
+    const t = model.load_cases.find(x => x.nr === nr)
+    if (n > 0 && !window.confirm(`Slet LC${nr}${t?.navn ? ' ' + t.navn : ''} og ${n === 1 ? 'dens last' : `dens ${n} laster`}?\n\n(Kan fortrydes med Ctrl+Z.)`)) return
     commit({
       ...model,
       load_cases: model.load_cases.filter(t => t.nr !== nr),
-      loads: model.loads.map(l => (l.lc === nr ? { ...l, lc: undefined } : l)),
+      loads: model.loads.filter(l => l.lc !== nr),
     })
+    if (activeLc === nr) setActiveLc(model.load_cases.find(x => x.nr !== nr)?.nr ?? null)
   }
+  // Laster uden tilfælde regnes ikke med, når der findes tilfælde.
+  const udenTilfaelde = model.load_cases.length > 0
+    ? model.loads.filter(l => l.type !== 'combo_udl' && l.lc == null).length
+    : 0
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const supportsByNode = useMemo(() => Object.fromEntries(m.supports.map(s => [s.node_id, s])), [m.supports])
@@ -1338,6 +1356,7 @@ export default function FemWorkspace({
   const status = running ? { cls: '', text: 'Regner…' }
     : error ? { cls: 'err', text: onClose ? 'Beregningen fejlede — se fejlen i blokken'
                                           : 'Beregningen fejlede — se nedenfor' }
+    : udenTilfaelde > 0 ? { cls: 'err', text: `${udenTilfaelde} last${udenTilfaelde === 1 ? '' : 'er'} uden lasttilfælde regnes ikke med` }
     : !hasResult ? { cls: '', text: 'Ikke regnet' }
     : stale ? { cls: 'warn', text: 'Modellen er ændret — regn igen' }
     : { cls: '', text: 'Regnet · resultaterne vises på modellen' }
@@ -1429,6 +1448,17 @@ export default function FemWorkspace({
         </div>
       )}
 
+      {!error && !running && hasResult && !stale && summary?.advarsler?.length > 0 && (
+        <div role="status" style={{
+          position: 'absolute', top: 96, left: 240, right: 308, zIndex: 20,
+          padding: '8px 14px', background: '#fffbeb', color: '#92400e',
+          border: '1px solid #fde68a', borderRadius: 6, fontSize: 13, lineHeight: 1.45,
+          boxShadow: '0 4px 14px rgba(0,0,0,.08)',
+        }}>
+          {summary.advarsler.map((a, i) => <div key={i}>⚠ {a}</div>)}
+        </div>
+      )}
+
       <nav className="fem-nav" aria-label="Navigator">
         <div className="fem-nav-g">Model</div>
         {[['nodes', 'Knuder'], ['elements', 'Stænger'], ['loads', 'Laster']].map(([k, l]) => (
@@ -1439,6 +1469,12 @@ export default function FemWorkspace({
 
         <div className="fem-nav-g">Lasttilfælde <button onClick={addLoadCase} title="Nyt lasttilfælde">+ Nyt</button></div>
         {m.load_cases.length === 0 && <div className="fem-nav-i" style={{ color: 'var(--muted)' }}>Ingen — lasterne regnes som de står</div>}
+        {udenTilfaelde > 0 && (
+          <div className="fem-nav-i" style={{ color: 'var(--fail, #b91c1c)', whiteSpace: 'normal', fontSize: 12 }}
+            title="Når der findes lasttilfælde, indgår en last kun, hvis den hører til et af dem. Vælg lasten og giv den et tilfælde.">
+            ⚠ {udenTilfaelde} last{udenTilfaelde === 1 ? '' : 'er'} uden tilfælde — regnes ikke med
+          </div>
+        )}
         {m.load_cases.map(t => (
           <div key={t.nr} className={'fem-nav-i' + (!showAllLoads && activeLc === t.nr ? ' on' : '')} onClick={() => { setActiveLc(t.nr); setShowAllLoads(false) }} style={{ cursor: 'pointer' }}>
             <span className="lc">LC{t.nr}</span>
@@ -1456,7 +1492,7 @@ export default function FemWorkspace({
                 {NYTTE_KAT.map(k => <option key={k.value} value={k.value}>{k.value || '?'}{' — '}{k.label}</option>)}
               </select>
             )}
-            <button onClick={e => { e.stopPropagation(); removeLoadCase(t.nr) }} title="Slet lasttilfældet (lasterne bliver stående uden tilfælde)"
+            <button onClick={e => { e.stopPropagation(); removeLoadCase(t.nr) }} title="Slet lasttilfældet og dets laster"
               style={{ border: 0, background: 'none', color: 'var(--faint)' }}>✕</button>
           </div>
         ))}
@@ -1598,11 +1634,11 @@ export default function FemWorkspace({
         <GeneratorDialog hasModel={!empty} onClose={() => setGenOpen(false)} onApply={(g) => {
           setGenOpen(false)
           if (!g) return
-          // Loads keep their load cases; loads pointing at geometry that no longer exists are dropped
-          const next = { ...model, ...g }
-          const ids = new Set(g.elements.map(e => e.id)), mids = new Set(g.elements.map(e => e.member_id)), nids = new Set(g.nodes.map(n => n.id))
-          next.loads = model.loads.filter(l => l.type === 'nodal' ? nids.has(l.node_id) : (l.target ?? 'elem') === 'member' ? mids.has(l.member_id) : ids.has(l.elem_id))
-          commit(next)
+          // Erstat er erstat: lasttilfældene bliver, men de gamle laster går
+          // med den gamle geometri. Før blev de beholdt efter id og landede på
+          // helt andre stænger i det nye system (25 kN/m på et spær). Fortryd
+          // (Ctrl+Z) bringer dem tilbage.
+          commit({ ...model, ...g, loads: g.loads ?? [] })
           setSel([])
           fitted.current = false
           requestAnimationFrame(() => { fitted.current = false })

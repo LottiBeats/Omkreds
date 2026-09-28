@@ -1363,6 +1363,11 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
       {open && (
         <div style={s.resultBody}>
 
+          {(summary.advarsler ?? []).map((a, i) => (
+            <div key={i} style={{ padding: '6px 10px', marginBottom: 8, background: '#fffbeb', color: '#92400e',
+                                  border: '1px solid #fde68a', borderRadius: 4, fontSize: 12 }}>⚠ {a}</div>
+          ))}
+
           {/* Tab bar */}
           <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
             {TABS.map(t => (
@@ -1731,17 +1736,24 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
 
           {/* ── Loads ── */}
           {tab === 'Laster' && (
-            <Tbl
-              headers={['Type', 'Target', 'Fx (kN)', 'Fy (kN)', 'Mz (kNm)', 'wy (kN/m)', 'wx (kN/m)']}
-              rows={(summary.loads_table ?? []).map(l => [
-                l.type, l.target,
-                l.Fx_kN  != null ? l.Fx_kN.toFixed(2)  : '—',
-                l.Fy_kN  != null ? l.Fy_kN.toFixed(2)  : '—',
-                l.Mz_kNm != null ? l.Mz_kNm.toFixed(2) : '—',
-                l.wy_kNm != null ? l.wy_kNm.toFixed(2) : '—',
-                l.wx_kNm != null ? l.wx_kNm.toFixed(2) : '—',
-              ])}
-            />
+            (summary.loads_table ?? [])[0]?.vaerdi != null ? (
+              <Tbl
+                headers={['Type', 'Hvor', 'Lasttilfælde', 'Retning', 'Størrelse']}
+                rows={summary.loads_table.map(l => [l.type, l.target, l.lasttilfaelde, l.retning, l.vaerdi])}
+              />
+            ) : (
+              <Tbl
+                headers={['Type', 'Target', 'Fx (kN)', 'Fy (kN)', 'Mz (kNm)', 'wy (kN/m)', 'wx (kN/m)']}
+                rows={(summary.loads_table ?? []).map(l => [
+                  l.type, l.target,
+                  l.Fx_kN  != null ? l.Fx_kN.toFixed(2)  : '—',
+                  l.Fy_kN  != null ? l.Fy_kN.toFixed(2)  : '—',
+                  l.Mz_kNm != null ? l.Mz_kNm.toFixed(2) : '—',
+                  l.wy_kNm != null ? l.wy_kNm.toFixed(2) : '—',
+                  l.wx_kNm != null ? l.wx_kNm.toFixed(2) : '—',
+                ])}
+              />
+            )
           )}
 
           {/* ── Reactions ── */}

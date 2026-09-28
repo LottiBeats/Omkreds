@@ -808,20 +808,27 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
     loads_table = summary.get("loads_table", [])
     if loads_table:
         out.append(S("Påførte laster"))
-        out.append(TBL(
-            ["Type", "Target", "Fx (kN)", "Fy (kN)", "Mz (kNm)", "wy (kN/m)", "wx (kN/m)"],
-            [
+        if "vaerdi" in loads_table[0]:
+            out.append(TBL(
+                ["Type", "Hvor", "Lasttilfælde", "Retning", "Størrelse"],
+                [[l["type"], l["target"], l.get("lasttilfaelde", "—"),
+                  l.get("retning", "—"), l["vaerdi"]] for l in loads_table],
+            ))
+        else:   # gemte resultater fra før
+            out.append(TBL(
+                ["Type", "Target", "Fx (kN)", "Fy (kN)", "Mz (kNm)", "wy (kN/m)", "wx (kN/m)"],
                 [
-                    l["type"], l["target"],
-                    f"{l['Fx_kN']:.2f}"  if l.get("Fx_kN")  is not None else "—",
-                    f"{l['Fy_kN']:.2f}"  if l.get("Fy_kN")  is not None else "—",
-                    f"{l['Mz_kNm']:.2f}" if l.get("Mz_kNm") is not None else "—",
-                    f"{l['wy_kNm']:.2f}" if l.get("wy_kNm") is not None else "—",
-                    f"{l['wx_kNm']:.2f}" if l.get("wx_kNm") is not None else "—",
-                ]
-                for l in loads_table
-            ],
-        ))
+                    [
+                        l["type"], l["target"],
+                        f"{l['Fx_kN']:.2f}"  if l.get("Fx_kN")  is not None else "—",
+                        f"{l['Fy_kN']:.2f}"  if l.get("Fy_kN")  is not None else "—",
+                        f"{l['Mz_kNm']:.2f}" if l.get("Mz_kNm") is not None else "—",
+                        f"{l['wy_kNm']:.2f}" if l.get("wy_kNm") is not None else "—",
+                        f"{l['wx_kNm']:.2f}" if l.get("wx_kNm") is not None else "—",
+                    ]
+                    for l in loads_table
+                ],
+            ))
 
     # ── Element section forces ────────────────────────────────────────────────
     ele_table = summary.get("ele_force_table", [])

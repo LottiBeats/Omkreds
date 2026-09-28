@@ -2642,6 +2642,9 @@ class GenFrameElemIn(BaseModel):
     material: str | None = None   # "steel" | "timber"
     section:  str | None = None   # "IPE300" or "140x360" (mm)
     grade:    str | None = None   # "S355" / "GL24c" / "C24"
+    # Stangen, elementet er en del af. Figurerne og lasttabellen samler paa
+    # den -- uden den stod en stang delt i fire som fire stænger.
+    member_id: int | None = None
 
 class GenFrameSupportIn(BaseModel):
     node_id: int
@@ -3608,6 +3611,26 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         # Lastbillederne foelger med uanset hvilken af de to veje beregningen
         # tog. De hoerer til modellen og ikke til kombinationerne.
         summary['lastfigurer'] = lastfigurer
+        # Lasterne, som de staar paa modellen -- ogsaa naar de er flyttet ind
+        # i kombinationerne, og 'loads' derfor er tom.
+        from general_frame_fem import lasttabel
+        summary['loads_table'] = lasttabel(
+            paasatte_laster, elements, [t.model_dump() for t in data.load_cases])
+        # En meget stor flytning afvises ikke laengere som "mekanisme" --
+        # singulaere matricer fanges af konditionstallet i loeseren. Men den
+        # lineaere teori gaelder ikke, og det skal staa der.
+        _u = max(abs(summary.get('max_ux_mm') or 0), abs(summary.get('max_uy_mm') or 0)) / 1e3
+        if _u > max(ref_size, 1.0) / 10.0:
+            _mm = f"{_u * 1e3:,.0f}".replace(',', '.')
+            _g = f"{_u / max(ref_size, 1e-9):.2f}".replace('.', ',')
+            summary['advarsler'] = [
+                f"Meget stor flytning: {_mm} mm ({_g} gange konstruktionens "
+                f"udstrækning). Beregningen er lineær og gælder kun for små "
+                f"flytninger — tværsnittene er sandsynligvis alt for små, eller "
+                f"der mangler afstivning."]
+        if summary.get('advarsler'):
+            result_blocks = ([T("Advarsel: " + a) for a in summary['advarsler']]
+                             + list(result_blocks))
 
         return {"_figs_b64": figs_b64, "_summary": summary, "_result": result_blocks}
 

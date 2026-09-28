@@ -344,6 +344,20 @@ def _psi(tilfaelde):
     return _PSI_NATUR.get(tilfaelde['kategori'], (0.7, 0.7, 0.7))
 
 
+def _psi0_medvirkende(ledende, t):
+    """
+    ψ₀ for et medvirkende tilfaelde, naar ledende er det ledende.
+
+    Nyttelasten faar sin kategoris ψ₀ (A: 0,5, E: 0,8 ...) -- foer brugte
+    brudgraensen fast 0,7, mens anvendelsesgraensen brugte kategorien, saa det
+    samme tilfaelde blev regnet med to forskellige ψ₀. Sne under ledende vind
+    er stadig 0 efter DK NA tabel A1.1.
+    """
+    if ledende['kategori'] == 'wind' and t['kategori'] == 'snow':
+        return 0.0
+    return _psi(t)[0]
+
+
 def _tilfaelde_fra_virkning(loads):
     """
     Den gamle vej oversat til tilfaelde.
@@ -488,7 +502,7 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                     faktorer[t['nr']] = _GAMMA_Q * kfi
                     dele.append(f"1,5·{t['navn']}")
                 else:
-                    psi = _companion_psi0(ledende['kategori'], t['kategori'])
+                    psi = _psi0_medvirkende(ledende, t)
                     faktorer[t['nr']] = round(_GAMMA_Q * psi * kfi, 5)
                     if psi > 0:
                         dele.append(f"{psi:.1f}·1,5·{t['navn']}")
@@ -561,8 +575,7 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                             if nr == ledende['nr']:
                                 beholdt_dele.append(f"1,5\u00b7{pr_nr[nr]['navn']}")
                             else:
-                                psi = _companion_psi0(ledende['kategori'],
-                                                      pr_nr[nr]['kategori'])
+                                psi = _psi0_medvirkende(ledende, pr_nr[nr])
                                 beholdt_dele.append(
                                     f"{psi:.1f}\u00b71,5\u00b7{pr_nr[nr]['navn']}")
 
@@ -762,7 +775,7 @@ def sls_saet(load_cases, loads):
                 if t['nr'] == ledende['nr']:
                     f = 1.0
                 else:
-                    f = _companion_psi0(ledende['kategori'], t['kategori'])
+                    f = _psi0_medvirkende(ledende, t)
                 if abs(f) <= 1e-10:
                     continue
                 ud += [_scale_load(l, f)
@@ -774,5 +787,5 @@ def sls_saet(load_cases, loads):
                 continue
             set_navne.add(navn)
             saet.append({'navn': navn, 'laster': ud,
-                         'psi_2': _PSI2.get(ledende['kategori'], 0.0)})
+                         'psi_2': _psi(ledende)[2]})
     return G, saet
