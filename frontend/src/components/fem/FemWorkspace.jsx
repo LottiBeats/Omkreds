@@ -907,25 +907,43 @@ export default function FemWorkspace({
     const st = curIdx === 'env' ? states[governingIdx] : states[curIdx]
     const nd = st?.state?.node_disps
     if (!nd) return null
-    let umax = 0
-    for (const v of Object.values(nd)) umax = Math.max(umax, Math.hypot(v[0], v[1]))
-    if (umax < 1e-12) return null
-    const fac = (0.08 * extent * ordScale) / umax
-    const out = []
+    const bue = st.state.ele_bue ?? {}
+    // Hver stang som sin bøjningslinje: knudeflytningerne giver korden,
+    // ele_bue nedhænget imellem. Før blev der kun tegnet rette linjer mellem
+    // knuderne, og en simpelt understøttet bjælke stod helt flad.
+    const kurver = []
+    let umax = 0, worst = null
     for (const el of model.elements) {
       const a = nodesById[el.ni], b = nodesById[el.nj]; if (!a || !b) continue
+      const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy); if (L < 1e-9) continue
+      const ca = dx / L, sa = dy / L
       const da = nd[String(el.ni)] ?? [0, 0], db = nd[String(el.nj)] ?? [0, 0]
-      const [x1, y1] = toS(a.x + da[0] * fac, a.y + da[1] * fac)
-      const [x2, y2] = toS(b.x + db[0] * fac, b.y + db[1] * fac)
-      out.push(<line key={`d${el.id}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#7c3aed" strokeWidth="2.2" strokeLinecap="round" />)
+      const vi = -sa * da[0] + ca * da[1], vj = -sa * db[0] + ca * db[1]
+      const ui = ca * da[0] + sa * da[1], uj = ca * db[0] + sa * db[1]
+      const w = bue[String(el.id)] ?? [0, 0]
+      const n = w.length - 1
+      const pts = []
+      for (let k = 0; k <= n; k++) {
+        const t = k / n, u = ui + (uj - ui) * t, v = vi + (vj - vi) * t + w[k]
+        const gx = ca * u - sa * v, gy = sa * u + ca * v, d = Math.hypot(gx, gy)
+        pts.push({ x: a.x + ca * t * L, y: a.y + sa * t * L, gx, gy })
+        if (d > umax) umax = d
+        if (!worst || d > worst.d) worst = { d, el: el.id, x: t * L, p: pts[pts.length - 1], knude: k === 0 ? el.ni : k === n ? el.nj : null }
+      }
+      kurver.push({ id: el.id, pts })
     }
-    let worst = null
-    for (const [id, v] of Object.entries(nd)) if (!worst || Math.hypot(v[0], v[1]) > Math.hypot(worst.v[0], worst.v[1])) worst = { id, v }
-    const n = nodesById[Number(worst.id)]
-    if (n) {
-      const [x, y] = toS(n.x + worst.v[0] * fac, n.y + worst.v[1] * fac)
-      out.push(<text key="dl" x={Math.min(x + 6, size.w - 210)} y={Math.max(y - 6, 16)} fontSize="11" fontWeight="600" fill="#7c3aed" fontFamily="var(--font-mono)">
-        {`u = ${fmt(Math.hypot(worst.v[0], worst.v[1]) * 1000, 1)} mm (knude ${worst.id})`}</text>)
+    if (umax < 1e-12) return null
+    const fac = (0.08 * extent * ordScale) / umax
+    const out = kurver.map(c => (
+      <polyline key={`d${c.id}`} fill="none" stroke="#7c3aed" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+        points={c.pts.map(p => toS(p.x + p.gx * fac, p.y + p.gy * fac).join(',')).join(' ')} />
+    ))
+    if (worst) {
+      const [x, y] = toS(worst.p.x + worst.p.gx * fac, worst.p.y + worst.p.gy * fac)
+      const hvor = worst.knude != null ? `knude ${worst.knude}` : `element ${worst.el}, x = ${fmt(worst.x, 2)} m`
+      out.push(<circle key="dp" cx={x} cy={y} r="3.5" fill="#7c3aed" />)
+      out.push(<text key="dl" x={Math.min(x + 6, size.w - 260)} y={Math.max(y - 8, 16)} fontSize="11" fontWeight="600" fill="#7c3aed" fontFamily="var(--font-mono)">
+        {`u = ${fmt(worst.d * 1000, 1)} mm (${hvor})`}</text>)
     }
     return <g pointerEvents="none">{out}</g>
   }

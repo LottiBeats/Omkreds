@@ -3362,7 +3362,34 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                                for k, v in (r.get('ele_udl') or {}).items()},
                 'node_disps': {str(k): [float(x) for x in v]
                                for k, v in r['node_disps'].items()},
+                # Boejningen mellem knuderne (lokal y, m) i 17 lige store
+                # skridt. Uden den tegnede deformationsvisningen rette linjer
+                # mellem knuderne, og en bjaelke med ét element pr. fag stod
+                # helt flad.
+                'ele_bue': _boejninger(r),
             }
+
+        def _boejninger(r):
+            import stanglaster as _sl
+            dn = {n['id']: n for n in nodes}
+            ud = {}
+            for el in elements:
+                eid = el['id']
+                pl = r['ele_forces'].get(eid)
+                if pl is None or el.get('type', 'beam') != 'beam':
+                    continue
+                a, b = dn.get(el['ni']), dn.get(el['nj'])
+                if a is None or b is None:
+                    continue
+                L = math.hypot(float(b['x']) - float(a['x']), float(b['y']) - float(a['y']))
+                EI = float(el.get('E_GPa', 210.0)) * 1e6 * float(el.get('Iz_cm4', 5000.0)) * 1e-8
+                sy, sx = (r.get('ele_segs') or {}).get(eid, ([], []))
+                try:
+                    k = _sl.boejningslinje(pl, L, sy, sx, EI, n=96)
+                except Exception:
+                    continue
+                ud[str(eid)] = [round(float(w), 7) for _, w in k[::6]]
+            return ud
 
         # ── Combination mode ──────────────────────────────────────────────────
         if combos:
