@@ -22,8 +22,14 @@ import GeneralFrameFemBlock from './components/blocks/GeneralFrameFemBlock.jsx'
 import { desktopPdf } from './api/client.js'
 import { lavModel, gem, aabn, gemPdf } from './lib/femFile.js'
 import { hashCalcInputs, calcRevision } from './lib/calcState.js'
+import useBlockUndo from './hooks/useBlockUndo.js'
 
 const TOM_META = { project_name: '', project_ref: '', engineer: '', checker: '', client: '' }
+
+function isTextTarget(el) {
+  const tag = el?.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el?.isContentEditable
+}
 
 function nyeBlokke() {
   return [{ id: Date.now(), type: 'general_frame_fem',
@@ -48,6 +54,8 @@ function FemApp() {
   const state = useRef({ meta, blocks, fil, aendret })
   state.current = { meta, blocks, fil, aendret }
 
+  const { record: undoRecord, undo: undoStep, redo: redoStep, clearAll: undoClear } = useBlockUndo('fem')
+
   const vis = (tekst, fejl = false) => {
     setBesked({ tekst, fejl })
     if (!fejl) setTimeout(() => setBesked(b => (b?.tekst === tekst ? null : b)), 3000)
@@ -66,7 +74,7 @@ function FemApp() {
 
   const ny = () => {
     if (!forkastOk()) return
-    setMeta(TOM_META); setBlocks(nyeBlokke()); setFil({ handle: null, navn: null })
+    setMeta(TOM_META); setBlocks(nyeBlokke()); setFil({ handle: null, navn: null }); undoClear()
     setAendret(false); setNoegle(k => k + 1)
   }
 
@@ -75,7 +83,7 @@ function FemApp() {
     try {
       const r = await aabn()
       if (!r) return
-      setMeta({ ...TOM_META, ...r.model.metadata }); setBlocks(r.model.blocks)
+      setMeta({ ...TOM_META, ...r.model.metadata }); setBlocks(r.model.blocks); undoClear()
       setFil({ handle: r.handle, navn: r.navn }); setAendret(false); setNoegle(k => k + 1)
       vis(`Åbnede ${r.navn}`)
     } catch (e) {
@@ -109,12 +117,16 @@ function FemApp() {
     }
   }
 
-  // Ctrl+S / Ctrl+Shift+S / Ctrl+O / Ctrl+N og advarsel ved lukning.
+  // Ctrl+S / Ctrl+Shift+S / Ctrl+O / Ctrl+Alt+N / Ctrl+Z / Ctrl+Y og advarsel ved lukning.
   useEffect(() => {
     const tast = e => {
       if (!(e.ctrlKey || e.metaKey)) return
       const k = e.key.toLowerCase()
       if (k === 's') { e.preventDefault(); gemFil(e.shiftKey) }
+      // I et tekstfelt vinder feltets egen fortryd, som i editoren på omkreds.dk.
+      else if (isTextTarget(e.target) && (k === 'z' || k === 'y')) return
+      else if (k === 'z' && !e.shiftKey) { e.preventDefault(); fortryd(false) }
+      else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); fortryd(true) }
       else if (k === 'o') { e.preventDefault(); aabnFil() }
       else if (k === 'n' && e.altKey) { e.preventDefault(); ny() }
     }
@@ -149,19 +161,34 @@ function FemApp() {
     if (!blok) setBlocks(b => [...b, ...nyeBlokke()])
   }, [blok])
   const onBlok = useCallback(nb => {
-    setBlocks(bs => {
-      const i = femIndeks(bs)
-      // Samme stempel som BlockList.stampBlock: et nyt resultat får hashen af
-      // de inddata, det er regnet af, og beregningens revision. Uden det står
-      // modellen som "ændret — regn igen" lige efter beregningen.
-      const gl = bs[i]?.data ?? {}
-      const d = nb.data ?? {}
-      const nyt = (d._result && d._result !== gl._result) || (d._summary && d._summary !== gl._summary)
-      const b = nyt ? { ...nb, data: { ...d, _input_hash: hashCalcInputs(d), _calc_rev: calcRevision(nb.type) } } : nb
-      return bs.map((x, j) => (j === i ? b : x))
-    })
+    // Fra state.current og ikke inde i en setBlocks-updater: fortrydelsen skal
+    // registreres præcis én gang pr. ændring (StrictMode kalder updaters to gange).
+    const bs = state.current.blocks
+    const i = femIndeks(bs)
+    // Samme stempel som BlockList.stampBlock: et nyt resultat får hashen af
+    // de inddata, det er regnet af, og beregningens revision. Uden det står
+    // modellen som "ændret — regn igen" lige efter beregningen.
+    const gl = bs[i]?.data ?? {}
+    const d = nb.data ?? {}
+    const nyt = (d._result && d._result !== gl._result) || (d._summary && d._summary !== gl._summary)
+    const b = nyt ? { ...nb, data: { ...d, _input_hash: hashCalcInputs(d), _calc_rev: calcRevision(nb.type) } } : nb
+    const nyeBs = bs.map((x, j) => (j === i ? b : x))
+    // Kun ændringer af modellen kan fortrydes — et resultat, der kommer ind
+    // efter "Regn", er ikke et skridt, man vil tilbage over.
+    if (hashCalcInputs(d) !== hashCalcInputs(gl)) undoRecord(bs)
+    state.current.blocks = nyeBs
+    setBlocks(nyeBs)
     setAendret(true)
-  }, [])
+  }, [undoRecord])
+
+  const fortryd = useCallback((frem) => {
+    const cur = state.current.blocks
+    const til = frem ? redoStep(cur) : undoStep(cur)
+    if (!til) return
+    state.current.blocks = til
+    setBlocks(til)
+    setAendret(true)
+  }, [undoStep, redoStep])
 
   const knapper = (
     <div style={s.knapper}>
