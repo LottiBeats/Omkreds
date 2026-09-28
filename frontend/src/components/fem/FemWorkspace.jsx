@@ -346,8 +346,8 @@ export default function FemWorkspace({
   }
 
   // ── Hit testing ─────────────────────────────────────────────────────────
-  function hitNode(sx, sy, mm = m) {
-    let best = null, bd = 9
+  function hitNode(sx, sy, mm = m, radius = 9) {
+    let best = null, bd = radius
     for (const n of mm.nodes) {
       const [x, y] = toS(n.x, n.y)
       const d = Math.hypot(x - sx, y - sy)
@@ -458,7 +458,12 @@ export default function FemWorkspace({
 
     if (tool === 'load') {
       const lc = m.load_cases.length ? activeLc : undefined
-      const n = hitNode(sx, sy)
+      // Et klik nær enden af en stang skal give linjelast på stangen, ikke
+      // punktlast på knuden: knuden vinder kun, når man rammer selve knuden
+      // (5 px) — ellers er stangen det, man peger på. Uden stang i nærheden
+      // gælder den almindelige fangradius.
+      const hStang = hitElem(sx, sy)
+      const n = hStang ? hitNode(sx, sy, m, 5) : hitNode(sx, sy)
       if (n) {
         const P = loadCfg.P
         const ld = { type: 'nodal', node_id: n.id, Fx_kN: loadCfg.pointDir === 'right' ? P : loadCfg.pointDir === 'left' ? -P : 0,
@@ -467,7 +472,7 @@ export default function FemWorkspace({
         setSel([{ kind: 'load', id: model.loads.length }]); setTab('loads')
         return
       }
-      const h = hitElem(sx, sy)
+      const h = hStang
       if (h) {
         const ld = h.el.member_id != null
           ? { type: 'udl', target: 'member', member_id: h.el.member_id, direction: loadCfg.direction, value_kNm: loadCfg.value, lc }
