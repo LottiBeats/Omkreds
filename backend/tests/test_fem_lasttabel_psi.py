@@ -110,3 +110,30 @@ def test_tom_model_og_forkert_dellast_afvises_paent():
         r = c.post('/api/calc/general-frame-fem', json={**_BJ, 'elements': el, 'loads': [
             dict(type='udl', elem_id=1, direction='vertical', value_kNm=5, x1=x1, x2=x2, lc=1)]})
         assert r.status_code == 422 and tekst in r.json()['detail']
+
+
+def test_dellast_og_trapezlast_med_lasttilfaelde():
+    """
+    Med lasttilfaelde gik lasterne gennem _project_load, der kun kender én
+    fuld, konstant intensitet: 3 → 6 kN/m fra x = 1 til 4 blev til 3 kN/m
+    over hele stangen. Summen af reaktionerne skal vaere 1,5 · 13,5 kN.
+    """
+    c = _klient()
+    m = dict(nodes=[dict(id=1, x=0, y=0), dict(id=2, x=6, y=0)],
+             elements=[dict(id=1, ni=1, nj=2, E_GPa=210, A_cm2=53.8, Iz_cm4=8356)],
+             supports=[dict(node_id=1, ux=True, uy=True, rz=False),
+                       dict(node_id=2, ux=False, uy=True, rz=False)],
+             load_cases=[dict(nr=1, navn='Q', kategori='imposed', nyttelastkategori='A')])
+    for el, ld in (
+        (dict(ni=1, nj=2), dict(direction='perpendicular', value_kNm=3, value_end_kNm=6, x1=1, x2=4)),
+        # Samme last paa en stang tegnet den anden vej (sådan "Vend" laver den).
+        (dict(ni=2, nj=1), dict(direction='perpendicular', value_kNm=-6, value_end_kNm=-3, x1=2, x2=5)),
+        (dict(ni=1, nj=2), dict(direction='vertical', value_kNm=3, value_end_kNm=6, x1=1, x2=4)),
+    ):
+        r = c.post('/api/calc/general-frame-fem', json={
+            **m, 'elements': [{**m['elements'][0], **el}],
+            'loads': [dict(type='udl', elem_id=1, lc=1, **ld)]}).json()
+        R = r['_summary']['reactions']
+        assert abs(sum(v['Fy_kN'] for v in R.values()) - 1.5 * 13.5) < 1e-6
+        # Tyngdepunkt 1 + 3·(3 + 2·6)/(3·(3 + 6)) = 2,667 m fra venstre.
+        assert abs(R['1']['Fy_kN'] - 20.25 * (6 - 8 / 3) / 6) < 1e-6

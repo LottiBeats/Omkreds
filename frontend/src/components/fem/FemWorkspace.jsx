@@ -27,7 +27,7 @@ import {
   deleteSelection, updateNode, updateElements, elementLength, bounds, round,
 } from './femModel.js'
 import { GENERATORS } from './femGenerators.js'
-import { expandLoads, loadSpan, isPartial } from './femLoads.js'
+import { expandLoads, loadSpan, isPartial, flipElements } from './femLoads.js'
 import { resultStates, sampleElement, envelopeSamples, isUls, SITUATION_LABEL } from './femDiagrams.js'
 import './fem.css'
 
@@ -114,7 +114,7 @@ const KATEGORIER = [
 const DIRECTIONS = [
   { value: 'vertical',      label: 'Lodret ↓',                hint: '+ nedad, pr. m stang' },
   { value: 'projected',     label: 'Lodret, projiceret ↓',    hint: '+ nedad, pr. m vandret (sne)' },
-  { value: 'perpendicular', label: 'Vinkelret på stangen',     hint: '+ trykker ind på fladen (vind)' },
+  { value: 'perpendicular', label: 'Vinkelret på stangen',     hint: '+ trykker fra stangens y-side ind mod stangen (se akserne på den valgte stang)' },
   { value: 'horizontal',    label: 'Vandret →',               hint: '+ mod højre' },
 ]
 
@@ -809,6 +809,18 @@ export default function FemWorkspace({
       const ex = (bx - ax) / Ls, ey = (by - ay) / Ls
       if (el.release === 'start' || el.release === 'both') out.push(<circle key={`rs${el.id}`} cx={ax + ex * 9} cy={ay + ey * 9} r="4" fill="#fbfaf9" stroke={col} strokeWidth="1.6" />)
       if (el.release === 'end' || el.release === 'both') out.push(<circle key={`re${el.id}`} cx={bx - ex * 9} cy={by - ey * 9} r="4" fill="#fbfaf9" stroke={col} strokeWidth="1.6" />)
+      // Lokale akser på den valgte stang: x langs stangen (i → j), y til
+      // venstre for den. "+ vinkelret" trykker fra y-siden ind mod stangen.
+      if (on && selElems.length <= 4) {
+        const mx = (ax + bx) / 2, my = (ay + by) / 2
+        const yx = ey, yy = -ex   // lokal +y på skærmen
+        const pil = (key, x2, y2, txt, farve) => [
+          <line key={key} x1={mx} y1={my} x2={x2} y2={y2} stroke={farve} strokeWidth="1.8" markerEnd="url(#fem-akse)" />,
+          <text key={key + 't'} x={x2 + (x2 - mx) * 0.25} y={y2 + (y2 - my) * 0.25 + 4} fontSize="11" fontWeight="700" textAnchor="middle" fill={farve} fontFamily="var(--font-mono)">{txt}</text>,
+        ]
+        out.push(...pil(`ax${el.id}`, mx + ex * 30, my + ey * 30, 'x', '#b45309'))
+        out.push(...pil(`ay${el.id}`, mx + yx * 30, my + yy * 30, 'y', '#0369a1'))
+      }
       if (showIds || showResults) {
         const mx = (ax + bx) / 2, my = (ay + by) / 2
         const nx = -ey, ny = ex
@@ -1194,6 +1206,10 @@ export default function FemWorkspace({
                     onChange={() => commit(toggleRelease(model, el.id, el.nj))} /> Charnier ved {el.nj}</label>
                 </div>
               )}
+              <Button size="sm" onClick={() => commit(flipElements(model, group.map(e => e.id)))}
+                title="Byt om på stangens start og slut. Lokal y skifter side; lasterne virker som før.">
+                ⇄ Vend {group.length > 1 ? 'leddet' : 'stangen'}
+              </Button>
               <F label="Led (samler elementer til ét spær, én søjle …)">
                 <Num value={el.member_id ?? null} onCommit={v => commit(updateElements(model, [el.id], { member_id: v > 0 ? Math.round(v) : undefined }))} />
               </F>
@@ -1562,6 +1578,11 @@ export default function FemWorkspace({
       <div className={`fem-canvas t-${tool}${drag?.kind === 'pan' ? ' panning' : ''}`} ref={wrapRef}>
         <svg ref={svgRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
              onPointerLeave={() => { setHover(null) }} onWheel={onWheel} onContextMenu={e => { e.preventDefault(); setChainFrom(null) }}>
+          <defs>
+            <marker id="fem-akse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="context-stroke" />
+            </marker>
+          </defs>
           {renderGrid()}
           {(!resultsOk || resView === 'model') && visibleLoads.map(renderLoad)}
           {renderModel()}

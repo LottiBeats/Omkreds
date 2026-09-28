@@ -106,7 +106,10 @@ export const GENERATORS = [
       } else {
         elements.push({ id: 2, ni: 2, nj: 3, type: 'beam', release: 'none', member_id: 2, ...R })
       }
-      elements.push({ id: withRidge ? 4 : 3, ni: 4, nj: 3, type: 'beam', release: 'none', member_id: withRidge ? 4 : 3, ...C })
+      // Højre søjle oppefra og ned, så rammen er tegnet i én retning rundt
+      // (1 → 2 → … → 3 → 4). Så trykker "+ vinkelret" udefra på begge søjler;
+      // tegnet nedefra og op trak vindtrykket højre søjle udad.
+      elements.push({ id: withRidge ? 4 : 3, ni: 3, nj: 4, type: 'beam', release: 'none', member_id: withRidge ? 4 : 3, ...C })
       const s = { ux: true, uy: true, rz: !!fod }
       return { nodes, elements, supports: [{ node_id: 1, ...s }, { node_id: 4, ...s }], equal_dofs: [] }
     },

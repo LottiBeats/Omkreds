@@ -1230,6 +1230,17 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
     for combo in combinations:
         resolved = []
         for ld in combo.get('loads', []):
+            # Laster i modellens eget format (type = 'udl' / 'nodal') gaar
+            # uaendret til solve(), der selv haandterer retning, x1/x2 og
+            # value_end_kNm. Foer blev de ogsaa sendt gennem _project_load,
+            # der kun kender én fuld, konstant intensitet: med lasttilfaelde
+            # blev en dellast og en trapezlast regnet som konstant over hele
+            # stangen med startvaerdien.
+            if ld.get('type') in ('udl', 'nodal'):
+                if ld['type'] == 'udl' and not any(e['id'] == ld.get('elem_id') for e in elements):
+                    continue
+                resolved.append(ld)
+                continue
             proj = _project_load(ld, elements, dict_nodes)
             if proj is not None:
                 resolved.append(proj)
