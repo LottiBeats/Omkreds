@@ -126,10 +126,12 @@ def steel_beam_ipe(
 
         blocks += [
             CALC_ROW("ε", "= √(235 / f_y)", f"{eps:.3f}"),
-            CALC_ROW("c_w / t_w", f"krop i bøjning; grænser 72ε / 83ε / 124ε = "
-                     f"{72*eps:.1f} / {83*eps:.1f} / {124*eps:.1f}", f"{c_w_val:.1f}"),
-            CALC_ROW("c_f / t_f", f"flangeudhæng; grænser 9ε / 10ε / 14ε = "
-                     f"{9*eps:.1f} / {10*eps:.1f} / {14*eps:.1f}", f"{c_f_val:.1f}"),
+            # Grænserne er en liste (klasse 1; 2; 3), ikke en brøk — " / " med
+            # mellemrum tegnes som brøkstreg på skærmen og i rapporten.
+            CALC_ROW("c_w / t_w", f"krop i bøjning; grænser kl. 1; 2; 3: 72ε; 83ε; 124ε = "
+                     f"{72*eps:.1f}; {83*eps:.1f}; {124*eps:.1f}", f"{c_w_val:.1f}"),
+            CALC_ROW("c_f / t_f", f"flangeudhæng; grænser kl. 1; 2; 3: 9ε; 10ε; 14ε = "
+                     f"{9*eps:.1f}; {10*eps:.1f}; {14*eps:.1f}", f"{c_f_val:.1f}"),
             CALC_ROW("Tværsnitsklasse", f"krop {web_class} · flange {flange_class}",
                      _klasse_txt[section_class]),
         ]

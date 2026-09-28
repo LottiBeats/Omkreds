@@ -184,10 +184,12 @@ async function beamCheck(member, actions, settings) {
       service_class: settings.service_class,
       load_duration: actions.M_duration ?? settings.load_duration,
     })
-    return { eta: maxUtilization(blocks) }
+    // Beregningen gemmes med, så den kan vises, når leddet vælges i
+    // modelvinduet (som "detaljerede resultater" i FEM-Design).
+    return { eta: maxUtilization(blocks), blocksBeam: blocks }
   }
   const blocks = await calcSteelBeam({ ...common, section: first.section, grade: first.grade ?? 'S355' })
-  return { eta: maxUtilization(blocks) }
+  return { eta: maxUtilization(blocks), blocksBeam: blocks }
 }
 
 function timberDims(section) {
@@ -313,7 +315,7 @@ async function checkMember(member, actions, settings, ctx = {}) {
       })
     }
     const eta = maxUtilization(blocks)
-    if (eta != null && (!best || eta > best.eta)) best = { eta, combo: p.name, N: p.Nc, M: p.M, duration: p.duration }
+    if (eta != null && (!best || eta > best.eta)) best = { eta, combo: p.name, N: p.Nc, M: p.M, duration: p.duration, blocks }
   }
   if (!best) return { ...beam, mode: 'beam' }
   return {
@@ -323,6 +325,7 @@ async function checkMember(member, actions, settings, ctx = {}) {
     combo: best.combo, N_Ed_kN: best.N, M_Ed_kNm: best.M, duration: best.duration,
     L_cr_m: Number(Lcr.toFixed(3)), bracing,
     tension: NtMax >= AXIAL_NOTE_KN ? NtMax : null,
+    blocksBeam: axial ? null : beam.blocksBeam, blocksColumn: best.blocks,
   }
 }
 

@@ -331,7 +331,7 @@ def plate_girder_check(
     blocks += [
         CALC_ROW("h_w/t_w",    "web in bending",
                  f"{c_t_web:.1f}  →  Class {web_class}  "
-                 f"[72ε={web_c1:.1f} / 83ε={web_c2:.1f} / 124ε={web_c3:.1f}]"),
+                 f"[72ε={web_c1:.1f}; 83ε={web_c2:.1f}; 124ε={web_c3:.1f}]"),
         CALC_ROW("c/t_f",      "compression flange",
                  f"{c_t_flg:.1f}  →  Class {flg_class}  "
                  f"[9ε={flg_c1:.1f} / 10ε={flg_c2:.1f} / 14ε={flg_c3:.1f}]"),

@@ -20,6 +20,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Dialog } from '../../ui/index.js'
+import CalcResultView from '../CalcResultView.jsx'
 import {
   pick, addNode, addElement, splitElement, projectOnElement, toggleRelease,
   toggleNodeHinge, hasNodeHinge, cycleSupport, setSupport, supportType, SUPPORT_TYPES,
@@ -302,6 +303,7 @@ export default function FemWorkspace({
   const [resIdx, setResIdx] = useState('auto')         // index into result states, 'env' or 'auto'
   const [ordScale, setOrdScale] = useState(1)
   const [probe, setProbe] = useState(null)             // hover readout in result views
+  const [beregning, setBeregning] = useState(null)     // { led, fane } — eftervisningen for et led
   const wrapRef = useRef(null)
   const svgRef = useRef(null)
 
@@ -1031,7 +1033,10 @@ export default function FemWorkspace({
       const L = group.reduce((s, e) => s + elementLength(m, e), 0)
       const a = nodesById[el.ni], b = nodesById[el.nj]
       const ang = a && b ? (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI : 0
-      const c = showResults ? memberChecks[el.member_id] : null
+      // Udnyttelsen vises for det valgte led, uanset hvilken resultatvisning
+      // (M, V, N, η) der er slået til — som FEM-Designs detaljerede resultater.
+      const c = resultsOk && memberChecks ? memberChecks[el.member_id] : null
+      const harBeregning = !!(c && (c.blocksBeam?.length || c.blocksColumn?.length))
       const rs = el.release === 'start' || el.release === 'both', re = el.release === 'end' || el.release === 'both'
       return (
         <>
@@ -1051,6 +1056,14 @@ export default function FemWorkspace({
                   <span>L_cr i planen</span><span>{fmt(c.L_cr_m)} m</span>
                   <span>Kombination</span><span style={{ whiteSpace: 'normal' }}>{c.combo}</span>
                 </div>
+              )}
+              {!harBeregning && c.mode && (
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>Regn modellen igen for at kunne se hele beregningen.</p>
+              )}
+              {harBeregning && (
+                <Button size="sm" variant="primary" onClick={() => setBeregning({ led: el.member_id, fane: c.blocksColumn?.length && c.etaColumn >= (c.etaBeam ?? 0) ? 'column' : 'beam' })}>
+                  Vis beregning
+                </Button>
               )}
               {c.N_kN != null && <p>{c.mode === 'beam' ? `Træk N = ${fmt(Math.abs(c.N_kN), 1)} kN er ikke medregnet — træk og bøjning eftervises særskilt.` : `Kun bøjning og forskydning. N = ${fmt(Math.abs(c.N_kN), 1)} kN er ikke medregnet — regn igen for at få søjleeftervisningen med.`}</p>}
             </div>
@@ -1508,6 +1521,44 @@ export default function FemWorkspace({
         </div>
         <div className="fem-tbl">{renderTable()}</div>
       </div>
+
+      {beregning && (() => {
+        const c = memberChecks?.[beregning.led]
+        const faner = [
+          c?.blocksColumn?.length && { key: 'column', label: `Søjle: N + M · η ${fmt(c.etaColumn)}`, blocks: c.blocksColumn },
+          c?.blocksBeam?.length && { key: 'beam', label: `Bøjning og forskydning · η ${fmt(c.etaBeam ?? c.eta)}`, blocks: c.blocksBeam },
+        ].filter(Boolean)
+        const aktiv = faner.find(f => f.key === beregning.fane) ?? faner[0]
+        return (
+          <Dialog title={`Eftervisning · led ${beregning.led}${c && typeof c.eta === 'number' ? ` · η = ${fmt(c.eta)}` : ''}`}
+            width={980} onClose={() => setBeregning(null)}
+            actions={<Button onClick={() => setBeregning(null)}>Luk</Button>}>
+            {!aktiv ? (
+              <p>Beregningen er ikke gemt for dette led. Regn modellen igen for at se den.</p>
+            ) : (
+              <>
+                {faner.length > 1 && (
+                  <div className="fem-tabs" role="tablist" style={{ marginBottom: 10 }}>
+                    {faner.map(f => (
+                      <button key={f.key} role="tab" aria-selected={f.key === aktiv.key}
+                        className={f.key === aktiv.key ? 'on' : ''}
+                        onClick={() => setBeregning(b => ({ ...b, fane: f.key }))}>{f.label}</button>
+                    ))}
+                  </div>
+                )}
+                {aktiv.key === 'column' && c.combo && (
+                  <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 8px' }}>
+                    Dimensionsgivende kombination: {c.combo} · N_Ed = {fmt(c.N_Ed_kN, 1)} kN · M_Ed = {fmt(c.M_Ed_kNm, 2)} kNm · L_cr = {fmt(c.L_cr_m)} m
+                  </p>
+                )}
+                <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+                  <CalcResultView blocks={aktiv.blocks} />
+                </div>
+              </>
+            )}
+          </Dialog>
+        )
+      })()}
 
       {genOpen && (
         <GeneratorDialog hasModel={!empty} onClose={() => setGenOpen(false)} onApply={(g) => {
