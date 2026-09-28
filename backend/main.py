@@ -3063,6 +3063,18 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         # Derive E/A/I from each element's section reference where it has one,
         # so the analysis and the member check read the same section.
         elements = apply_sections([e.model_dump() for e in data.elements])
+        # Et tværsnit, der ikke kan læses, må ikke regnes med standardværdierne
+        # (E = 210 GPa, IPE-agtigt A og I) — en træstang blev regnet ~19 gange
+        # for stiv, mens skærmen sagde "Regnet". Afvis med stangen og årsagen.
+        _ugyldige = [e for e in elements if e.get('_section_error')]
+        if _ugyldige:
+            from general_frame_fem import ModelError
+            raise ModelError("Tværsnittet kan ikke læses: " + "; ".join(
+                f"stang {e.get('id')} ({e.get('section') or 'intet'}"
+                f"{' ' + e['grade'] if e.get('grade') else ''}): "
+                f"{str(e['_section_error']).strip(chr(34) + chr(39)).rstrip('.')}"
+                for e in _ugyldige[:5]) + (" …" if len(_ugyldige) > 5 else "")
+                + ". Ret tværsnittet i stangtabellen.")
         supports = [s.model_dump() for s in data.supports]
         loads    = [l.model_dump() for l in data.loads]
         # Et charnier med udløsning i alle ender regnes med én færre -- samme

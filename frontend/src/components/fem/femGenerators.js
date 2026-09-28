@@ -123,7 +123,15 @@ export const GENERATORS = [
     make: ({ fag, mat, sec }) => {
       const spans = String(fag).split(/[;\s]+/).map(s => parseFloat(s.replace(',', '.'))).filter(v => v > 0)
       if (!spans.length) return null
-      const P = mat === 'steel' ? steel(sec || 'IPE300') : timber(sec || '90x270', 'GL24h')
+      // Tværsnitsfeltet deles af træ og stål. Et trætværsnit (b×h) under stål
+      // eller et stålprofil under træ er en rest fra det andet materiale, ikke
+      // et valg — tag materialets standard i stedet for at regne på noget, der
+      // ikke findes.
+      const s = String(sec ?? '').trim()
+      const erStaal = /^[A-Za-z]/.test(s)
+      const P = mat === 'steel'
+        ? steel(erStaal ? s.toUpperCase().replace(/\s+/g, '') : 'IPE300')
+        : timber(s && !erStaal ? s : '90x270', 'GL24h')
       let x = 0
       const nodes = [{ id: 1, x: 0, y: 0 }]
       spans.forEach((l, i) => { x += l; nodes.push({ id: i + 2, x: r4(x), y: 0 }) })

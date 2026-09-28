@@ -55,6 +55,13 @@ const MATERIALS = [
   { key: 'timber', label: 'Træ', grades: ['C18', 'C24', 'C30', 'GL24c', 'GL24h', 'GL28c', 'GL28h', 'GL30c'], def: '45x195', grade: 'C24' },
   { key: 'steel',  label: 'Stål', grades: ['S235', 'S275', 'S355', 'S420'], def: 'IPE300', grade: 'S355' },
 ]
+// Et profil, der ikke er på listen, vises som sig selv (markeret) i stedet
+// for at <select> stille viser første mulighed — ellers står der IPE160 på
+// skærmen for en stang, der regnes med noget andet.
+const steelOptions = (cur) => [
+  ...(cur && !STEEL_SECTIONS.includes(cur) ? [<option key="_ukendt" value={cur}>{cur} (ukendt profil)</option>] : []),
+  ...STEEL_SECTIONS.map(s => <option key={s}>{s}</option>),
+]
 const STEEL_SECTIONS = [
   'IPE160', 'IPE180', 'IPE200', 'IPE220', 'IPE240', 'IPE270', 'IPE300', 'IPE330', 'IPE360', 'IPE400', 'IPE450', 'IPE500',
   'HEA160', 'HEA180', 'HEA200', 'HEA220', 'HEA240', 'HEA260', 'HEA300', 'HEB160', 'HEB200', 'HEB240', 'HEB300',
@@ -978,7 +985,7 @@ export default function FemWorkspace({
           <div className="fem-row">
             <F label="Tværsnit">
               {value.material === 'steel'
-                ? <select value={value.section} onChange={e => onChange('section', e.target.value)}>{STEEL_SECTIONS.map(s => <option key={s}>{s}</option>)}</select>
+                ? <select value={value.section} onChange={e => onChange('section', e.target.value)}>{steelOptions(value.section)}</select>
                 : <input defaultValue={value.section} key={value.section} placeholder="b×h mm" onBlur={e => onChange('section', e.target.value.replace('×', 'x'))} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }} />}
             </F>
             <F label="Kvalitet">
@@ -1049,6 +1056,14 @@ export default function FemWorkspace({
             <small>{selElems.length > 1 ? `${selElems.length} stænger` : `Stang ${el.id}${el.member_id != null ? ` · led ${el.member_id}` : ''}`}</small>
             <b>{el.material === 'timber' ? `Træ ${el.section ?? ''} ${el.grade ?? ''}` : el.material === 'steel' ? `${el.section ?? ''} ${el.grade ?? ''}` : 'Egne tal'}</b>
           </div>
+          {c && typeof c.eta !== 'number' && (c.error || c.skipped) && (
+            <div className="fem-ps">
+              <div className="t">Udnyttelse · led {el.member_id}</div>
+              <p style={{ color: c.error ? 'var(--fail, #b91c1c)' : 'var(--muted)', fontSize: 12.5 }}>
+                {c.error ? `Eftervisningen fejlede: ${c.error}` : `Ikke eftervist: ${c.skipped}`}
+              </p>
+            </div>
+          )}
           {c && typeof c.eta === 'number' && (
             <div className="fem-ps">
               <div className="t">Udnyttelse · led {el.member_id}</div>
@@ -1267,7 +1282,7 @@ export default function FemWorkspace({
                   commit(updateElements(model, [el.id], def ? { material: def.key, section: def.def, grade: def.grade } : { material: undefined, section: undefined, grade: undefined }))
                 }}>{MATERIALS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}<option value="">Egne tal</option></select></td>
                 <td>{el.material === 'steel'
-                  ? <select value={el.section} onChange={e => commit(updateElements(model, [el.id], { section: e.target.value }))}>{STEEL_SECTIONS.map(s => <option key={s}>{s}</option>)}</select>
+                  ? <select value={el.section} onChange={e => commit(updateElements(model, [el.id], { section: e.target.value }))}>{steelOptions(el.section)}</select>
                   : el.material ? <input defaultValue={el.section} key={el.section} onBlur={e => commit(updateElements(model, [el.id], { section: e.target.value }))} /> : <span className="fem-status">E/A/I</span>}</td>
                 <td>{el.material ? <select value={el.grade} onChange={e => commit(updateElements(model, [el.id], { grade: e.target.value }))}>{(MATERIALS.find(x => x.key === el.material)?.grades ?? []).map(g => <option key={g}>{g}</option>)}</select> : null}</td>
                 {showResults && <td style={{ fontFamily: 'var(--font-mono)', color: c ? etaColor(c.eta) : undefined, padding: '0 8px' }}>{c && typeof c.eta === 'number' ? fmt(c.eta) : '—'}</td>}
