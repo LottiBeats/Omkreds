@@ -78,7 +78,7 @@ jobs:
             nodes    = @(@{id=1;x=0;y=0}, @{id=2;x=6;y=0})
             elements = @(@{id=1;ni=1;nj=2;E_GPa=210;A_cm2=53.8;I_cm4=8356})
             supports = @(@{node_id=1;ux=$true;uy=$true;rz=$false}, @{node_id=2;ux=$false;uy=$true;rz=$false})
-            loads    = @(@{type='udl';elem_id=1;wy_kNm=-10;direction='global'})
+            loads    = @(@{type='udl';elem_id=1;direction='vertical';value_kNm=10})
           } | ConvertTo-Json -Depth 5
           $res = Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $model http://127.0.0.1:8766/api/calc/general-frame-fem
           $m = [math]::Abs($res._summary.max_moment_kNm)
