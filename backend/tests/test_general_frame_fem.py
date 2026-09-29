@@ -226,24 +226,43 @@ def test_two_pins_at_different_points_are_enough():
     gf.validate_model(nodes, elements, supports)   # pin + roller, rank 3
 
 
-def test_truss_only_node_has_no_rotational_stiffness():
+def test_truss_only_node_is_solved_with_its_rotation_held():
     """
-    The model is built with ndf=3, and a Truss element contributes nothing to
-    rz. Without this check OpenSees factors the singular matrix and reports
-    metres of displacement as if they were a result.
+    A node where only truss bars meet has no rotational stiffness. That used to
+    be refused, so a plain truss could not be computed at all. The rotation
+    there is meaningless and the solver now holds it itself, as FEM-Design and
+    RFEM do; the bar forces follow from statics.
     """
+    import fem_direkte
     nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 3, 'y': 0},
              {'id': 3, 'x': 1.5, 'y': 2}]
     elements = [
         {'id': 1, 'ni': 1, 'nj': 3, 'type': 'truss', 'E_GPa': 210, 'A_cm2': 20},
         {'id': 2, 'ni': 3, 'nj': 2, 'type': 'truss', 'E_GPa': 210, 'A_cm2': 20},
     ]
-    supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True},
-                {'node_id': 2, 'ux': True, 'uy': True, 'rz': True}]
+    supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': False},
+                {'node_id': 2, 'ux': True, 'uy': True, 'rz': False}]
+    loads = [{'type': 'nodal', 'node_id': 3, 'Fx_kN': 0, 'Fy_kN': -10, 'Mz_kNm': 0}]
+    gf.validate_model(nodes, elements, supports, loads)
+    r = fem_direkte.solve(nodes, elements, supports, loads)
+    a = math.atan2(2, 1.5)
+    assert abs(abs(r['ele_forces'][1][0]) - 10 / (2 * math.sin(a))) < 1e-6
+    assert all(abs(v[2]) < 1e-9 for v in r['node_reactions'].values())
+
+
+def test_moment_on_a_truss_only_node_is_rejected():
+    nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 3, 'y': 0},
+             {'id': 3, 'x': 1.5, 'y': 2}]
+    elements = [
+        {'id': 1, 'ni': 1, 'nj': 3, 'type': 'truss', 'E_GPa': 210, 'A_cm2': 20},
+        {'id': 2, 'ni': 3, 'nj': 2, 'type': 'truss', 'E_GPa': 210, 'A_cm2': 20},
+    ]
+    supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': False},
+                {'node_id': 2, 'ux': True, 'uy': True, 'rz': False}]
+    loads = [{'type': 'nodal', 'node_id': 3, 'Fx_kN': 0, 'Fy_kN': 0, 'Mz_kNm': 5}]
     with pytest.raises(ModelError) as exc:
-        gf.validate_model(nodes, elements, supports)
-    assert 'rotationsstivhed' in str(exc.value)
-    assert '3' in str(exc.value)          # names the offending node
+        gf.validate_model(nodes, elements, supports, loads)
+    assert 'moment' in str(exc.value) and '3' in str(exc.value)
 
 
 def test_truss_node_with_rz_fixed_is_accepted():
@@ -259,7 +278,9 @@ def test_truss_node_with_rz_fixed_is_accepted():
     gf.validate_model(nodes, elements, supports)
 
 
-def test_beam_released_at_both_ends_has_no_rotational_stiffness():
+def test_beams_released_at_both_ends_meeting_in_a_node_are_solved():
+    """Two simply supported spans joined by a pin: each carries wL²/8."""
+    import fem_direkte
     nodes = [{'id': 1, 'x': 0, 'y': 0}, {'id': 2, 'x': 3, 'y': 0},
              {'id': 3, 'x': 6, 'y': 0}]
     elements = [
@@ -269,10 +290,12 @@ def test_beam_released_at_both_ends_has_no_rotational_stiffness():
          'E_GPa': 210, 'A_cm2': 53.8, 'Iz_cm4': 8356},
     ]
     supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': True},
+                {'node_id': 2, 'ux': False, 'uy': True, 'rz': False},
                 {'node_id': 3, 'ux': True, 'uy': True, 'rz': True}]
-    with pytest.raises(ModelError) as exc:
-        gf.validate_model(nodes, elements, supports)
-    assert 'rotationsstivhed' in str(exc.value)
+    loads = [{'type': 'udl', 'elem_id': i, 'direction': 'vertical', 'value_kNm': 10} for i in (1, 2)]
+    r = fem_direkte.solve(nodes, elements, supports, loads)
+    assert abs(r['ele_extremes'][1]['M_kNm']) == pytest.approx(10 * 9 / 8, rel=1e-6)
+    assert r['node_reactions'][2][1] == pytest.approx(30.0, rel=1e-6)
 
 
 def test_floating_node_is_rejected():

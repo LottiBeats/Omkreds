@@ -83,6 +83,51 @@ def _rz_stiffness_ends(el):
     return rel not in ('start', 'both'), rel not in ('end', 'both')
 
 
+def fasthold_frie_rotationer(nodes, elements, supports, equal_dofs=None):
+    """
+    Understoetningerne med rotationen fastholdt i de knuder, der ingen
+    rotationsstivhed har (kun gitterstaenger / dobbelt-udloeste bjaelker).
+
+    Rotationen dér er ubestemt og uden betydning: den indgaar ikke i nogen
+    stangs stivhed, og en fastholdelse tager intet moment, fordi der intet
+    moment er. Det er sadan FEM-Design og RFEM regner et gitter. Returnerer
+    (supports, auto) -- auto er de knuder, der fik fastholdelsen.
+    """
+    has_rz = {n['id']: False for n in nodes}
+    connected = set()
+    for el in elements:
+        connected.add(el['ni']); connected.add(el['nj'])
+        si, sj = _rz_stiffness_ends(el)
+        if si and el['ni'] in has_rz: has_rz[el['ni']] = True
+        if sj and el['nj'] in has_rz: has_rz[el['nj']] = True
+    rz_fixed = {s['node_id'] for s in supports if s.get('rz')}
+    for eq in (equal_dofs or []):
+        if 3 in {int(d) for d in eq.get('dofs', [1, 2])}:
+            r, c = eq['r_node'], eq['c_node']
+            if has_rz.get(r) or has_rz.get(c) or r in rz_fixed or c in rz_fixed:
+                has_rz[r] = has_rz[c] = True
+    auto = {nid for nid, ok in has_rz.items()
+            if not ok and nid not in rz_fixed and nid in connected}
+    if not auto:
+        return supports, set()
+    ud = []
+    for s in supports:
+        ud.append({**s, 'rz': True} if s['node_id'] in auto else s)
+    har = {s['node_id'] for s in supports}
+    ud += [{'node_id': nid, 'ux': False, 'uy': False, 'rz': True}
+           for nid in sorted(auto - har)]
+    return ud, auto
+
+
+def _uden_auto_reaktioner(res, auto):
+    """Den automatiske rotationsfastholdelse er ikke en understoetning."""
+    for nid in auto:
+        r = res['node_reactions'].get(nid)
+        if r is not None:
+            r[2] = 0.0
+    return res
+
+
 def saml_charnierer(elements, supports=(), loads=(), equal_dofs=()):
     """
     Et charnier, hvor ALLE bjælkeender i knuden er udløst, regnet som RFEM gør.
@@ -338,13 +383,24 @@ def validate_model(nodes, elements, supports, loads=None, equal_dofs=None):
                 has_rz[r] = has_rz[c] = True
     loose = sorted(nid for nid, ok in has_rz.items()
                    if not ok and nid not in rz_fixed and nid in connected)
+    # En knude, hvor kun gitterstaenger eller dobbelt-udloeste bjaelker moedes,
+    # har ingen rotationsstivhed. Den var en fejl, og et rent gitter kunne
+    # derfor slet ikke regnes. Rotationen er uden betydning dér -- intet i
+    # knuden kan optage et moment -- saa loeserne fastholder den selv
+    # (fasthold_frie_rotationer). Kun et moment PAA en saadan knude er stadig
+    # en fejl: der er ikke noget, der kan tage det.
     if loose:
-        errors.append(
-            ('Knude ' if len(loose) == 1 else 'Knuderne ') +
-            ', '.join(str(i) for i in loose) +
-            ' har ingen rotationsstivhed: der er kun truss-elementer eller bjælker med '
-            'momentudløsning i begge ender. Fasthold rotationen (rz) i knuden, eller '
-            'lad mindst ét element optage moment der.')
+        momenter = sorted({int(ld['node_id']) for ld in (loads or [])
+                           if ld.get('type') == 'nodal'
+                           and abs(float(ld.get('Mz_kNm') or 0)) > 1e-12
+                           and int(ld['node_id']) in set(loose)})
+        if momenter:
+            errors.append(
+                ('Knude ' if len(momenter) == 1 else 'Knuderne ') +
+                ', '.join(str(i) for i in momenter) +
+                ' har et påsat moment, men kun gitterstænger eller bjælker med '
+                'charnier i knuden, så intet kan optage det. Fjern momentet, '
+                'eller lad en stang være stift forbundet til knuden.')
 
     # ── Rigid-body stability ──────────────────────────────────────────────────
     rank = _rigid_body_rank(supports, dict_nodes, equal_dofs)
@@ -810,7 +866,7 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
     return _loes(nodes, elements, supports, loads, equal_dofs)
 
 
-def solve_opensees(nodes, elements, supports, loads, equal_dofs=None):
+def _solve_opensees_raw(nodes, elements, supports, loads, equal_dofs=None):
     """
     Build and solve a 2D linear elastic frame/truss model.
 
@@ -1194,6 +1250,13 @@ def _indhyl(elements, resultater):
 
 
     return envelope, timber_envelope
+
+
+def solve_opensees(nodes, elements, supports, loads, equal_dofs=None):
+    """Som _solve_opensees_raw, med rotationen fastholdt i rene gitterknuder."""
+    validate_model(nodes, elements, supports, loads, equal_dofs)
+    sup, auto = fasthold_frie_rotationer(nodes, elements, supports, equal_dofs)
+    return _uden_auto_reaktioner(_solve_opensees_raw(nodes, elements, sup, loads, equal_dofs), auto)
 
 
 def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,

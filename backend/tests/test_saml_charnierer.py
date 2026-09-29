@@ -17,9 +17,13 @@ def _els(r1, r2):
     return [dict(SEC, id=1, ni=1, nj=2, release=r1), dict(SEC, id=2, ni=2, nj=3, release=r2)]
 
 
-def test_both_released_is_rejected_without_normalisation():
-    with pytest.raises(ModelError):
-        validate_model(NODES, _els('end', 'start'), SUP, LOADS)
+def test_both_released_without_normalisation_gives_the_same():
+    # Uden normaliseringen har kipknuden ingen rotationsstivhed; loeseren
+    # fastholder den selv, og svaret er det samme som med én udløsning.
+    a = solve(NODES, _els('end', 'start'), SUP, LOADS)
+    b = solve(NODES, _els('none', 'start'), SUP, LOADS)
+    for eid in (1, 2):
+        assert a['ele_forces'][eid] == pytest.approx(b['ele_forces'][eid], abs=1e-9)
 
 
 def test_normalised_equals_single_release():
