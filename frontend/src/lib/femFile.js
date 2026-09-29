@@ -122,6 +122,20 @@ export async function gemPdf(blob, forslag = 'Rammeberegning') {
   return `${forslag}.pdf`
 }
 
+/** Gem en tekstfil (fx CSV) med Windows' gem-dialog eller som download. */
+export async function gemTekst(tekst, forslag, ext = 'csv', navn = 'CSV') {
+  const blob = new Blob(['\ufeff' + tekst], { type: 'text/csv;charset=utf-8' })
+  const T = tauri()
+  if (T) {
+    const sti = await T.dialog.save({ defaultPath: `${forslag}.${ext}`, filters: [{ name: navn, extensions: [ext] }] })
+    if (!sti) return null
+    await T.fs.writeFile(sti, new Uint8Array(await blob.arrayBuffer()))
+    return sti
+  }
+  download(blob, `${forslag}.${ext}`)
+  return `${forslag}.${ext}`
+}
+
 function filnavn(sti) {
   return String(sti).split(/[\\/]/).pop()
 }
@@ -143,6 +157,8 @@ function vaelgFil(accept) {
     inp.type = 'file'
     inp.accept = accept
     inp.onchange = () => resolve(inp.files?.[0] ?? null)
+    // Annulleres dialogen, kom der aldrig et svar, og "Åbn" hang for evigt.
+    inp.oncancel = () => resolve(null)
     inp.click()
   })
 }

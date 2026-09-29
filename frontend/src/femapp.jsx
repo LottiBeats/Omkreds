@@ -20,7 +20,8 @@ import { Button } from './ui/index.js'
 import { TYPE_MAP } from './components/blocks/BlockList.jsx'
 import GeneralFrameFemBlock from './components/blocks/GeneralFrameFemBlock.jsx'
 import { desktopPdf } from './api/client.js'
-import { lavModel, gem, aabn, gemPdf } from './lib/femFile.js'
+import { lavModel, gem, aabn, gemPdf, gemTekst } from './lib/femFile.js'
+import { resultaterSomCsv } from './lib/femCsv.js'
 import { hashCalcInputs, calcRevision, isStaleResult, hasCalcResult } from './lib/calcState.js'
 import useBlockUndo from './hooks/useBlockUndo.js'
 
@@ -100,6 +101,21 @@ function FemApp() {
       vis(`Gemt som ${r.navn}`)
     } catch (e) {
       vis(`Kunne ikke gemme: ${e.message}`, true)
+    }
+  }
+
+  // Resultattabellerne til Excel. Samme krav som PDF'en: et regnet, aktuelt
+  // resultat — ellers er tallene for en anden model end den på skærmen.
+  const lavCsv = async () => {
+    const { meta, blocks } = state.current
+    const fem = blocks.find(b => b.type === 'general_frame_fem')
+    if (!fem || !hasCalcResult(fem)) { vis('Regn modellen (F5), før tabellerne eksporteres.', true); return }
+    if (isStaleResult(fem)) { vis('Modellen er ændret siden sidste beregning — regn igen (F5) først.', true); return }
+    try {
+      const sti = await gemTekst(resultaterSomCsv(fem.data, meta), forslag())
+      if (sti) vis(`Tabeller gemt: ${String(sti).split(/[\\/]/).pop()}`)
+    } catch (e) {
+      vis(`Tabellerne kunne ikke gemmes: ${e.message}`, true)
     }
   }
 
@@ -206,6 +222,7 @@ function FemApp() {
       <Button size="sm" onClick={() => gemFil(true)} title="Gem som (Ctrl+Shift+S)">Gem som…</Button>
       <Button size="sm" onClick={() => setVisSag(v => !v)}>Sag…</Button>
       <Button size="sm" onClick={lavPdf} disabled={travl}>{travl ? 'Laver PDF…' : 'PDF'}</Button>
+      <Button size="sm" onClick={lavCsv} title="Resultattabellerne som CSV til Excel">CSV</Button>
       <span style={s.fil} title={fil.navn ?? 'Ny model'}>{fil.navn ?? 'Ny model'}{aendret ? ' •' : ''}</span>
       <span style={s.skille} />
     </div>

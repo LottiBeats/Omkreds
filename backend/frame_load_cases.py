@@ -344,6 +344,16 @@ def _psi(tilfaelde):
     return _PSI_NATUR.get(tilfaelde['kategori'], (0.7, 0.7, 0.7))
 
 
+def _led(faktor, navn):
+    """Et led i et kombinationsnavn: den samlede faktor med dansk komma.
+
+    Navnet viste før γ og ψ hver for sig ("0.3·1,5·Sne") og uden K_FI, så
+    der stod "1,5·Nyttelast" i CC3, hvor der regnes med 1,65 -- og med
+    punktum og komma i det samme navn. Nu står der, hvad der regnes med.
+    """
+    return f"{faktor:.2f}".replace('.', ',') + '·' + navn
+
+
 def _psi0_medvirkende(ledende, t):
     """
     ψ₀ for et medvirkende tilfaelde, naar ledende er det ledende.
@@ -489,7 +499,7 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
 
     # 6.10a — kun de permanente
     g_a = _GAMMA_G_A * kfi
-    _saml(f'6.10a: {g_a:.2f}G', g_a, {})
+    _saml('6.10a: ' + _led(g_a, 'G'), g_a, {})
 
     # 6.10b — for hvert udvalg, hvert aktivt tilfaelde som ledende
     g_b = _GAMMA_G_B * kfi
@@ -500,14 +510,14 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
             for t in valg:
                 if t['nr'] == ledende['nr']:
                     faktorer[t['nr']] = _GAMMA_Q * kfi
-                    dele.append(f"1,5·{t['navn']}")
+                    dele.append(_led(_GAMMA_Q * kfi, t['navn']))
                 else:
                     psi = _psi0_medvirkende(ledende, t)
                     faktorer[t['nr']] = round(_GAMMA_Q * psi * kfi, 5)
                     if psi > 0:
-                        dele.append(f"{psi:.1f}·1,5·{t['navn']}")
+                        dele.append(_led(_GAMMA_Q * psi * kfi, t['navn']))
             navn = (f"6.10b ({ledende['navn']} leder): "
-                    f'{g_b:.2f}G + ' + ' + '.join(dele))
+                    + _led(g_b, 'G') + ' + ' + ' + '.join(dele))
             _saml(navn, g_b, faktorer)
 
             # Den samme kombination med egenlasten som gunstig.
@@ -526,9 +536,11 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
             #
             # Uden permanente tilfaelde ville tvillingen vaere en noejagtig
             # kopi -- der er ingen G at saette en anden faktor paa.
-            if gunstig_egenlast and permanente:
+            # I CC1 er 1,0·K_FI = 0,90 -- det samme som den gunstige, og så
+            # er tvillingen en kopi, der blev regnet og vist to gange.
+            if gunstig_egenlast and permanente and abs(g_b - _GAMMA_G_INF_B) > 1e-9:
                 navn_g = (f"6.10b gunstig G ({ledende['navn']} leder): "
-                          f'{_GAMMA_G_INF_B:.2f}G + ' + ' + '.join(dele))
+                          + _led(_GAMMA_G_INF_B, 'G') + ' + ' + ' + '.join(dele))
                 _saml(navn_g, _GAMMA_G_INF_B, dict(faktorer))
 
             # k_mod-varianter (EN 1995-1-1 §3.1.3).
@@ -572,12 +584,7 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                             continue
                         skaaret[nr] = f
                         if abs(f) > 1e-10:
-                            if nr == ledende['nr']:
-                                beholdt_dele.append(f"1,5\u00b7{pr_nr[nr]['navn']}")
-                            else:
-                                psi = _psi0_medvirkende(ledende, pr_nr[nr])
-                                beholdt_dele.append(
-                                    f"{psi:.1f}\u00b71,5\u00b7{pr_nr[nr]['navn']}")
+                            beholdt_dele.append(_led(f, pr_nr[nr]['navn']))
 
                     # Den resulterende varighed: den korteste af dem, der er
                     # tilbage.
@@ -591,13 +598,13 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                     maerkat = _VARIGHED_DK.get(ny_varighed, ny_varighed)
 
                     navn_k = (f"6.10b ({ledende['navn']} leder, k_mod "
-                              f"{maerkat}): {g_b:.2f}G + "
+                              f"{maerkat}): " + _led(g_b, 'G') + ' + '
                               + ' + '.join(beholdt_dele))
                     _saml(navn_k, g_b, skaaret)
-                    if gunstig_egenlast and permanente:
+                    if gunstig_egenlast and permanente and abs(g_b - _GAMMA_G_INF_B) > 1e-9:
                         navn_kg = (f"6.10b gunstig G ({ledende['navn']} leder, "
                                    f"k_mod {maerkat}): "
-                                   f"{_GAMMA_G_INF_B:.2f}G + "
+                                   + _led(_GAMMA_G_INF_B, 'G') + ' + '
                                    + ' + '.join(beholdt_dele))
                         _saml(navn_kg, _GAMMA_G_INF_B, dict(skaaret))
 
@@ -614,17 +621,17 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                 for t in valg:
                     if t['nr'] == ledende['nr']:
                         faktorer[t['nr']] = 1.0
-                        dele.append(f"{t['navn']}")
+                        dele.append(_led(1.0, t['navn']))
                     else:
                         psi0 = _psi(t)[0]
                         faktorer[t['nr']] = psi0
                         if psi0 > 0:
-                            dele.append(f"{psi0:.1f}·{t['navn']}")
-                _saml(f"SLS kar. ({ledende['navn']} leder): 1,0G + " + ' + '.join(dele),
+                            dele.append(_led(psi0, t['navn']))
+                _saml(f"SLS kar. ({ledende['navn']} leder): " + _led(1.0, 'G') + ' + ' + ' + '.join(dele),
                       1.0, faktorer, situation='sls_karakteristisk')
             faktorer = {t['nr']: _psi(t)[2] for t in valg}
-            dele = [f"{f:.1f}·{pr_nr[nr]['navn']}" for nr, f in faktorer.items() if f > 0]
-            _saml('SLS kvasi: 1,0G' + (' + ' + ' + '.join(dele) if dele else ''),
+            dele = [_led(f, pr_nr[nr]['navn']) for nr, f in faktorer.items() if f > 0]
+            _saml('SLS kvasi: ' + _led(1.0, 'G') + (' + ' + ' + '.join(dele) if dele else ''),
                   1.0, faktorer, situation='sls_kvasi')
 
     return combos

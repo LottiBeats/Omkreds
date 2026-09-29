@@ -222,3 +222,78 @@ export function bounds(m) {
   const xs = m.nodes.map(n => n.x), ys = m.nodes.map(n => n.y)
   return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
 }
+
+/**
+ * Smelt knude `fra` sammen med knude `til`: alt, der pegede på `fra`, peger
+ * nu på `til`. En knude trukket oven i en anden gav før to knuder i det samme
+ * punkt, der ikke var forbundet, og ingen advarsel — konstruktionen var delt
+ * i to uden at nogen kunne se det. Stænger mellem de to (længde nul) fjernes
+ * med deres laster; understøtninger lægges sammen (den stiveste pr. retning).
+ */
+export function mergeNodes(m, fra, til) {
+  if (fra === til) return m
+  const swap = (id) => (id === fra ? til : id)
+  const elements0 = m.elements.map(e => ({ ...e, ni: swap(e.ni), nj: swap(e.nj) }))
+  const nul = new Set(elements0.filter(e => e.ni === e.nj).map(e => e.id))
+  const elements = elements0.filter(e => !nul.has(e.id))
+  const members = new Set(elements.map(e => e.member_id))
+  const loads = m.loads
+    .map(l => (l.type === 'nodal' && l.node_id === fra ? { ...l, node_id: til } : l))
+    .filter(l => {
+      if (l.type === 'nodal') return true
+      if ((l.target ?? 'elem') === 'member') return members.has(l.member_id)
+      return !nul.has(l.elem_id)
+    })
+  const sFra = m.supports.find(s => s.node_id === fra)
+  const sTil = m.supports.find(s => s.node_id === til)
+  let supports = m.supports.filter(s => s.node_id !== fra && s.node_id !== til)
+  if (sFra || sTil) {
+    supports = [...supports, {
+      ...(sTil ?? sFra), node_id: til,
+      ux: !!(sFra?.ux || sTil?.ux), uy: !!(sFra?.uy || sTil?.uy), rz: !!(sFra?.rz || sTil?.rz),
+    }]
+  }
+  const equal_dofs = (m.equal_dofs ?? [])
+    .map(q => ({ ...q, r_node: swap(q.r_node), c_node: swap(q.c_node) }))
+    .filter(q => q.r_node !== q.c_node)
+  return { ...m, nodes: m.nodes.filter(n => n.id !== fra), elements, loads, supports, equal_dofs }
+}
+
+/**
+ * Steder, hvor tegningen ser forbundet ud, men modellen ikke er det:
+ * to stænger, der krydser uden en fælles knude, og en knude, der ligger på en
+ * stang uden at være en af dens ender. Begge regnes som adskilte, og intet i
+ * resultatet siger det. Returnerer korte tekster til en advarsel.
+ */
+export function uforbundne(m) {
+  const nb = Object.fromEntries(m.nodes.map(n => [n.id, n]))
+  const seg = m.elements.map(e => ({ e, a: nb[e.ni], b: nb[e.nj] })).filter(s => s.a && s.b)
+  const ud = []
+  const tol = 1e-6
+  // Knude på en stang
+  for (const s of seg) {
+    const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y, L2 = dx * dx + dy * dy
+    if (L2 < tol) continue
+    for (const n of m.nodes) {
+      if (n.id === s.e.ni || n.id === s.e.nj) continue
+      const t = ((n.x - s.a.x) * dx + (n.y - s.a.y) * dy) / L2
+      if (t <= 1e-6 || t >= 1 - 1e-6) continue
+      const px = s.a.x + t * dx, py = s.a.y + t * dy
+      if (Math.hypot(n.x - px, n.y - py) < 1e-4) ud.push(`Knude ${n.id} ligger på stang ${s.e.id} uden at være forbundet med den`)
+    }
+  }
+  // Krydsende stænger
+  for (let i = 0; i < seg.length; i++) {
+    for (let j = i + 1; j < seg.length; j++) {
+      const p = seg[i], q = seg[j]
+      if ([p.e.ni, p.e.nj].some(x => x === q.e.ni || x === q.e.nj)) continue
+      const r = { x: p.b.x - p.a.x, y: p.b.y - p.a.y }, sv = { x: q.b.x - q.a.x, y: q.b.y - q.a.y }
+      const den = r.x * sv.y - r.y * sv.x
+      if (Math.abs(den) < 1e-12) continue
+      const qp = { x: q.a.x - p.a.x, y: q.a.y - p.a.y }
+      const t = (qp.x * sv.y - qp.y * sv.x) / den, u = (qp.x * r.y - qp.y * r.x) / den
+      if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6) ud.push(`Stang ${p.e.id} og ${q.e.id} krydser uden en fælles knude`)
+    }
+  }
+  return ud
+}

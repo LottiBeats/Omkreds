@@ -25,7 +25,7 @@ import SectionView from './SectionView.jsx'
 import {
   pick, addNode, addElement, splitElement, projectOnElement, toggleRelease,
   toggleNodeHinge, hasNodeHinge, cycleSupport, setSupport, supportType, SUPPORT_TYPES,
-  deleteSelection, updateNode, updateElements, elementLength, bounds, round,
+  deleteSelection, updateNode, updateElements, elementLength, bounds, round, mergeNodes, uforbundne,
 } from './femModel.js'
 import { GENERATORS } from './femGenerators.js'
 import { expandLoads, loadSpan, isPartial, flipElements, memberChain } from './femLoads.js'
@@ -726,8 +726,12 @@ export default function FemWorkspace({
 
   function onPointerUp() {
     if (drag?.kind === 'node' && drag.moved && dragModel) {
-      // Moving a node onto another merges nothing — refuse silently, keep the move otherwise
-      commit(dragModel)
+      // Sluppet oven på en anden knude: de to bliver én, så stængerne er
+      // forbundet. Før blev de liggende som to uforbundne knuder i samme punkt.
+      const n = dragModel.nodes.find(x => x.id === drag.id)
+      const anden = n && dragModel.nodes.find(x => x.id !== n.id && Math.hypot(x.x - n.x, x.y - n.y) < 1e-6)
+      commit(anden ? mergeNodes(dragModel, n.id, anden.id) : dragModel)
+      if (anden) setSel([{ kind: 'node', id: anden.id }])
     }
     setDrag(null)
     setDragModel(null)
@@ -813,6 +817,8 @@ export default function FemWorkspace({
     })
     if (activeLc === nr) setActiveLc(model.load_cases.find(x => x.nr !== nr)?.nr ?? null)
   }
+  // Tegningen ser forbundet ud, modellen er det ikke.
+  const adskilte = useMemo(() => (model.elements.length <= 400 ? uforbundne(model) : []), [model])
   // Laster uden tilfælde regnes ikke med, når der findes tilfælde.
   const udenTilfaelde = model.load_cases.length > 0
     ? model.loads.filter(l => l.type !== 'combo_udl' && l.lc == null).length
@@ -1825,6 +1831,12 @@ export default function FemWorkspace({
         ))}
         <button className="fem-nav-i" onClick={() => setTab('nodes')}>Understøtninger<small>{counts.supports}</small></button>
         <button className="fem-nav-i" onClick={() => setTab('elements')}>Led<small>{Object.keys(members).length}</small></button>
+        {adskilte.length > 0 && (
+          <div className="fem-nav-i" style={{ color: '#b45309', whiteSpace: 'normal', fontSize: 12 }}
+            title={adskilte.join('\n') + '\n\nSæt en knude i krydset (Knude-værktøjet på stangen), eller træk knuden oven i den anden.'}>
+            ⚠ {adskilte.length === 1 ? adskilte[0] : `${adskilte.length} steder ser forbundne ud, men er det ikke`}
+          </div>
+        )}
         <button className="fem-nav-i" onClick={() => setIndstOpen(true)} title="Konsekvensklasse, anvendelsesklasse, nedbøjningsgrænser, egenvægt">
           Indstillinger…<small>{data.consequence_class ?? 'CC2'}</small>
         </button>

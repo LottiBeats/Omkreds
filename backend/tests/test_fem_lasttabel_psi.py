@@ -150,7 +150,7 @@ def test_egne_kombinationer():
     r = c.post('/api/calc/general-frame-fem/kombinationer',
                json=dict(loads=L, load_cases=lc, egne_kombinationer=egne)).json()
     navne = [k['name'] for k in r['kombinationer']]
-    assert 'Egen: Montage' in navne and '6.10a: 1.20G' in navne
+    assert 'Egen: Montage' in navne and '6.10a: 1,20·G' in navne
     kontrol = next(k for k in r['kombinationer'] if k['name'] == 'Egen: Kontrol')
     assert kontrol['situation'] == 'sls_karakteristisk' and kontrol['governing_duration'] == 'permanent'
 
