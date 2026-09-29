@@ -1568,6 +1568,8 @@ class TimberColumnInput(BaseModel):
     gamma_M:                 float | None = None   # None: DK NA efter materialet
     effective_length_factor: float = 1.0
     l_ef_ltb_m:              float | None = None
+    # Knaeklaengde om den svage akse, hvis den er en anden (m). None: length_m.
+    length_z_m:              float | None = None
     # Afstivet om den svage akse (fx spær med lægter/krydsfiner): så
     # eftervises udbøjning kun om den stærke akse. Standard er som før: begge.
     weak_axis_restrained:    bool = False
@@ -1620,6 +1622,8 @@ def calc_timber_column(data: TimberColumnInput):
         )
         if data.l_ef_ltb_m is not None:
             kwargs["l_ef_ltb"] = data.l_ef_ltb_m * m
+        if data.length_z_m is not None:
+            kwargs["length_2"] = data.length_z_m * m
         if data.weak_axis_restrained:
             kwargs["check_buckling_axis_2"] = False
 
@@ -2738,6 +2742,13 @@ class GenFrameEqualDOFIn(BaseModel):
     c_node: int            # constrained node
     dofs:   list[int] = [1, 2]  # DOFs to tie: 1=ux, 2=uy, 3=rz
 
+class GenFrameEgenKombiIn(BaseModel):
+    """En egen kombination: navn, situation og faktor pr. lasttilfaelde."""
+    navn:      str = ""
+    situation: str = "uls"      # uls | sls_karakteristisk | sls_hyppig | sls_kvasi
+    faktorer:  dict[str, float] = {}
+
+
 class GenFrameFemInput(BaseModel):
     title:        str                       = "2D Frame FEM"
     nodes:        list[GenFrameNodeIn]      = []
@@ -2830,6 +2841,10 @@ class GenFrameFemInput(BaseModel):
     # kombinationen koeres. Den vej er den rigtige: en glemt udelukkelse
     # giver en eftervisning for meget, ikke en for lidt.
     combo_fravalg: list[str] = []
+    # Brugerens egne kombinationer (kræver lasttilfælde), og om de automatiske
+    # skal slås fra, så kun de egne regnes.
+    egne_kombinationer: list[GenFrameEgenKombiIn] = []
+    kun_egne:      bool = False
 
 
 @protected.post("/calc/general-frame-fem/preview", tags=["Calculations"])
@@ -2981,7 +2996,7 @@ def overlay_general_frame_fem(data: GenFrameOverlayInput):
 
 def _kombiner_modellens_laster(loads, load_cases, method,
                                consequence_class, gunstig_egenlast=True,
-                               kmod_varianter=True):
+                               kmod_varianter=True, egne=None, kun_egne=False):
     """
     Modellens kombinationer -- uanset hvilken vej lasterne blev identificeret.
 
@@ -2994,10 +3009,15 @@ def _kombiner_modellens_laster(loads, load_cases, method,
     """
     from frame_load_cases import (kombinationer_af_tilfaelde,
                                   kombinationer_fra_laster)
+    if egne and not load_cases:
+        raise ValueError("Egne kombinationer kræver lasttilfælde: lav "
+                         "lasttilfælde og læg lasterne i dem.")
     if load_cases:
-        return kombinationer_af_tilfaelde(
+        from frame_load_cases import egne_kombinationer
+        auto = [] if (kun_egne and egne) else kombinationer_af_tilfaelde(
             load_cases, loads, method, consequence_class, gunstig_egenlast,
             kmod_varianter=kmod_varianter, anvendelse=True)
+        return auto + egne_kombinationer(load_cases, loads, egne or [])
     return kombinationer_fra_laster(
         loads, method, consequence_class, gunstig_egenlast=gunstig_egenlast)
 
@@ -3006,6 +3026,8 @@ class GenFrameKombiInput(BaseModel):
     """Kun det, kombinationerne dannes af: lasternes virkning og de valg,
     der styrer partialkoefficienterne. Ingen model, ingen loeser."""
     loads:             list[GenFrameLoadIn] = []
+    egne_kombinationer: list[GenFrameEgenKombiIn] = []
+    kun_egne:          bool = False
     load_cases:        list[GenFrameLoadCaseIn] = []
     method:            str = "6.10ab"
     consequence_class: str = "CC2"
@@ -3035,16 +3057,77 @@ def kombinationer_general_frame_fem(data: GenFrameKombiInput):
             data.method or '6.10ab',
             data.consequence_class or 'CC2',
             data.gunstig_egenlast,
-            kmod_varianter=data.kmod_varianter)
+            kmod_varianter=data.kmod_varianter,
+            egne=[k.model_dump() for k in data.egne_kombinationer],
+            kun_egne=data.kun_egne)
         return {"kombinationer": [
             {'name':               c['name'],
              'factor_table':       c['factor_table'],
              'aktive':             c['aktive'],
-             'governing_duration': c['governing_duration']}
+             'governing_duration': c['governing_duration'],
+             'situation':          c.get('situation'),
+             'egen':               bool(c.get('egen'))}
             for c in combos]}
     except Exception as exc:
         raise HTTPException(status_code=422,
                             detail=str(exc) + "\n" + traceback.format_exc())
+
+
+@protected.get("/sections/properties", tags=["Calculations"])
+def section_properties(material: str, section: str, grade: str | None = None):
+    """
+    Maal og tvaersnitskonstanter til tvaersnitsvisningen i modelvinduet.
+
+    Staal: h, b, t_w, t_f, r fra profilkataloget. Trae: b x h. Akse y er den
+    staerke (boejning i rammens plan), z den svage.
+    """
+    from section_resolver import resolve_section, parse_rectangle_mm
+    mat = material.strip().lower()
+    try:
+        props = resolve_section(mat, section, grade)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc).strip('"\''))
+    if props is None:
+        raise HTTPException(status_code=422, detail="Ukendt materiale.")
+    if mat in ('steel', 'stål', 'staal'):
+        from section_catalog import get_steel_profile
+        p = get_steel_profile(section)
+        h, b, tw, tf = p['h_mm'], p['b_mm'], p['tw_mm'], p['tf_mm']
+        hw = max(h - 2 * tf, 0.0)
+        Iz = (2 * tf * b ** 3 / 12 + hw * tw ** 3 / 12) / 1e4       # cm4
+        Iy = float(p['Iy_cm4'])
+        A = float(props['A_cm2'])
+        return {
+            'form': 'I', 'betegnelse': p['designation'], 'grade': grade or 'S355',
+            'h_mm': h, 'b_mm': b, 'tw_mm': tw, 'tf_mm': tf, 'r_mm': p.get('r_mm'),
+            'A_cm2': round(A, 2), 'Iy_cm4': round(Iy, 1), 'Iz_cm4': round(Iz, 1),
+            'Wel_y_cm3': round(Iy / (h / 20.0), 1), 'Wpl_y_cm3': round(float(p['Wply_cm3']), 1),
+            'Wel_z_cm3': round(Iz / (b / 20.0), 1),
+            'i_y_mm': round(math.sqrt(Iy / A) * 10, 1), 'i_z_mm': round(math.sqrt(Iz / A) * 10, 1),
+            'vaegt_kg_m': round(float(p.get('weight_kg_per_m') or A * 0.785), 1),
+            'E_GPa': props['E_GPa'],
+        }
+    b, h = parse_rectangle_mm(section)
+    A = b * h / 100.0
+    Iy = b * h ** 3 / 12 / 1e4
+    Iz = h * b ** 3 / 12 / 1e4
+    # rho_mean efter EN 338 tabel 1 / EN 14080 tabel 5 -- kun til visning.
+    _RHO = {'C14': 350, 'C16': 370, 'C18': 380, 'C20': 390, 'C22': 410,
+            'C24': 420, 'C27': 450, 'C30': 460, 'C35': 480, 'C40': 500,
+            'GL20H': 370, 'GL22H': 410, 'GL24H': 420, 'GL26H': 440,
+            'GL28H': 460, 'GL30H': 480, 'GL32H': 490,
+            'GL20C': 390, 'GL22C': 390, 'GL24C': 400, 'GL26C': 410,
+            'GL28C': 420, 'GL30C': 430, 'GL32C': 440}
+    rho = _RHO.get(str(grade or 'C24').strip().upper().replace(' ', ''))
+    return {
+        'form': 'rekt', 'betegnelse': f"{b:.0f}x{h:.0f}", 'grade': grade or 'C24',
+        'h_mm': h, 'b_mm': b,
+        'A_cm2': round(A, 2), 'Iy_cm4': round(Iy, 1), 'Iz_cm4': round(Iz, 1),
+        'Wel_y_cm3': round(b * h ** 2 / 6 / 1e3, 1), 'Wel_z_cm3': round(h * b ** 2 / 6 / 1e3, 1),
+        'i_y_mm': round(h / math.sqrt(12), 1), 'i_z_mm': round(b / math.sqrt(12), 1),
+        'vaegt_kg_m': round(A * 1e-4 * rho, 1) if rho else None,
+        'E_GPa': round(float(props['E_GPa']), 2),
+    }
 
 
 @protected.post("/calc/general-frame-fem", tags=["Calculations"])
@@ -3123,7 +3206,9 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 data.method or '6.10ab',
                 data.consequence_class or 'CC2',
                 data.gunstig_egenlast,
-                kmod_varianter=data.kmod_varianter)
+                kmod_varianter=data.kmod_varianter,
+                egne=[k.model_dump() for k in data.egne_kombinationer],
+                kun_egne=data.kun_egne)
             if egne:
                 combos = egne
                 # Lasterne ligger nu inde i kombinationerne. Blev de ogsaa

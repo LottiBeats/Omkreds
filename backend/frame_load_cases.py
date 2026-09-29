@@ -631,6 +631,65 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
 
 
 # ── Kombinationerne fra lastmodulet, paasat modellen ─────────────────────────
+_EGNE_SITUATIONER = {'uls': None, 'sls_karakteristisk': 'sls_karakteristisk',
+                     'sls_hyppig': 'sls_hyppig', 'sls_kvasi': 'sls_kvasi'}
+
+
+def egne_kombinationer(load_cases, loads, egne):
+    """
+    Brugerens egne kombinationer, som i FEM-Design og RFEM: et navn, en
+    dimensioneringssituation og en faktor pr. lasttilfaelde.
+
+    egne: [{navn, situation ('uls' | 'sls_karakteristisk' | 'sls_hyppig' |
+    'sls_kvasi'), faktorer: {lasttilfaeldets nr: faktor}}]. Faktoren er den
+    samlede (fx 1,5 eller 0,5·1,5 = 0,75) -- der laegges intet til.
+
+    Lastvarigheden er den korteste blandt de variable tilfaelde med en faktor
+    forskellig fra nul, som i de automatiske kombinationer.
+    """
+    tilfaelde = _normaliser_tilfaelde(load_cases)
+    pr_nr = {t['nr']: t for t in tilfaelde}
+    pr_tilfaelde = {}
+    for ld in loads:
+        if ld.get('lc') in pr_nr:
+            pr_tilfaelde.setdefault(ld['lc'], []).append(ld)
+    ud = []
+    for i, k in enumerate(egne or []):
+        navn = (k.get('navn') or '').strip() or f'Kombination {i + 1}'
+        sit = k.get('situation') or 'uls'
+        if sit not in _EGNE_SITUATIONER:
+            raise ValueError(f'Ukendt situation "{sit}" i kombinationen "{navn}".')
+        laster, tabel, aktive, varigheder = [], {}, [], []
+        for nr, f in (k.get('faktorer') or {}).items():
+            try:
+                nr, f = int(nr), float(f)
+            except (TypeError, ValueError):
+                continue
+            t = pr_nr.get(nr)
+            if t is None or abs(f) < 1e-12:
+                continue
+            tabel[t['navn']] = round(f, 4)
+            laster += [_scale_load(l, f) for l in pr_tilfaelde.get(nr, [])]
+            if t['kategori'] != 'permanent':
+                aktive.append(t['navn'])
+                varigheder.append(_TYPE_DURATION.get(t['kategori'], 'medium'))
+        if not tabel:
+            raise ValueError(f'Kombinationen "{navn}" har ingen faktorer.')
+        governing = (max(varigheder, key=lambda d: _DURATION_RANK.get(d, 0))
+                     if varigheder else 'permanent')
+        kombi = {'name': f'Egen: {navn}', 'loads': laster, 'factor_table': tabel,
+                 'governing_duration': governing, 'aktive': aktive, 'egen': True}
+        if _EGNE_SITUATIONER[sit]:
+            kombi['situation'] = _EGNE_SITUATIONER[sit]
+        ud.append(kombi)
+    navne = [k['name'] for k in ud]
+    dobbelt = {n for n in navne if navne.count(n) > 1}
+    if dobbelt:
+        raise ValueError('To egne kombinationer hedder det samme: '
+                         + ', '.join(sorted(dobbelt)) + '.')
+    return ud
+
+
 def kombinationer_fra_lastmodul(loads, kombinationer, lasttilfaelde,
                                 situationer=None):
     """

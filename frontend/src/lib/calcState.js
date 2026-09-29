@@ -31,7 +31,9 @@ const CALC_REVISION = {
   // rapporten med værdierne (før 0,00).
   // 6 — 2026-09-28: med lasttilfælde blev dellaster og trapezlaster regnet
   // som konstante over hele stangen med startværdien.
-  general_frame_fem: 6,
+  // 7 — 2026-09-29: træsøjler i rammen eftervises om den stærke akse med
+  // L_cr og om den svage med afstivningens længde (før den største om begge).
+  general_frame_fem: 7,
   // 2: den lukkede form regnede 1,35·g + 1,5·q med den varighed brugeren
   // valgte. 1,35 findes ikke i DK NA, og én fast kombination kan ikke være
   // dimensionsgivende for både et let og et tungt tag — k_mod afgør hvilken

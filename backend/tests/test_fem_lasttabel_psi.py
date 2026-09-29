@@ -137,3 +137,49 @@ def test_dellast_og_trapezlast_med_lasttilfaelde():
         assert abs(sum(v['Fy_kN'] for v in R.values()) - 1.5 * 13.5) < 1e-6
         # Tyngdepunkt 1 + 3·(3 + 2·6)/(3·(3 + 6)) = 2,667 m fra venstre.
         assert abs(R['1']['Fy_kN'] - 20.25 * (6 - 8 / 3) / 6) < 1e-6
+
+
+def test_egne_kombinationer():
+    c = _klient()
+    lc = [dict(nr=1, navn='G', kategori='permanent'),
+          dict(nr=2, navn='Q', kategori='imposed', nyttelastkategori='A')]
+    L = [dict(type='udl', elem_id=1, direction='vertical', value_kNm=10, lc=1),
+         dict(type='udl', elem_id=1, direction='vertical', value_kNm=10, lc=2)]
+    egne = [dict(navn='Montage', situation='uls', faktorer={'1': 1.0, '2': 2.0}),
+            dict(navn='Kontrol', situation='sls_karakteristisk', faktorer={'1': 1.0})]
+    r = c.post('/api/calc/general-frame-fem/kombinationer',
+               json=dict(loads=L, load_cases=lc, egne_kombinationer=egne)).json()
+    navne = [k['name'] for k in r['kombinationer']]
+    assert 'Egen: Montage' in navne and '6.10a: 1.20G' in navne
+    kontrol = next(k for k in r['kombinationer'] if k['name'] == 'Egen: Kontrol')
+    assert kontrol['situation'] == 'sls_karakteristisk' and kontrol['governing_duration'] == 'permanent'
+
+    m = dict(nodes=[dict(id=1, x=0, y=0), dict(id=2, x=6, y=0)], elements=[dict(id=1, ni=1, nj=2)],
+             supports=[dict(node_id=1, ux=True, uy=True, rz=False),
+                       dict(node_id=2, ux=False, uy=True, rz=False)])
+    j = c.post('/api/calc/general-frame-fem', json={**m, 'loads': L, 'load_cases': lc,
+               'egne_kombinationer': egne[:1], 'kun_egne': True}).json()
+    assert j['_summary']['combinations'] == ['Egen: Montage']
+    assert abs(j['_summary']['max_moment_kNm'] - (10 + 20) * 36 / 8) < 1e-6
+
+    # Uden lasttilfaelde giver egne kombinationer ingen mening.
+    r = c.post('/api/calc/general-frame-fem', json={**m, 'loads': [dict(
+        type='udl', elem_id=1, direction='vertical', value_kNm=10)], 'egne_kombinationer': egne[:1]})
+    assert r.status_code == 422 and 'kræver lasttilfælde' in r.json()['detail']
+
+
+def test_traesoejle_med_egen_knaeklaengde_om_svag_akse():
+    c = _klient()
+    base = dict(length_m=3.0, N_Ed_kN=60, M_Ed_kNm=0, b_mm=90, h_mm=270, timber_grade='GL24h')
+    kort = c.post('/api/calc/timber-column', json=base).json()
+    lang = c.post('/api/calc/timber-column', json={**base, 'length_z_m': 6.0}).json()
+    tekst = lambda r: ' '.join(str(b) for b in r if isinstance(b, dict) and 'l_eff,2' in str(b))
+    assert '6' in tekst(lang) and tekst(kort) != tekst(lang)
+
+
+def test_tvaersnitskonstanter():
+    c = _klient()
+    s = c.get('/api/sections/properties?material=steel&section=IPE300&grade=S355').json()
+    assert s['h_mm'] == 300 and s['Iy_cm4'] == 8356 and abs(s['Iz_cm4'] - 604) < 5
+    t = c.get('/api/sections/properties?material=timber&section=45x195&grade=C24').json()
+    assert t['Iy_cm4'] == round(45 * 195 ** 3 / 12 / 1e4, 1) and t['vaegt_kg_m'] == round(87.75e-4 * 420, 1)

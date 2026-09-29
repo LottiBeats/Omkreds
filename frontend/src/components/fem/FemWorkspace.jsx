@@ -21,6 +21,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Dialog } from '../../ui/index.js'
 import CalcResultView from '../CalcResultView.jsx'
+import SectionView from './SectionView.jsx'
 import {
   pick, addNode, addElement, splitElement, projectOnElement, toggleRelease,
   toggleNodeHinge, hasNodeHinge, cycleSupport, setSupport, supportType, SUPPORT_TYPES,
@@ -199,6 +200,94 @@ function F({ label, children }) {
   return <label className="fem-f"><span>{label}</span>{children}</label>
 }
 
+// ── Lastkombinationer ─────────────────────────────────────────────────────────
+
+const SITUATIONER = [
+  ['uls', 'Brud (STR)'],
+  ['sls_karakteristisk', 'Anvendelse, karakteristisk'],
+  ['sls_hyppig', 'Anvendelse, hyppig'],
+  ['sls_kvasi', 'Anvendelse, kvasipermanent'],
+]
+
+/**
+ * De automatiske kombinationer efter DS/EN 1990 DK NA, der kan fravælges, og
+ * brugerens egne med en faktor pr. lasttilfælde, som i FEM-Design og RFEM.
+ */
+function KombinationsDialog({ model, data, kombinationer, onModelChange, onClose }) {
+  const tilf = model.load_cases ?? []
+  const egne = data.egne_kombinationer ?? []
+  const kunEgne = !!data.kun_egne
+  const saetEgne = (liste) => onModelChange({ egne_kombinationer: liste })
+  const ny = () => {
+    const faktorer = {}
+    for (const t of tilf) faktorer[String(t.nr)] = t.kategori === 'permanent' ? 1.0 : 1.5
+    saetEgne([...egne, { navn: `Kombination ${egne.length + 1}`, situation: 'uls', faktorer }])
+  }
+  const ret = (i, patch) => saetEgne(egne.map((k, j) => (j === i ? { ...k, ...patch } : k)))
+  const auto = (kombinationer.tabel ?? []).filter(k => !k.egen)
+  const fravalg = kombinationer.fravalg ?? []
+  return (
+    <Dialog title="Lastkombinationer" width={860} onClose={onClose} actions={<Button variant="primary" onClick={onClose}>Luk</Button>}>
+      <div style={{ maxHeight: '70vh', overflow: 'auto', fontSize: 13 }}>
+        <h4 style={{ margin: '0 0 6px' }}>Egne kombinationer</h4>
+        <p style={{ color: 'var(--muted)', fontSize: 12, margin: '0 0 8px' }}>
+          Faktoren er den samlede (fx 1,5 eller 0,5 · 1,5 = 0,75). K<sub>FI</sub> og ψ lægges ikke til. Lastvarigheden er den korteste blandt de variable tilfælde, der er med.
+        </p>
+        {egne.length > 0 && (
+          <div className="fem-tbl" style={{ marginBottom: 8 }}><table>
+            <thead><tr>
+              <th>Navn</th><th>Situation</th>
+              {tilf.map(t => <th key={t.nr} title={t.navn}>LC{t.nr}<br /><small style={{ fontWeight: 400 }}>{t.navn}</small></th>)}
+              <th />
+            </tr></thead>
+            <tbody>
+              {egne.map((k, i) => (
+                <tr key={i}>
+                  <td><input value={k.navn ?? ''} onChange={e => ret(i, { navn: e.target.value })} style={{ width: 150 }} aria-label="Navn" /></td>
+                  <td>
+                    <select value={k.situation ?? 'uls'} onChange={e => ret(i, { situation: e.target.value })}>
+                      {SITUATIONER.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </td>
+                  {tilf.map(t => (
+                    <td key={t.nr} style={{ width: 70 }}>
+                      <Num value={(k.faktorer ?? {})[String(t.nr)] ?? 0} width={56}
+                        onCommit={v => ret(i, { faktorer: { ...(k.faktorer ?? {}), [String(t.nr)]: v ?? 0 } })} />
+                    </td>
+                  ))}
+                  <td><button onClick={() => saetEgne(egne.filter((_, j) => j !== i))} title="Slet kombinationen" style={{ border: 0, background: 'none' }}>✕</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        )}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14 }}>
+          <Button size="sm" onClick={ny}>+ Ny kombination</Button>
+          <label className="fem-check"><input type="checkbox" checked={kunEgne} disabled={!egne.length}
+            onChange={e => onModelChange({ kun_egne: e.target.checked })} /> Regn kun med de egne (slå de automatiske fra)</label>
+        </div>
+
+        <h4 style={{ margin: '0 0 6px', opacity: kunEgne ? 0.5 : 1 }}>Automatiske — DS/EN 1990 DK NA</h4>
+        {kombinationer.fejl && <p style={{ color: 'var(--fail, #b91c1c)' }}>{kombinationer.fejl}</p>}
+        <div className="fem-tbl" style={{ opacity: kunEgne ? 0.5 : 1 }}><table>
+          <thead><tr><th style={{ width: 30 }}>Med</th><th>Kombination</th><th>Situation</th><th>Varighed</th></tr></thead>
+          <tbody>
+            {auto.map(k => (
+              <tr key={k.name}>
+                <td><input type="checkbox" disabled={kunEgne} checked={!fravalg.includes(k.name)} onChange={() => kombinationer.toggle(k.name)} aria-label={`Medtag ${k.name}`} /></td>
+                <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{k.name}</td>
+                <td>{SITUATION_LABEL[k.situation] ?? 'Brud (STR)'}</td>
+                <td>{k.governing_duration}</td>
+              </tr>
+            ))}
+            {!auto.length && !kombinationer.fejl && <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>{kunEgne ? 'Slået fra.' : 'Henter…'}</td></tr>}
+          </tbody>
+        </table></div>
+      </div>
+    </Dialog>
+  )
+}
+
 // ── Generator dialog ──────────────────────────────────────────────────────────
 
 function GeneratorDialog({ hasModel, onApply, onClose }) {
@@ -309,7 +398,7 @@ function SupportGlyph({ x, y, type }) {
 
 export default function FemWorkspace({
   title, data, onModelChange, onClose, onRun, running, error, stale,
-  memberChecks, reactions, hasResult, summary,
+  memberChecks, reactions, hasResult, summary, kombinationer,
   actions = null,   // ekstra knapper i topbjælken (det selvstændige program)
 }) {
   const model = useMemo(() => pick(data), [data])
@@ -323,6 +412,8 @@ export default function FemWorkspace({
   const [tab, setTab] = useState('nodes')
   const [genOpen, setGenOpen] = useState(false)
   const [showIds, setShowIds] = useState(true)
+  const [showSec, setShowSec] = useState(false)
+  const [kombiOpen, setKombiOpen] = useState(false)
   const [view, setView] = useState({ cx: 3, cy: 1.5, scale: 60 })
   const [size, setSize] = useState({ w: 800, h: 500 })
   const [drag, setDrag] = useState(null)               // node drag or pan
@@ -835,6 +926,17 @@ export default function FemWorkspace({
             fill={showResults && c ? etaColor(c.eta) : '#78716c'} fontFamily="var(--font-mono)" fontWeight={showResults ? 600 : 400}>{label}</text>)
         }
       }
+      // Tværsnittet på leddets midterste element, på den anden side af stangen.
+      if (showSec && el.section) {
+        const group = members[el.member_id] ?? [el]
+        if (group[Math.floor(group.length / 2)]?.id === el.id) {
+          const mx = (ax + bx) / 2, my = (ay + by) / 2
+          const vinkel = Math.atan2(by - ay, bx - ax) * 180 / Math.PI
+          const rot = vinkel > 90 || vinkel < -90 ? vinkel + 180 : vinkel
+          out.push(<text key={`sec${el.id}`} x={mx - ey * 14} y={my + ex * 14 + 4} fontSize="10.5" textAnchor="middle" fill="#1d4ed8"
+            fontFamily="var(--font-mono)" transform={`rotate(${rot} ${mx - ey * 14} ${my + ex * 14})`}>{el.section}{el.grade ? ` ${el.grade}` : ''}</text>)
+        }
+      }
     }
     // supports
     for (const s of m.supports) {
@@ -1165,6 +1267,7 @@ export default function FemWorkspace({
           <div className="fem-ps">
             <div className="t">Tværsnit {group.length > 1 && <span className="fem-status">gælder hele leddet ({group.length} elementer)</span>}</div>
             <SectionFields value={el} onChange={(k, v) => (k === 'material' ? setMaterial(v) : applySection({ [k]: v }))} />
+            {el.material && el.section && <SectionView material={el.material} section={el.section} grade={el.grade} />}
             {!el.material && (
               <div className="fem-row">
                 <F label="E"><Num value={el.E_GPa ?? 210} unit="GPa" onCommit={v => applySection({ E_GPa: v })} /></F>
@@ -1183,6 +1286,58 @@ export default function FemWorkspace({
               <p style={{ fontSize: 12, color: 'var(--muted)' }}>Afgør knæk ud af planen og kipning i eftervisningen. Knæk i planen følger af modellen.</p>
             </div>
           )}
+          {el.material && el.member_id != null && (() => {
+            const kn = (data.member_knaek ?? {})[el.member_id] ?? {}
+            const saet = (akse, patch) => {
+              const alle = { ...(data.member_knaek ?? {}) }
+              const ny = { ...kn, [akse]: { ...(kn[akse] ?? { mode: 'auto' }), ...patch } }
+              if (Object.values(ny).every(x => !x || x.mode === 'auto')) delete alle[el.member_id]
+              else alle[el.member_id] = ny
+              onModelChange({ member_knaek: alle })
+            }
+            // Den automatiske værdi fra seneste kørsel, når den findes.
+            const auto = {
+              y: c?.L_cr_m, z: c?.L_cr_z_m, lt: c?.L_LT_m,
+            }
+            const raekker = [
+              ['y', 'Knæk i planen (y–y)', 'fra rammeanalysen'],
+              ['z', 'Knæk ud af planen (z–z)', 'fra afstivningen'],
+              ['lt', 'Kipning (L_LT)', 'fra afstivningen'],
+            ]
+            return (
+              <div className="fem-ps">
+                <div className="t">Knæklængder</div>
+                {raekker.map(([k, lbl, kilde]) => {
+                  const spec = kn[k] ?? { mode: 'auto' }
+                  const vist = spec.mode !== 'auto' && Number(spec.value) > 0
+                    ? (spec.mode === 'beta' ? Number(spec.value) * L : Number(spec.value)) : null
+                  return (
+                    <div key={k} style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 3 }}>{lbl}</div>
+                      <div className="fem-row" style={{ alignItems: 'center' }}>
+                        <select className="fem-sel" style={{ height: 30, flex: 1 }} value={spec.mode}
+                          onChange={e => saet(k, { mode: e.target.value, value: e.target.value === 'beta' ? (spec.mode === 'beta' ? spec.value : 1) : e.target.value === 'length' ? (spec.mode === 'length' ? spec.value : Number(L.toFixed(2))) : spec.value })}>
+                          <option value="auto">Automatisk ({kilde})</option>
+                          <option value="beta">β · L</option>
+                          <option value="length">Fast længde</option>
+                        </select>
+                        {spec.mode !== 'auto' && (
+                          <span style={{ width: 96 }}>
+                            <Num value={spec.value ?? ''} unit={spec.mode === 'beta' ? 'β' : 'm'} onCommit={v => saet(k, { value: v })} />
+                          </span>
+                        )}
+                      </div>
+                      <small style={{ color: 'var(--muted)', fontSize: 11.5 }}>
+                        {vist != null ? `L_cr = ${fmt(vist, 2)} m (L = ${fmt(L, 2)} m)`
+                          : auto[k] != null ? `Seneste kørsel: ${fmt(auto[k], 2)} m` : 'Findes ved næste kørsel'}
+                      </small>
+                    </div>
+                  )
+                })}
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>β·L: fx 0,7 for indspændt/charnier, 2,0 for en udkraget søjle. Gælder hele leddet.</p>
+              </div>
+            )
+          })()}
           {selElems.length === 1 && (
             <div className="fem-ps">
               <div className="t">Stang</div>
@@ -1449,6 +1604,7 @@ export default function FemWorkspace({
         </select>
         <button className="fem-tool" onClick={fit} title="F">Vis alt</button>
         <label className="fem-check" style={{ marginLeft: 6 }}><input type="checkbox" checked={showIds} onChange={e => setShowIds(e.target.checked)} /> Numre</label>
+        <label className="fem-check" style={{ marginLeft: 6 }}><input type="checkbox" checked={showSec} onChange={e => setShowSec(e.target.checked)} /> Tværsnit</label>
         {resultsOk && (
           <>
             <span className="fem-sep" />
@@ -1528,6 +1684,11 @@ export default function FemWorkspace({
         <button className="fem-nav-i" onClick={() => setTab('elements')}>Led<small>{Object.keys(members).length}</small></button>
 
         <div className="fem-nav-g">Lasttilfælde <button onClick={addLoadCase} title="Nyt lasttilfælde">+ Nyt</button></div>
+        {m.load_cases.length > 0 && kombinationer && (
+          <button className="fem-nav-i" onClick={() => setKombiOpen(true)} title="Se, fravælg og lav egne lastkombinationer">
+            Kombinationer…<small>{(kombinationer.tabel ?? []).filter(k => !(kombinationer.fravalg ?? []).includes(k.name)).length}</small>
+          </button>
+        )}
         {m.load_cases.length === 0 && <div className="fem-nav-i" style={{ color: 'var(--muted)' }}>Ingen — lasterne regnes som de står</div>}
         {udenTilfaelde > 0 && (
           <div className="fem-nav-i" style={{ color: 'var(--fail, #b91c1c)', whiteSpace: 'normal', fontSize: 12 }}
@@ -1702,6 +1863,11 @@ export default function FemWorkspace({
         )
       })()}
 
+      {kombiOpen && kombinationer && (
+        <KombinationsDialog model={m} data={data} kombinationer={kombinationer}
+          onModelChange={onModelChange} onClose={() => setKombiOpen(false)} />
+      )}
+
       {genOpen && (
         <GeneratorDialog hasModel={!empty} onClose={() => setGenOpen(false)} onApply={(g) => {
           setGenOpen(false)
@@ -1710,7 +1876,8 @@ export default function FemWorkspace({
           // med den gamle geometri. Før blev de beholdt efter id og landede på
           // helt andre stænger i det nye system (25 kN/m på et spær). Fortryd
           // (Ctrl+Z) bringer dem tilbage.
-          commit({ ...model, ...g, loads: g.loads ?? [] })
+          const next = { ...model, ...g, loads: g.loads ?? [] }
+          commit(next)
           setSel([])
           fitted.current = false
           requestAnimationFrame(() => { fitted.current = false })

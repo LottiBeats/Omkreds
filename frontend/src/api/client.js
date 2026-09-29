@@ -518,3 +518,7 @@ export const deleteCalcTemplate = (id) =>
  */
 export const runCalcTemplate = (id, params) =>
   request('POST', `/calc-templates/${id}/run`, params)
+
+/** Mål og tværsnitskonstanter til tværsnitsvisningen (y = stærk akse). */
+export const getSectionProperties = (material, section, grade) =>
+  request('GET', `/sections/properties?material=${encodeURIComponent(material)}&section=${encodeURIComponent(section)}${grade ? `&grade=${encodeURIComponent(grade)}` : ''}`)
