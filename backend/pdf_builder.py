@@ -855,8 +855,8 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
             [
                 [
                     str(e["id"]), {"beam": "bjælke", "truss": "gitterstang"}.get(e["type"], e["type"]), f"{e['L_m']:.2f}",
-                    str(e["A_cm2"]),
-                    str(e["Iz_cm4"]) if e["type"] == "beam" else "—",
+                    _dk(float(e["A_cm2"]), 1),
+                    _dk(float(e["Iz_cm4"]), 0) if e["type"] == "beam" else "—",
                     f"{e['N_i_kN']:.2f}", f"{e['V_i_kN']:.2f}", f"{e['M_i_kNm']:.2f}",
                     f"{e['N_j_kN']:.2f}", f"{e['V_j_kN']:.2f}", f"{e['M_j_kNm']:.2f}",
                     f"{e['M_max_kNm']:.2f}" if e.get("M_max_kNm") is not None else "—",

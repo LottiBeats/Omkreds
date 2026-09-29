@@ -28,7 +28,7 @@ import {
   deleteSelection, updateNode, updateElements, elementLength, bounds, round,
 } from './femModel.js'
 import { GENERATORS } from './femGenerators.js'
-import { expandLoads, loadSpan, isPartial, flipElements } from './femLoads.js'
+import { expandLoads, loadSpan, isPartial, flipElements, memberChain } from './femLoads.js'
 import { resultStates, sampleElement, envelopeSamples, isUls, SITUATION_LABEL } from './femDiagrams.js'
 import './fem.css'
 
@@ -198,6 +198,78 @@ function LoadExtent({ load, span, onPatch }) {
 
 function F({ label, children }) {
   return <label className="fem-f"><span>{label}</span>{children}</label>
+}
+
+// ── Indstillinger ────────────────────────────────────────────────────────────
+
+const VARIGHEDER = [
+  ['permanent', 'Permanent (> 10 år)'], ['long', 'Lang (6 mdr.–10 år)'],
+  ['medium', 'Mellemlang (1 uge–6 mdr.)'], ['short', 'Kort (< 1 uge)'], ['instant', 'Øjeblikkelig'],
+]
+
+/** Beregningens indstillinger — dem, dokumentets blok har i sin formular. */
+function IndstillingsDialog({ data, model, onModelChange, onClose }) {
+  const set = (patch) => onModelChange(patch)
+  const permanente = (model.load_cases ?? []).filter(t => (t.kategori ?? 'permanent') === 'permanent')
+  const egen = data.egenvaegt ?? null   // { lc } | { lc: null } (uden tilfælde) | null = fra
+  return (
+    <Dialog title="Indstillinger" width={560} onClose={onClose} actions={<Button variant="primary" onClick={onClose}>Luk</Button>}>
+      <div className="fem-indst">
+        <h4>Sikkerhed — DS/EN 1990 DK NA</h4>
+        <div className="fem-row">
+          <F label="Konsekvensklasse">
+            <select value={data.consequence_class ?? 'CC2'} onChange={e => set({ consequence_class: e.target.value })}>
+              <option value="CC1">CC1 — K_FI = 0,9</option>
+              <option value="CC2">CC2 — K_FI = 1,0</option>
+              <option value="CC3">CC3 — K_FI = 1,1</option>
+            </select>
+          </F>
+          <F label="Lastkombination">
+            <select value={data.method ?? '6.10ab'} onChange={e => set({ method: e.target.value })}>
+              <option value="6.10ab">6.10a / 6.10b (DK NA)</option>
+            </select>
+          </F>
+        </div>
+        <label className="fem-check"><input type="checkbox" checked={data.gunstig_egenlast !== false}
+          onChange={e => set({ gunstig_egenlast: e.target.checked })} /> Egenlast også som gunstig (0,9 · G), fx ved løft og væltning</label>
+
+        <h4>Træ — DS/EN 1995-1-1</h4>
+        <div className="fem-row">
+          <F label="Anvendelsesklasse">
+            <select value={data.service_class ?? 1} onChange={e => set({ service_class: Number(e.target.value) })}>
+              <option value={1}>1 — opvarmet, indendørs</option>
+              <option value={2}>2 — uopvarmet, overdækket</option>
+              <option value={3}>3 — udendørs, ubeskyttet</option>
+            </select>
+          </F>
+          <F label="Lastvarighed uden lasttilfælde">
+            <select value={data.load_duration ?? 'medium'} onChange={e => set({ load_duration: e.target.value })}>
+              {VARIGHEDER.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </F>
+        </div>
+
+        <h4>Nedbøjning — anvendelsesgrænsetilstand</h4>
+        <div className="fem-row">
+          <F label="w_inst ≤ L /"><Num value={data.limit_inst ?? 400} onCommit={v => v > 0 && set({ limit_inst: Math.round(v) })} /></F>
+          <F label="w_net,fin ≤ L /"><Num value={data.limit_net_fin ?? 300} onCommit={v => v > 0 && set({ limit_net_fin: Math.round(v) })} /></F>
+        </div>
+
+        <h4>Egenvægt af stængerne</h4>
+        <label className="fem-check"><input type="checkbox" checked={!!egen}
+          onChange={e => set({ egenvaegt: e.target.checked ? { lc: permanente[0]?.nr ?? null } : null })} /> Medtag stængernes egenvægt automatisk</label>
+        {egen && (model.load_cases ?? []).length > 0 && (
+          <F label="Lasttilfælde">
+            <select value={egen.lc ?? ''} onChange={e => set({ egenvaegt: { lc: e.target.value === '' ? null : Number(e.target.value) } })}>
+              {permanente.map(t => <option key={t.nr} value={t.nr}>LC{t.nr} {t.navn}</option>)}
+              {!permanente.length && <option value="">— lav først et permanent lasttilfælde —</option>}
+            </select>
+          </F>
+        )}
+        <p className="fem-note">Stål: profilets masse (78,5 kN/m³). Træ: ρ_mean efter EN 338 / EN 14080. Stænger med egne tal (E, A, I) får ingen egenvægt.</p>
+      </div>
+    </Dialog>
+  )
 }
 
 // ── Lastkombinationer ─────────────────────────────────────────────────────────
@@ -414,12 +486,13 @@ export default function FemWorkspace({
   const [showIds, setShowIds] = useState(true)
   const [showSec, setShowSec] = useState(false)
   const [kombiOpen, setKombiOpen] = useState(false)
+  const [indstOpen, setIndstOpen] = useState(false)
   const [view, setView] = useState({ cx: 3, cy: 1.5, scale: 60 })
   const [size, setSize] = useState({ w: 800, h: 500 })
   const [drag, setDrag] = useState(null)               // node drag or pan
   const [dragModel, setDragModel] = useState(null)     // live model while dragging a node
   const [section, setSection] = useState({ material: 'timber', section: '45x195', grade: 'C24' })
-  const [loadCfg, setLoadCfg] = useState({ direction: 'vertical', value: 1.0, pointDir: 'down', P: 5.0 })
+  const [loadCfg, setLoadCfg] = useState({ direction: 'vertical', value: 1.0, pointDir: 'down', P: 5.0, kind: 'linje' })
   const [activeLc, setActiveLc] = useState(model.load_cases[0]?.nr ?? null)
   // Efter en kørsel skal et klik på en stang vise dens udnyttelse -- ikke
   // lægge en ny last på den, fordi last-værktøjet stadig var valgt.
@@ -604,6 +677,23 @@ export default function FemWorkspace({
         return
       }
       const h = hStang
+      if (h && loadCfg.kind === 'punkt') {
+        // Punktlast på stangen, dér hvor der blev klikket (fanget til gitteret).
+        const els = h.el.member_id != null ? m.elements.filter(e => e.member_id === h.el.member_id) : [h.el]
+        const nb = Object.fromEntries(m.nodes.map(n => [n.id, n]))
+        const chain = memberChain(els, nb)
+        const c = chain?.find(x => x.el.id === h.el.id)
+        const Lm = chain ? chain[chain.length - 1].s1 : elementLength(m, h.el)
+        let a = c ? c.s0 + (c.rev ? 1 - h.p.t : h.p.t) * c.L : h.p.t * Lm
+        a = Math.min(Math.max(round(Math.round(a / snap) * snap), 0), Lm)
+        const [direction, sign] = { down: ['vertical', 1], up: ['vertical', -1], right: ['horizontal', 1], left: ['horizontal', -1], perp: ['perpendicular', 1] }[loadCfg.pointDir] ?? ['vertical', 1]
+        const ld = h.el.member_id != null
+          ? { type: 'point', target: 'member', member_id: h.el.member_id, a, direction, value_kN: sign * loadCfg.P, lc }
+          : { type: 'point', target: 'elem', elem_id: h.el.id, a, direction, value_kN: sign * loadCfg.P, lc }
+        commit({ ...model, loads: [...model.loads, ld] })
+        setSel([{ kind: 'load', id: model.loads.length }]); setTab('loads')
+        return
+      }
       if (h) {
         const ld = h.el.member_id != null
           ? { type: 'udl', target: 'member', member_id: h.el.member_id, direction: loadCfg.direction, value_kNm: loadCfg.value, lc }
@@ -829,6 +919,28 @@ export default function FemWorkspace({
           <text x={(ax + bx) / 2} y={(ay + by) / 2 - 10} fontSize="11" fill={color} textAnchor="middle" fontFamily="var(--font-mono)">
             vind {l.zone ?? ''} · c_pi {fmt(l.c_pi ?? 0.2, 1)}
           </text>
+        </g>
+      )
+    }
+    if (l.type === 'point') {
+      const [p] = expandLoads([l], m.elements, m.nodes)
+      const el = p && m.elements.find(e => e.id === p.elem_id)
+      const a = el && nodesById[el.ni], b = el && nodesById[el.nj]
+      if (!a || !b) return null
+      const Lel = Math.hypot(b.x - a.x, b.y - a.y) || 1
+      const t = Math.min(Math.max(p.punkt_x / Lel, 0), 1)
+      const [x, y] = toS(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
+      const [Ax, Ay] = toS(a.x, a.y), [Bx, By] = toS(b.x, b.y)
+      const Le = Math.hypot(Bx - Ax, By - Ay) || 1
+      let ux = 0, uy = 1
+      if (p.direction === 'horizontal') { ux = 1; uy = 0 }
+      if (p.direction === 'perpendicular') { ux = -(By - Ay) / Le; uy = (Bx - Ax) / Le }
+      const sgn = Math.sign(p.punkt_kN) || 1
+      ux *= sgn; uy *= sgn
+      return (
+        <g key={`l${i}`} onPointerDown={pick} style={{ cursor: tool === 'select' ? 'pointer' : undefined }}>
+          <Arrow x1={x - ux * 50} y1={y - uy * 50} x2={x - ux * 5} y2={y - uy * 5} color={color} />
+          <text x={x - ux * 56 + 4} y={y - uy * 56 - 4} fontSize="11" fill={color} fontFamily="var(--font-mono)">{`${fmt(Math.abs(l.value_kN ?? 0), 1)} kN`}</text>
         </g>
       )
     }
@@ -1379,7 +1491,7 @@ export default function FemWorkspace({
       const patchLoad = (p) => commit({ ...model, loads: model.loads.map((l, i) => (i === selLoadIdx ? { ...l, ...p } : l)) })
       return (
         <>
-          <div className="fem-ph"><small>Last</small><b>{selLoad.type === 'nodal' ? `Punktlast i knude ${selLoad.node_id}` : `Linjelast på ${(selLoad.target ?? 'elem') === 'member' ? `led ${selLoad.member_id}` : `stang ${selLoad.elem_id}`}`}</b></div>
+          <div className="fem-ph"><small>Last</small><b>{selLoad.type === 'nodal' ? `Punktlast i knude ${selLoad.node_id}` : selLoad.type === 'point' ? `Punktlast på ${(selLoad.target ?? 'elem') === 'member' ? `led ${selLoad.member_id}` : `stang ${selLoad.elem_id}`}` : `Linjelast på ${(selLoad.target ?? 'elem') === 'member' ? `led ${selLoad.member_id}` : `stang ${selLoad.elem_id}`}`}</b></div>
           <div className="fem-ps">
             {m.load_cases.length > 0 && (
               <F label="Lasttilfælde">
@@ -1400,7 +1512,27 @@ export default function FemWorkspace({
                   {selLoad.x1 != null || selLoad.x2 != null ? ` fra ${fmt(selLoad.x1 ?? 0, 2)} til ${selLoad.x2 != null ? fmt(selLoad.x2, 2) + ' m' : 'enden'}` : ''}.</p>
                 <p>Den rettes i lastmodulet i dokumentet, så den står ét sted og følger vind- og snelasten.</p>
               </>
-            ) : selLoad.type === 'udl' ? (
+            ) : selLoad.type === 'point' ? (() => {
+              const span = loadSpan({ ...selLoad, type: 'udl' }, model.elements, model.nodes)
+              return (
+                <>
+                  <F label="Retning">
+                    <select value={selLoad.direction ?? 'vertical'} onChange={e => patchLoad({ direction: e.target.value })}>
+                      {DIRECTIONS.filter(d => d.value !== 'projected').map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                    </select>
+                  </F>
+                  <div className="fem-row">
+                    <F label={`P (+ ${{ vertical: 'nedad', horizontal: 'mod højre', perpendicular: 'fra y-siden' }[selLoad.direction ?? 'vertical'] ?? ''})`}>
+                      <Num value={selLoad.value_kN ?? 0} unit="kN" onCommit={v => patchLoad({ value_kN: v })} />
+                    </F>
+                    <F label="Afstand fra start">
+                      <Num value={selLoad.a ?? 0} unit="m" onCommit={v => patchLoad({ a: Math.min(Math.max(v ?? 0, 0), span || Infinity) })} />
+                    </F>
+                  </div>
+                  <p style={{ fontSize: 11.5, color: 'var(--muted)' }}>Målt langs {(selLoad.target ?? 'elem') === 'member' ? 'leddet' : 'stangen'} fra dens start{span ? ` · længde ${fmt(span, 2)} m` : ''}.</p>
+                </>
+              )
+            })() : selLoad.type === 'udl' ? (
               <>
                 <F label="Retning">
                   <select value={selLoad.direction ?? 'vertical'} onChange={e => patchLoad({ direction: e.target.value })}>
@@ -1435,6 +1567,12 @@ export default function FemWorkspace({
         {tool === 'load' && (
           <div className="fem-ps">
             <div className="t">Ny last i {m.load_cases.length ? `LC${activeLc} ${m.load_cases.find(t => t.nr === activeLc)?.navn ?? ''}` : 'modellen (ingen lasttilfælde)'}</div>
+            <F label="Klik på en stang giver">
+              <select value={loadCfg.kind} onChange={e => setLoadCfg(c => ({ ...c, kind: e.target.value }))}>
+                <option value="linje">Linjelast på stangen</option>
+                <option value="punkt">Punktlast på stangen (hvor der klikkes)</option>
+              </select>
+            </F>
             <F label="Linjelast, retning">
               <select value={loadCfg.direction} onChange={e => setLoadCfg(c => ({ ...c, direction: e.target.value }))}>
                 {DIRECTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
@@ -1446,6 +1584,7 @@ export default function FemWorkspace({
                 <select value={loadCfg.pointDir} onChange={e => setLoadCfg(c => ({ ...c, pointDir: e.target.value }))}>
                   <option value="down">Nedad ↓</option><option value="up">Opad ↑</option>
                   <option value="right">Mod højre →</option><option value="left">Mod venstre ←</option>
+                  <option value="perp">Vinkelret på stangen (kun på stang)</option>
                 </select>
               </F>
               <F label="P"><Num value={loadCfg.P} unit="kN" onCommit={v => setLoadCfg(c => ({ ...c, P: v }))} /></F>
@@ -1540,9 +1679,9 @@ export default function FemWorkspace({
                   ? <select value={l.lc ?? ''} onChange={e => patch({ lc: e.target.value === '' ? undefined : Number(e.target.value) })}>
                       <option value="">— intet</option>{m.load_cases.map(t => <option key={t.nr} value={t.nr}>LC{t.nr} {t.navn}</option>)}</select>
                   : <span className="fem-status">—</span>}</td>
-                <td style={{ padding: '0 8px' }}>{l.type === 'nodal' ? 'Punktlast' : l.type === 'udl' ? (isPartial(l) ? 'Linjelast, delvis' : 'Linjelast') : l.type === 'vind_udl' ? 'Vind (zone)' : l.type}</td>
+                <td style={{ padding: '0 8px' }}>{l.type === 'nodal' ? 'Punktlast' : l.type === 'point' ? 'Punktlast på stang' : l.type === 'udl' ? (isPartial(l) ? 'Linjelast, delvis' : 'Linjelast') : l.type === 'vind_udl' ? 'Vind (zone)' : l.type}</td>
                 <td style={{ padding: '0 8px', fontFamily: 'var(--font-mono)' }}>{l.type === 'nodal' ? `knude ${l.node_id}` : (l.target ?? 'elem') === 'member' ? `led ${l.member_id}` : `stang ${l.elem_id}`}</td>
-                <td>{l.type === 'udl'
+                <td>{l.type === 'udl' || l.type === 'point'
                   ? <select value={l.direction ?? 'vertical'} onChange={e => patch({ direction: e.target.value })}>{DIRECTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}</select>
                   : l.type === 'nodal' ? <span className="fem-status">F_x / F_y</span> : null}</td>
                 <td>{l.type === 'udl'
@@ -1553,6 +1692,10 @@ export default function FemWorkspace({
                           {l.value_end_kNm != null ? `→ ${fmt(l.value_end_kNm, 2)} · ` : ''}{fmt(l.x1 ?? 0, 2)}–{l.x2 != null ? fmt(l.x2, 2) : 'slut'} m
                         </span>
                       )}
+                    </span>
+                  : l.type === 'point' ? <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <Num value={l.value_kN ?? 0} onCommit={v => patch({ value_kN: v })} />
+                      <span className="fem-status">kN ved {fmt(l.a ?? 0, 2)} m</span>
                     </span>
                   : l.type === 'nodal' ? <span style={{ display: 'flex', gap: 4 }}><Num value={l.Fx_kN ?? 0} onCommit={v => patch({ Fx_kN: v })} /><Num value={l.Fy_kN ?? 0} onCommit={v => patch({ Fy_kN: v })} /></span> : null}</td>
                 <td>{locked
@@ -1682,6 +1825,9 @@ export default function FemWorkspace({
         ))}
         <button className="fem-nav-i" onClick={() => setTab('nodes')}>Understøtninger<small>{counts.supports}</small></button>
         <button className="fem-nav-i" onClick={() => setTab('elements')}>Led<small>{Object.keys(members).length}</small></button>
+        <button className="fem-nav-i" onClick={() => setIndstOpen(true)} title="Konsekvensklasse, anvendelsesklasse, nedbøjningsgrænser, egenvægt">
+          Indstillinger…<small>{data.consequence_class ?? 'CC2'}</small>
+        </button>
 
         <div className="fem-nav-g">Lasttilfælde <button onClick={addLoadCase} title="Nyt lasttilfælde">+ Nyt</button></div>
         {m.load_cases.length > 0 && kombinationer && (
@@ -1690,6 +1836,12 @@ export default function FemWorkspace({
           </button>
         )}
         {m.load_cases.length === 0 && <div className="fem-nav-i" style={{ color: 'var(--muted)' }}>Ingen — lasterne regnes som de står</div>}
+        {data.egenvaegt && (
+          <button className="fem-nav-i" onClick={() => setIndstOpen(true)} style={{ color: 'var(--muted)', fontSize: 12 }}
+            title="Stængernes egenvægt lægges på automatisk ved kørslen">
+            + egenvægt af stænger{data.egenvaegt.lc != null ? ` i LC${data.egenvaegt.lc}` : ''}
+          </button>
+        )}
         {udenTilfaelde > 0 && (
           <div className="fem-nav-i" style={{ color: 'var(--fail, #b91c1c)', whiteSpace: 'normal', fontSize: 12 }}
             title="Når der findes lasttilfælde, indgår en last kun, hvis den hører til et af dem. Vælg lasten og giv den et tilfælde.">
@@ -1862,6 +2014,10 @@ export default function FemWorkspace({
           </Dialog>
         )
       })()}
+
+      {indstOpen && (
+        <IndstillingsDialog data={data} model={m} onModelChange={onModelChange} onClose={() => setIndstOpen(false)} />
+      )}
 
       {kombiOpen && kombinationer && (
         <KombinationsDialog model={m} data={data} kombinationer={kombinationer}

@@ -2705,6 +2705,11 @@ class GenFrameLoadIn(BaseModel):
     # faktorerne DERFRA i stedet for at blive dannet her -- se lastmodul-
     # felterne paa GenFrameFemInput.
     lasttilfaelde: int | None = None
+    # En punktlast paa en stang sendes som et smalt afsnit (se femLoads.js
+    # pointToElement). De to felter er dens egentlige stoerrelse og sted, til
+    # tabel og figurer -- regningen bruger dem ikke.
+    punkt_kN:   float | None = None
+    punkt_x:    float | None = None
     # Lasten behoever ikke daekke hele stangen, og den behoever ikke vaere
     # konstant. x1/x2 er meter fra i-enden; mangler de, daekker den det hele.
     # value_end_kNm er intensiteten i den anden ende; mangler den, er lasten
@@ -2747,6 +2752,11 @@ class GenFrameEgenKombiIn(BaseModel):
     navn:      str = ""
     situation: str = "uls"      # uls | sls_karakteristisk | sls_hyppig | sls_kvasi
     faktorer:  dict[str, float] = {}
+
+
+class GenFrameEgenvaegtIn(BaseModel):
+    """Stængernes egenvægt som last: i lasttilfælde lc (None: uden tilfælde)."""
+    lc: int | None = None
 
 
 class GenFrameFemInput(BaseModel):
@@ -2845,6 +2855,8 @@ class GenFrameFemInput(BaseModel):
     # skal slås fra, så kun de egne regnes.
     egne_kombinationer: list[GenFrameEgenKombiIn] = []
     kun_egne:      bool = False
+    # Stængernes egenvægt lægges på automatisk, når den er sat.
+    egenvaegt:     GenFrameEgenvaegtIn | None = None
 
 
 @protected.post("/calc/general-frame-fem/preview", tags=["Calculations"])
@@ -3111,21 +3123,15 @@ def section_properties(material: str, section: str, grade: str | None = None):
     A = b * h / 100.0
     Iy = b * h ** 3 / 12 / 1e4
     Iz = h * b ** 3 / 12 / 1e4
-    # rho_mean efter EN 338 tabel 1 / EN 14080 tabel 5 -- kun til visning.
-    _RHO = {'C14': 350, 'C16': 370, 'C18': 380, 'C20': 390, 'C22': 410,
-            'C24': 420, 'C27': 450, 'C30': 460, 'C35': 480, 'C40': 500,
-            'GL20H': 370, 'GL22H': 410, 'GL24H': 420, 'GL26H': 440,
-            'GL28H': 460, 'GL30H': 480, 'GL32H': 490,
-            'GL20C': 390, 'GL22C': 390, 'GL24C': 400, 'GL26C': 410,
-            'GL28C': 420, 'GL30C': 430, 'GL32C': 440}
-    rho = _RHO.get(str(grade or 'C24').strip().upper().replace(' ', ''))
+    from section_resolver import egenvaegt_kg_m
+    vaegt = egenvaegt_kg_m('timber', section, grade)
     return {
         'form': 'rekt', 'betegnelse': f"{b:.0f}x{h:.0f}", 'grade': grade or 'C24',
         'h_mm': h, 'b_mm': b,
         'A_cm2': round(A, 2), 'Iy_cm4': round(Iy, 1), 'Iz_cm4': round(Iz, 1),
         'Wel_y_cm3': round(b * h ** 2 / 6 / 1e3, 1), 'Wel_z_cm3': round(h * b ** 2 / 6 / 1e3, 1),
         'i_y_mm': round(h / math.sqrt(12), 1), 'i_z_mm': round(b / math.sqrt(12), 1),
-        'vaegt_kg_m': round(A * 1e-4 * rho, 1) if rho else None,
+        'vaegt_kg_m': round(vaegt, 1) if vaegt else None,
         'E_GPa': round(float(props['E_GPa']), 2),
     }
 
@@ -3173,6 +3179,28 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             elements, supports, loads,
             [e.model_dump() for e in data.equal_dofs])
         combos      = [c.model_dump() for c in data.combinations]
+        # Stangenes egenvaegt, naar den er slaaet til: én lodret linjelast pr.
+        # element med materiale og tvaersnit, i det valgte (permanente)
+        # lasttilfaelde. Den laegges paa her, saa den indgaar i kombinationer,
+        # lastbilleder og lasttabel som enhver anden last.
+        if data.egenvaegt is not None:
+            from section_resolver import egenvaegt_kg_m
+            lc = data.egenvaegt.lc
+            tilf = {t.nr: t for t in data.load_cases}
+            if tilf and (lc not in tilf or tilf[lc].kategori != 'permanent'):
+                raise ModelError("Egenvægten skal ligge i et permanent lasttilfælde. "
+                                 "Vælg det under Indstillinger.")
+            for el in elements:
+                try:
+                    kg = egenvaegt_kg_m(el.get('material'), el.get('section'), el.get('grade'))
+                except Exception:
+                    kg = None
+                if not kg:
+                    continue
+                loads.append({'type': 'udl', 'elem_id': el['id'], 'direction': 'vertical',
+                              'value_kNm': round(kg * 9.81 / 1000.0, 5),
+                              'lc': lc if tilf else None, 'egenvaegt': True})
+
         # Lasterne som de staar paa modellen. De skal gemmes her: naar der
         # kombineres, flyttes de ind i kombinationerne og 'loads' toemmes, og
         # saa er der ikke laengere noget at tegne et lastbillede af.

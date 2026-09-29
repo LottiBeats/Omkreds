@@ -183,3 +183,29 @@ def test_tvaersnitskonstanter():
     assert s['h_mm'] == 300 and s['Iy_cm4'] == 8356 and abs(s['Iz_cm4'] - 604) < 5
     t = c.get('/api/sections/properties?material=timber&section=45x195&grade=C24').json()
     assert t['Iy_cm4'] == round(45 * 195 ** 3 / 12 / 1e4, 1) and t['vaegt_kg_m'] == round(87.75e-4 * 420, 1)
+
+
+def test_punktlast_som_smalt_afsnit_og_egenvaegt():
+    """P = 10 kN ved a = 2 m på 6 m: M = P·a·b/L = 13,33 kNm; lasttabellen skriver P."""
+    c = _klient()
+    eps = 6 / 20000
+    base = dict(nodes=[dict(id=1, x=0, y=0), dict(id=2, x=6, y=0)],
+                elements=[dict(id=1, ni=1, nj=2, member_id=1, material='steel', section='IPE300', grade='S355')],
+                supports=[dict(node_id=1, ux=True, uy=True, rz=False),
+                          dict(node_id=2, ux=False, uy=True, rz=False)])
+    P = dict(type='udl', elem_id=1, direction='vertical', value_kNm=10 / eps,
+             x1=2 - eps / 2, x2=2 + eps / 2, punkt_kN=10, punkt_x=2)
+    s = c.post('/api/calc/general-frame-fem', json={**base, 'loads': [P]}).json()['_summary']
+    assert abs(s['max_moment_kNm'] - 10 * 2 * 4 / 6) < 1e-3
+    assert s['loads_table'][0]['vaerdi'] == 'P = 10,00 kN, x = 2,00 m'
+
+    # Egenvaegt: IPE300 = 43,0 kg/m -> 0,4218 kN/m; uden lasttilfaelde og i LC1 (6.10a: 1,2).
+    g = 43.0 * 9.81 / 1000
+    s = c.post('/api/calc/general-frame-fem', json={**base, 'loads': [], 'egenvaegt': {'lc': None}}).json()['_summary']
+    assert abs(s['max_moment_kNm'] - g * 36 / 8) < 1e-3
+    s = c.post('/api/calc/general-frame-fem', json={**base, 'loads': [], 'egenvaegt': {'lc': 1},
+               'load_cases': [dict(nr=1, navn='G', kategori='permanent')]}).json()['_summary']
+    assert abs(s['max_moment_kNm'] - 1.2 * g * 36 / 8) < 1e-3
+    r = c.post('/api/calc/general-frame-fem', json={**base, 'loads': [], 'egenvaegt': {'lc': 2},
+               'load_cases': [dict(nr=1, navn='G', kategori='permanent')]})
+    assert r.status_code == 422 and 'permanent lasttilfælde' in r.json()['detail']

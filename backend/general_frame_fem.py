@@ -1314,7 +1314,9 @@ def udl_arrow_direction(ld, ca, sa):
 
     if is_combo:
         mag = 1.0          # magnitude unknown until the combination is run
-    elif direction in ('vertical', 'projected', 'horizontal'):
+    elif direction in ('vertical', 'projected', 'horizontal', 'perpendicular'):
+        # 'perpendicular' stod ikke med: den blev laest som wy (= 0) og aldrig
+        # tegnet i rapportens modelfigur.
         mag = float(ld.get('value_kNm', 0) or 0)
     else:
         mag = float(ld.get('wy_kNm', 0) or 0)
@@ -1500,8 +1502,11 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
 
     # ── Applied loads ──────────────────────────────────────────────────────────
     udl_by_elem = {}
+    punkter = []
     for ld in loads:
-        if ld.get('type') in ('udl', 'combo_udl'):
+        if ld.get('punkt_kN') is not None:
+            punkter.append(ld)
+        elif ld.get('type') in ('udl', 'combo_udl'):
             udl_by_elem[ld.get('elem_id')] = ld
 
     arr = sz * 1.5   # arrow length
@@ -1567,6 +1572,25 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
                 f'{F:.1f} kN', fontsize=7.5, color=C_LOAD,
                 ha='center', va='center',
                 bbox=dict(fc='white', ec='none', pad=1), zorder=9)
+
+    # Punktlaster paa stangene: én pil, hvor de sidder.
+    for ld in punkter:
+        el = next((e for e in elements if e['id'] == ld.get('elem_id')), None)
+        if not el: continue
+        xi, yi, xj, yj, L, ca, sa = elem_geom(el)
+        P = float(ld['punkt_kN'])
+        act = udl_arrow_direction({**ld, 'value_kNm': P}, ca, sa)
+        if act is None or L <= 0: continue
+        t = min(max(float(ld.get('punkt_x') or 0.0) / L, 0.0), 1.0)
+        px, py = xi + t * (xj - xi), yi + t * (yj - yi)
+        ax_, ay_ = act
+        ax.annotate('', xy=(px, py), xytext=(px - ax_ * arr * 1.6, py - ay_ * arr * 1.6),
+                    arrowprops=dict(arrowstyle='->', color=C_LOAD, lw=1.8, mutation_scale=13), zorder=8)
+        # Etiketten ved siden af pilens hale, saa den ikke ligger oven i en
+        # linjelasts etiket, der staar midt over stangen.
+        ax.text(px - ax_ * arr * 1.6 + abs(ay_) * arr * 0.25, py - ay_ * arr * 1.6 + abs(ax_) * arr * 0.25,
+                f'{abs(P):.1f} kN'.replace('.', ','), fontsize=7.5, color=C_LOAD,
+                ha='left', va='center', bbox=dict(fc='white', ec='none', pad=1), zorder=9)
 
     # ── Styling ───────────────────────────────────────────────────────────────
     # Samme afslutning som snitkraftkurverne. Den statiske model er figur 1 i
@@ -1850,6 +1874,12 @@ def lasttabel(loads, elements, load_cases=None):
                              'lasttilfaelde': tilfaelde(ld), 'retning': retning,
                              'vaerdi': f"w_y = {_tal(wy)}, w_x = {_tal(wx)} kN/m"})
                 continue
+        if ld.get('punkt_kN') is not None:
+            rows.append({'type': 'Punktlast',
+                         'target': f"Element {eid}" + (f" (stang {el.get('member_id')})" if el.get('member_id') is not None else ''),
+                         'lasttilfaelde': tilfaelde(ld), 'retning': retning,
+                         'vaerdi': f"P = {_tal(ld['punkt_kN'])} kN, x = {_tal(ld.get('punkt_x') or 0)} m"})
+            continue
         delvis = ld.get('x1') is not None or ld.get('x2') is not None
         if w2 is not None and abs(float(w2) - w1) > 1e-9:
             vaerdi = f"{_tal(w1)} → {_tal(w2)} kN/m"
@@ -1860,6 +1890,8 @@ def lasttabel(loads, elements, load_cases=None):
             x2 = ld.get('x2')
             vaerdi += f", x = {_tal(x1)}–{_tal(x2) if x2 is not None else 'ende'} m"
         mid = el.get('member_id')
+        if ld.get('egenvaegt'):
+            retning = 'lodret (egenvægt)'
         if mid is not None and not delvis and '→' not in vaerdi:
             key = (mid, ld.get('lc'), retning, vaerdi)
             if key in grupper:

@@ -2120,6 +2120,8 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
             const w  = cb?.data?._exports?.E_d_uls ?? 0
             return [{ type: 'udl', elem_id: ld.elem_id ?? 1, wy_kNm: w, wx_kNm: 0 }]
           }
+          // Punktlast på en stang → et smalt afsnit på elementet under den.
+          if (ld.type === 'point') return expandLoads([ld], elements, nodes)
           if (ld.type === 'udl' && ld.target === 'member' && ld.member_id != null) {
             // Member load → the elements under it. Fra/til are measured
             // along the whole member, so a load on the first e/10 of a rafter
@@ -2175,11 +2177,13 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         equal_dofs:   equalDofs,
         diagram_scale: d.diagram_scale ?? 1,
         consequence_class: d.consequence_class ?? 'CC2',
+        method:       d.method ?? '6.10ab',
         // Fravalgte kombinationer sendes med ved navn. De står i dokumentet,
         // så en eftervisning, hvor en kombination er udeladt, siger det selv.
         combo_fravalg: fravalg,
         egne_kombinationer: d.egne_kombinationer ?? [],
         kun_egne:      !!d.kun_egne,
+        egenvaegt:     d.egenvaegt ?? null,
         // Egenlasten som gunstig. Slået til, hvis feltet aldrig er rørt —
         // derfor !== false og ikke ?? true: et gammelt dokument uden feltet
         // skal have de gunstige kombinationer med, ikke undvære dem.

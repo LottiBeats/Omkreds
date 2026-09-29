@@ -94,10 +94,47 @@ export function splitMemberLoad(ld, memberElems, nodesById) {
 
 const round = (v) => Math.round(v * 1e6) / 1e6
 
+/**
+ * En punktlast P [kN] på en stang, a [m] fra dens start, som løseren kan
+ * regne: en linjelast P/ε over et stykke ε omkring a. Resten af kæden
+ * (fastindspænding, snitkræfter, ekstremer, bøjningslinje, diagrammer) kender
+ * allerede afsnit, så den regner punktlasten med uden egen kode. Fejlen i
+ * momentet under lasten er P·ε/4 — med ε = L/20000 langt under afrundingen.
+ * punkt_kN og punkt_x følger med, så tabel og figurer kan skrive den som P.
+ */
+export function pointToElement(ld, memberElems, nodesById) {
+  const chain = memberChain(memberElems, nodesById)
+  if (!chain) return []
+  const Lm = chain[chain.length - 1].s1
+  const P = Number(ld.value_kN ?? 0)
+  const eps = Math.max(Lm / 20000, 1e-5)
+  const a = Math.min(Math.max(Number(ld.a ?? Lm / 2), eps), Lm - eps)
+  const c = chain.find(x => a >= x.s0 - 1e-12 && a <= x.s1 + 1e-12) ?? chain[chain.length - 1]
+  let xe = a - c.s0
+  let v = P
+  if (c.rev) {
+    xe = c.L - xe
+    if (ld.direction === 'perpendicular') v = -v
+  }
+  xe = Math.min(Math.max(xe, eps / 2), c.L - eps / 2)
+  return [{
+    type: 'udl', target: 'elem', elem_id: c.el.id, direction: ld.direction ?? 'vertical',
+    value_kNm: v / eps, x1: round(xe - eps / 2), x2: round(xe + eps / 2),
+    lc: ld.lc, virkning: ld.virkning, variant: ld.variant,
+    punkt_kN: v, punkt_x: round(xe),
+  }]
+}
+
 /** Every member load in a list expanded to element loads. */
 export function expandLoads(loads, elements, nodes) {
   const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]))
   return loads.flatMap(ld => {
+    if (ld.type === 'point') {
+      const els = (ld.target ?? 'elem') === 'member'
+        ? elements.filter(e => e.member_id === ld.member_id)
+        : elements.filter(e => e.id === ld.elem_id)
+      return els.length ? pointToElement(ld, els, nodesById) : []
+    }
     if (ld.type !== 'udl' || (ld.target ?? 'elem') !== 'member' || ld.member_id == null) return [ld]
     const els = elements.filter(e => e.member_id === ld.member_id)
     if (!els.length) return [ld]
@@ -171,7 +208,21 @@ export function flipElements(m, elemIds) {
     return out
   }
 
+  const spejlPunkt = (ld, L) => ({
+    ...ld, a: r6(L - Number(ld.a ?? L / 2)),
+    value_kN: ld.direction === 'perpendicular' ? -(ld.value_kN ?? 0) : ld.value_kN,
+  })
   const loads = m.loads.map(ld => {
+    if (ld.type === 'point') {
+      if ((ld.target ?? 'elem') === 'member') {
+        const info = memberInfo[ld.member_id]
+        return info?.flip ? spejlPunkt(ld, info.L) : ld
+      }
+      if (!ids.has(ld.elem_id)) return ld
+      const e = m.elements.find(x => x.id === ld.elem_id)
+      const a = nodesById[e?.ni], b = nodesById[e?.nj]
+      return a && b ? spejlPunkt(ld, Math.hypot(b.x - a.x, b.y - a.y)) : ld
+    }
     if (ld.type !== 'udl') return ld
     if ((ld.target ?? 'elem') === 'member') {
       const info = memberInfo[ld.member_id]
