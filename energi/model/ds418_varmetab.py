@@ -5,8 +5,12 @@ varmetab efter DS 418, regnet på en Honeybee-model.
 
 Virker både som Grasshopper-komponent og som almindeligt Python-modul.
 
-GRASSHOPPER (GhPython, IronPython 2) - indsæt hele filen. Inputs:
-    _model        HB Model
+GRASSHOPPER - indsæt hele filen i en Python 3- eller IronPython 2-komponent.
+I Python 3: tilføj øverst linjen  # r: honeybee-energy  og giv _model som sti
+til en .hbjson-fil fra HB Dump Objects (Ladybug-komponenternes HB Model-objekt
+kan ikke krydse over til Python 3). I IronPython 2 kan HB Model sendes direkte.
+Inputs:
+    _model        HB Model eller sti til .hbjson
     _psi_         linjetab, tekst "vindue=0.03, fundament=0.10, ovenlys=0.10"  (valgfri)
     _u_           U-værdier der erstatter modellens, fx "ydervaeg=0.15, tag=0.10" (valgfri)
     _gulvvarme_   True/False (standard True -> terrændæk vægtes 0,625)
@@ -192,8 +196,12 @@ def tabeltekst(d):
 try:
     _model  # noqa: F821  (findes kun i Grasshopper)
     if _beregn and _model:  # noqa: F821
+        m = _model  # noqa: F821
+        if isinstance(m, str):  # Python 3-komponent: sti til .hbjson fra HB Dump Objects
+            from honeybee.model import Model
+            m = Model.from_hbjson(m)
         gv = True if _gulvvarme_ is None else bool(_gulvvarme_)  # noqa: F821
-        data = beregn(_model, _psi_, _u_, gv)  # noqa: F821
+        data = beregn(m, _psi_, _u_, gv)
         tabel = tabeltekst(data)
         projekt_W_K, ramme_W_K = data["projekt_sum_W_K"], data["ramme_sum_W_K"]
         glasandel, ok = data["glasandel"], data["overholdt"]
