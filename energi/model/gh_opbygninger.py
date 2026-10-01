@@ -10,7 +10,8 @@ som I selv retter og udvider.
 Sæt koden i en GhPython-komponent (IronPython 2, samme slags som Ladybug-
 komponenterne, ellers kan Honeybee ikke læse resultatet).
 Inputs (Item Access, Type hint: str):
-    _fil          sti til opbygninger.txt
+    _fil          sti til opbygninger.txt. Fuld sti (C:\\...), eller relativ til
+                  mappen med .gh-filen. Tom: opbygninger.txt ved siden af .gh-filen.
     _ydervaeg     navn på opbygning  \
     _tag          navn på opbygning   |  står de tomme, laver komponenten selv
     _terraendaek  navn på opbygning   |  en rullemenu med opbygningerne i filen
@@ -185,16 +186,28 @@ def _lav_rullemenuer(komp, opb):
 
 
 # --- Grasshopper ------------------------------------------------------------
+def find_fil(fil, gh_fil):
+    """Fuld sti, eller relativ til mappen med .gh-filen. Tom -> opbygninger.txt ved siden af .gh-filen."""
+    import os
+    mappe = os.path.dirname(gh_fil) if gh_fil else ""
+    kandidater = [fil] if fil and os.path.isabs(fil) else [
+        os.path.join(mappe, fil or "opbygninger.txt"), fil or "opbygninger.txt"]
+    for k in kandidater:
+        if os.path.isfile(k):
+            return k
+    raise IOError("Kan ikke finde opbygninger.txt. Prøvede:\n  " + "\n  ".join(kandidater) +
+                  "\nSkriv den fulde sti, fx C:\\Users\\dig\\...\\opbygninger.txt,"
+                  "\neller læg filen ved siden af .gh-filen og lad _fil stå tom.")
+
+
 try:
     _fil  # noqa: F821  (findes kun i Grasshopper)
-    if not _fil:  # noqa: F821
-        info = "Angiv _fil: stien til opbygninger.txt"
-    else:
-        _komp = ghenv.Component  # noqa: F821
-        if any(_komp.Params.Input[i].SourceCount == 0 for i in range(1, 5)):
-            _lav_rullemenuer(_komp, laes(_fil)[1])  # noqa: F821
-        constr_set, _k, info = byg_saet(_fil, _ydervaeg, _tag, _terraendaek, _vindue)  # noqa: F821
-        ydervaeg, tag = _k.get("ydervaeg"), _k.get("tag")
-        terraendaek, vindue = _k.get("terraendaek"), _k.get("vindue")
+    _komp = ghenv.Component  # noqa: F821
+    _fil = find_fil(_fil, _komp.OnPingDocument().FilePath)  # noqa: F821
+    if any(_komp.Params.Input[i].SourceCount == 0 for i in range(1, 5)):
+        _lav_rullemenuer(_komp, laes(_fil)[1])
+    constr_set, _k, info = byg_saet(_fil, _ydervaeg, _tag, _terraendaek, _vindue)  # noqa: F821
+    ydervaeg, tag = _k.get("ydervaeg"), _k.get("tag")
+    terraendaek, vindue = _k.get("terraendaek"), _k.get("vindue")
 except NameError:
     pass
