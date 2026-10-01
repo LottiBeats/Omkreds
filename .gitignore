@@ -32,3 +32,6 @@ Thumbs.db
 *.pem
 id_ed25519
 omkreds_deploy
+
+# Energinotater: tegninger og andre kunders dokumenter hører ikke i git
+energi/projekter/*/input/

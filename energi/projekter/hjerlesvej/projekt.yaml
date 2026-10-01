@@ -1,0 +1,28 @@
+# Sagsoplysninger til forsiden. Rapporten læser herfra – tast ikke det samme i notatet.
+sag: Hjerlesvej
+emne: Energi, varmetab, termisk indeklima og dagslys
+undertitel: Ombygning og tilbygning af eksisterende sommerhus
+adresse: Hjerlesvej            # fuld adresse mangler
+matrikel: ""
+sagsnr: ""
+fase: Myndighedsprojekt
+bygherre: ""
+arkitekt: WE Architecture ApS
+grundlag: "WE Architecture, tegning 1.1-2.8, dateret 28.09.2026"
+regelversion: br18-2026-10     # se ../../regler/br18_energi.yaml
+
+anvendelse: sommerhus          # sommerhus | enfamiliehus
+byggearbejde: [tilbygning, ombygning]
+
+udarbejdet: ""
+kontrolleret: ""
+godkendt: ""
+firma: ""
+
+revisioner:
+  - rev: "0"
+    dato: "01.10.2026"
+    beskrivelse: "Udkast – beregninger afventer model og projektdata"
+
+# Delt redigerbart udkast (Claude Docs):
+udkast_url: https://claude.ai/code/artifact/aafdf528-fac7-4ad9-8391-2945e6dc95ef

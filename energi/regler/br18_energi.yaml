@@ -1,0 +1,91 @@
+# BR18-krav til energi-, indeklima- og dagslysnotater.
+#
+# Én kilde til alle grænseværdier. Rapporten og regeltjekket læser herfra, så
+# et tal aldrig tastes i et notat. Kontrolleret mod bygningsreglementet.dk
+# 2026-10-01 (se ../research/03_br18_verificeret.md).
+#
+# Når BR ændres: tilføj en ny version nedenfor med `gyldig_fra`. Den gamle
+# bliver liggende, så et projekt søgt før ændringen regnes med de regler,
+# der gjaldt på ansøgningsdatoen.
+
+versioner:
+  - id: br18-2026-10
+    gyldig_fra: 2025-07-01
+    kontrolleret: 2026-10-01
+    kilde: https://www.bygningsreglementet.dk/tekniske-bestemmelser/11/krav/
+
+    sommerhus:                       # § 283-286 – gælder også tilbygninger hertil
+      hjemmel: "§ 283"
+      ikke_omfattet_af: ["§ 258-279", "§ 293-295"]   # § 283, stk. 2
+      u_vaerdier:                    # bilag 2, tabel 4 [W/m²K]
+        ydervaeg: 0.25
+        skillevaeg_mod_uopvarmet: 0.40
+        terraendaek: 0.15
+        loft_tag: 0.15
+        vinduer_doere_glas: 1.80
+      linjetab:                      # [W/mK]
+        fundament: 0.15
+        vindue_doer_samling: 0.03
+        ovenlys_samling: 0.10
+      glasandel_max: 0.30            # § 284 – af opvarmet etageareal
+      varmetabsramme: "§ 284, stk. 2 – samlet varmetab må ikke blive større (DS 418)"
+      terraen_vaegtning_gulvvarme: 0.625
+      ombygning:                     # § 285
+        rentabilitet_faktor: 1.33    # § 275
+        helaarsbrug: true
+      massive_ydervaegge_u_max: 0.50 # § 286
+
+    tilbygning_generel:              # § 271-273 – IKKE for sommerhuse
+      glasandel_max: 0.22
+      medregn_daekket_facade: 0.50
+      reference_vindue_u: 1.2
+
+    ombygning_generel:               # § 279, tabel 3 – IKKE for sommerhuse
+      u_vaerdier: {ydervaeg: 0.18, terraendaek: 0.10, loft_tag: 0.12}
+      linjetab: {fundament: 0.12, vindue_doer_samling: 0.03, ovenlys_samling: 0.10}
+
+    energiramme_bolig:               # § 259 – kWh/m²·år = a + b/A
+      a: 30.0
+      b: 1000
+      beregning: "SBi-anvisning 213 (Be18)"
+    renoveringsklasse_bolig:         # § 281
+      klasse_1: {a: 52.5, b: 1650}
+      klasse_2: {a: 70.0, b: 2200}
+
+    lca:                             # § 297-298 [kg CO2-ækv./m²/år]
+      undtaget_tilbygning_under_m2: 250          # § 297, stk. 3
+      graense:
+        sommerhus_under_150: 4.0
+        sommerhus_min_150: 6.7
+        enfamiliehus: 6.7
+      byggeproces_max: 1.5
+      lavemission:
+        sommerhus_under_150: 3.2
+        sommerhus_min_150: 5.4
+        enfamiliehus: 5.4
+        byggeproces_max: 1.1
+
+    termisk_indeklima:               # § 386
+      klimafil: "DRY 2013, kalenderår 2010"
+      forenklet_for_boliger: true
+      timer_over_27_max: 100         # fra BR-vejledningen, ikke selve paragraffen
+      timer_over_28_max: 25          # fra BR-vejledningen, ikke selve paragraffen
+
+    dagslys:                         # § 379
+      rum: ["beboelsesrum", "køkken"]
+      glasareal_andel_min: 0.10      # korrigeres efter vejledning om lys og udsyn
+      lux: 300
+      andel_af_gulv: 0.5
+      andel_af_dagslystimer: 0.5
+
+    ventilation:                     # § 443 m.fl.
+      friskluft_l_s_m2: 0.30
+      varmegenvinding_min: 0.80      # § 435, ved mekanisk anlæg
+      sel_max_j_m3: 1000             # § 438
+
+    energiforsyning:
+      elmaaler_varmepumpe_kwh: 3000  # § 327
+
+aabne_spoergsmaal:
+  - "§ 284: opgøres 30 % på tilbygningens areal eller hele husets? (står i vejledningen)"
+  - "Grænserne 100 h / 25 h: bekræft ordlyden i BR-vejledningen om termisk indeklima"
