@@ -78,3 +78,11 @@ med inputs `_materiale`, `_tykkelse_mm`, `_sol_absp_` og outputs `mat`, `info`.
 Første gang laver komponenten selv en rullemenu med alle materialer på `_materiale`.
 Én komponent pr. lag; `mat` går i `_materials` på HB Opaque Construction (udefra og ind).
 Værdierne er typiske designværdier; brug lambda fra databladet for isolering, når den kendes.
+
+## Standardopbygninger (én komponent i stedet for hele konstruktionskæden)
+
+`gh_opbygninger.py` læser `energi/regler/opbygninger.txt` og giver et færdigt ConstructionSet.
+GhPython-komponent (IronPython 2), inputs `_fil`, `_ydervaeg`, `_tag`, `_terraendaek`, `_vindue`
+(Type hint: str), outputs `constr_set`, `info`, `ydervaeg`, `tag`, `terraendaek`, `vindue`.
+Sæt `_fil` til stien til `opbygninger.txt`; tomme inputs får selv en rullemenu.
+`constr_set` går i `_constr_set_` på HB Room from Solid. Nye opbygninger skrives i tekstfilen.

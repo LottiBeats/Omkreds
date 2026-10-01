@@ -1,0 +1,103 @@
+# Standardopbygninger - læses af energi/model/gh_opbygninger.py (Grasshopper)
+#
+# - [materialer]: én linje pr. materiale:  navn | lambda W/mK | densitet kg/m3 | varmefylde J/kgK
+# - [type: navn]: en opbygning. type er ydervæg, tag, terrændæk eller vindue.
+#   Lag skrives udefra og ind:  materiale | tykkelse mm
+#   Vindue:  u | g | lt  på hver sin linje (hele vinduet inkl. ramme).
+# - Tilføj firmaets egne opbygninger. Navnet efter kolon vises i rullemenuen.
+# - Linjer, der starter med #, ignoreres.
+# - U-værdier regnes som homogene lag. Ved stolper/spær: brug DS 418-værdien i ds418_varmetab (_u_).
+# - Beklædning uden for et ventileret hulrum tæller ikke med (DS 418) og er udeladt.
+# - Opbygningerne nedenfor er eksempler. Ret dem til jeres egne.
+
+[materialer]
+Træbeklædning (fyr/gran) | 0.13 | 500 | 1600
+Krydsfiner | 0.13 | 500 | 1600
+OSB | 0.13 | 650 | 1700
+Vindgips (udvendig gips) | 0.25 | 800 | 1000
+Træfiber vindplade | 0.05 | 250 | 2100
+Tagpap | 0.23 | 1100 | 1000
+Tagsten (tegl) | 1.0 | 2000 | 800
+Mursten (tegl) | 0.6 | 1800 | 840
+Mineraluld 32 | 0.032 | 35 | 1030
+Mineraluld 34 | 0.034 | 30 | 1030
+Mineraluld 37 | 0.037 | 30 | 1030
+Papirisolering | 0.04 | 45 | 1900
+Træfiberisolering | 0.038 | 50 | 2100
+EPS hvid (lambda 38) | 0.038 | 15 | 1450
+EPS 150 (lambda 36) | 0.036 | 25 | 1450
+EPS grå (lambda 31) | 0.031 | 20 | 1450
+XPS | 0.034 | 35 | 1450
+PIR | 0.022 | 32 | 1400
+Gips | 0.25 | 900 | 1000
+Fibergips | 0.32 | 1150 | 1100
+Beton (armeret) | 2.3 | 2300 | 1000
+Porebeton 535 | 0.13 | 535 | 1000
+Kalksandsten | 1.0 | 1900 | 1000
+Afretningslag (cement) | 1.0 | 1800 | 1000
+Klinker/fliser | 1.3 | 2300 | 840
+Trægulv eg | 0.18 | 700 | 1600
+Trægulv fyr/plank | 0.13 | 500 | 1600
+
+# --- Ydervægge -----------------------------------------------------------
+
+[ydervæg: Træskelet 250 + 45 installationslag]
+Vindgips (udvendig gips) | 9
+Mineraluld 37 | 250
+Mineraluld 37 | 45
+Gips | 25
+
+[ydervæg: Træskelet 300 + 45 installationslag]
+Træfiber vindplade | 22
+Mineraluld 34 | 300
+Mineraluld 37 | 45
+Gips | 25
+
+[ydervæg: Hulmur tegl/porebeton 400]
+Mursten (tegl) | 108
+Mineraluld 34 | 190
+Porebeton 535 | 100
+Gips | 13
+
+# --- Tage ------------------------------------------------------------------
+
+[tag: Paptag 400]
+Tagpap | 5
+Krydsfiner | 22
+Mineraluld 37 | 400
+Gips | 25
+
+[tag: Skråtag/A-hus 350 + 45]
+Træfiber vindplade | 22
+Mineraluld 34 | 350
+Mineraluld 37 | 45
+Gips | 25
+
+# --- Terrændæk --------------------------------------------------------------
+
+[terrændæk: EPS 300 + beton 100, trægulv]
+EPS 150 (lambda 36) | 300
+Beton (armeret) | 100
+Trægulv eg | 14
+
+[terrændæk: EPS grå 350 + beton 100, klinker]
+EPS grå (lambda 31) | 350
+Beton (armeret) | 100
+Klinker/fliser | 10
+
+# --- Vinduer ---------------------------------------------------------------
+
+[vindue: 3-lag energi g50]
+u | 0.80
+g | 0.50
+lt | 0.71
+
+[vindue: 3-lag solafskærmende g35]
+u | 0.80
+g | 0.35
+lt | 0.60
+
+[vindue: 2-lag energi (eksisterende)]
+u | 1.20
+g | 0.60
+lt | 0.78
