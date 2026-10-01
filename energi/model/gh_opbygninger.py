@@ -231,6 +231,13 @@ except NameError:
 if _i_gh:
     import sys
     print("gh_opbygninger kører i Python %s" % sys.version.split()[0])
+    try:
+        import honeybee_energy  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "Ladybug Tools kan ikke findes fra denne komponent. Det er Rhino 8's nye "
+            "IronPython 2/Python 3 Script-komponent. Brug den gamle 'GhPython Script' "
+            "(Maths > Script), samme slags som Ladybug-komponenterne.")
     _komp = ghenv.Component  # noqa: F821
     _fil = find_fil(_fil, _komp.OnPingDocument().FilePath)  # noqa: F821
     print("Fil fundet: %s" % _fil)
