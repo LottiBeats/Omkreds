@@ -81,8 +81,11 @@ Værdierne er typiske designværdier; brug lambda fra databladet for isolering, 
 
 ## Standardopbygninger (én komponent i stedet for hele konstruktionskæden)
 
-`gh_opbygninger.py` læser `energi/regler/opbygninger.txt` og giver et færdigt ConstructionSet.
-GhPython-komponent (IronPython 2), inputs `_fil`, `_ydervaeg`, `_tag`, `_terraendaek`, `_vindue`
-(Type hint: str), outputs `constr_set`, `info`, `ydervaeg`, `tag`, `terraendaek`, `vindue`.
-Sæt `_fil` til stien til `opbygninger.txt`; tomme inputs får selv en rullemenu.
-`constr_set` går i `_constr_set_` på HB Room from Solid. Nye opbygninger skrives i tekstfilen.
+`gh_opbygninger.py` læser `energi/regler/opbygninger.txt` og laver et ConstructionSet som tekst.
+Scriptet bruger ikke Honeybee selv, så det virker i alle script-komponenter i Rhino 8.
+Inputs `_fil`, `_ydervaeg`, `_tag`, `_terraendaek`, `_vindue`; outputs `constr_set`, `info`.
+Tomme opbygnings-inputs får selv en rullemenu.
+
+    constr_set -> HB String to Object (_hb_str) -> _constr_set_ på HB Room from Solid
+
+Nye opbygninger og materialer skrives i tekstfilen.

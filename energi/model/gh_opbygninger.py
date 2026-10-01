@@ -7,19 +7,19 @@ Erstatter hele kæden HB Opaque Material -> HB Opaque Construction -> subsets ->
 HB ConstructionSet. Opbygningerne står i en tekstfil (energi/regler/opbygninger.txt),
 som I selv retter og udvider.
 
-Sæt koden i en GhPython-komponent (IronPython 2, samme slags som Ladybug-
-komponenterne, ellers kan Honeybee ikke læse resultatet).
+Scriptet bruger ikke Honeybee selv og virker derfor i alle Rhino 8's
+script-komponenter (Script/IronPython 2/Python 3) og i den gamle GhPython.
+
 Inputs (Item Access, Type hint: str):
     _fil          sti til opbygninger.txt. Fuld sti (C:\\...), eller relativ til
                   mappen med .gh-filen. Tom: opbygninger.txt ved siden af .gh-filen.
-    _ydervaeg     navn på opbygning  \
-    _tag          navn på opbygning   |  står de tomme, laver komponenten selv
-    _terraendaek  navn på opbygning   |  en rullemenu med opbygningerne i filen
-    _vindue       navn på vindue     /
+    _ydervaeg     navn på opbygning   } står de tomme, laver komponenten selv
+    _tag          navn på opbygning   } en rullemenu med opbygningerne i filen
+    _terraendaek  navn på opbygning   }
+    _vindue       navn på vindue      }
 Outputs:
-    constr_set    -> _constr_set_ på HB Room from Solid
-    info          tekst til et Panel: lag og U-værdier
-    ydervaeg, tag, terraendaek, vindue   de enkelte konstruktioner (valgfri)
+    constr_set    tekst -> HB String to Object (_hb_str) -> _constr_set_ på HB Room from Solid
+    info          tekst til et Panel: lag og U-værdier (ISO 6946)
 """
 from __future__ import division, unicode_literals
 
@@ -35,15 +35,18 @@ def _ascii(tekst):
 
 
 def _id(tekst):
-    from honeybee.typing import clean_ep_string
-    return clean_ep_string(_ascii(tekst))
+    """Som honeybee.typing.clean_ep_string: kun ASCII, uden , ; ! og linjeskift."""
+    val = "".join(ch for ch in _ascii(tekst) if ord(ch) < 128)
+    for ch in ",;!\n\t":
+        val = val.replace(ch, "")
+    return val.strip()[:100]
 
 
 def _laes_tekst(fil):
-    """Hele filen som unicode. IronPython 2's codecs fejler på UTF-8, så der bruges .NET."""
+    """Hele filen som tekst. IronPython 2's codecs fejler på UTF-8, så der bruges .NET."""
     try:
         import System
-        return System.IO.File.ReadAllText(fil, System.Text.Encoding.UTF8)
+        return str(System.IO.File.ReadAllText(fil, System.Text.Encoding.UTF8))
     except ImportError:
         with io.open(fil, encoding="utf-8-sig") as f:
             return f.read()
@@ -95,78 +98,72 @@ def _find(opbygninger, typ, navn):
     raise ValueError("Ukendt %s '%s'. Vælg fra listen." % (typ, navn))
 
 
-def byg_opak(navn, lag, materialer):
-    from honeybee_energy.material.opaque import EnergyMaterial
-    from honeybee_energy.construction.opaque import OpaqueConstruction
-    mats = []
+# Overgangsmodstande efter DS/EN ISO 6946 (til info-panelet)
+RSI_RSE = {"ydervaeg": (0.13, 0.04), "tag": (0.10, 0.04), "terraendaek": (0.17, 0.04)}
+
+
+def byg_opak(navn, lag, materialer, typ="ydervaeg"):
+    """Returnerer (Honeybee-dict for OpaqueConstruction, U-værdi efter ISO 6946)."""
+    mats, r_sum = [], 0.0
     for mat_navn, t_mm in lag:
         m = materialer.get(mat_navn.lower())
         if m is None:
             raise ValueError("'%s' i '%s' findes ikke under [materialer]" % (mat_navn, navn))
         n, lam, rho, c = m
-        em = EnergyMaterial(_id("%s %g mm" % (n, t_mm)), t_mm / 1000.0, lam, rho, c)
-        em.display_name = "%s %g mm" % (n, t_mm)
-        mats.append(em)
-    k = OpaqueConstruction(_id(navn), mats)
-    k.display_name = navn
-    return k
+        vist = "%s %g mm" % (n, t_mm)
+        mats.append({"type": "EnergyMaterial", "identifier": _id(vist), "display_name": vist,
+                     "roughness": "MediumRough", "thickness": t_mm / 1000.0, "conductivity": lam,
+                     "density": rho, "specific_heat": c, "thermal_absorptance": 0.9,
+                     "solar_absorptance": 0.7, "visible_absorptance": 0.7})
+        r_sum += t_mm / 1000.0 / lam
+    rsi, rse = RSI_RSE.get(typ, (0.13, 0.04))
+    d = {"type": "OpaqueConstruction", "identifier": _id(navn), "display_name": navn, "materials": mats}
+    return d, 1.0 / (rsi + r_sum + rse)
 
 
 def byg_vindue(navn, felter):
-    from honeybee_energy.material.glazing import EnergyWindowMaterialSimpleGlazSys
-    from honeybee_energy.construction.window import WindowConstruction
+    """Returnerer Honeybee-dict for WindowConstruction (simpelt glassystem)."""
     v = dict((k.lower(), x) for k, x in felter)
     for k in ("u", "g", "lt"):
         if k not in v:
             raise ValueError("Vinduet '%s' mangler '%s'" % (navn, k))
-    mat = EnergyWindowMaterialSimpleGlazSys(_id(navn + " glas"), v["u"], v["g"], v["lt"])
-    k = WindowConstruction(_id(navn), [mat])
-    k.display_name = navn
-    return k
+    glas = {"type": "EnergyWindowMaterialSimpleGlazSys", "identifier": _id(navn + " glas"),
+            "u_factor": v["u"], "shgc": v["g"], "vt": v["lt"]}
+    return {"type": "WindowConstruction", "identifier": _id(navn), "display_name": navn,
+            "materials": [glas]}, v
 
 
 def byg_saet(fil, ydervaeg, tag, terraendaek, vindue):
-    """Returnerer (ConstructionSet, {type: konstruktion}, infotekst)."""
-    from honeybee_energy.constructionset import ConstructionSet
+    """Returnerer (ConstructionSet som Honeybee-dict, infotekst).
+    Dict'en bliver til et rigtigt ConstructionSet via HB String to Object."""
     materialer, opb = laes(fil)
-    valg = {"ydervaeg": ydervaeg, "tag": tag, "terraendaek": terraendaek, "vindue": vindue}
-    k = {}
-    for typ, navn in valg.items():
-        if not navn:
-            continue
-        n, lag = _find(opb, typ, navn)
-        k[typ] = byg_vindue(n, lag) if typ == "vindue" else byg_opak(n, lag, materialer)
-
-    cs = ConstructionSet("Projekt_konstruktioner")
-    if "ydervaeg" in k:
-        cs.wall_set.exterior_construction = k["ydervaeg"]
-    if "tag" in k:
-        cs.roof_ceiling_set.exterior_construction = k["tag"]
-    if "terraendaek" in k:
-        cs.floor_set.ground_construction = k["terraendaek"]
-    if "vindue" in k:
-        v = k["vindue"]
-        cs.aperture_set.window_construction = v
-        cs.aperture_set.operable_construction = v
-        cs.aperture_set.skylight_construction = v
-        cs.door_set.exterior_glass_construction = v
-
+    cs = {"type": "ConstructionSet", "identifier": "Projekt_konstruktioner"}
     linjer = []
-    for typ, titel in (("ydervaeg", "Ydervæg"), ("tag", "Tag"), ("terraendaek", "Terrændæk")):
-        if typ not in k:
+    for typ, titel, saet, felt in (
+            ("ydervaeg", "Ydervæg", "wall_set", "exterior_construction"),
+            ("tag", "Tag", "roof_ceiling_set", "exterior_construction"),
+            ("terraendaek", "Terrændæk", "floor_set", "ground_construction")):
+        navn = {"ydervaeg": ydervaeg, "tag": tag, "terraendaek": terraendaek}[typ]
+        if not navn:
             linjer.append("%s: (ikke valgt - Honeybee-standard)" % titel)
             continue
-        c = k[typ]
-        linjer.append("%s: %s   U = %.3f W/m2K" % (titel, c.display_name, c.u_factor))
-        for m in c.materials:
-            linjer.append("    %-32s R = %.2f" % (m.display_name, m.thickness / m.conductivity))
-    if "vindue" in k:
-        g = k["vindue"].materials[0]
-        linjer.append("Vindue: %s   U = %.2f  g = %.2f  LT = %.2f" % (
-            k["vindue"].display_name, g.u_factor, g.shgc, g.vt))
+        n, lag = _find(opb, typ, navn)
+        d, u = byg_opak(n, lag, materialer, typ)
+        cs[saet] = {"type": {"wall_set": "WallConstructionSet", "roof_ceiling_set": "RoofCeilingConstructionSet",
+                             "floor_set": "FloorConstructionSet"}[saet], felt: d}
+        linjer.append("%s: %s   U = %.3f W/m2K" % (titel, n, u))
+        for m in d["materials"]:
+            linjer.append("    %-32s R = %.2f" % (m["display_name"], m["thickness"] / m["conductivity"]))
+    if vindue:
+        n, felter = _find(opb, "vindue", vindue)
+        d, v = byg_vindue(n, felter)
+        cs["aperture_set"] = {"type": "ApertureConstructionSet", "window_construction": d,
+                              "operable_construction": d, "skylight_construction": d}
+        cs["door_set"] = {"type": "DoorConstructionSet", "exterior_glass_construction": d}
+        linjer.append("Vindue: %s   U = %.2f  g = %.2f  LT = %.2f" % (n, v["u"], v["g"], v["lt"]))
     else:
         linjer.append("Vindue: (ikke valgt - Honeybee-standard)")
-    return cs, k, "\n".join(linjer)
+    return cs, "\n".join(linjer)
 
 
 def _lav_rullemenuer(komp, opb):
@@ -229,15 +226,9 @@ except NameError:
     _i_gh = False
 
 if _i_gh:
+    import json
     import sys
     print("gh_opbygninger kører i Python %s" % sys.version.split()[0])
-    try:
-        import honeybee_energy  # noqa: F401
-    except ImportError:
-        raise ImportError(
-            "Ladybug Tools kan ikke findes fra denne komponent. Det er Rhino 8's nye "
-            "IronPython 2/Python 3 Script-komponent. Brug den gamle 'GhPython Script' "
-            "(Maths > Script), samme slags som Ladybug-komponenterne.")
     _komp = ghenv.Component  # noqa: F821
     _fil = find_fil(_fil, _komp.OnPingDocument().FilePath)  # noqa: F821
     print("Fil fundet: %s" % _fil)
@@ -245,8 +236,7 @@ if _i_gh:
     if _tomme:
         _lav_rullemenuer(_komp, laes(_fil)[1])
         print("Rullemenuer bestilt til input %s" % _tomme)
-    constr_set, _k, info = byg_saet(_fil, _ydervaeg, _tag, _terraendaek, _vindue)  # noqa: F821
+    _cs, info = byg_saet(_fil, _ydervaeg, _tag, _terraendaek, _vindue)  # noqa: F821
     info += "\n" + tilgaengelige(_fil)
-    ydervaeg, tag = _k.get("ydervaeg"), _k.get("tag")
-    terraendaek, vindue = _k.get("terraendaek"), _k.get("vindue")
-    print("Færdig")
+    constr_set = json.dumps(_cs)
+    print("Færdig - sæt constr_set i HB String to Object")
