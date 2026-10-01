@@ -39,43 +39,52 @@ def _id(tekst):
     return clean_ep_string(_ascii(tekst))
 
 
+def _laes_tekst(fil):
+    """Hele filen som unicode. IronPython 2's codecs fejler på UTF-8, så der bruges .NET."""
+    try:
+        import System
+        return System.IO.File.ReadAllText(fil, System.Text.Encoding.UTF8)
+    except ImportError:
+        with io.open(fil, encoding="utf-8-sig") as f:
+            return f.read()
+
+
 def laes(fil):
     """Læser filen -> (materialer, opbygninger).
     materialer:  {navn_lower: (navn, lambda, densitet, varmefylde)}
     opbygninger: {type: [(navn, [(felt1, felt2), ...]), ...]} i filens rækkefølge"""
     materialer, opbygninger = {}, dict((t, []) for t in TYPER)
     afsnit, aktuel = None, None
-    with io.open(fil, encoding="utf-8-sig") as f:
-        for nr, linje in enumerate(f, 1):
-            linje = linje.strip()
-            if not linje or linje.startswith("#"):
+    for nr, linje in enumerate(_laes_tekst(fil).splitlines(), 1):
+        linje = linje.strip()
+        if not linje or linje.startswith("#"):
+            continue
+        if linje.startswith("[") and linje.endswith("]"):
+            hoved = linje[1:-1].strip()
+            if hoved.lower() == "materialer":
+                afsnit = "materialer"
                 continue
-            if linje.startswith("[") and linje.endswith("]"):
-                hoved = linje[1:-1].strip()
-                if hoved.lower() == "materialer":
-                    afsnit = "materialer"
-                    continue
-                if ":" not in hoved:
-                    raise ValueError("Linje %d: skriv [type: navn], fx [ydervæg: Træskelet 250]" % nr)
-                typ, navn = [s.strip() for s in hoved.split(":", 1)]
-                typ = _ascii(typ.lower())
-                if typ not in opbygninger:
-                    raise ValueError("Linje %d: ukendt type '%s' (brug ydervæg, tag, terrændæk, vindue)" % (nr, typ))
-                aktuel = (navn, [])
-                opbygninger[typ].append(aktuel)
-                afsnit = typ
-                continue
-            felter = [s.strip() for s in linje.split("|")]
-            if afsnit == "materialer":
-                if len(felter) != 4:
-                    raise ValueError("Linje %d: materiale skal have 4 felter: navn | lambda | densitet | varmefylde" % nr)
-                materialer[felter[0].lower()] = (felter[0], float(felter[1]), float(felter[2]), float(felter[3]))
-            elif aktuel is not None:
-                if len(felter) != 2:
-                    raise ValueError("Linje %d: skriv  materiale | tykkelse mm  (eller u/g/lt | tal for vinduer)" % nr)
-                aktuel[1].append((felter[0], float(felter[1].replace(",", "."))))
-            else:
-                raise ValueError("Linje %d står uden for et afsnit" % nr)
+            if ":" not in hoved:
+                raise ValueError("Linje %d: skriv [type: navn], fx [ydervæg: Træskelet 250]" % nr)
+            typ, navn = [s.strip() for s in hoved.split(":", 1)]
+            typ = _ascii(typ.lower())
+            if typ not in opbygninger:
+                raise ValueError("Linje %d: ukendt type '%s' (brug ydervæg, tag, terrændæk, vindue)" % (nr, typ))
+            aktuel = (navn, [])
+            opbygninger[typ].append(aktuel)
+            afsnit = typ
+            continue
+        felter = [s.strip() for s in linje.split("|")]
+        if afsnit == "materialer":
+            if len(felter) != 4:
+                raise ValueError("Linje %d: materiale skal have 4 felter: navn | lambda | densitet | varmefylde" % nr)
+            materialer[felter[0].lower()] = (felter[0], float(felter[1]), float(felter[2]), float(felter[3]))
+        elif aktuel is not None:
+            if len(felter) != 2:
+                raise ValueError("Linje %d: skriv  materiale | tykkelse mm  (eller u/g/lt | tal for vinduer)" % nr)
+            aktuel[1].append((felter[0], float(felter[1].replace(",", "."))))
+        else:
+            raise ValueError("Linje %d står uden for et afsnit" % nr)
     return materialer, opbygninger
 
 
