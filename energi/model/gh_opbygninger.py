@@ -166,6 +166,30 @@ def byg_saet(fil, ydervaeg, tag, terraendaek, vindue):
     return cs, "\n".join(linjer)
 
 
+def til_json(x):
+    """Enkel JSON-skriver. IronPython 2's json-modul fejler på æ/ø/å, så alt ikke-ASCII skrives som \\uXXXX."""
+    if x is None:
+        return "null"
+    if x is True or x is False:
+        return "true" if x else "false"
+    if isinstance(x, (int, float)):
+        return repr(float(x)) if isinstance(x, float) else str(x)
+    if isinstance(x, dict):
+        return "{" + ", ".join(til_json(k) + ": " + til_json(v) for k, v in x.items()) + "}"
+    if isinstance(x, (list, tuple)):
+        return "[" + ", ".join(til_json(v) for v in x) + "]"
+    ud = []
+    for ch in x:
+        o = ord(ch)
+        if ch == '"' or ch == "\\":
+            ud.append("\\" + ch)
+        elif o < 32 or o > 126:
+            ud.append("\\u%04x" % o)
+        else:
+            ud.append(ch)
+    return '"' + "".join(ud) + '"'
+
+
 def _lav_rullemenuer(komp, opb):
     """Sætter en Value List på hvert tomt opbygnings-input."""
     import Grasshopper as gh
@@ -226,7 +250,6 @@ except NameError:
     _i_gh = False
 
 if _i_gh:
-    import json
     import sys
     print("gh_opbygninger kører i Python %s" % sys.version.split()[0])
     _komp = ghenv.Component  # noqa: F821
@@ -238,5 +261,5 @@ if _i_gh:
         print("Rullemenuer bestilt til input %s" % _tomme)
     _cs, info = byg_saet(_fil, _ydervaeg, _tag, _terraendaek, _vindue)  # noqa: F821
     info += "\n" + tilgaengelige(_fil)
-    constr_set = json.dumps(_cs)
+    constr_set = til_json(_cs)
     print("Færdig - sæt constr_set i HB String to Object")

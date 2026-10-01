@@ -53,3 +53,13 @@ def test_tomme_valg_giver_standard():
     d, info = go.byg_saet(FIL, None, None, None, None)
     cs = dict_to_object(d)
     assert "Generic" in cs.wall_set.exterior_construction.identifier
+
+
+def test_til_json_er_ascii_og_gyldig():
+    _, opb = go.laes(FIL)
+    navne = dict((t, opb[t][0][0]) for t in go.TYPER)
+    d, _ = go.byg_saet(FIL, navne["ydervaeg"], navne["tag"], navne["terraendaek"], navne["vindue"])
+    tekst = go.til_json(d)
+    assert all(ord(ch) < 128 for ch in tekst)
+    assert json.loads(tekst) == d
+    assert dict_to_object(json.loads(tekst)).wall_set.exterior_construction.display_name == "Træskelet 250 + 45 installationslag"
