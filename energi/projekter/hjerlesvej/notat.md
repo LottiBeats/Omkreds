@@ -5,6 +5,18 @@
   Overskrifter nummereres automatisk. [afventer ...] er felter, der udfyldes fra beregningen.
 -->
 
+## Indledende bemærkninger
+
+Notatet dokumenterer energi, varmetab, termisk indeklima og dagslys for ombygning og tilbygning af sommerhuset på Hjerlesvej, og hvilke krav i BR18 projektet udløser. Projektet består af et eksisterende A-hus, en eksisterende fløj med soveværelser (blok B), en ny mellembygning med hal og ovenlys og en ny soveværelsesfløj mod sydvest.
+
+Notatet går videre end den lovpligtige dokumentation på tre punkter:
+
+- **Termisk indeklima** beregnes rum for rum med dynamisk simulering, ikke kun i ét antaget kritisk rum.
+- **Dagslys** vurderes som kvalitet (dagslysautonomi, blænding, udsyn), ikke kun som 10 %-reglen.
+- **Afvejningen** mellem solafskærmning, dagslys og varmetab vises samlet, så bygherren kan se konsekvensen af hvert valg.
+
+Beregningerne laves i en parametrisk model (Rhino/Grasshopper med Ladybug Tools), så tiltag og ændringer i arkitekturen kan regnes igennem hurtigt. Tallene er størrelsesordener på myndighedsniveau og ikke endelige dimensioneringer.
+
 ## Sammenfatning og anbefaling
 
 Huset kan dokumenteres som sommerhus efter BR18 § 283-286 uden energiramme. Den største risiko er overophedning i rummene bag de store sydvestvendte glaspartier, ikke varmetabet. Vurderingen nedenfor er foreløbig og opdateres, når beregningerne er kørt.
@@ -27,18 +39,6 @@ Huset kan dokumenteres som sommerhus efter BR18 § 283-286 uden energiramme. Den
 5. Eksisterende soveværelser i blok B – glas mod både NØ og SV.
 
 **Anbefaling:** Fasthold sommerhusvejen. Planlæg fra start udvendig solafskærmning mod SV, oplukkelige vinduer i toppen af A-gavlen og automatisk natkøling i hallen. Afklar tidligt med kommunen, hvordan 30 %-reglen opgøres for tilbygningen.
-
-## Indledende bemærkninger
-
-Notatet dokumenterer energi, varmetab, termisk indeklima og dagslys for ombygning og tilbygning af sommerhuset på Hjerlesvej, og hvilke krav i BR18 projektet udløser. Projektet består af et eksisterende A-hus, en eksisterende fløj med soveværelser (blok B), en ny mellembygning med hal og ovenlys og en ny soveværelsesfløj mod sydvest.
-
-Notatet går videre end den lovpligtige dokumentation på tre punkter:
-
-- **Termisk indeklima** beregnes rum for rum med dynamisk simulering, ikke kun i ét antaget kritisk rum.
-- **Dagslys** vurderes som kvalitet (dagslysautonomi, blænding, udsyn), ikke kun som 10 %-reglen.
-- **Afvejningen** mellem solafskærmning, dagslys og varmetab vises samlet, så bygherren kan se konsekvensen af hvert valg.
-
-Beregningerne laves i en parametrisk model (Rhino/Grasshopper med Ladybug Tools), så tiltag og ændringer i arkitekturen kan regnes igennem hurtigt. Tallene er størrelsesordener på myndighedsniveau og ikke endelige dimensioneringer.
 
 ## Regelgrundlag: sommerhus, tilbygning og ombygning
 

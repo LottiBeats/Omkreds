@@ -14,6 +14,17 @@ regelversion: br18-2026-10     # se ../../regler/br18_energi.yaml
 anvendelse: sommerhus          # sommerhus | enfamiliehus
 byggearbejde: [tilbygning, ombygning]
 
+# Forside, titelbjælke og sidefod
+titel_linjer:
+  - "Notat om energi, varmetab, termisk indeklima"
+  - "og dagslys"
+projekt_linjer:
+  - "Hjerlesvej – ombygning og tilbygning af sommerhus"
+kort_titel: "Energi og indeklima, Hjerlesvej"
+info_projekt: "Hjerlesvej – ombygning og tilbygning af sommerhus"
+firma_kort: "omkreds"          # spærret firmanavn øverst til højre – ret til jeres
+sidefod: "Firmanavn (CVR), adresse"   # ret til jeres oplysninger
+
 udarbejdet: ""
 kontrolleret: ""
 godkendt: ""

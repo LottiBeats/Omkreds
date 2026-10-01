@@ -14,7 +14,8 @@ energi/
 ├── regler/
 │   └── br18_energi.yaml           alle grænseværdier, versioneret efter gyldighedsdato
 ├── rapport/
-│   └── byg_notat.py               notat.md + projekt.yaml -> PDF (bruger backend/holst_layout.py)
+│   ├── byg_notat.py               notat.md + projekt.yaml -> PDF (rådgivernotat-layout)
+│   └── fonts/                     Titillium Web (SIL OFL)
 └── projekter/
     └── hjerlesvej/
         ├── projekt.yaml           sagsoplysninger, revisioner, underskrifter
@@ -33,7 +34,8 @@ python energi/rapport/byg_notat.py energi/projekter/hjerlesvej
 ## Nyt projekt
 
 1. Kopiér `projekter/hjerlesvej` til `projekter/<sag>`.
-2. Ret `projekt.yaml` (sag, adresse, fase, revisioner) og `notat.md`.
+2. Ret `projekt.yaml` (sag, titler, fase, revisioner, firmanavn og sidefod) og `notat.md`.
+   `##` er en hovedoverskrift (nummereres og skrives med versaler), `###` en underoverskrift.
 3. Kør `byg_notat.py` på mappen.
 
 ## Pipeline (plan)
