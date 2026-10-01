@@ -57,3 +57,16 @@ Bygger to skoæske-rum med et vindue, et ovenlys og et træ og kontrollerer resu
 - DS 418-varmetabsramme fra modellens arealer og længder
 - Dagslys efter EN 17037
 - Resultater ind i notatet via `energi/rapport/byg_notat.py`
+
+## Varmetabsramme (DS 418) i Grasshopper
+
+`ds418_varmetab.py` regner varmetabsrammen efter BR18 § 284, stk. 2 direkte på Honeybee-modellen.
+Indsæt hele filen i en GhPython-komponent (IronPython 2) med inputs `_model`, `_psi_`, `_u_`,
+`_gulvvarme_`, `_beregn` og outputs `tabel`, `projekt_W_K`, `ramme_W_K`, `glasandel`, `ok`, `data`.
+
+- **Projekt:** modellens arealer og U-værdier + ψ × længder (vinduessamlinger, fundament, ovenlys).
+- **Referenceramme:** samme geometri med tabel 4-værdier og glas begrænset til 30 % af etagearealet.
+- **Dimensionerende varmetab pr. rum** ved −12 °C (20 °C inde, 24 °C i bad) inkl. frisk luft uden genvinding.
+
+`_u_` (fx `ydervaeg=0.15, tag=0.10, terraendaek=0.10, vindue=0.80`) overskriver modellens U-værdier,
+så DS 418-beregnede værdier for opbygninger med stolper/spær kan bruges.
