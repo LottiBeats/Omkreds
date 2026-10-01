@@ -84,7 +84,7 @@ Gennemgangen af byggesagsarkivet viser tre bygninger med hver sin konstruktion o
 
 | Ydelse | Timer | Pris [kr.] |
 | --- | --- | --- |
-| Møder, koordinering med arkitekt og bygherre, kvalitetssikring | 8 | 8.000 |
+| Møder, koordinering med arkitekt, entreprenør og bygherre, kvalitetssikring | 8 | 8.000 |
 
 ### Indeklima og energi
 
@@ -123,7 +123,7 @@ Gennemgangen af byggesagsarkivet viser tre bygninger med hver sin konstruktion o
 
 ## Forudsætninger
 
-- Konstruktionsklasse og konsekvensklasse fastlægges i A1. Tilbuddet forudsætter, at der ikke kræves certificeret statiker.
+- Projektet indplaceres i konstruktionsklasse KK1 og konsekvensklasse CC2. Der kræves ikke certificeret statiker.
 - Arkitekten leverer opdaterede tegninger i DWG- eller 3D-format.
 - Bygherren giver adgang til huset og kryberummet ved besigtigelsen.
 - Timeprisen er 1.000 kr. ekskl. moms. Kørsel afregnes efter statens takst.
