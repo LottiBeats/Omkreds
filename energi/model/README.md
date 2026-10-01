@@ -87,5 +87,9 @@ Inputs `_fil`, `_ydervaeg`, `_tag`, `_terraendaek`, `_vindue`; outputs `constr_s
 Tomme opbygnings-inputs får selv en rullemenu.
 
     constr_set -> HB String to Object (_hb_str) -> _constr_set_ på HB Room from Solid
+    mod_set    -> HB String to Object (_hb_str) -> _mod_set_    på HB Room from Solid
+
+Samme vindue bruges i energi (U, g, LT) og Radiance (glasmodifier ud fra LT), så komfort- og
+dagslysanalysen kører på samme model. `rad_mod_` og `ep_constr_` på HB Aperture skal stå tomme.
 
 Nye opbygninger og materialer skrives i tekstfilen.

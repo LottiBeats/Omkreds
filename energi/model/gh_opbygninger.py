@@ -20,8 +20,9 @@ Inputs (Item Access, Type hint: str):
 Outputs:
     constr_set    tekst -> HB String to Object (_hb_str) -> _constr_set_ på HB Room from Solid
     info          tekst til et Panel: lag og U-værdier (ISO 6946)
-    vindue        vinduets lystransmittans (LT) -> _trans på HB Glass Modifier,
-                  så Radiance (dagslys) bruger samme glas som energiberegningen
+    mod_set       tekst -> HB String to Object -> _mod_set_ på HB Room from Solid.
+                  Samme vindue som i constr_set, så dagslys og energi bruger samme glas.
+    vindue        vinduets lystransmittans (LT), fx til _trans på HB Glass Modifier
 """
 from __future__ import division, unicode_literals
 
@@ -168,6 +169,33 @@ def byg_saet(fil, ydervaeg, tag, terraendaek, vindue):
     return cs, "\n".join(linjer)
 
 
+def _transmissivitet(t):
+    """Glassets transmittans (databladets LT) -> Radiance-transmissivitet (samme formel som honeybee-radiance)."""
+    import math
+    if t <= 0:
+        return 0.0
+    v = (math.sqrt(0.8402528435 + 0.0072522239 * t ** 2) - 0.9166530661) / 0.0036261119 / t
+    return max(v, 0.0)
+
+
+def byg_modifier_saet(fil, vindue):
+    """Returnerer (Radiance ModifierSet som Honeybee-dict, LT). Kun glasset sættes; vægge,
+    gulve og lofter beholder Honeybees standardreflektanser (0,5 / 0,2 / 0,8)."""
+    ms = {"type": "ModifierSet", "identifier": "Projekt_modifiers"}
+    if not vindue:
+        return ms, None
+    n, felter = _find(laes(fil)[1], "vindue", vindue)
+    lt = dict((k.lower(), x) for k, x in felter)["lt"]
+    tau = _transmissivitet(lt)
+    rad_id = "".join(ch if ch.isalnum() or ch in "_-." else "_" for ch in _id(n + " glas LT%g" % lt))
+    glas = {"type": "Glass", "identifier": rad_id, "display_name": n, "modifier": None, "dependencies": [],
+            "r_transmissivity": tau, "g_transmissivity": tau, "b_transmissivity": tau, "refraction_index": None}
+    ms["aperture_set"] = {"type": "ApertureModifierSet", "window_modifier": glas,
+                          "operable_modifier": glas, "skylight_modifier": glas}
+    ms["door_set"] = {"type": "DoorModifierSet", "exterior_glass_modifier": glas}
+    return ms, lt
+
+
 def til_json(x):
     """Enkel JSON-skriver. IronPython 2's json-modul fejler på æ/ø/å, så alt ikke-ASCII skrives som \\uXXXX."""
     if x is None:
@@ -264,9 +292,7 @@ if _i_gh:
     _cs, info = byg_saet(_fil, _ydervaeg, _tag, _terraendaek, _vindue)  # noqa: F821
     info += "\n" + tilgaengelige(_fil)
     constr_set = til_json(_cs)
-    # Vinduets lystransmittans til HB Glass Modifier (_trans), så dagslys og energi bruger samme glas
-    vindue_lt = vindue = None
-    if _vindue:  # noqa: F821
-        vindue_lt = dict((k.lower(), x) for k, x in _find(laes(_fil)[1], "vindue", _vindue)[1])["lt"]  # noqa: F821
-        vindue = vindue_lt
-    print("Færdig - sæt constr_set i HB String to Object")
+    # Samme glas til Radiance (dagslys): modifier-sæt + lystransmittans
+    _ms, vindue = byg_modifier_saet(_fil, _vindue)  # noqa: F821
+    mod_set = til_json(_ms)
+    print("Færdig - constr_set og mod_set går hver i sin HB String to Object")

@@ -63,3 +63,16 @@ def test_til_json_er_ascii_og_gyldig():
     assert all(ord(ch) < 128 for ch in tekst)
     assert json.loads(tekst) == d
     assert dict_to_object(json.loads(tekst)).wall_set.exterior_construction.display_name == "Træskelet 250 + 45 installationslag"
+
+
+def test_modifier_saet_samme_glas():
+    from honeybee_radiance.dictutil import dict_to_object as rad_obj
+    from honeybee_radiance.modifier.material import Glass
+    ms, lt = go.byg_modifier_saet(FIL, "3-lag energi g50")
+    assert lt == 0.71
+    obj = rad_obj(json.loads(go.til_json(ms)))
+    glas = obj.aperture_set.operable_modifier
+    ref = Glass.from_single_transmittance("ref", 0.71)
+    assert abs(glas.r_transmissivity - ref.r_transmissivity) < 1e-9
+    assert obj.aperture_set.skylight_modifier.identifier == glas.identifier
+    assert go.byg_modifier_saet(FIL, None)[1] is None
