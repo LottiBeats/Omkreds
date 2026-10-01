@@ -87,3 +87,22 @@ def test_indhold_fra_panel_virker_som_fil():
     assert d_fil == d_panel
     assert "Panelet" in go.tilgaengelige(tekst)
     assert go.byg_modifier_saet(tekst, "3-lag energi g50")[1] == 0.71
+
+
+def test_program_bliver_til_honeybee():
+    from honeybee_energy.programtype import ProgramType
+    import byg_hbmodel
+    for valg in (None, "Bolig (SBi 213)"):
+        d, info = go.byg_program(FIL, valg)
+        p = ProgramType.from_dict(json.loads(go.til_json(d)))
+        assert abs(p.people.people_per_area * 120 - 1.5) < 1e-9
+        assert p.electric_equipment.watts_per_area == 3.5
+        assert abs(p.ventilation.flow_per_area - 0.0003) < 1e-12
+        assert abs(p.infiltration.flow_per_exterior_area - 0.0001) < 1e-12
+        assert p.setpoint.heating_setpoint == 20 and p.setpoint.cooling_setpoint == 99
+        assert "SBi 213" in info
+    # samme som byg_hbmodel's program ud fra model.yaml
+    ref = byg_hbmodel._program("ref", dict(personer_w_m2=1.5, udstyr_w_m2=3.5, belysning_w_m2=0,
+                                            infiltration_l_s_m2_facade=0.1, friskluft_l_s_m2=0.3,
+                                            opvarmning_c=20))
+    assert abs(ref.people.people_per_area - p.people.people_per_area) < 1e-12

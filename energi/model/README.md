@@ -94,3 +94,17 @@ dagslysanalysen kører på samme model. `rad_mod_` og `ep_constr_` på HB Apertu
 
 Nye opbygninger og materialer skrives i tekstfilen. `_fil` kan også få hele tekstfilens indhold
 fra et Panel (sæt `_fil` til List Access); så ligger biblioteket i selve .gh-filen.
+
+## Program (interne laster)
+
+`gh_opbygninger.py` har også output `program` (Honeybee ProgramType som tekst):
+`program -> HB String to Object -> _program_ på HB Room from Solid`. Uden input `_program` bruges
+SBi 213 for boliger (personer 1,5 W/m², udstyr 3,5 W/m², friskluft 0,3 l/s m², 20 °C, ingen køling).
+Egne programmer skrives som `[program: navn]` i `opbygninger.txt`.
+
+## Overtemperatur (BR18 § 386)
+
+`gh_overtemperatur.py` tæller timer over 27 og 28 °C pr. rum og sammenligner med
+vejledningens grænser (≤100 h / ≤25 h). Input `_temp` = `oper_temp` fra HB Read Room Comfort
+Result (Tree Access), valgfrit `_navne_` og `_graenser_`. Outputs `tabel`, `ok`, `data`.
+Kommer der 0 rum, så send tallene via LB Deconstruct Data (`values`) i stedet.

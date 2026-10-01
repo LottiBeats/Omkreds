@@ -25,12 +25,22 @@ Outputs:
     mod_set       tekst -> HB String to Object -> _mod_set_ på HB Room from Solid.
                   Samme vindue som i constr_set, så dagslys og energi bruger samme glas.
     vindue        vinduets lystransmittans (LT), fx til _trans på HB Glass Modifier
+    program       tekst -> HB String to Object -> _program_ på HB Room from Solid.
+                  Interne laster og setpunkter. Valgfrit input _program vælger et
+                  [program: ...] i biblioteket; uden det bruges SBi 213 (bolig).
 """
 from __future__ import division, unicode_literals
 
 import io
 
 TYPER = ["ydervaeg", "tag", "terraendaek", "vindue"]
+ALLE_TYPER = TYPER + ["program"]   # program = interne laster og setpunkter (Honeybee ProgramType)
+
+# Bruges, når der ikke er valgt et [program: ...] i biblioteket. SBi-anvisning 213 (boliger), BR18 § 443.
+STANDARD_PROGRAM = ("Bolig (SBi 213)", [
+    ("personer_w_m2", 1.5), ("udstyr_w_m2", 3.5), ("belysning_w_m2", 0.0),
+    ("friskluft_l_s_m2", 0.3), ("infiltration_l_s_m2_facade", 0.1), ("opvarmning_c", 20.0)])
+PERSON_W = 120.0   # Honeybees standard: varme pr. person (siddende voksen)
 
 
 def _ascii(tekst):
@@ -69,7 +79,7 @@ def laes(fil):
     """Læser filen -> (materialer, opbygninger).
     materialer:  {navn_lower: (navn, lambda, densitet, varmefylde)}
     opbygninger: {type: [(navn, [(felt1, felt2), ...]), ...]} i filens rækkefølge"""
-    materialer, opbygninger = {}, dict((t, []) for t in TYPER)
+    materialer, opbygninger = {}, dict((t, []) for t in ALLE_TYPER)
     afsnit, aktuel = None, None
     for nr, linje in enumerate(_laes_tekst(fil).splitlines(), 1):
         linje = linje.strip()
@@ -85,7 +95,7 @@ def laes(fil):
             typ, navn = [s.strip() for s in hoved.split(":", 1)]
             typ = _ascii(typ.lower())
             if typ not in opbygninger:
-                raise ValueError("Linje %d: ukendt type '%s' (brug ydervæg, tag, terrændæk, vindue)" % (nr, typ))
+                raise ValueError("Linje %d: ukendt type '%s' (brug ydervæg, tag, terrændæk, vindue, program)" % (nr, typ))
             aktuel = (navn, [])
             opbygninger[typ].append(aktuel)
             afsnit = typ
@@ -179,6 +189,64 @@ def byg_saet(fil, ydervaeg, tag, terraendaek, vindue):
     return cs, "\n".join(linjer)
 
 
+def _skema(navn, vaerdi, graense):
+    """Konstant årsskema som Honeybee ScheduleRuleset-dict."""
+    graenser = {
+        "Fractional": {"type": "ScheduleTypeLimit", "identifier": "Fractional", "lower_limit": 0.0,
+                       "upper_limit": 1.0, "numeric_type": "Continuous", "unit_type": "Dimensionless"},
+        "Temperature": {"type": "ScheduleTypeLimit", "identifier": "Temperature", "lower_limit": -273.15,
+                        "upper_limit": {"type": "NoLimit"}, "numeric_type": "Continuous",
+                        "unit_type": "Temperature"},
+        "Activity Level": {"type": "ScheduleTypeLimit", "identifier": "Activity Level", "lower_limit": 0.0,
+                           "upper_limit": {"type": "NoLimit"}, "numeric_type": "Continuous",
+                           "unit_type": "ActivityLevel"},
+    }
+    dag = navn + "_dag"
+    return {"type": "ScheduleRuleset", "identifier": navn,
+            "day_schedules": [{"type": "ScheduleDay", "identifier": dag, "values": [float(vaerdi)],
+                               "times": [[0, 0]], "interpolate": False}],
+            "default_day_schedule": dag, "schedule_type_limit": graenser[graense]}
+
+
+def byg_program(fil, valg):
+    """Returnerer (Honeybee ProgramType-dict, infotekst). valg = navn på [program: ...] i
+    biblioteket; tomt -> STANDARD_PROGRAM (SBi 213). Laster er konstante hele året."""
+    if valg:
+        n, felter = _find(laes(fil)[1], "program", valg)
+    else:
+        n, felter = STANDARD_PROGRAM
+    v = dict(STANDARD_PROGRAM[1])
+    v.update(dict((k.lower(), x) for k, x in felter))
+    pid = _id(n).replace(" ", "_")
+    altid = _skema("Altid", 1, "Fractional")
+    prog = {
+        "type": "ProgramType", "identifier": pid, "display_name": n,
+        "people": {"type": "People", "identifier": pid + "_personer",
+                   "people_per_area": v["personer_w_m2"] / PERSON_W, "occupancy_schedule": altid,
+                   "activity_schedule": _skema("Aktivitet_120W", PERSON_W, "Activity Level"),
+                   "radiant_fraction": 0.3, "latent_fraction": {"type": "Autocalculate"}},
+        "lighting": {"type": "Lighting", "identifier": pid + "_lys", "watts_per_area": v["belysning_w_m2"],
+                     "schedule": altid, "return_air_fraction": 0.0, "radiant_fraction": 0.32,
+                     "visible_fraction": 0.25},
+        "electric_equipment": {"type": "ElectricEquipment", "identifier": pid + "_udstyr",
+                               "watts_per_area": v["udstyr_w_m2"], "schedule": altid,
+                               "radiant_fraction": 0.0, "latent_fraction": 0.0, "lost_fraction": 0.0},
+        "infiltration": {"type": "Infiltration", "identifier": pid + "_infiltration",
+                         "flow_per_exterior_area": v["infiltration_l_s_m2_facade"] / 1000.0, "schedule": altid},
+        "ventilation": {"type": "Ventilation", "identifier": pid + "_friskluft",
+                        "flow_per_area": v["friskluft_l_s_m2"] / 1000.0},
+        "setpoint": {"type": "Setpoint", "identifier": pid + "_setpunkt",
+                     "heating_schedule": _skema(pid + "_varme", v["opvarmning_c"], "Temperature"),
+                     # ingen køling: setpunkt 99 °C, så temperaturen svinger frit om sommeren
+                     "cooling_schedule": _skema(pid + "_ingen_koeling", 99, "Temperature")},
+    }
+    info = ("Program: %s   personer %.1f W/m2, udstyr %.1f W/m2, lys %.1f W/m2, "
+            "friskluft %.2f l/s m2, infiltration %.2f l/s m2 facade, varme %g C, ingen køling") % (
+        n, v["personer_w_m2"], v["udstyr_w_m2"], v["belysning_w_m2"], v["friskluft_l_s_m2"],
+        v["infiltration_l_s_m2_facade"], v["opvarmning_c"])
+    return prog, info
+
+
 def _transmissivitet(t):
     """Glassets transmittans (databladets LT) -> Radiance-transmissivitet (samme formel som honeybee-radiance)."""
     import math
@@ -230,6 +298,16 @@ def til_json(x):
     return '"' + "".join(ud) + '"'
 
 
+def tomme_input(komp, opb):
+    """Inputs (_ydervaeg, _tag, ..., _program), der ikke er forbundet og har valgmuligheder i biblioteket."""
+    ud = []
+    for p in komp.Params.Input:
+        typ = p.NickName.lstrip("_")
+        if typ in ALLE_TYPER and p.SourceCount == 0 and opb.get(typ):
+            ud.append(p)
+    return ud
+
+
 def _lav_rullemenuer(komp, opb):
     """Sætter en Value List på hvert tomt opbygnings-input."""
     import Grasshopper as gh
@@ -237,10 +315,8 @@ def _lav_rullemenuer(komp, opb):
 
     def tilfoej(doc):
         try:
-            for i, typ in enumerate(TYPER, 1):
-                p = komp.Params.Input[i]
-                if p.SourceCount > 0 or not opb[typ]:
-                    continue
+            for p in tomme_input(komp, opb):
+                typ = p.NickName.lstrip("_")
                 vl = gh.Kernel.Special.GH_ValueList()
                 vl.CreateAttributes()
                 vl.NickName = typ
@@ -263,7 +339,7 @@ def tilgaengelige(fil):
     """Tekst med alle opbygningsnavne i filen, til info-panelet."""
     _, opb = laes(fil)
     linjer = ["", "Opbygninger i %s:" % ("Panelet" if er_indhold(fil) else fil)]
-    for typ in TYPER:
+    for typ in ALLE_TYPER:
         linjer.append("  %s: %s" % (typ, " / ".join(n for n, _ in opb[typ])))
     return "\n".join(linjer)
 
@@ -304,14 +380,19 @@ if _i_gh:
         _fil = "\n".join("%s" % x for x in _fil)  # noqa: F821
     _fil = find_fil(_fil, _komp.OnPingDocument().FilePath)  # noqa: F821
     print("Opbygninger læst fra Panelet" if er_indhold(_fil) else "Fil fundet: %s" % _fil)
-    _tomme = [i for i in range(1, 5) if _komp.Params.Input[i].SourceCount == 0]
+    _opb = laes(_fil)[1]
+    _tomme = [p.NickName for p in tomme_input(_komp, _opb)]
     if _tomme:
-        _lav_rullemenuer(_komp, laes(_fil)[1])
-        print("Rullemenuer bestilt til input %s" % _tomme)
+        _lav_rullemenuer(_komp, _opb)
+        print("Rullemenuer bestilt til %s" % ", ".join(_tomme))
     _cs, info = byg_saet(_fil, _ydervaeg, _tag, _terraendaek, _vindue)  # noqa: F821
     info += "\n" + tilgaengelige(_fil)
     constr_set = til_json(_cs)
     # Samme glas til Radiance (dagslys): modifier-sæt + lystransmittans
     _ms, vindue = byg_modifier_saet(_fil, _vindue)  # noqa: F821
     mod_set = til_json(_ms)
-    print("Færdig - constr_set og mod_set går hver i sin HB String to Object")
+    # Interne laster og setpunkter (valgfrit input _program; ellers SBi 213)
+    _prog, _prog_info = byg_program(_fil, globals().get("_program"))
+    program = til_json(_prog)
+    info = _prog_info + "\n" + info
+    print("Færdig - constr_set, mod_set og program går hver i sin HB String to Object")

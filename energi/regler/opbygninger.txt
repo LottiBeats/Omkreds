@@ -1,9 +1,10 @@
 # Standardopbygninger - læses af energi/model/gh_opbygninger.py (Grasshopper)
 #
 # - [materialer]: én linje pr. materiale:  navn | lambda W/mK | densitet kg/m3 | varmefylde J/kgK
-# - [type: navn]: en opbygning. type er ydervæg, tag, terrændæk eller vindue.
+# - [type: navn]: en opbygning. type er ydervæg, tag, terrændæk, vindue eller program.
 #   Lag skrives udefra og ind:  materiale | tykkelse mm
 #   Vindue:  u | g | lt  på hver sin linje (hele vinduet inkl. ramme).
+#   Program: interne laster og setpunkter, se nederst. Konstante hele året.
 # - Tilføj firmaets egne opbygninger. Navnet efter kolon vises i rullemenuen.
 # - Linjer, der starter med #, ignoreres.
 # - U-værdier regnes som homogene lag. Ved stolper/spær: brug DS 418-værdien i ds418_varmetab (_u_).
@@ -101,3 +102,15 @@ lt | 0.60
 u | 1.20
 g | 0.60
 lt | 0.78
+
+# --- Programmer (interne laster) -------------------------------------------
+# personer og udstyr i W/m2 gulv, friskluft i l/s pr. m2 gulv,
+# infiltration i l/s pr. m2 facade, opvarmning i °C. Ingen køling.
+
+[program: Bolig (SBi 213)]
+personer_w_m2 | 1.5
+udstyr_w_m2 | 3.5
+belysning_w_m2 | 0
+friskluft_l_s_m2 | 0.3
+infiltration_l_s_m2_facade | 0.1
+opvarmning_c | 20
