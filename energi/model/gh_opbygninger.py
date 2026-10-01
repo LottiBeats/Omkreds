@@ -20,6 +20,8 @@ Inputs (Item Access, Type hint: str):
 Outputs:
     constr_set    tekst -> HB String to Object (_hb_str) -> _constr_set_ på HB Room from Solid
     info          tekst til et Panel: lag og U-værdier (ISO 6946)
+    vindue        vinduets lystransmittans (LT) -> _trans på HB Glass Modifier,
+                  så Radiance (dagslys) bruger samme glas som energiberegningen
 """
 from __future__ import division, unicode_literals
 
@@ -262,4 +264,9 @@ if _i_gh:
     _cs, info = byg_saet(_fil, _ydervaeg, _tag, _terraendaek, _vindue)  # noqa: F821
     info += "\n" + tilgaengelige(_fil)
     constr_set = til_json(_cs)
+    # Vinduets lystransmittans til HB Glass Modifier (_trans), så dagslys og energi bruger samme glas
+    vindue_lt = vindue = None
+    if _vindue:  # noqa: F821
+        vindue_lt = dict((k.lower(), x) for k, x in _find(laes(_fil)[1], "vindue", _vindue)[1])["lt"]  # noqa: F821
+        vindue = vindue_lt
     print("Færdig - sæt constr_set i HB String to Object")
