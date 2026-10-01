@@ -147,6 +147,10 @@ except NameError:
     _i_gh = False
 
 if _i_gh:
+    import sys
+    print("gh_overtemperatur kører i Python %s" % sys.version.split()[0])
+    _t = globals().get("_temp")
+    print("Input _temp: %s" % (type(_t).__name__ if _t is not None else "tomt"))
     _n = globals().get("_navne_")
     if _n is not None and not hasattr(_n, "__iter__"):
         _n = [_n]
