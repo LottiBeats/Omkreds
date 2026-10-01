@@ -213,12 +213,24 @@ def find_fil(fil, gh_fil):
                   "\neller læg filen ved siden af .gh-filen og lad _fil stå tom.")
 
 
-if "_fil" in globals():  # kun i Grasshopper
+try:
+    ghenv  # noqa: F821  (findes kun i Grasshopper)
+    _i_gh = True
+except NameError:
+    _i_gh = False
+
+if _i_gh:
+    import sys
+    print("gh_opbygninger kører i Python %s" % sys.version.split()[0])
     _komp = ghenv.Component  # noqa: F821
     _fil = find_fil(_fil, _komp.OnPingDocument().FilePath)  # noqa: F821
-    if any(_komp.Params.Input[i].SourceCount == 0 for i in range(1, 5)):
+    print("Fil fundet: %s" % _fil)
+    _tomme = [i for i in range(1, 5) if _komp.Params.Input[i].SourceCount == 0]
+    if _tomme:
         _lav_rullemenuer(_komp, laes(_fil)[1])
+        print("Rullemenuer bestilt til input %s" % _tomme)
     constr_set, _k, info = byg_saet(_fil, _ydervaeg, _tag, _terraendaek, _vindue)  # noqa: F821
     info += "\n" + tilgaengelige(_fil)
     ydervaeg, tag = _k.get("ydervaeg"), _k.get("tag")
     terraendaek, vindue = _k.get("terraendaek"), _k.get("vindue")
+    print("Færdig")
