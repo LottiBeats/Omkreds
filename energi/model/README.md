@@ -70,3 +70,11 @@ Indsæt hele filen i en GhPython-komponent (IronPython 2) med inputs `_model`, `
 
 `_u_` (fx `ydervaeg=0.15, tag=0.10, terraendaek=0.10, vindue=0.80`) overskriver modellens U-værdier,
 så DS 418-beregnede værdier for opbygninger med stolper/spær kan bruges.
+
+## Materialebibliotek med rullemenu
+
+`gh_materialer.py` erstatter HB Opaque Material. Sæt koden i en GhPython-komponent (IronPython 2)
+med inputs `_materiale`, `_tykkelse_mm`, `_sol_absp_` og outputs `mat`, `info`.
+Første gang laver komponenten selv en rullemenu med alle materialer på `_materiale`.
+Én komponent pr. lag; `mat` går i `_materials` på HB Opaque Construction (udefra og ind).
+Værdierne er typiske designværdier; brug lambda fra databladet for isolering, når den kendes.
