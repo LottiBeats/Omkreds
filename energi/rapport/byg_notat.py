@@ -3,13 +3,11 @@ byg_notat.py — energinotat (notat.md + projekt.yaml) -> PDF.
 
     python energi/rapport/byg_notat.py energi/projekter/hjerlesvej
 
-Layoutet er et klassisk rådgivernotat: luftig forside med titlen midt på
-siden, sort titelbjælke og spærret firmanavn på hver side, sort
-"INDHOLD"-bjælke med prikket indholdsfortegnelse, nummererede overskrifter
-med versaler og tabeller med tynde sorte streger.
-
-Skriften er Titillium Web (SIL OFL, ligger i ./fonts). Den mangler → og ψ;
-de to tegn sættes med IBM Plex fra backend/fonts.
+Layoutet bruger Omkreds' egen identitet fra appen (frontend/src/index.css):
+IBM Plex Sans og terrakotta som accent (--brand #d94a2b, --brand-ink
+#b83d22, --brand-wash #fbeee9). Opbygning: forside med titel og
+sagsoplysninger, side med projektdata og indholdsfortegnelse, nummererede
+afsnit og tabeller med vandrette streger.
 """
 import re
 import sys
@@ -18,55 +16,48 @@ from pathlib import Path
 
 import yaml
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.fonts import addMapping
 from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph,
                                 Spacer, Table, TableStyle, PageBreak, NextPageTemplate,
                                 KeepTogether, ListFlowable, ListItem)
 from reportlab.platypus.tableofcontents import TableOfContents
 
-HER = Path(__file__).resolve().parent
-PLEX = HER.parents[1] / "backend" / "fonts"
+BACKEND = Path(__file__).resolve().parents[2] / "backend"
+sys.path.insert(0, str(BACKEND))
+import pdf_fonts  # noqa: E402,F401  (registrerer IBM Plex som "Plex", "Plex-SemiBold" …)
 
-# ── Skrifter ─────────────────────────────────────────────────────────────────
-for navn, fil in {"Tit": "TitilliumWeb-Regular.ttf", "Tit-Bold": "TitilliumWeb-Bold.ttf",
-                  "Tit-Semi": "TitilliumWeb-SemiBold.ttf", "Tit-Light": "TitilliumWeb-Light.ttf",
-                  "Tit-Italic": "TitilliumWeb-Italic.ttf"}.items():
-    pdfmetrics.registerFont(TTFont(navn, str(HER / "fonts" / fil)))
-pdfmetrics.registerFont(TTFont("PlexFb", str(PLEX / "IBMPlexSans-Regular.ttf")))
-addMapping("Tit", 0, 0, "Tit")
-addMapping("Tit", 1, 0, "Tit-Bold")
-addMapping("Tit", 0, 1, "Tit-Italic")
-addMapping("Tit", 1, 1, "Tit-Bold")
+# ── Omkreds' farver (frontend/src/index.css) ─────────────────────────────────
+BRAND_HEX = "#d94a2b"
+BRAND = colors.HexColor(BRAND_HEX)
+BRAND_INK = colors.HexColor("#b83d22")
+BRAND_WASH = colors.HexColor("#fbeee9")
+INK = colors.HexColor("#1c1917")
+GRAA = colors.HexColor("#78716c")
+STREG = colors.HexColor("#d6d3d1")
 
-# ── Mål og farver ────────────────────────────────────────────────────────────
 W, H = A4
-VM, HM = 23 * mm, 23 * mm               # venstre/højre margen
+VM, HM = 22 * mm, 22 * mm
 BREDDE = W - VM - HM
-SORT = colors.black
-GRAA = colors.HexColor("#8a8a8a")
 
-BRØD = ParagraphStyle("brød", fontName="Tit", fontSize=9.5, leading=14.5,
-                      spaceAfter=7, alignment=TA_LEFT)
-H1 = ParagraphStyle("h1", parent=BRØD, fontName="Tit-Bold", fontSize=10.5,
-                    leading=14, spaceBefore=16, spaceAfter=8)
-H2 = ParagraphStyle("h2", parent=BRØD, fontName="Tit-Bold", fontSize=9.5,
+BRØD = ParagraphStyle("brød", fontName="Plex", fontSize=9.2, leading=14,
+                      spaceAfter=7, textColor=INK)
+H1 = ParagraphStyle("h1", parent=BRØD, fontName="Plex-SemiBold", fontSize=13,
+                    leading=17, spaceBefore=18, spaceAfter=8)
+H2 = ParagraphStyle("h2", parent=BRØD, fontName="Plex-SemiBold", fontSize=10,
                     leading=13, spaceBefore=10, spaceAfter=5)
-CELLE = ParagraphStyle("celle", parent=BRØD, fontSize=8.5, leading=11.5, spaceAfter=0)
-CELLE_B = ParagraphStyle("celleb", parent=CELLE, fontName="Tit-Bold")
-INFO_L = ParagraphStyle("infol", parent=BRØD, fontName="Tit-Bold", fontSize=9, spaceAfter=0)
-INFO = ParagraphStyle("info", parent=BRØD, fontSize=9, spaceAfter=0)
-BJÆLKE = ParagraphStyle("bjælke", parent=BRØD, fontName="Tit-Bold", fontSize=8.5,
-                        leading=11, textColor=colors.white, spaceAfter=0)
-TOC1 = ParagraphStyle("toc1", parent=BRØD, fontName="Tit-Bold", fontSize=9,
-                      leading=12, spaceBefore=4.5, leftIndent=8 * mm, firstLineIndent=-8 * mm)
-TOC2 = ParagraphStyle("toc2", parent=BRØD, fontSize=8.5, leading=11,
-                      spaceBefore=2, leftIndent=19 * mm, firstLineIndent=-11 * mm)
+CELLE = ParagraphStyle("celle", parent=BRØD, fontSize=8.2, leading=11, spaceAfter=0)
+CELLE_H = ParagraphStyle("celleh", parent=CELLE, fontName="Plex-SemiBold", textColor=BRAND_INK)
+ETIKET = ParagraphStyle("etiket", parent=BRØD, fontName="Plex-Medium", fontSize=7.5,
+                        leading=10, textColor=GRAA, spaceAfter=0)
+VÆRDI = ParagraphStyle("værdi", parent=BRØD, fontSize=9.5, leading=13, spaceAfter=0)
+INDHOLD = ParagraphStyle("indhold", parent=H1, spaceBefore=6, spaceAfter=10)
+TOC1 = ParagraphStyle("toc1", parent=BRØD, fontName="Plex-Medium", fontSize=9.2,
+                      leading=12, spaceBefore=5, leftIndent=9 * mm, firstLineIndent=-9 * mm)
+TOC2 = ParagraphStyle("toc2", parent=BRØD, fontSize=8.5, leading=11, textColor=GRAA,
+                      spaceBefore=2, leftIndent=21 * mm, firstLineIndent=-12 * mm)
 
 
 # ── Tekst ────────────────────────────────────────────────────────────────────
@@ -74,54 +65,45 @@ _LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 
 
 def inline(s: str) -> str:
-    """Markdown-linje -> ReportLab-markup: **fed**, links som tekst, → og ψ i Plex."""
-    s = escape(_LINK.sub(r"\1", s.strip()), quote=False).replace("§ ", "§\u00a0")
-    s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
-    for tegn in "→ψ":
-        s = s.replace(tegn, f'<font name="PlexFb">{tegn}</font>')
-    return s
+    """Markdown-linje -> ReportLab-markup: **fed**, links som tekst, § holdes sammen med tallet."""
+    s = escape(_LINK.sub(r"\1", s.strip()), quote=False).replace("§ ", "§ ")
+    return re.sub(r"\*\*(.+?)\*\*", r'<font name="Plex-SemiBold">\1</font>', s)
 
 
-def bjælke(tekst: str) -> Table:
-    t = Table([[Paragraph(escape(tekst.upper()), BJÆLKE)]], colWidths=[BREDDE])
-    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), SORT),
-                           ("LEFTPADDING", (0, 0), (-1, -1), 7),
-                           ("TOPPADDING", (0, 0), (-1, -1), 5),
-                           ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
-    return t
+def nummer(n: str) -> str:
+    return f'<font color="{BRAND_HEX}">{n}</font>'
 
 
 def tabel(rækker: list[list[str]]) -> Table:
     n = max(len(r) for r in rækker)
     rækker = [r + [""] * (n - len(r)) for r in rækker]
-    # Kolonnebredde efter indhold: lange tekstkolonner får pladsen, korte tal-
-    # og paragrafkolonner holdes smalle.
-    vægt = [max(6, min(48, max(len(re.sub(r"\*", "", r[i])) for r in rækker))) for i in range(n)]
+    rå = [[re.sub(r"\*", "", c).replace("§ ", "§ ") for c in r] for r in rækker]
+
+    # Bredde efter indhold, men ingen kolonne smallere end dens længste ord.
+    vægt = [max(6, min(48, max(len(r[i]) for r in rå))) for i in range(n)]
     bredder = [BREDDE * v / sum(vægt) for v in vægt]
-    # Ingen kolonne smallere end dens længste ord, ellers deles ordet midt over.
-    def ord_bredde(i):
-        ord_ = [w for r in rækker for w in re.sub(r"\*", "", r[i]).replace("§ ", "§\u00a0").split(" ")] or [""]
-        return max(pdfmetrics.stringWidth(w, "Tit-Bold", 8.5) for w in ord_) + 11
-    mindst = [ord_bredde(i) for i in range(n)]
-    for _ in range(3):
-        for i in range(n):
-            if bredder[i] < mindst[i]:
-                mangel = mindst[i] - bredder[i]
-                andre = [j for j in range(n) if bredder[j] - mangel / max(1, n - 1) > mindst[j]]
-                if not andre:
-                    break
+    mindst = [max(pdfmetrics.stringWidth(w, "Plex-SemiBold", 8.2)
+                  for r in rå for w in r[i].split(" ")) + 12 for i in range(n)]
+    for i in range(n):
+        if bredder[i] < mindst[i]:
+            mangel = mindst[i] - bredder[i]
+            andre = [j for j in range(n) if j != i and bredder[j] - mangel / (n - 1) > mindst[j]]
+            if andre:
                 bredder[i] = mindst[i]
                 for j in andre:
                     bredder[j] -= mangel / len(andre)
-    data = [[Paragraph(inline(c), CELLE_B if ri == 0 else CELLE) for c in r]
+
+    data = [[Paragraph(inline(c), CELLE_H if ri == 0 else CELLE) for c in r]
             for ri, r in enumerate(rækker)]
     t = Table(data, colWidths=bredder, repeatRows=1, hAlign="LEFT")
-    t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, SORT),
-                           ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                           ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                           ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                           ("TOPPADDING", (0, 0), (-1, -1), 4),
-                           ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_WASH),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.9, BRAND),
+        ("LINEBELOW", (0, 1), (-1, -2), 0.4, STREG),
+        ("LINEBELOW", (0, -1), (-1, -1), 0.8, INK),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
     return t
 
 
@@ -140,16 +122,16 @@ def md_til_flowables(md: str) -> list:
         if tab:
             rows = [[c.strip() for c in r.strip().strip("|").split("|")]
                     for r in tab if not re.fullmatch(r"\|[\s:|-]+\|", r.strip())]
-            ud.extend([tabel(rows), Spacer(1, 9)])
+            ud.extend([tabel(rows), Spacer(1, 10)])
             tab.clear()
         if liste:
-            kind = liste_type[0]
+            nr_liste = liste_type[0] == "nr"
             ud.append(ListFlowable(
-                [ListItem(Paragraph(inline(x), BRØD), leftIndent=13) for x in liste],
-                bulletType="1" if kind == "nr" else "bullet", start="1" if kind == "nr" else "•",
-                bulletFontName="Tit", bulletFontSize=9.5,
-                bulletFormat="%s." if kind == "nr" else None,
-                leftIndent=13, bulletDedent=11 if kind == "nr" else 9))
+                [ListItem(Paragraph(inline(x), BRØD), leftIndent=14) for x in liste],
+                bulletType="1" if nr_liste else "bullet", start="1" if nr_liste else "–",
+                bulletFontName="Plex-SemiBold", bulletFontSize=9, bulletColor=BRAND,
+                bulletFormat="%s." if nr_liste else None,
+                leftIndent=14, bulletDedent=12 if nr_liste else 10))
             liste.clear()
 
     for linje in md.splitlines():
@@ -161,13 +143,13 @@ def md_til_flowables(md: str) -> list:
             continue
         if tab:
             tøm()
-        m_liste = re.match(r"^(- |\d+\. )(.*)", s)
-        if m_liste:
-            kind = "nr" if m_liste.group(1)[0].isdigit() else "pkt"
+        m = re.match(r"^(- |\d+\. )(.*)", s)
+        if m:
+            kind = "nr" if m.group(1)[0].isdigit() else "pkt"
             if afsnit or (liste and liste_type[0] != kind):
                 tøm()
             liste_type[0] = kind
-            liste.append(m_liste.group(2))
+            liste.append(m.group(2))
             continue
         if liste:
             tøm()
@@ -179,28 +161,27 @@ def md_til_flowables(md: str) -> list:
             tøm()
             nr[0] += 1
             nr[1] = 0
-            tekst = f"{nr[0]}.&nbsp;&nbsp;&nbsp;{inline(s[3:]).upper()}"
-            p = Paragraph(tekst, H1)
-            p._toc = (0, f"{nr[0]}.", inline(s[3:]).upper())
+            p = Paragraph(f"{nummer(str(nr[0]))}&nbsp;&nbsp;&nbsp;{inline(s[3:])}", H1)
+            p._toc = (0, str(nr[0]), inline(s[3:]))
             ud.append(p)
         elif s.startswith("### "):
             tøm()
             nr[1] += 1
-            p = Paragraph(f"{nr[0]}.{nr[1]}&nbsp;&nbsp;&nbsp;{inline(s[4:])}", H2)
-            p._toc = (1, f"{nr[0]}.{nr[1]}", inline(s[4:]))
+            n = f"{nr[0]}.{nr[1]}"
+            p = Paragraph(f"{nummer(n)}&nbsp;&nbsp;&nbsp;{inline(s[4:])}", H2)
+            p._toc = (1, n, inline(s[4:]))
             ud.append(p)
         else:
             afsnit.append(s)
     tøm()
 
-    # Overskrift må ikke stå alene nederst på en side
-    holdt = []
-    i = 0
+    # En overskrift må ikke stå alene nederst på en side.
+    holdt, i = [], 0
     while i < len(ud):
         if hasattr(ud[i], "_toc") and i + 1 < len(ud):
-            holdt.append(KeepTogether([ud[i], ud[i + 1]]))
-            holdt[-1]._toc = ud[i]._toc
-            holdt[-1]._toc_p = ud[i]
+            k = KeepTogether([ud[i], ud[i + 1]])
+            k._toc = ud[i]._toc
+            holdt.append(k)
             i += 2
         else:
             holdt.append(ud[i])
@@ -213,83 +194,118 @@ def md_til_flowables(md: str) -> list:
 class Notat(BaseDocTemplate):
     def __init__(self, sti, p: dict):
         super().__init__(str(sti), pagesize=A4, leftMargin=VM, rightMargin=HM,
-                         topMargin=40 * mm, bottomMargin=24 * mm,
-                         title=p.get("titel", ""), author=p.get("firma", ""))
+                         title=p.get("emne", ""), author=p.get("firma", ""))
         self.p = p
-        indhold = Frame(VM, 24 * mm, BREDDE, H - 64 * mm, id="indhold",
-                        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
-        forside = Frame(VM, 24 * mm, BREDDE, H - 48 * mm, id="forside",
-                        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
-        self.addPageTemplates([PageTemplate("forside", [forside], onPage=self._forside),
-                               PageTemplate("side", [indhold], onPage=self._side)])
+        kw = dict(leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+        self.addPageTemplates([
+            PageTemplate("forside", [Frame(VM, 20 * mm, BREDDE, H - 40 * mm, **kw)],
+                         onPage=self._forside),
+            PageTemplate("side", [Frame(VM, 22 * mm, BREDDE, H - 50 * mm, **kw)],
+                         onPage=self._side)])
 
     def afterFlowable(self, f):
         toc = getattr(f, "_toc", None)
         if toc:
-            niveau, nummer, tekst = toc
-            self.notify("TOCEntry", (niveau, f"{nummer}&nbsp;&nbsp;&nbsp;{tekst}", self.page))
+            niveau, n, tekst = toc
+            self.notify("TOCEntry", (niveau, f"{nummer(n)}&nbsp;&nbsp;&nbsp;{tekst}", self.page))
 
-    # Forsiden: titel midt på siden, dato nederst – ingen bjælke, intet firmanavn.
+    def _ordmærke(self, c, x, y, størrelse):
+        c.setFillColor(BRAND)
+        c.setFont("Plex-SemiBold", størrelse)
+        c.drawString(x, y, self.p.get("firma_kort") or "omkreds")
+
     def _forside(self, c, doc):
         p = self.p
-        c.setFont("Tit-Bold", 13.5)
-        y = H * 0.70
-        for linje in p["titel_linjer"]:
-            c.drawString(VM + 4 * mm, y, linje.upper())
-            y -= 19
-        c.setFont("Tit-Bold", 13.5)
-        y = H * 0.545
-        for linje in p["projekt_linjer"]:
-            c.drawString(VM + 4 * mm, y, linje.upper())
-            y -= 19
-        c.setFont("Tit-Bold", 8)
-        c.drawString(VM + 4 * mm, 40 * mm, f"DATO: {p['dato']}")
+        # Smal terrakotta-kant i venstre side og ordmærket øverst
+        c.setFillColor(BRAND)
+        c.rect(0, 0, 6 * mm, H, stroke=0, fill=1)
+        self._ordmærke(c, VM, H - 26 * mm, 13)
 
-    # Øvrige sider: spærret firmanavn, sort titelbjælke, sidefod.
+        # Titel
+        c.setFillColor(GRAA)
+        c.setFont("Plex-Medium", 9)
+        c.drawString(VM, H * 0.62 + 30, (p.get("dokumenttype") or "Notat").upper())
+        c.setFillColor(INK)
+        c.setFont("Plex-SemiBold", 24)
+        y = H * 0.62
+        for linje in p["titel_linjer"]:
+            c.drawString(VM, y, linje)
+            y -= 30
+        c.setFillColor(BRAND_INK)
+        c.setFont("Plex", 13)
+        y -= 6
+        for linje in p["projekt_linjer"]:
+            c.drawString(VM, y, linje)
+            y -= 18
+
+        # Sagsoplysninger nederst
+        felter = [("Projekt", p.get("sag", "")), ("Fase", p.get("fase", "")),
+                  ("Dato", p["dato"]), ("Revision", p.get("rev", ""))]
+        c.setStrokeColor(STREG)
+        c.setLineWidth(0.6)
+        c.line(VM, 52 * mm, W - HM, 52 * mm)
+        kol = BREDDE / len(felter)
+        for i, (k, v) in enumerate(felter):
+            x = VM + i * kol
+            c.setFillColor(GRAA)
+            c.setFont("Plex-Medium", 7.5)
+            c.drawString(x, 45 * mm, k.upper())
+            c.setFillColor(INK)
+            c.setFont("Plex", 10)
+            c.drawString(x, 39 * mm, str(v))
+
     def _side(self, c, doc):
         p = self.p
-        c.setFillColor(SORT)
-        c.setFont("Tit-Light", 10)
-        firma = p.get("firma_kort") or p.get("firma") or ""
-        spærret = " ".join(firma.lower())
-        c.drawRightString(W - HM, H - 16 * mm, spærret)
-        c.rect(VM, H - 30 * mm, BREDDE, 7.5 * mm, stroke=0, fill=1)
-        c.setFillColor(colors.white)
-        c.setFont("Tit-Bold", 8.5)
-        c.drawString(VM + 3 * mm, H - 30 * mm + 2.6 * mm, p.get("kort_titel", ""))
+        self._ordmærke(c, VM, H - 17 * mm, 10)
         c.setFillColor(GRAA)
-        c.setFont("Tit", 7)
-        c.drawRightString(W - HM, 12 * mm, f"{p.get('sidefod', '')} {doc.page}".strip())
+        c.setFont("Plex", 8)
+        c.drawRightString(W - HM, H - 17 * mm, p.get("kort_titel", ""))
+        c.setStrokeColor(STREG)
+        c.setLineWidth(0.5)
+        c.line(VM, H - 20.5 * mm, W - HM, H - 20.5 * mm)
+        c.line(VM, 15 * mm, W - HM, 15 * mm)
+        c.setFont("Plex", 7.5)
+        c.drawString(VM, 10.5 * mm, p.get("sidefod", ""))
+        c.setFillColor(INK)
+        c.setFont("Plex-Medium", 7.5)
+        c.drawRightString(W - HM, 10.5 * mm, f"Side {doc.page}")
+
+
+def info_blok(p: dict) -> Table:
+    rækker = [("Projekt", p.get("info_projekt") or p.get("sag", "")),
+              ("Fase", p.get("fase", "")), ("Dato", p["dato"]),
+              ("Revision", f"{p.get('rev', '')} – {p.get('rev_tekst', '')}".strip(" –")),
+              ("Grundlag", p.get("grundlag", ""))]
+    t = Table([[Paragraph(k.upper(), ETIKET), Paragraph(inline(str(v)), VÆRDI)]
+               for k, v in rækker if v], colWidths=[30 * mm, BREDDE - 30 * mm], hAlign="LEFT")
+    t.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0),
+                           ("VALIGN", (0, 0), (-1, -1), "BASELINE"),
+                           ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                           ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+                           ("LINEBELOW", (0, -1), (-1, -1), 0.5, STREG)]))
+    return t
 
 
 def byg(projektmappe: Path) -> Path:
     p = yaml.safe_load((projektmappe / "projekt.yaml").read_text(encoding="utf-8"))
     md = (projektmappe / "notat.md").read_text(encoding="utf-8")
-    revs = p.get("revisioner") or [{}]
-    p.setdefault("dato", revs[-1].get("dato", ""))
+    sidste = (p.get("revisioner") or [{}])[-1]
+    p.setdefault("dato", sidste.get("dato", ""))
+    p.setdefault("rev", sidste.get("rev", ""))
+    p.setdefault("rev_tekst", sidste.get("beskrivelse", ""))
     p.setdefault("titel_linjer", [p.get("emne", "")])
     p.setdefault("projekt_linjer", [p.get("sag", "")])
     p.setdefault("kort_titel", p.get("sag", ""))
 
     ud = projektmappe / "ud" / f"Energinotat_{p.get('sag', 'projekt')}.pdf"
     ud.parent.mkdir(exist_ok=True)
-    doc = Notat(ud, p)
 
     toc = TableOfContents(dotsMinLevel=0)
     toc.levelStyles = [TOC1, TOC2]
-
-    info = Table([[Paragraph(k, INFO_L), Paragraph(inline(str(v)), INFO)] for k, v in
-                  [("PROJEKT", p.get("info_projekt") or p.get("sag", "")),
-                   ("FASE", p.get("fase", "")), ("DATO", p["dato"])]],
-                 colWidths=[28 * mm, BREDDE - 28 * mm], hAlign="LEFT")
-    info.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0),
-                              ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-                              ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5)]))
-
     flow = [NextPageTemplate("side"), PageBreak(),
-            info, Spacer(1, 12), bjælke("Indhold"), Spacer(1, 8), toc, PageBreak()]
+            info_blok(p), Spacer(1, 18), Paragraph("Indhold", INDHOLD), toc, PageBreak()]
     flow += md_til_flowables(md)
-    doc.multiBuild(flow)
+    Notat(ud, p).multiBuild(flow)
     return ud
 
 

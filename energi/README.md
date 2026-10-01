@@ -14,8 +14,7 @@ energi/
 ├── regler/
 │   └── br18_energi.yaml           alle grænseværdier, versioneret efter gyldighedsdato
 ├── rapport/
-│   ├── byg_notat.py               notat.md + projekt.yaml -> PDF (rådgivernotat-layout)
-│   └── fonts/                     Titillium Web (SIL OFL)
+│   └── byg_notat.py               notat.md + projekt.yaml -> PDF i Omkreds' stil (IBM Plex, terrakotta)
 └── projekter/
     └── hjerlesvej/
         ├── projekt.yaml           sagsoplysninger, revisioner, underskrifter
