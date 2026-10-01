@@ -108,3 +108,11 @@ Egne programmer skrives som `[program: navn]` i `opbygninger.txt`.
 vejledningens grænser (≤100 h / ≤25 h). Input `_temp` = `oper_temp` fra HB Read Room Comfort
 Result (Tree Access), valgfrit `_navne_` og `_graenser_`. Outputs `tabel`, `ok`, `data`.
 Kommer der 0 rum, så send tallene via LB Deconstruct Data (`values`) i stedet.
+
+## Eksport til rapporten
+
+`gh_eksport.py` tager billeder af navngivne Rhino-visninger (model og LB-plots) med faste
+filnavne, kopierer SVG/PNG-filer (fx fra LB Dump VisualizationSet) og samler JSON-resultaterne
+(`data` fra gh_overtemperatur, `data_json` fra ds418_varmetab) i `<mappe>/resultater.json`.
+Inputs `_mappe`, `_billeder_` (linjer "filnavn = visning | tilstand"), `_filer_`, `_data_`,
+`_noegler_`, `_bredde_`, `_hoejde_`, `_eksporter`. Slet ubrugte inputs.

@@ -19,7 +19,8 @@ Inputs:
 Outputs:
     tabel         tekst til et Panel
     projekt_W_K, ramme_W_K, glasandel, ok
-    data          dict til eksport (resultater.json)
+    data          dict med alle tal
+    data_json     samme som tekst (JSON) -> _data_ på gh_eksport
 
 Metode (som i H+H-notatet):
 - Projekt: modellens arealer og U-værdier + psi * længder.
@@ -218,4 +219,6 @@ if _i_gh:
         tabel = tabeltekst(data)
         projekt_W_K, ramme_W_K = data["projekt_sum_W_K"], data["ramme_sum_W_K"]
         glasandel, ok = data["glasandel"], data["overholdt"]
+        import json
+        data_json = json.dumps(data)  # til _data_ på gh_eksport (resultater.json)
         print("Færdig")
