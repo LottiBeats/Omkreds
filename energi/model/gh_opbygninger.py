@@ -166,23 +166,36 @@ def _lav_rullemenuer(komp, opb):
     from System.Drawing import PointF
 
     def tilfoej(doc):
-        for i, typ in enumerate(TYPER, 1):
-            p = komp.Params.Input[i]
-            if p.SourceCount > 0 or not opb[typ]:
-                continue
-            vl = gh.Kernel.Special.GH_ValueList()
-            vl.CreateAttributes()
-            vl.NickName = typ
-            vl.ListItems.Clear()
-            for navn, _ in opb[typ]:
-                vl.ListItems.Add(gh.Kernel.Special.GH_ValueListItem(navn, '"%s"' % navn))
-            g = p.Attributes.InputGrip
-            vl.Attributes.Pivot = PointF(g.X - 300, g.Y - 11)
-            doc.AddObject(vl, False)
-            p.AddSource(vl)
-        komp.ExpireSolution(False)
+        try:
+            for i, typ in enumerate(TYPER, 1):
+                p = komp.Params.Input[i]
+                if p.SourceCount > 0 or not opb[typ]:
+                    continue
+                vl = gh.Kernel.Special.GH_ValueList()
+                vl.CreateAttributes()
+                vl.NickName = typ
+                vl.ListItems.Clear()
+                for navn, _ in opb[typ]:
+                    vl.ListItems.Add(gh.Kernel.Special.GH_ValueListItem(navn, '"%s"' % navn))
+                g = p.Attributes.InputGrip
+                vl.Attributes.Pivot = PointF(g.X - 300, g.Y - 11)
+                doc.AddObject(vl, False)
+                p.AddSource(vl)
+            komp.ExpireSolution(False)
+        except Exception as e:
+            komp.AddRuntimeMessage(gh.Kernel.GH_RuntimeMessageLevel.Warning,
+                                   "Rullemenuer kunne ikke laves (%s). Skriv navnene i et Panel - se info." % e)
 
-    komp.OnPingDocument().ScheduleSolution(5, tilfoej)
+    komp.OnPingDocument().ScheduleSolution(5, gh.Kernel.GH_Document.GH_ScheduleDelegate(tilfoej))
+
+
+def tilgaengelige(fil):
+    """Tekst med alle opbygningsnavne i filen, til info-panelet."""
+    _, opb = laes(fil)
+    linjer = ["", "Opbygninger i %s:" % fil]
+    for typ in TYPER:
+        linjer.append("  %s: %s" % (typ, " / ".join(n for n, _ in opb[typ])))
+    return "\n".join(linjer)
 
 
 # --- Grasshopper ------------------------------------------------------------
@@ -200,14 +213,12 @@ def find_fil(fil, gh_fil):
                   "\neller læg filen ved siden af .gh-filen og lad _fil stå tom.")
 
 
-try:
-    _fil  # noqa: F821  (findes kun i Grasshopper)
+if "_fil" in globals():  # kun i Grasshopper
     _komp = ghenv.Component  # noqa: F821
     _fil = find_fil(_fil, _komp.OnPingDocument().FilePath)  # noqa: F821
     if any(_komp.Params.Input[i].SourceCount == 0 for i in range(1, 5)):
         _lav_rullemenuer(_komp, laes(_fil)[1])
     constr_set, _k, info = byg_saet(_fil, _ydervaeg, _tag, _terraendaek, _vindue)  # noqa: F821
+    info += "\n" + tilgaengelige(_fil)
     ydervaeg, tag = _k.get("ydervaeg"), _k.get("tag")
     terraendaek, vindue = _k.get("terraendaek"), _k.get("vindue")
-except NameError:
-    pass
