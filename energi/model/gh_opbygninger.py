@@ -11,8 +11,10 @@ Scriptet bruger ikke Honeybee selv og virker derfor i alle Rhino 8's
 script-komponenter (Script/IronPython 2/Python 3) og i den gamle GhPython.
 
 Inputs (Item Access, Type hint: str):
-    _fil          sti til opbygninger.txt. Fuld sti (C:\\...), eller relativ til
-                  mappen med .gh-filen. Tom: opbygninger.txt ved siden af .gh-filen.
+    _fil          ENTEN et Panel med hele indholdet af opbygninger.txt (så ligger
+                  biblioteket i .gh-filen; sæt _fil til List Access)
+                  ELLER stien til opbygninger.txt (fuld sti, relativ til .gh-filen,
+                  eller tom: opbygninger.txt ved siden af .gh-filen).
     _ydervaeg     navn på opbygning   } står de tomme, laver komponenten selv
     _tag          navn på opbygning   } en rullemenu med opbygningerne i filen
     _terraendaek  navn på opbygning   }
@@ -45,8 +47,16 @@ def _id(tekst):
     return val.strip()[:100]
 
 
+def er_indhold(fil):
+    """True, hvis _fil er selve biblioteket (tekst fra et Panel) og ikke en sti."""
+    return bool(fil) and ("\n" in fil or "[materialer]" in fil.lower())
+
+
 def _laes_tekst(fil):
-    """Hele filen som tekst. IronPython 2's codecs fejler på UTF-8, så der bruges .NET."""
+    """Hele biblioteket som tekst: enten indholdet direkte (Panel) eller filen på stien.
+    IronPython 2's codecs fejler på UTF-8, så filer læses med .NET."""
+    if er_indhold(fil):
+        return fil
     try:
         import System
         return str(System.IO.File.ReadAllText(fil, System.Text.Encoding.UTF8))
@@ -252,7 +262,7 @@ def _lav_rullemenuer(komp, opb):
 def tilgaengelige(fil):
     """Tekst med alle opbygningsnavne i filen, til info-panelet."""
     _, opb = laes(fil)
-    linjer = ["", "Opbygninger i %s:" % fil]
+    linjer = ["", "Opbygninger i %s:" % ("Panelet" if er_indhold(fil) else fil)]
     for typ in TYPER:
         linjer.append("  %s: %s" % (typ, " / ".join(n for n, _ in opb[typ])))
     return "\n".join(linjer)
@@ -262,6 +272,8 @@ def tilgaengelige(fil):
 def find_fil(fil, gh_fil):
     """Fuld sti, eller relativ til mappen med .gh-filen. Tom -> opbygninger.txt ved siden af .gh-filen."""
     import os
+    if er_indhold(fil):
+        return fil
     mappe = os.path.dirname(gh_fil) if gh_fil else ""
     kandidater = [fil] if fil and os.path.isabs(fil) else [
         os.path.join(mappe, fil or "opbygninger.txt"), fil or "opbygninger.txt"]
@@ -283,8 +295,10 @@ if _i_gh:
     import sys
     print("gh_opbygninger kører i Python %s" % sys.version.split()[0])
     _komp = ghenv.Component  # noqa: F821
+    if isinstance(_fil, (list, tuple)):  # Panel uden "Multiline Data": én linje pr. element
+        _fil = "\n".join(str(x) for x in _fil)  # noqa: F821
     _fil = find_fil(_fil, _komp.OnPingDocument().FilePath)  # noqa: F821
-    print("Fil fundet: %s" % _fil)
+    print("Opbygninger læst fra Panelet" if er_indhold(_fil) else "Fil fundet: %s" % _fil)
     _tomme = [i for i in range(1, 5) if _komp.Params.Input[i].SourceCount == 0]
     if _tomme:
         _lav_rullemenuer(_komp, laes(_fil)[1])

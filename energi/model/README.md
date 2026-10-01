@@ -92,4 +92,5 @@ Tomme opbygnings-inputs får selv en rullemenu.
 Samme vindue bruges i energi (U, g, LT) og Radiance (glasmodifier ud fra LT), så komfort- og
 dagslysanalysen kører på samme model. `rad_mod_` og `ep_constr_` på HB Aperture skal stå tomme.
 
-Nye opbygninger og materialer skrives i tekstfilen.
+Nye opbygninger og materialer skrives i tekstfilen. `_fil` kan også få hele tekstfilens indhold
+fra et Panel (sæt `_fil` til List Access); så ligger biblioteket i selve .gh-filen.

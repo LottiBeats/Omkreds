@@ -76,3 +76,14 @@ def test_modifier_saet_samme_glas():
     assert abs(glas.r_transmissivity - ref.r_transmissivity) < 1e-9
     assert obj.aperture_set.skylight_modifier.identifier == glas.identifier
     assert go.byg_modifier_saet(FIL, None)[1] is None
+
+
+def test_indhold_fra_panel_virker_som_fil():
+    tekst = open(FIL, encoding="utf-8").read()
+    assert go.er_indhold(tekst) and not go.er_indhold(FIL)
+    assert go.find_fil(tekst, "") is tekst
+    d_fil, _ = go.byg_saet(FIL, None, "Paptag 400", None, "3-lag energi g50")
+    d_panel, info = go.byg_saet(tekst, None, "Paptag 400", None, "3-lag energi g50")
+    assert d_fil == d_panel
+    assert "Panelet" in go.tilgaengelige(tekst)
+    assert go.byg_modifier_saet(tekst, "3-lag energi g50")[1] == 0.71
