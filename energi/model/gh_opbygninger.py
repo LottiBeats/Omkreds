@@ -295,8 +295,13 @@ if _i_gh:
     import sys
     print("gh_opbygninger kører i Python %s" % sys.version.split()[0])
     _komp = ghenv.Component  # noqa: F821
-    if isinstance(_fil, (list, tuple)):  # Panel uden "Multiline Data": én linje pr. element
-        _fil = "\n".join(str(x) for x in _fil)  # noqa: F821
+    try:
+        _tekst_typer = (basestring,)  # noqa: F821  (Python 2)
+    except NameError:
+        _tekst_typer = (str,)
+    if _fil is not None and not isinstance(_fil, _tekst_typer):  # noqa: F821
+        # List Access: Grasshopper sender en .NET-liste med én linje pr. element
+        _fil = "\n".join("%s" % x for x in _fil)  # noqa: F821
     _fil = find_fil(_fil, _komp.OnPingDocument().FilePath)  # noqa: F821
     print("Opbygninger læst fra Panelet" if er_indhold(_fil) else "Fil fundet: %s" % _fil)
     _tomme = [i for i in range(1, 5) if _komp.Params.Input[i].SourceCount == 0]
