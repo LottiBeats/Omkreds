@@ -1,3 +1,4 @@
+# r: honeybee-energy
 # -*- coding: utf-8 -*-
 """
 ds418_varmetab.py - varmetabsramme (BR18 § 284, stk. 2) og dimensionerende
@@ -5,10 +6,10 @@ varmetab efter DS 418, regnet på en Honeybee-model.
 
 Virker både som Grasshopper-komponent og som almindeligt Python-modul.
 
-GRASSHOPPER - indsæt hele filen i en Python 3- eller IronPython 2-komponent.
-I Python 3: tilføj øverst linjen  # r: honeybee-energy  og giv _model som sti
-til en .hbjson-fil fra HB Dump Objects (Ladybug-komponenternes HB Model-objekt
-kan ikke krydse over til Python 3). I IronPython 2 kan HB Model sendes direkte.
+GRASSHOPPER - indsæt hele filen i en Python 3 Script-komponent (Rhino 8).
+Linjen  # r: honeybee-energy  øverst får Rhino til at hente Honeybee.
+Giv _model som sti til en .hbjson-fil fra HB Dump Objects (Ladybug-komponenternes
+HB Model-objekt kan ikke krydse over til Python 3).
 Inputs:
     _model        HB Model eller sti til .hbjson
     _psi_         linjetab, tekst "vindue=0.03, fundament=0.10, ovenlys=0.10"  (valgfri)
@@ -194,16 +195,27 @@ def tabeltekst(d):
 
 # --- Grasshopper ------------------------------------------------------------
 try:
-    _model  # noqa: F821  (findes kun i Grasshopper)
-    if _beregn and _model:  # noqa: F821
+    ghenv  # noqa: F821  (findes kun i Grasshopper)
+    _i_gh = True
+except NameError:
+    _i_gh = False
+
+if _i_gh:
+    if not _model:  # noqa: F821
+        print("Forbind _model til file_path fra HB Dump Objects")
+    elif not _beregn:  # noqa: F821
+        print("Sæt _beregn til True")
+    else:
         m = _model  # noqa: F821
-        if isinstance(m, str):  # Python 3-komponent: sti til .hbjson fra HB Dump Objects
+        if isinstance(m, (list, tuple)):
+            m = m[0]
+        if not hasattr(m, "rooms"):  # sti til .hbjson fra HB Dump Objects
             from honeybee.model import Model
-            m = Model.from_hbjson(m)
+            m = Model.from_hbjson(str(m))
+        print("Model læst: %d rum" % len(m.rooms))
         gv = True if _gulvvarme_ is None else bool(_gulvvarme_)  # noqa: F821
-        data = beregn(m, _psi_, _u_, gv)
+        data = beregn(m, _psi_, _u_, gv)  # noqa: F821
         tabel = tabeltekst(data)
         projekt_W_K, ramme_W_K = data["projekt_sum_W_K"], data["ramme_sum_W_K"]
         glasandel, ok = data["glasandel"], data["overholdt"]
-except NameError:
-    pass
+        print("Færdig")
