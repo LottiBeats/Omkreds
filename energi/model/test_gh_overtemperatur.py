@@ -51,3 +51,12 @@ def test_tomt():
     d = ot.beregn(None)
     assert d["rum"] == [] and d["ok"] is None
     assert "Ingen temperaturdata" in ot.tabeltekst(d)
+
+
+def test_objekt_uden_float_giver_ikke_fejl():
+    class Mærkelig(object):
+        def __float__(self):
+            raise AttributeError("ingen __float__")
+    assert not ot._er_tal(Mærkelig())
+    assert not ot._er_tal(_samling("X", 1, 1))
+    assert ot._er_tal(27.5) and ot._er_tal("27,5".replace(",", "."))

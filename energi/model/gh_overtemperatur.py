@@ -37,10 +37,12 @@ def tolk_graenser(tekst):
 
 
 def _er_tal(x):
+    if x is None or hasattr(x, "values"):     # Ladybug-datasamling, ikke et tal
+        return False
     try:
         float(x)
-        return not hasattr(x, "values")
-    except (TypeError, ValueError):
+        return True
+    except Exception:                          # IronPython kan give AttributeError
         return False
 
 
