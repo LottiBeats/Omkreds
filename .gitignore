@@ -35,3 +35,8 @@ omkreds_deploy
 
 # Energinotater: tegninger og andre kunders dokumenter hører ikke i git
 energi/projekter/*/input/
+
+# Genereres fra Rhino og byg_hbmodel.py
+energi/projekter/*/geometri.json
+energi/projekter/*/model.hbjson
+.pytest_cache/
