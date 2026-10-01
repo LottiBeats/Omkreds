@@ -288,7 +288,7 @@ def info_blok(p: dict) -> Table:
 
 def byg(projektmappe: Path) -> Path:
     p = yaml.safe_load((projektmappe / "projekt.yaml").read_text(encoding="utf-8"))
-    md = (projektmappe / "notat.md").read_text(encoding="utf-8")
+    md = (projektmappe / p.get("kilde", "notat.md")).read_text(encoding="utf-8")
     sidste = (p.get("revisioner") or [{}])[-1]
     p.setdefault("dato", sidste.get("dato", ""))
     p.setdefault("rev", sidste.get("rev", ""))
@@ -297,7 +297,7 @@ def byg(projektmappe: Path) -> Path:
     p.setdefault("projekt_linjer", [p.get("sag", "")])
     p.setdefault("kort_titel", p.get("sag", ""))
 
-    ud = projektmappe / "ud" / f"Energinotat_{p.get('sag', 'projekt')}.pdf"
+    ud = projektmappe / "ud" / f"{p.get('filnavn') or 'Energinotat_' + p.get('sag', 'projekt')}.pdf"
     ud.parent.mkdir(exist_ok=True)
 
     toc = TableOfContents(dotsMinLevel=0)
