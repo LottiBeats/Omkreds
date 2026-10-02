@@ -54,9 +54,10 @@ def tolk_billeder(linjer):
          gruppe:Navn   kun Grasshopper-gruppen 'Navn' vises; uden visning zoomes der
                        ind på gruppen set ovenfra (Top)
          uden rhino    Rhino-objekterne skjules, så kun Grasshopper-preview ses
+         fast          brug visningen præcis som gemt (ellers zoomes der, så det viste fylder billedet)
          Shaded/Arctic/Rendered ...   visningstilstand
          andet         Rhino-viewport eller navngiven visning (NamedView)
-    -> liste af dicts med fil, visning, tilstand, gruppe, uden_rhino."""
+    -> liste af dicts med fil, visning, tilstand, gruppe, uden_rhino, fast."""
     if linjer is None:
         return []
     if not isinstance(linjer, (list, tuple)):
@@ -68,12 +69,15 @@ def tolk_billeder(linjer):
             if not del_ or del_.startswith("#") or "=" not in del_:
                 continue
             fil, rest = [x.strip() for x in del_.split("=", 1)]
-            b = {"fil": _filnavn(fil), "visning": None, "tilstand": None, "gruppe": None, "uden_rhino": False}
+            b = {"fil": _filnavn(fil), "visning": None, "tilstand": None, "gruppe": None, "uden_rhino": False,
+                 "fast": False}
             for d in [x.strip() for x in rest.split("|") if x.strip()]:
                 if d.lower().startswith("gruppe:"):
                     b["gruppe"] = d.split(":", 1)[1].strip()
                 elif d.lower() in ("uden rhino", "kun gh", "kun grasshopper"):
                     b["uden_rhino"] = True
+                elif d.lower() in ("fast", "fast visning", "uden zoom"):
+                    b["fast"] = True
                 elif d.lower() in TILSTANDE:
                     b["tilstand"] = d
                 else:
@@ -227,15 +231,19 @@ def skriv_tekst(sti, tekst):
 # --- Rhino --------------------------------------------------------------------
 def _visning(navn):
     """Rhino-viewport for et viewport-navn (Top, Perspective) eller en navngivet visning,
-    som så gendannes i den aktive viewport. Samme metode som LB Capture View."""
+    som så gendannes i den aktive viewport. Viewportens kamera gemmes først
+    (PushViewProjection), så det kan sættes tilbage bagefter."""
     import Rhino
     doc = Rhino.RhinoDoc.ActiveDoc
-    view = doc.Views.Find(navn, False)
+    view = doc.Views.Find(navn or "Top", False)
     if view is not None:
-        return view.ActiveViewport
+        vp = view.ActiveViewport
+        vp.PushViewProjection()
+        return vp
     for i, nv in enumerate(doc.NamedViews):
         if ("%s" % nv.Name).strip().lower() == navn.strip().lower():
             vp = doc.Views.ActiveView.ActiveViewport
+            vp.PushViewProjection()
             doc.NamedViews.Restore(i, vp)
             return vp
     raise ValueError('Visningen "%s" findes ikke. Gem den i Rhino med NamedView.' % navn)
@@ -298,14 +306,37 @@ def _gruppe_boks(gh_doc, ids):
     return boks
 
 
-def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhino=False, gh_doc=None):
-    """Tager billedet. Med gruppe: alle andre Grasshopper-komponenter skjules midlertidigt,
-    og uden navngiven visning zoomes der ind på gruppen set ovenfra. Alt gendannes bagefter."""
+def _synlig_boks(rdoc, gh_doc):
+    """Boks om alt synligt: Rhino-objekter og Grasshopper-preview."""
+    import Rhino
+    from Grasshopper.Kernel import IGH_PreviewObject
+    boks = None
+    for ob in rdoc.Objects:
+        try:
+            if ob.Visible:
+                bb = ob.Geometry.GetBoundingBox(True)
+                if bb.IsValid:
+                    boks = bb if boks is None else Rhino.Geometry.BoundingBox.Union(boks, bb)
+        except Exception:
+            pass
+    if gh_doc is not None:
+        ids = set(o.InstanceGuid for o in gh_doc.Objects if isinstance(o, IGH_PreviewObject) and not o.Hidden)
+        bb = _gruppe_boks(gh_doc, ids)
+        if bb is not None:
+            boks = bb if boks is None else Rhino.Geometry.BoundingBox.Union(boks, bb)
+    return boks
+
+
+def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhino=False, gh_doc=None,
+                fast=False):
+    """Tager billedet. Med gruppe: alle andre Grasshopper-komponenter skjules midlertidigt.
+    Visningen (eller Top) zoomes, så det viste fylder billedet, medmindre fast=True.
+    Kamera, skjulte objekter og visningstilstand gendannes bagefter."""
     import System
     import Rhino
     from Grasshopper.Kernel import IGH_PreviewObject
     rdoc = Rhino.RhinoDoc.ActiveDoc
-    skjulte_gh, skjulte_rhino, zoomet, gammel_tilstand = [], [], None, None
+    skjulte_gh, skjulte_rhino, zoomet, gammel_tilstand, boks = [], [], None, None, None
     try:
         if gruppe:
             ids = _gruppe_medlemmer(gh_doc, gruppe)
@@ -320,13 +351,12 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
             for ob in rdoc.Objects:
                 if ob.Visible and rdoc.Objects.Hide(ob, True):
                     skjulte_rhino.append(ob.Id)
-        if navn:
-            vp = _visning(navn)
-        else:
-            vp = rdoc.Views.Find("Top", False).ActiveViewport
-            if gruppe and boks is not None and boks.IsValid:
-                vp.PushViewProjection()
-                zoomet = vp
+        vp = _visning(navn)
+        zoomet = vp
+        if not fast:
+            if not gruppe:
+                boks = _synlig_boks(rdoc, gh_doc)
+            if boks is not None and boks.IsValid:
                 d = boks.Diagonal * 0.04
                 vp.ZoomBoundingBox(Rhino.Geometry.BoundingBox(boks.Min - d, boks.Max + d))
         rdoc.Views.Redraw()
@@ -456,7 +486,7 @@ if _i_gh:
             sti = os.path.join(bmappe, fil + ".png")
             try:
                 filer.append(tag_billede(bil["visning"], sti, b, h, bil["tilstand"], bil["gruppe"],
-                                         bil["uden_rhino"], gh_doc))
+                                         bil["uden_rhino"], gh_doc, bil.get("fast")))
                 navne.append(fil + ".png")
                 print("Billede: %s  <- %s" % (fil + ".png", bil["visning"] or "gruppe " + (bil["gruppe"] or "")))
             except Exception as e:
