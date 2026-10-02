@@ -86,6 +86,39 @@ def _fundamentslaengde(room):
     return laengde
 
 
+def _tael(konstr, kat, obj, areal):
+    try:
+        c = obj.properties.energy.construction
+        n, u = c.display_name, c.u_factor
+    except Exception:
+        n, u = "?", 0.0
+    a = konstr.setdefault((kat, n), [0.0, u])
+    a[0] += areal
+
+
+def udluftning(model):
+    """Oplukkelige vinduer og styring pr. rum (HB Window Opening / HB Ventilation Control)."""
+    rum, styring = [], None
+    for room in model.rooms:
+        vinduer, oplukkeligt, frit, cd = 0.0, 0.0, 0.0, None
+        for f in room.faces:
+            for ap in f.apertures:
+                vinduer += ap.area
+                vo = getattr(ap.properties.energy, "vent_opening", None)
+                if getattr(ap, "is_operable", False) and vo is not None:
+                    oplukkeligt += ap.area
+                    frit += ap.area * vo.fraction_area_operable
+                    cd = vo.discharge_coefficient
+        vc = getattr(room.properties.energy, "window_vent_control", None)
+        if vc is not None and styring is None:
+            styring = {"min_inde_c": vc.min_indoor_temperature, "min_ude_c": vc.min_outdoor_temperature,
+                       "delta_c": vc.delta_temperature}
+        rum.append({"rum": room.display_name, "vinduesareal_m2": round(vinduer, 2),
+                    "oplukkeligt_m2": round(oplukkeligt, 2), "frit_aabningsareal_m2": round(frit, 2),
+                    "udledningskoefficient": cd, "styret": vc is not None})
+    return {"rum": rum, "styring": styring}
+
+
 def beregn(model, psi=None, u=None, gulvvarme=True, ti=20.0, te=-12.0, ti_bad=24.0, friskluft_l_s_m2=0.30):
     psi_v = dict(STANDARD_PSI)
     psi_v.update(_tolk(psi))
@@ -97,6 +130,7 @@ def beregn(model, psi=None, u=None, gulvvarme=True, ti=20.0, te=-12.0, ti_bad=24
     laengde = {"vindue": 0.0, "fundament": 0.0, "ovenlys": 0.0}
     rum_ud = []
     A_et = 0.0
+    konstr = {}          # (kategori, konstruktion) -> [areal, U]
 
     for room in model.rooms:
         A_rum = room.floor_area
@@ -110,11 +144,13 @@ def beregn(model, psi=None, u=None, gulvvarme=True, ti=20.0, te=-12.0, ti_bad=24
             a_glas = sum(ap.area for ap in f.apertures) + sum(d.area for d in f.doors)
             a_opak = f.area - a_glas
             areal[kat] += a_opak
+            _tael(konstr, kat, f, a_opak)
             ua[kat] += _u(f, kat, u_over) * a_opak * b
             h_rum += _u(f, kat, u_over) * a_opak * b
             for sub in list(f.apertures) + list(f.doors):
                 uv = u_over.get("vindue", sub.properties.energy.construction.u_factor)
                 areal["vindue"] += sub.area
+                _tael(konstr, "vindue", sub, sub.area)
                 ua["vindue"] += uv * sub.area
                 h_rum += uv * sub.area
                 n = "ovenlys" if kat == "tag" else "vindue"
@@ -174,6 +210,9 @@ def beregn(model, psi=None, u=None, gulvvarme=True, ti=20.0, te=-12.0, ti_bad=24
         "ramme_sum_W_K": round(sum_r, 1),
         "overholdt": sum_p <= sum_r,
         "dim_varmetab_pr_rum": rum_ud,
+        "konstruktioner": [{"kategori": k, "konstruktion": n, "areal_m2": round(a, 1), "U_W_m2K": round(u, 3)}
+                           for (k, n), (a, u) in sorted(konstr.items())],
+        "udluftning": udluftning(model),
         "dim_varmetab_i_alt_W": sum(r["i_alt_W"] for r in rum_ud),
     }
 

@@ -29,6 +29,8 @@ Outputs:
     program       tekst -> HB String to Object -> _program_ på HB Room from Solid.
                   Interne laster og setpunkter. Valgfrit input _program vælger et
                   [program: ...] i biblioteket; uden det bruges SBi 213 (bolig).
+    u_ds418       DS 418-eftervist U-værdi (linjen  u_ds418 | tal  i biblioteket) som tekst
+                  -> _u_ på ds418_varmetab, fx "ydervaeg=0.12, tag=0.10" (valgfrit output)
 """
 from __future__ import division, unicode_literals
 
@@ -109,10 +111,28 @@ def laes(fil):
         elif aktuel is not None:
             if len(felter) != 2:
                 raise ValueError("Linje %d: skriv  materiale | tykkelse mm  (eller u/g/lt | tal for vinduer)" % nr)
-            aktuel[1].append((felter[0], float(felter[1].replace(",", "."))))
+            try:
+                vaerdi = float(felter[1].replace(",", "."))
+            except ValueError:
+                if felter[0].lower() not in META:
+                    raise ValueError("Linje %d: '%s' er ikke et tal" % (nr, felter[1]))
+                vaerdi = felter[1]          # tekst, fx  status | eksisterende
+            aktuel[1].append((felter[0], vaerdi))
         else:
             raise ValueError("Linje %d står uden for et afsnit" % nr)
     return materialer, opbygninger
+
+
+# Oplysninger, der kan stå i en opbygning ud over lagene (se toppen af opbygninger.txt)
+META = ("status", "u_ds418", "kilde", "ventilation")
+
+
+def _meta(felter):
+    return dict((k.lower(), x) for k, x in felter if k.lower() in META)
+
+
+def _lag(felter):
+    return [(k, x) for k, x in felter if k.lower() not in META]
 
 
 def _find(opbygninger, typ, navn):
@@ -129,7 +149,7 @@ RSI_RSE = {"ydervaeg": (0.13, 0.04), "tag": (0.10, 0.04), "terraendaek": (0.17, 
 def byg_opak(navn, lag, materialer, typ="ydervaeg"):
     """Returnerer (Honeybee-dict for OpaqueConstruction, U-værdi efter ISO 6946)."""
     mats, r_sum = [], 0.0
-    for mat_navn, t_mm in lag:
+    for mat_navn, t_mm in _lag(lag):
         m = materialer.get(mat_navn.lower())
         if m is None:
             raise ValueError("'%s' i '%s' findes ikke under [materialer]" % (mat_navn, navn))
@@ -190,6 +210,19 @@ def byg_saet(fil, ydervaeg, tag, terraendaek, vindue):
     return cs, "\n".join(linjer)
 
 
+def u_eftervist(fil, ydervaeg, tag, terraendaek):
+    """DS 418-eftervist U-værdi (u_ds418) for de valgte opbygninger som tekst til _u_ på
+    ds418_varmetab, fx 'ydervaeg=0.12, tag=0.10'. Tom, hvis ingen er angivet."""
+    _, opb = laes(fil)
+    dele = []
+    for typ, navn in (("ydervaeg", ydervaeg), ("tag", tag), ("terraendaek", terraendaek)):
+        if navn:
+            u = _meta(_find(opb, typ, navn)[1]).get("u_ds418")
+            if u is not None:
+                dele.append("%s=%s" % (typ, u))
+    return ", ".join(dele)
+
+
 def rapport_data(fil, ydervaeg, tag, terraendaek, vindue, program=None):
     """Alt om opbygningerne til rapporten: lag, U-værdier (ISO 6946), glas og program."""
     materialer, opb = laes(fil)
@@ -200,19 +233,19 @@ def rapport_data(fil, ydervaeg, tag, terraendaek, vindue, program=None):
             continue
         n, lag = _find(opb, typ, navn)
         d, u = byg_opak(n, lag, materialer, typ)
+        meta = _meta(lag)
         ud["opbygninger"].append({
             "type": titel, "navn": n, "U_W_m2K": round(u, 3),
+            "U_ds418_W_m2K": meta.get("u_ds418"), "status": meta.get("status") or "ny",
             "lag": [{"materiale": materialer[m.lower()][0], "tykkelse_mm": t,
                      "lambda_W_mK": materialer[m.lower()][1],
-                     "R_m2K_W": round(t / 1000.0 / materialer[m.lower()][1], 2)} for m, t in lag]})
+                     "R_m2K_W": round(t / 1000.0 / materialer[m.lower()][1], 2)} for m, t in _lag(lag)]})
     if vindue:
         n, felter = _find(opb, "vindue", vindue)
         v = dict((k.lower(), x) for k, x in felter)
-        ud["vindue"] = {"navn": n, "U_W_m2K": v["u"], "g": v["g"], "LT": v["lt"]}
-    if program:
-        n, felter = _find(opb, "program", program)
-    else:
-        n, felter = STANDARD_PROGRAM
+        ud["vindue"] = {"navn": n, "U_W_m2K": v["u"], "g": v["g"], "LT": v["lt"],
+                        "kilde": v.get("kilde"), "status": v.get("status") or "ny"}
+    n, felter = _standard_program(fil, program)
     v = dict(STANDARD_PROGRAM[1])
     v.update(dict((k.lower(), x) for k, x in felter))
     v["navn"] = n
@@ -240,13 +273,18 @@ def _skema(navn, vaerdi, graense):
             "default_day_schedule": dag, "schedule_type_limit": graenser[graense]}
 
 
+def _standard_program(fil, valg):
+    """Det valgte [program: ...]; uden valg bibliotekets første program, ellers SBi 213."""
+    progs = laes(fil)[1]["program"]
+    if valg:
+        return _find(laes(fil)[1], "program", valg)
+    return progs[0] if progs else STANDARD_PROGRAM
+
+
 def byg_program(fil, valg):
     """Returnerer (Honeybee ProgramType-dict, infotekst). valg = navn på [program: ...] i
     biblioteket; tomt -> STANDARD_PROGRAM (SBi 213). Laster er konstante hele året."""
-    if valg:
-        n, felter = _find(laes(fil)[1], "program", valg)
-    else:
-        n, felter = STANDARD_PROGRAM
+    n, felter = _standard_program(fil, valg)
     v = dict(STANDARD_PROGRAM[1])
     v.update(dict((k.lower(), x) for k, x in felter))
     pid = _id(n).replace(" ", "_")
@@ -430,4 +468,6 @@ if _i_gh:
     # Alt om opbygningerne til rapporten -> _data_ på gh_eksport (nøgle "opbygninger")
     data = til_json(rapport_data(_fil, _ydervaeg, _tag, _terraendaek, _vindue,  # noqa: F821
                                  globals().get("_program")))
+    # DS 418-eftervist U-værdi (u_ds418 i biblioteket) -> _u_ på ds418_varmetab
+    u_ds418 = u_eftervist(_fil, _ydervaeg, _tag, _terraendaek)  # noqa: F821
     print("Færdig - constr_set, mod_set og program går hver i sin HB String to Object")

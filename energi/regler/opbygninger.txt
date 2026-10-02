@@ -10,6 +10,14 @@
 # - U-værdier regnes som homogene lag. Ved stolper/spær: brug DS 418-værdien i ds418_varmetab (_u_).
 # - Beklædning uden for et ventileret hulrum tæller ikke med (DS 418) og er udeladt.
 # - Opbygningerne nedenfor er eksempler. Ret dem til jeres egne.
+#
+# Ekstra oplysninger, der går videre til notatet (valgfrie, kan stå i en hvilken som helst opbygning):
+#   status | eksisterende      bygningsdelen bevares (standard: ny)
+#   u_ds418 | 0.12             U-værdi eftervist efter DS 418 inkl. træandele og samlinger.
+#                              Når alle valgte opbygninger har den, og vinduet har en kilde,
+#                              regner notatet U-værdierne som endelige.
+#   kilde | Velfac, Uw iht. DS/EN ISO 10077   (vindue) hvor U/g/LT kommer fra
+#   ventilation | Naturlig ventilation med ...  (program) ventilationsprincippet, som det skal bygges
 
 [materialer]
 Træbeklædning (fyr/gran) | 0.13 | 500 | 1600
@@ -114,3 +122,4 @@ belysning_w_m2 | 0
 friskluft_l_s_m2 | 0.3
 infiltration_l_s_m2_facade | 0.1
 opvarmning_c | 20
+# ventilation | Naturlig ventilation: udeluftventiler i opholdsrum, aftræk fra bad og emhætte i køkken

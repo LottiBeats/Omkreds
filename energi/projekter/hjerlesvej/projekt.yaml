@@ -45,20 +45,17 @@ revisioner:
 udkast_url: https://claude.ai/code/artifact/aafdf528-fac7-4ad9-8391-2945e6dc95ef
 
 # Antagelser til indeklimanotatet (byg_indeklimanotat.py), som modellen ikke selv kender.
-# Skal svare til indstillingerne på HB Ventilation Control og HB Window Opening.
 indeklima:
   vejrfil: "DRY 2013 (Danish Design Reference Year)"
   program_version: "Ladybug Tools 1.10 / OpenStudio 3.11 / EnergyPlus / Radiance (versioner angives)"
   brugsprofil: "SBi-anvisning 213 (boliger), konstante laster"
   komfort_tekst: "Beklædning følger udetemperaturen (LB Clothing by Temperature), aktivitet 1,2 met."
-  # ventilation_princip: "Naturlig ventilation med udeluftventiler i opholdsrum og aftræk fra bad og køkken"
   udluftning:
     min_inde_c: 24
     min_ude_c: 12
     delta_c: 1
     andel_oplukkelig: 0.3
     udledningskoefficient: 0.35
-    # aabningsareal_m2: {Stue: 1.2, Soverum: 0.4}   # frit åbningsareal pr. rum
 
 # Dagslysberegningens metode (HB Sensor Grid / HB Annual Daylight). Tomme felter står som
 # "Ikke angivet" i notatet, og notatet er foreløbigt, indtil måleplan = 0,50 m og
@@ -71,7 +68,8 @@ dagslys:
   reflektanser:
   omgivelser:
 
-# Sæt til true, når U-værdier er eftervist efter DS 418 og vinduesdata (Uw) er fra producenten
-u_vaerdier_endelige: false
+# Ventilationsprincip, eksisterende/ny og DS 418-eftervist U-værdi skrives i opbygninger.txt
+# (ventilation | ..., status | eksisterende, u_ds418 | ..., kilde | ...). Åbningsarealer kommer
+# fra modellen (HB Window Opening). Udluftningen herover bruges kun, hvis modellen ikke har dem.
 # Ekstra udestående punkter, der skal stå i notatet
 udestaaende: []

@@ -402,10 +402,15 @@ def udestaaende(res, prj):
         if (dl_prj.get("tidsgrundlag") or "").lower() != "dagslystimer":
             ud.append("Dagslyset skal opgøres for vejledningens dagslystimer (den halvdel af årets timer med "
                       "mest dagslys). Tidsgrundlaget for beregningen er ikke dokumenteret som sådan.")
-    if not prj.get("u_vaerdier_endelige"):
+    opb = res.get("opbygninger") or {}
+    mangler_u = [o["type"].lower() for o in opb.get("opbygninger") or [] if o.get("U_ds418_W_m2K") is None]
+    if opb.get("vindue") and not opb["vindue"].get("kilde"):
+        mangler_u.append("vinduets kilde (produktdata)")
+    if mangler_u and not prj.get("u_vaerdier_endelige"):
         ud.append("U-værdierne er beregnet for homogene lag uden træskelet, spær og samlinger. Endelige "
                   "U-værdier efter DS 418 og vinduesdata (Uw for hele vinduet) fra producenten skal indgå i "
-                  "både varmetabsramme og indeklimaberegning.")
+                  "både varmetabsramme og indeklimaberegning. Mangler i opbygninger.txt: %s."
+                  % ", ".join("u_ds418 for " + m if "kilde" not in m else m for m in mangler_u))
     if ot.get("rum") and not ot.get("ok"):
         ud.append("Grænserne for termisk indeklima er overskredet i %s. En konkret løsning (glas, "
                   "solafskærmning, styring og åbningsarealer) skal vælges og eftervises med ny beregning af "
@@ -419,14 +424,20 @@ def udestaaende(res, prj):
         ud.append("Én beregningszone på %s m² samler en stor del af huset. Lokale problemer i de enkelte rum "
                   "kan derfor være skjult; kritiske rum bør modelleres som egne zoner." % tal(zoner[0]))
     arbejde = prj.get("byggearbejde") or []
-    if "ombygning" in arbejde and not prj.get("bygningsdele"):
+    eksisterende = [o for o in (opb.get("opbygninger") or []) + ([opb["vindue"]] if opb.get("vindue") else [])
+                    if (o.get("status") or "").lower().startswith("eksist")]
+    if "ombygning" in arbejde and not eksisterende and not prj.get("bygningsdele"):
         ud.append("Projektet omfatter ombygning og tilbygning. Det skal fremgå, hvilke bygningsdele der "
-                  "bevares, ændres og opføres nye, og hvilke krav (§§ 283–285) der gælder for hver.")
-    if not (prj.get("indeklima") or {}).get("ventilation_princip"):
+                  "bevares, ændres og opføres nye, og hvilke krav (§§ 283–285) der gælder for hver. Markér "
+                  "eksisterende opbygninger med  status | eksisterende  i opbygninger.txt.")
+    if not ((opb.get("program") or {}).get("ventilation") or (prj.get("indeklima") or {}).get("ventilation_princip")):
         ud.append("Grundventilationen (%s l/s pr. m²) er en modelforudsætning. Ventilationsprincip, "
-                  "udeluftventiler, aftræk og luftoverføring skal beskrives (BR18 §§ 443–446)."
+                  "udeluftventiler, aftræk og luftoverføring skal beskrives (BR18 §§ 443–446) – fx med "
+                  "ventilation | ...  under programmet i opbygninger.txt."
                   % tal(((res.get("opbygninger") or {}).get("program") or {}).get("friskluft_l_s_m2", 0.3), 2))
-    if not ((prj.get("indeklima") or {}).get("udluftning") or {}).get("aabningsareal_m2"):
+    udl_model = (vt.get("udluftning") or {}).get("rum") or []
+    if not (any(r.get("frit_aabningsareal_m2") for r in udl_model) or
+            ((prj.get("indeklima") or {}).get("udluftning") or {}).get("aabningsareal_m2")):
         ud.append("Udluftningen er modelleret som en andel af vinduesarealet. Hvilke vinduer der kan åbnes, det "
                   "frie åbningsareal pr. rum og en følsomhedsberegning med mindre udluftning skal dokumenteres.")
     return ud + list(prj.get("udestaaende") or [])
@@ -527,7 +538,9 @@ def afsnit_grundlag(prj, res, regler):
     if prog:
         ud.append(p("Brug og drift", H2))
         ud.append(p("Interne laster og luftskifte er sat efter %s og regnes konstant hele året. "
-                    "Der er ingen mekanisk køling, så temperaturen svinger frit om sommeren." % escape(prog["navn"])))
+                    "Der er ingen mekanisk køling, så temperaturen svinger frit om sommeren.%s"
+                    % (escape(prog["navn"]), (" Ventilationsprincip: %s." % escape(prog["ventilation"].rstrip(".")))
+                       if prog.get("ventilation") else "")))
         rows = [["Parameter", "Værdi"],
                 ["Personer", "%s W/m²" % tal(prog["personer_w_m2"])],
                 ["Udstyr", "%s W/m²" % tal(prog["udstyr_w_m2"])],
@@ -537,7 +550,22 @@ def afsnit_grundlag(prj, res, regler):
                 ["Opvarmning", "%s °C" % tal(prog["opvarmning_c"], 0)],
                 ["Køling", "Ingen"]]
         ud.append(tabel(rows, [60 * mm, 50 * mm], hoejre=(1,)))
-    udl = ik.get("udluftning")
+    udl_m = (res.get("varmetab") or {}).get("udluftning") or {}
+    if any(r.get("frit_aabningsareal_m2") for r in udl_m.get("rum") or []):
+        st = udl_m.get("styring") or {}
+        ud.append(p("Udluftning", H2))
+        ud.append(p("Oplukkelige vinduer åbnes i modellen, når indetemperaturen er over %s °C, udetemperaturen "
+                    "mindst %s °C og mindst %s °C lavere end inde. Arealerne er taget direkte fra modellen og "
+                    "skal svare til de vinduer, der kan åbnes i projektet."
+                    % (tal(st.get("min_inde_c"), 0), tal(st.get("min_ude_c"), 0), tal(st.get("delta_c"), 0))))
+        rows = [["Rum", "Vinduer [m²]", "Oplukkelige [m²]", "Frit åbningsareal [m²]"]]
+        for r in udl_m["rum"]:
+            rows.append([rumnavn(r["rum"]), tal(r["vinduesareal_m2"], 1), tal(r["oplukkeligt_m2"], 1),
+                         tal(r["frit_aabningsareal_m2"], 2)])
+        ud.append(tabel(rows, [60 * mm, 32 * mm, 36 * mm, 42 * mm], hoejre=(1, 2, 3)))
+        udl = None
+    else:
+        udl = ik.get("udluftning")
     if udl:
         ud.append(p("Udluftning", H2))
         ud.append(p("Oplukkelige vinduer åbnes i modellen, når det er varmt inde og køligere ude. "
@@ -565,16 +593,31 @@ def afsnit_opbygninger(res, regler):
                 "er ikke medregnet. Værdierne er derfor foreløbige og skal eftervises efter DS 418 med de "
                 "endelige opbygninger. Terrændækkets værdi er en lagberegning; varmetabet til jord er "
                 "håndteret med temperaturfaktoren i afsnit 5."))
-    rows = [["Bygningsdel", "Opbygning", "U [W/m²K]", "Krav", "Status"]]
+    rows = [["Bygningsdel", "Opbygning", "Ny/eks.", "U homogen", "U DS 418", "Krav", "Status"]]
     for o in opb.get("opbygninger", []):
         krav = graenser.get(noegle.get(o["type"]))
-        rows.append([o["type"], o["navn"], tal(o["U_W_m2K"], 3), tal(krav, 2) if krav else "–",
-                     status(o["U_W_m2K"] <= krav if krav else None)])
+        u = o.get("U_ds418_W_m2K") or o["U_W_m2K"]
+        rows.append([o["type"], o["navn"], (o.get("status") or "ny").capitalize(), tal(o["U_W_m2K"], 3),
+                     tal(o["U_ds418_W_m2K"], 3) if o.get("U_ds418_W_m2K") else "–",
+                     tal(krav, 2) if krav else "–", status(u <= krav if krav else None)])
     v = opb.get("vindue")
     if v:
-        rows.append(["Vinduer", v["navn"], tal(v["U_W_m2K"], 2), tal(graenser["vinduer_doere_glas"], 2),
+        rows.append(["Vinduer", v["navn"], (v.get("status") or "ny").capitalize(), tal(v["U_W_m2K"], 2),
+                     "–", tal(graenser["vinduer_doere_glas"], 2),
                      status(v["U_W_m2K"] <= graenser["vinduer_doere_glas"])])
-    ud.append(tabel(rows, [26 * mm, 70 * mm, 22 * mm, 18 * mm, 34 * mm], hoejre=(2, 3)))
+    ud.append(tabel(rows, [22 * mm, 52 * mm, 16 * mm, 19 * mm, 18 * mm, 13 * mm, 30 * mm], hoejre=(3, 4, 5)))
+    konstr = (res.get("varmetab") or {}).get("konstruktioner") or []
+    if konstr:
+        navne = {"ydervaeg": "Ydervæg", "tag": "Tag", "terraendaek": "Terrændæk", "gulv_ude": "Gulv mod det fri",
+                 "vindue": "Vinduer og døre"}
+        ud.append(p("Arealer i modellen", H2))
+        ud.append(p("Arealerne er opgjort direkte fra beregningsmodellen pr. konstruktion (vinduer fratrukket "
+                    "i vægge og tag). Tabellen er grundlaget for varmetabsrammen i afsnit 5."))
+        rows = [["Bygningsdel", "Konstruktion i modellen", "Areal [m²]", "U [W/m²K]"]]
+        for k in konstr:
+            rows.append([navne.get(k["kategori"], k["kategori"]), k["konstruktion"], tal(k["areal_m2"]),
+                         tal(k["U_W_m2K"], 3)])
+        ud.append(tabel(rows, [34 * mm, 80 * mm, 26 * mm, 30 * mm], hoejre=(2, 3)))
     for o in opb.get("opbygninger", []):
         blok = [p("%s: %s" % (o["type"], escape(o["navn"])), H2)]
         rows = [["Lag (udefra og ind)", "Tykkelse [mm]", "Lambda [W/mK]", "R [m²K/W]"]]

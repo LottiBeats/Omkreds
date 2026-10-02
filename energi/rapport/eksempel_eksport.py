@@ -35,6 +35,14 @@ def _testhus():
                 f.apertures_by_ratio(0.6 if navn == "Stue og køkken" else 0.35, 0.01)
         rum.append(r)
     Room.solve_adjacency(rum, 0.01)
+    from honeybee_energy.ventcool.opening import VentilationOpening
+    from honeybee_energy.ventcool.control import VentilationControl
+    for r in rum:        # som HB Window Opening + HB Ventilation Control
+        r.properties.energy.window_vent_control = VentilationControl(24, 100, 12, 100, 1)
+        for f in r.faces:
+            for ap in f.apertures:
+                ap.is_operable = True
+                ap.properties.energy.vent_opening = VentilationOpening(0.3, 1.0, 0.35)
     return Model("Testhus", rum, tolerance=0.01)
 
 
