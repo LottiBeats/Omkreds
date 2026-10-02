@@ -261,7 +261,13 @@ def _visning(navn):
     (PushViewProjection), så det kan sættes tilbage bagefter."""
     import Rhino
     doc = Rhino.RhinoDoc.ActiveDoc
-    view = doc.Views.Find(navn or "Top", False)
+    if not navn:
+        # ingen visning: set ovenfra i den aktive viewport (kameraet sættes tilbage bagefter)
+        vp = doc.Views.ActiveView.ActiveViewport
+        vp.PushViewProjection()
+        vp.SetProjection(Rhino.Display.DefinedViewportProjection.Top, None, False)
+        return vp
+    view = doc.Views.Find(navn, False)
     if view is not None:
         vp = view.ActiveViewport
         vp.PushViewProjection()
