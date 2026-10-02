@@ -434,6 +434,12 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
             bmp = _fang(vp.ParentView, int(bredde), int(round(int(bredde) * vh / float(vb))))
             bmp = _beskaer(bmp, vp, boks, bmp.Width / float(vb))
         else:
+            # Rhino tegner et større billede med samme pixelstørrelse som skærmen, så motivet
+            # bliver lille i midten. Zoom tilsvarende ind, så det fylder og bliver skarpt.
+            k = min(int(bredde) / float(vp.Size.Width), int(hoejde) / float(vp.Size.Height))
+            if k > 1.05:
+                vp.Magnify(k, False)
+                vp.ParentView.Redraw()
             bmp = _fang(vp.ParentView, int(bredde), int(hoejde))
         bmp.Save(sti, System.Drawing.Imaging.ImageFormat.Png)
         if _ensfarvet(bmp):
