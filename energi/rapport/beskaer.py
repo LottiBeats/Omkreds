@@ -5,7 +5,8 @@ beskaer.py - efterbehandling af skærmbilleder fra Grasshopper til notatet.
     del_op(sti, mappe, n)    deler et billede med flere plots under hinanden (fx LB Hourly Plot
                              med ét plot pr. rum) op i ét billede pr. plot
 
-Baggrunden er farven i øverste venstre hjørne (hvid i Arctic, grå i Shaded).
+Baggrunden er farven i øverste venstre hjørne (hvid i Arctic, grå i Shaded); en farvet
+baggrund gøres hvid.
 Kræver Pillow og numpy (kommer med matplotlib).
 """
 from pathlib import Path
@@ -23,7 +24,13 @@ def _indhold(a):
 
 
 def _laes(sti):
-    return np.asarray(Image.open(sti).convert("RGB"))
+    """Billedet som array. En farvet baggrund (fx grå i Shaded) gøres hvid, så billedet
+    står rent på siden."""
+    a = np.array(Image.open(sti).convert("RGB"))
+    bg = a[0, 0].astype(int)
+    if (bg < 245).any():
+        a[(np.abs(a.astype(int) - bg) <= TOLERANCE).all(axis=2)] = 255
+    return a
 
 
 def _ramme(maske, margen):
