@@ -18,6 +18,7 @@ nummererede afsnit, tabeller og figurer.
 """
 import argparse
 import json
+import re
 from datetime import date
 from html import escape
 from pathlib import Path
@@ -220,6 +221,12 @@ def side_forside(c, doc):
     for linje in prj.get("projekt_linjer") or [prj.get("sag", "")]:
         c.drawString(VM, y, ("%s" % linje).upper())
         y -= 6.5 * mm
+    omslag = prj.get("_omslag")
+    if omslag and Path(omslag).exists():
+        iw, ih = ImageReader(str(omslag)).getSize()
+        bh, bb = y - 6 * mm - 52 * mm, BREDDE
+        f = min(bb / iw, bh / ih)
+        c.drawImage(str(omslag), VM, 52 * mm + (bh - ih * f) / 2, width=iw * f, height=ih * f, mask="auto")
     c.setFont("Man-Bold", 7.5)
     c.drawString(VM, 40 * mm, "DATO: %s" % prj["_dato"])
     c.restoreState()
@@ -280,8 +287,58 @@ def _som_liste(x):
     return x if isinstance(x, list) else [x]
 
 
+TAL_STOR = ParagraphStyle("talstor", parent=BROED, fontName="Man-Light", fontSize=24, leading=27, spaceAfter=0)
+TAL_TEKST = ParagraphStyle("taltekst", parent=BROED, fontSize=7.5, leading=10, textColor=GRAA, spaceAfter=0)
+
+
+def noegletal(felter):
+    """Række af store tal: [(tal, enhed, tekst), ...] med en tynd streg over hvert felt."""
+    if not felter:
+        return []
+    celler = [[Paragraph('%s<font name="Man" size="10"> %s</font>' % (escape(t), escape(e)), TAL_STOR),
+               Paragraph(tekst, TAL_TEKST)] for t, e, tekst in felter]
+    b = BREDDE / len(felter)
+    t = Table([[c[0] for c in celler], [c[1] for c in celler]], colWidths=[b] * len(felter), hAlign="LEFT")
+    t.setStyle(TableStyle([("LINEABOVE", (0, 0), (-1, 0), 0.9, SORT),
+                           ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                           ("TOPPADDING", (0, 0), (-1, 0), 6), ("BOTTOMPADDING", (0, 0), (-1, 0), 1),
+                           ("TOPPADDING", (0, 1), (-1, 1), 2)]))
+    return [t, Spacer(1, 7 * mm)]
+
+
+def _noegletal_felter(res, regler):
+    felter = []
+    ot, ti = res.get("overtemperatur"), regler["termisk_indeklima"]
+    if ot and ot.get("rum"):
+        v = max(ot["rum"], key=lambda r: r["timer"].get("over_27", 0))
+        for g, maks in ((27, ti["timer_over_27_max"]), (28, ti["timer_over_28_max"])):
+            h = v["timer"].get("over_%d" % g, 0)
+            felter.append((tal(h, 0), "h", "over %d °C i %s<br/>krav højst %d h%s"
+                           % (g, escape(v["rum"]), maks, " · <b>ikke overholdt</b>" if h > maks else "")))
+    dl = res.get("dagslys")
+    if isinstance(dl, list) and len(dl) == 1:
+        dl = dl[0]
+    if isinstance(dl, dict) and dl.get("rum"):
+        lav = min(dl["rum"], key=lambda r: r["andel_pct"])
+        felter.append((tal(lav["andel_pct"], 0), "%", "af gulvet med 300 lux i %s<br/>krav mindst %s %%%s"
+                       % (escape(lav["rum"]), tal(dl.get("krav_pct", 50), 0),
+                          "" if lav["ok"] else " · <b>ikke overholdt</b>")))
+    vt = res.get("varmetab")
+    if vt:
+        felter.append((tal(vt["projekt_sum_W_K"], 0), "W/K", "varmetab mod en ramme på %s W/K"
+                       % tal(vt["ramme_sum_W_K"], 0)))
+    else:
+        for o in (res.get("opbygninger") or {}).get("opbygninger") or []:
+            if o.get("type") == "Ydervæg":
+                felter.append((tal(o["U_W_m2K"], 3), "W/m²K", "U-værdi for ydervæggen<br/>krav højst %s W/m²K"
+                               % tal(regler["sommerhus"]["u_vaerdier"].get("ydervaeg", 0.25), 2)))
+    return felter[:4]
+
+
 def afsnit_sammenfatning(res, regler):
     ud = [Overskrift("2.", "Sammenfatning")]
+    ud += noegletal(_noegletal_felter(res, regler))
     rows = [["Emne", "Krav", "Resultat", "Status"]]
     vt = res.get("varmetab")
     if vt:
@@ -620,6 +677,29 @@ def afsnit_forbehold(prj):
     return ud
 
 
+def rumnavn(n):
+    """RESIDENCE_1_180C163A -> Residence 1, "2" -> Rum 2. Navne med små bogstaver beholdes."""
+    n = "%s" % n
+    if n.strip().isdigit():
+        return "Rum %s" % n.strip()
+    n = re.sub(r"_[0-9A-Fa-f]{8}$", "", n).replace("_", " ").strip()
+    return n.capitalize() if n.isupper() else n
+
+
+def rens_rumnavne(res):
+    ot = res.get("overtemperatur")
+    if isinstance(ot, dict):
+        for r in ot.get("rum") or []:
+            r["rum"] = rumnavn(r["rum"])
+        if isinstance(ot.get("serier"), dict):
+            ot["serier"] = {rumnavn(k): v for k, v in ot["serier"].items()}
+    for d in _som_liste(res.get("dagslys")):
+        if isinstance(d, dict):
+            for r in d.get("rum") or []:
+                r["rum"] = rumnavn(r["rum"])
+    return res
+
+
 def rens_resultater(res):
     """Fjerner værdier, der er tekst i stedet for data (fx en tabel fra et Panel), så notatet
     skriver 'ikke eksporteret' i stedet for at fejle. Advarslerne printes."""
@@ -647,7 +727,7 @@ def rens_resultater(res):
     if resume:            # samme resultat flere gange (komponenten kørt pr. gren) -> brug ét
         dl = resume[:1]
     res["dagslys"] = dl or None
-    return res
+    return rens_rumnavne(res)
 
 
 def byg(eksport, projekt_yaml, ud_fil=None):
@@ -681,6 +761,10 @@ def byg(eksport, projekt_yaml, ud_fil=None):
     FIGMAPPE[0].mkdir(exist_ok=True)
     if prj.get("_forsidebillede"):
         prj["_forsidebillede"] = _trim(prj["_forsidebillede"])
+    omslag = prj.get("_forsidebillede") or next(
+        (billeder[n] for pre in ("dagslys", "temperatur") for n in billeder
+         if n.lower().startswith(pre) and not n.lower().startswith("dagslys_lux")), None)
+    prj["_omslag"] = _trim(omslag) if omslag and omslag != prj.get("_forsidebillede") else omslag
     SCENARIER[0] = [json.loads(f.read_text(encoding="utf-8"))
                     for f in sorted((eksport / "scenarier").glob("*.json"))] \
         if (eksport / "scenarier").is_dir() else []
