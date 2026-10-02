@@ -265,6 +265,39 @@ def _gruppe_medlemmer(gh_doc, navn):
     return ids
 
 
+def _gruppe_boks(gh_doc, ids):
+    """Boks om den geometri, gruppens komponenter faktisk viser (output med preview slået til)."""
+    import Rhino
+    from Grasshopper.Kernel import IGH_Component, IGH_Param, IGH_PreviewObject
+    from Grasshopper.Kernel.Types import IGH_GeometricGoo
+    boks = None
+
+    def tilfoej(param):
+        b = None
+        try:
+            if isinstance(param, IGH_PreviewObject) and param.Hidden:
+                return None
+            for goo in param.VolatileData.AllData(True):
+                if isinstance(goo, IGH_GeometricGoo):
+                    bb = goo.Boundingbox
+                    if bb.IsValid:
+                        b = bb if b is None else Rhino.Geometry.BoundingBox.Union(b, bb)
+        except Exception:
+            pass
+        return b
+
+    for o in gh_doc.Objects:
+        if o.InstanceGuid not in ids or not isinstance(o, IGH_PreviewObject) or o.Hidden:
+            continue
+        params = list(o.Params.Output) if isinstance(o, IGH_Component) else (
+            [o] if isinstance(o, IGH_Param) else [])
+        for p in params:
+            bb = tilfoej(p)
+            if bb is not None:
+                boks = bb if boks is None else Rhino.Geometry.BoundingBox.Union(boks, bb)
+    return boks
+
+
 def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhino=False, gh_doc=None):
     """Tager billedet. Med gruppe: alle andre Grasshopper-komponenter skjules midlertidigt,
     og uden navngiven visning zoomes der ind på gruppen set ovenfra. Alt gendannes bagefter."""
@@ -276,17 +309,11 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
     try:
         if gruppe:
             ids = _gruppe_medlemmer(gh_doc, gruppe)
-            boks = Rhino.Geometry.BoundingBox.Empty
+            boks = _gruppe_boks(gh_doc, ids)
             for o in gh_doc.Objects:
                 if not isinstance(o, IGH_PreviewObject):
                     continue
-                if o.InstanceGuid in ids:
-                    if not o.Hidden:
-                        try:
-                            boks.Union(o.ClippingBox)
-                        except Exception:
-                            pass
-                elif not o.Hidden:
+                if o.InstanceGuid not in ids and not o.Hidden:
                     o.Hidden = True
                     skjulte_gh.append(o)
         if uden_rhino:
@@ -297,12 +324,11 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
             vp = _visning(navn)
         else:
             vp = rdoc.Views.Find("Top", False).ActiveViewport
-            if gruppe and boks.IsValid:
+            if gruppe and boks is not None and boks.IsValid:
                 vp.PushViewProjection()
                 zoomet = vp
-                d = boks.Diagonal.Length * 0.04
-                boks.Inflate(d)
-                vp.ZoomBoundingBox(boks)
+                d = boks.Diagonal * 0.04
+                vp.ZoomBoundingBox(Rhino.Geometry.BoundingBox(boks.Min - d, boks.Max + d))
         rdoc.Views.Redraw()
         vp.ParentView.Redraw()
         if tilstand:
