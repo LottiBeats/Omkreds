@@ -128,12 +128,19 @@ def konklusion(*tekster):
     return [Spacer(1, 1 * mm), t, Spacer(1, 5 * mm)]
 
 
+FORELOEBIG = [False]   # sættes i byg, når der er udestående punkter
+
+
 def status(ok, tekst=None):
-    """Status som almindelig tekst. Ikke overholdt fremhæves med fed."""
+    """Status som almindelig tekst. Ikke overholdt fremhæves med fed. I et foreløbigt notat
+    står der 'Foreløbigt overholdt', så resultatet ikke ser endeligt ud."""
     if ok is None:
         return Paragraph(escape(tekst or "Ikke beregnet"), CELLE)
     if ok:
-        return Paragraph(escape(tekst or "Overholdt"), CELLE)
+        t = tekst or "Overholdt"
+        if FORELOEBIG[0]:
+            t = "Foreløbigt " + t[0].lower() + t[1:]
+        return Paragraph(escape(t), CELLE)
     return Paragraph(escape(tekst or "Ikke overholdt"), CELLE_FED)
 
 
@@ -348,19 +355,19 @@ def _noegletal_felter(res, regler):
         v = max(ot["rum"], key=lambda r: r["timer"].get("over_27", 0))
         for g, maks in ((27, ti["timer_over_27_max"]), (28, ti["timer_over_28_max"])):
             h = v["timer"].get("over_%d" % g, 0)
-            felter.append((tal(h, 0), "h", "over %d °C i %s<br/>krav højst %d h%s"
+            felter.append((tal(h, 0), "h", "over %d °C i %s<br/>kriterie højst %d h%s"
                            % (g, escape(v["rum"]), maks, " · <b>ikke overholdt</b>" if h > maks else "")))
     dl = res.get("dagslys")
     if isinstance(dl, list) and len(dl) == 1:
         dl = dl[0]
     if isinstance(dl, dict) and dl.get("rum"):
         lav = min(dl["rum"], key=lambda r: r["andel_pct"])
-        felter.append((tal(lav["andel_pct"], 0), "%", "af gulvet med 300 lux i %s<br/>krav mindst %s %%%s"
+        felter.append((tal(lav["andel_pct"], 0), "%", "af gulvet med 300 lux i %s<br/>kriterie mindst %s %%%s"
                        % (escape(lav["rum"]), tal(dl.get("krav_pct", 50), 0),
                           "" if lav["ok"] else " · <b>ikke overholdt</b>")))
     vt = res.get("varmetab")
     if vt:
-        felter.append((tal(vt["projekt_sum_W_K"], 0), "W/K", "varmetab mod en ramme på %s W/K"
+        felter.append((tal(vt["projekt_sum_W_K"], 0), "W/K", "H<sub>T</sub> mod en ramme på %s W/K"
                        % tal(vt["ramme_sum_W_K"], 0)))
     else:
         for o in (res.get("opbygninger") or {}).get("opbygninger") or []:
@@ -368,6 +375,72 @@ def _noegletal_felter(res, regler):
                 felter.append((tal(o["U_W_m2K"], 3), "W/m²K", "U-værdi for ydervæggen<br/>krav højst %s W/m²K"
                                % tal(regler["sommerhus"]["u_vaerdier"].get("ydervaeg", 0.25), 2)))
     return felter[:4]
+
+
+GENERISK_RUM = re.compile(r"^(residence|rum|room|zone)\s*\d+$", re.I)
+
+
+def udestaaende(res, prj):
+    """Kontrol af, om beregningsgrundlaget er afklaret nok til endelig dokumentation.
+    Returnerer en liste af punkter; er den tom, er notatet endeligt."""
+    ud = []
+    dl_prj = prj.get("dagslys") or {}
+    vt = res.get("varmetab") or {}
+    ot = res.get("overtemperatur") or {}
+    a_et = vt.get("opvarmet_etageareal_m2") or 0
+    a_tag = (vt.get("arealer_m2") or {}).get("tag") or 0
+    if a_et and a_tag < 0.6 * a_et:
+        ud.append("Tagarealet i modellen er %s m² mod et opvarmet etageareal på %s m². Kontrollér, at alle "
+                  "tagflader er klassificeret som tag (fx tagvinkel på HB Room from Solid), og vedlæg en "
+                  "arealopgørelse." % (tal(a_tag), tal(a_et)))
+    if res.get("dagslys"):
+        h = dl_prj.get("maaleplan_m")
+        if h is None or abs(float(h) - 0.50) > 0.005:
+            ud.append("Dagslys skal for boliger beregnes på et måleplan 0,50 m over gulv (BR18's "
+                      "dagslysvejledning). %s" % ("Måleplanet er ikke angivet." if h is None else
+                                                 "Beregningen er udført i %s m." % tal(h, 2)))
+        if (dl_prj.get("tidsgrundlag") or "").lower() != "dagslystimer":
+            ud.append("Dagslyset skal opgøres for vejledningens dagslystimer (den halvdel af årets timer med "
+                      "mest dagslys). Tidsgrundlaget for beregningen er ikke dokumenteret som sådan.")
+    if not prj.get("u_vaerdier_endelige"):
+        ud.append("U-værdierne er beregnet for homogene lag uden træskelet, spær og samlinger. Endelige "
+                  "U-værdier efter DS 418 og vinduesdata (Uw for hele vinduet) fra producenten skal indgå i "
+                  "både varmetabsramme og indeklimaberegning.")
+    if ot.get("rum") and not ot.get("ok"):
+        ud.append("Grænserne for termisk indeklima er overskredet i %s. En konkret løsning (glas, "
+                  "solafskærmning, styring og åbningsarealer) skal vælges og eftervises med ny beregning af "
+                  "både temperaturer og dagslys." % ", ".join(r["rum"] for r in ot["rum"] if not r["ok"]))
+    navne = [r["rum"] for r in ot.get("rum") or []]
+    if navne and all(GENERISK_RUM.match(n) for n in navne):
+        ud.append("Beregningszonerne har ikke rumnavne. En plan med rum, funktioner, arealer og zoner skal "
+                  "vedlægges, og soverum skal vurderes særskilt.")
+    zoner = sorted((r.get("areal_m2") or 0 for r in vt.get("dim_varmetab_pr_rum") or []), reverse=True)
+    if len(zoner) > 1 and zoner[0] > 50 and zoner[0] > 3 * zoner[1]:
+        ud.append("Én beregningszone på %s m² samler en stor del af huset. Lokale problemer i de enkelte rum "
+                  "kan derfor være skjult; kritiske rum bør modelleres som egne zoner." % tal(zoner[0]))
+    arbejde = prj.get("byggearbejde") or []
+    if "ombygning" in arbejde and not prj.get("bygningsdele"):
+        ud.append("Projektet omfatter ombygning og tilbygning. Det skal fremgå, hvilke bygningsdele der "
+                  "bevares, ændres og opføres nye, og hvilke krav (§§ 283–285) der gælder for hver.")
+    if not (prj.get("indeklima") or {}).get("ventilation_princip"):
+        ud.append("Grundventilationen (%s l/s pr. m²) er en modelforudsætning. Ventilationsprincip, "
+                  "udeluftventiler, aftræk og luftoverføring skal beskrives (BR18 §§ 443–446)."
+                  % tal(((res.get("opbygninger") or {}).get("program") or {}).get("friskluft_l_s_m2", 0.3), 2))
+    if not ((prj.get("indeklima") or {}).get("udluftning") or {}).get("aabningsareal_m2"):
+        ud.append("Udluftningen er modelleret som en andel af vinduesarealet. Hvilke vinduer der kan åbnes, det "
+                  "frie åbningsareal pr. rum og en følsomhedsberegning med mindre udluftning skal dokumenteres.")
+    return ud + list(prj.get("udestaaende") or [])
+
+
+def afsnit_udestaaende(punkter):
+    if not punkter:
+        return []
+    ud = [p("Udestående før endelig dokumentation", H2),
+          p("Notatet er foreløbigt. Resultaterne kan bruges til at vælge løsninger, men følgende skal være "
+            "afklaret, før de kan bruges som endelig dokumentation over for kommunen:")]
+    for t in punkter:
+        ud.append(Paragraph(escape(t), PUNKT, bulletText="–"))
+    return ud
 
 
 def afsnit_sammenfatning(res, regler):
@@ -389,7 +462,7 @@ def afsnit_sammenfatning(res, regler):
     ti = regler["termisk_indeklima"]
     if ot and ot.get("rum"):
         vaerst = max(ot["rum"], key=lambda r: r["timer"].get("over_27", 0))
-        rows.append(["Termisk indeklima", "§ 386: højst %d h over 27 °C og %d h over 28 °C"
+        rows.append(["Termisk indeklima", "§ 386, vejledningens boligkriterier: højst %d h over 27 °C og %d h over 28 °C"
                      % (ti["timer_over_27_max"], ti["timer_over_28_max"]),
                      "Værste rum: %s, %d h / %d h" % (vaerst["rum"], vaerst["timer"].get("over_27", 0),
                                                       vaerst["timer"].get("over_28", 0)),
@@ -401,7 +474,7 @@ def afsnit_sammenfatning(res, regler):
         dl = dl[0]
     if isinstance(dl, dict) and dl.get("rum"):
         laveste = min(dl["rum"], key=lambda r: r["andel_pct"])
-        rows.append(["Dagslys", "§ 379: 300 lux på halvdelen af gulvet i halvdelen af tiden",
+        rows.append(["Dagslys", "§ 379: 300 lux på halvdelen af gulvet i halvdelen af dagslystimerne",
                      "Laveste: %s, %s %%" % (laveste["rum"], tal(laveste["andel_pct"], 0)),
                      status(dl.get("ok"), "Opfyldt" if dl.get("ok") else "Ikke opfyldt")])
     else:
@@ -410,18 +483,19 @@ def afsnit_sammenfatning(res, regler):
     tabellen = tabel(rows, [30 * mm, 52 * mm, 60 * mm, 28 * mm])
     konkl = []
     if vt:
-        konkl.append("Varmetabsrammen er %s med en glasandel på %s %% af det opvarmede etageareal."
-                     % ("overholdt" if vt.get("overholdt") else "<b>ikke</b> overholdt",
+        konkl.append("Varmetabsrammen er %s med en vinduesandel på %s %% af det opvarmede etageareal."
+                     % (("foreløbigt overholdt" if FORELOEBIG[0] else "overholdt") if vt.get("overholdt")
+                        else "<b>ikke</b> overholdt",
                         tal(100 * vt["glasandel"], 0)))
     if ot and ot.get("rum"):
         if ot.get("ok"):
-            konkl.append("Alle rum overholder grænserne for termisk indeklima under de angivne forudsætninger "
-                         "for udluftning (afsnit 6).")
+            konkl.append("Alle rum overholder vejledningens kriterier for termisk indeklima under de angivne "
+                         "forudsætninger for udluftning (afsnit 6).")
         else:
             daarlige = [r["rum"] for r in ot["rum"] if not r["ok"]]
-            konkl.append("Grænserne for termisk indeklima er overskredet i %s. Der skal indarbejdes tiltag, "
-                         "fx udvendig solafskærmning, solafskærmende glas eller øget udluftning (afsnit 6)."
-                         % ", ".join(daarlige))
+            konkl.append("Vejledningens kriterier for termisk indeklima er overskredet i %s. Projektet er ikke "
+                         "afklaret på dette punkt; en konkret løsning skal vælges og eftervises (afsnit 6)."
+                         % escape(", ".join(daarlige)))
     if konkl:
         ud += konklusion(*konkl)
     ud.append(tabellen)
@@ -444,9 +518,10 @@ def afsnit_grundlag(prj, res, regler):
                 "Radiance, og varmetabsrammen efter DS 418 direkte på modellens arealer og længder."))
     rows = [["Forudsætning", "Værdi"],
             ["Tegningsgrundlag", prj.get("grundlag") or "–"],
-            ["Bygningsreglement", "BR18, %s" % (prj.get("regelversion") or "")],
+            ["Bygningsreglement", prj.get("regel_tekst") or "BR18 (version gældende for byggesagen skal angives)"],
             ["Vejrdata", ik.get("vejrfil") or regler["termisk_indeklima"].get("klimafil", "DRY 2013")],
-            ["Beregningsprogram", ik.get("program_version") or "Ladybug Tools / EnergyPlus / Radiance"]]
+            ["Beregningsprogrammer", ik.get("program_version") or "Ladybug Tools / EnergyPlus / Radiance"],
+            ["Brugsprofil", ik.get("brugsprofil") or "SBi-anvisning 213 (udgave skal angives)"]]
     ud.append(tabel(rows, [55 * mm, BREDDE - 55 * mm]))
     prog = (res.get("opbygninger") or {}).get("program")
     if prog:
@@ -466,7 +541,8 @@ def afsnit_grundlag(prj, res, regler):
     if udl:
         ud.append(p("Udluftning", H2))
         ud.append(p("Oplukkelige vinduer åbnes i modellen, når det er varmt inde og køligere ude. "
-                    "Udluftningen har stor betydning for resultatet og forudsætter, at beboerne lufter ud."))
+                    "Udluftningen har stor betydning for resultatet og forudsætter, at beboerne lufter ud. "
+                    "Hvilke vinduer der kan åbnes, og deres frie åbningsareal, skal svare til projektet."))
         rows = [["Parameter", "Værdi"],
                 ["Vinduer åbnes ved indetemperatur over", "%s °C" % tal(udl.get("min_inde_c"), 0)],
                 ["Kun når udetemperaturen er mindst", "%s °C" % tal(udl.get("min_ude_c"), 0)],
@@ -486,7 +562,9 @@ def afsnit_opbygninger(res, regler):
         return ud + [p("Opbygningerne er ikke eksporteret fra modellen.")]
     ud.append(p("U-værdierne er beregnet efter DS/EN ISO 6946 ud fra lagene i modellen og sammenholdt med "
                 "kravene for sommerhuse i BR18 bilag 2, tabel 4. Lagene regnes som homogene; træskelet og spær "
-                "er ikke medregnet og skal eftervises efter DS 418 i projekteringen."))
+                "er ikke medregnet. Værdierne er derfor foreløbige og skal eftervises efter DS 418 med de "
+                "endelige opbygninger. Terrændækkets værdi er en lagberegning; varmetabet til jord er "
+                "håndteret med temperaturfaktoren i afsnit 5."))
     rows = [["Bygningsdel", "Opbygning", "U [W/m²K]", "Krav", "Status"]]
     for o in opb.get("opbygninger", []):
         krav = graenser.get(noegle.get(o["type"]))
@@ -509,8 +587,10 @@ def afsnit_opbygninger(res, regler):
         ud.append(KeepTogether(blok))
     if v:
         ud.append(p("Glas", H2))
-        ud.append(p("Vinduerne er regnet som %s med U = %s W/m²K, g-værdi %s og lystransmittans %s. "
-                    "Samme glas er brugt i energi-, indeklima- og dagslysberegningen."
+        ud.append(p("Vinduerne er regnet som %s med U = %s W/m²K, brugt som U-værdi for hele vinduet, og en rude "
+                    "med g-værdi %s og lystransmittans %s. Samme vindue er brugt i energi-, indeklima- og "
+                    "dagslysberegningen. Det skal bekræftes med produktdata, at U-værdien gælder hele vinduet "
+                    "(Uw inkl. karm og ramme) og ikke kun ruden (Ug)."
                     % (escape(v["navn"]), tal(v["U_W_m2K"], 2), tal(v["g"], 2), tal(v["LT"], 2))))
     return ud
 
@@ -522,11 +602,13 @@ def afsnit_varmetab(res, regler):
         return ud + [p("Varmetabsrammen er ikke eksporteret fra modellen.")]
     gmax = regler["sommerhus"]["glasandel_max"]
     over = vt.get("glasandel_over_30")
-    ud.append(p("Huset har et opvarmet etageareal på %s m² og %s m² glas, svarende til en glasandel på %s %%. %s"
+    ud.append(p("Huset har et opvarmet etageareal på %s m² og %s m² vinduer og yderdøre, svarende til en "
+                "vinduesandel på %s %%. %s"
                 % (tal(vt["opvarmet_etageareal_m2"]), tal(vt["glasareal_m2"]), tal(100 * vt["glasandel"], 0),
                    ("Det er mere end de %s %%, BR18 § 284 tillader uden videre. Energikravet dokumenteres derfor "
-                    "med en varmetabsramme efter § 284, stk. 2: husets samlede transmissionstab må ikke være større "
-                    "end for et referencehus med samme geometri, U-værdier efter tabel 4 og højst %s %% glas."
+                    "med en varmetabsramme efter § 284, stk. 2: husets transmissionsvarmetabskoefficient H<sub>T</sub> "
+                    "[W/K] må ikke være større end for et referencehus med samme geometri, U-værdier efter "
+                    "tabel 4 og højst %s %% vinduer og døre."
                     % (tal(100 * gmax, 0), tal(100 * gmax, 0))) if over else
                    ("Det er inden for de %s %% i § 284, så komponentkravene i afsnit 4 er tilstrækkelige. "
                     "Varmetabsrammen efter DS 418 er vist til orientering." % tal(100 * gmax, 0)))))
@@ -537,22 +619,27 @@ def afsnit_varmetab(res, regler):
     ud.append(tabel(rows, [90 * mm, 40 * mm, 40 * mm], hoejre=(1, 2), fed_sidste=True))
     ud.append(Spacer(1, 3 * mm))
     margin = 100 * (1 - vt["projekt_sum_W_K"] / vt["ramme_sum_W_K"]) if vt["ramme_sum_W_K"] else 0
-    ud.append(p("<b>Varmetabsrammen er %s.</b> Projektets varmetab er %s %% %s rammen."
-                % ("overholdt" if vt.get("overholdt") else "ikke overholdt", tal(abs(margin), 0),
+    ud.append(p("<b>Varmetabsrammen er %s.</b> Projektets transmissionsvarmetabskoefficient er %s %% %s rammen."
+                % (("foreløbigt overholdt" if FORELOEBIG[0] else "overholdt") if vt.get("overholdt")
+                   else "ikke overholdt", tal(abs(margin), 0),
                    "under" if margin >= 0 else "over")))
     if FIGMAPPE[0]:
         ud += figur(figurer.varmetab(vt, FIGMAPPE[0] / "varmetab.png"),
                     "Varmetab pr. bygningsdel for projektet og referencerammen.", maks_h=80 * mm)
     psi = vt.get("psi_W_mK") or {}
     ud.append(p("Linjetab: vindues- og dørsamlinger %s W/mK, fundament %s W/mK, ovenlys %s W/mK. "
-                "Terrændæk og fundament er vægtet med %s (gulvvarme)."
+                "Terrændæk og fundament er vægtet med temperaturfaktoren (θ<sub>gulv</sub> − θ<sub>jord</sub>) / "
+                "(θ<sub>i</sub> − θ<sub>e</sub>) = (30 − 10) / (20 − (−12)) = %s, svarende til gulvvarme med "
+                "30 °C i gulvet og 10 °C i jorden. Metoden og forudsætningerne for jord og perimeter skal "
+                "bekræftes efter DS 418."
                 % (tal(psi.get("vindue"), 2), tal(psi.get("fundament"), 2), tal(psi.get("ovenlys"), 2),
                    tal(vt.get("jordfaktor"), 3)), NOTE))
     rum = vt.get("dim_varmetab_pr_rum") or []
     if rum:
         ud.append(p("Dimensionerende varmetab", H2))
-        ud.append(p("Ved −12 °C ude og 20 °C inde (24 °C i baderum), inklusive opvarmning af friskluft uden "
-                    "varmegenvinding. Tallene bruges til dimensionering af varmeanlægget."))
+        ud.append(p("Ved −12 °C ude og 20 °C inde (24 °C i rum, hvis navn indeholder »bad«): transmission "
+                    "plus opvarmning af friskluft uden varmegenvinding. Infiltration er ikke medregnet. Tallene "
+                    "er vejledende for dimensionering af varmeanlægget."))
         rows = [["Rum", "Areal [m²]", "Transmission [W]", "Ventilation [W]", "I alt [W]", "[W/m²]"]]
         for r in rum:
             rows.append([r["rum"], tal(r["areal_m2"]), tal(r["transmission_W"], 0), tal(r["ventilation_W"], 0),
@@ -567,10 +654,11 @@ def afsnit_indeklima(res, regler, billeder):
     ot = res.get("overtemperatur")
     ti = regler["termisk_indeklima"]
     ud = [Overskrift("6.", "Termisk indeklima")]
-    ud.append(p("Det termiske indeklima er beregnet time for time for et helt år med %s. Kravet er efter "
-                "BR18 § 386 og vejledningen hertil, at den operative temperatur højst overstiger 27 °C i "
-                "%d timer og 28 °C i %d timer om året. Timerne er her talt over alle årets timer, hvilket "
-                "er på den sikre side."
+    ud.append(p("Det termiske indeklima er beregnet time for time for et helt år med %s. BR18 § 386 er et "
+                "funktionskrav. Resultaterne er vurderet efter boligkriterierne i vejledningen til § 386: den "
+                "operative temperatur bør højst overstige 27 °C i %d timer og 28 °C i %d timer om året i "
+                "boliger med mulighed for udluftning. Timerne er her talt over alle årets timer og ikke kun "
+                "brugstiden, hvilket er på den sikre side."
                 % (escape(ti.get("klimafil", "DRY 2013")), ti["timer_over_27_max"], ti["timer_over_28_max"])))
     if not ot or not ot.get("rum"):
         return ud + [p("Resultaterne for termisk indeklima er ikke eksporteret fra modellen.")]
@@ -582,14 +670,13 @@ def afsnit_indeklima(res, regler, billeder):
     ud.append(tabel(rows, [56 * mm, 24 * mm, 28 * mm, 28 * mm, 34 * mm], hoejre=(1, 2, 3), fed_sidste=True))
     ud.append(Spacer(1, 4 * mm))
     if ot.get("ok"):
-        ud += konklusion("<b>Alle rum overholder grænserne</b> under de forudsætninger for brug og udluftning, "
-                         "der er beskrevet i afsnit 3.")
+        ud += konklusion("<b>Alle rum overholder vejledningens kriterier</b> under de forudsætninger for brug og "
+                         "udluftning, der er beskrevet i afsnit 3.")
     else:
-        ud += konklusion("<b>Grænserne er overskredet</b> i %s. Overophedningen skyldes primært solindfald "
-                         "gennem glas mod syd og vest. Det anbefales at undersøge udvendig solafskærmning, "
-                         "solafskærmende glas med lav g-værdi og større oplukkelige arealer, og at dokumentere "
-                         "effekten med en ny beregning." % escape(", ".join(r["rum"] for r in ot["rum"]
-                                                                           if not r["ok"])))
+        ud += konklusion("<b>Vejledningens kriterier er overskredet</b> i %s. Projektet er ikke afklaret på "
+                         "dette punkt. Mulige tiltag er udvendig solafskærmning, glas med lavere g-værdi og større "
+                         "oplukkelige arealer; den valgte løsning skal beregnes og eftervises for både temperatur "
+                         "og dagslys." % escape(", ".join(r["rum"] for r in ot["rum"] if not r["ok"])))
     if FIGMAPPE[0]:
         ud += figur(figurer.timer_pr_rum(ot, FIGMAPPE[0] / "timer_pr_rum.png"),
                     "Timer pr. år over 27 og 28 °C i hvert rum. Den stiplede linje er kravet.", maks_h=90 * mm)
@@ -598,8 +685,8 @@ def afsnit_indeklima(res, regler, billeder):
         vaerst = max(ot["rum"], key=lambda r: r["timer"].get("over_27", 0))["rum"]
         if vaerst in serier:
             ud.append(p("Hvornår bliver det varmt?", H2))
-            ud.append(p("Figurerne viser det varmeste rum, %s. Overophedningen ligger i sommermånederne og "
-                        "om eftermiddagen, når solen står på glasfladerne." % escape(vaerst)))
+            ud.append(p("Figurerne viser det varmeste rum, %s. %s" % (escape(vaerst),
+                                                                    _hvornaar(serier[vaerst]))))
             ud += figur(figurer.maaneder(serier[vaerst], vaerst, 27, FIGMAPPE[0] / "maaneder.png"),
                         "Timer over 27 °C pr. måned i %s." % vaerst, maks_h=60 * mm)
             ud += figur(figurer.varighedskurve(serier, vaerst, FIGMAPPE[0] / "varighed.png"),
@@ -626,12 +713,48 @@ def afsnit_indeklima(res, regler, billeder):
             ud += figur(figurer.scenarier(sc, FIGMAPPE[0] / "scenarier.png"),
                         "Timer over 27 °C i det varmeste rum for hvert scenarie.", maks_h=80 * mm)
     ud += gh_figurer(billeder, ("komfort",), "Komfort time for time",
-                     "Plottene er lavet i Ladybug Tools og viser for hver time, om rummet er behageligt, "
-                     "for varmt eller for koldt.", [r["rum"] for r in ot["rum"]],
+                     "Plottene er lavet i Ladybug Tools med PMV-modellen (ISO 7730) og viser for hver time kl. "
+                     "8–22, om en person vurderes at have det behageligt, for varmt eller for koldt. %s Plottene "
+                     "er en illustration og indgår ikke i eftervisningen, som alene bygger på timerne over 27 og "
+                     "28 °C." % escape((prj_global().get("indeklima") or {}).get("komfort_tekst") or
+                                       "Beklædning, aktivitet og lufthastighed er ikke angivet."),
+                     [r["rum"] for r in ot["rum"]],
                      "Komfort time for time hen over året, %s.")
     ud += gh_figurer(billeder, ("temperatur", "adaptiv"), None, None, None,
-                     "Operativ temperatur i rummene.")
+                     "Årsgennemsnit af den operative temperatur pr. rum. Figuren viser ikke sommerens "
+                     "overophedning.")
     return ud
+
+
+_PRJ = [{}]
+
+
+def prj_global():
+    return _PRJ[0]
+
+
+def _hvornaar(serie, graense=27.0):
+    """Beskriv ud fra data, hvornår rummet er over grænsen (måneder og tid på døgnet)."""
+    import calendar
+    timer = [i for i, t in enumerate(serie) if t > graense]
+    if not timer:
+        return "Rummet kommer ikke over %d °C." % graense
+    maaned = [0] * 12
+    dage = [calendar.monthrange(2010, m + 1)[1] for m in range(12)]
+    graenser, acc = [], 0
+    for d in dage:
+        acc += d * 24
+        graenser.append(acc)
+    doegn = [0] * 24
+    for i in timer:
+        maaned[next(m for m, g in enumerate(graenser) if i < g)] += 1
+        doegn[i % 24] += 1
+    navne = ["januar", "februar", "marts", "april", "maj", "juni", "juli", "august", "september", "oktober",
+             "november", "december"]
+    mest = [navne[m] for m in sorted(range(12), key=lambda m: -maaned[m])[:2] if maaned[m]]
+    top = sorted(range(24), key=lambda h: -doegn[h])[:4]
+    return ("Timerne over %d °C ligger især i %s og hyppigst mellem kl. %d og %d."
+            % (graense, " og ".join(mest), min(top), max(top) + 1))
 
 
 def gh_figurer(billeder, foranstillinger, overskrift, tekst, rum, billedtekst):
@@ -670,21 +793,38 @@ def _trim(sti):
 def afsnit_dagslys(res, billeder):
     dl = res.get("dagslys")
     ud = [Overskrift("7.", "Dagslys")]
-    ud.append(p("BR18 § 379 kan dokumenteres med 10 %-reglen eller med en beregning, der viser mindst 300 lux "
-                "på mindst halvdelen af gulvarealet i mindst halvdelen af dagslystimerne (DS/EN 17037). "
-                "Dagslyset er beregnet med Radiance på et målenet 0,85 m over gulvet."))
+    dp = prj_global().get("dagslys") or {}
+    ud.append(p("BR18 § 379 kan dokumenteres med 10 %-reglen eller med en beregning efter vejledningen, der viser "
+                "mindst 300 lux på mindst halvdelen af det relevante gulvareal i mindst halvdelen af "
+                "dagslystimerne. Dagslystimerne er den halvdel af årets timer, hvor der er mest dagslys. For "
+                "boliger regnes på et måleplan 0,50 m over gulvet med en randzone på 0,5 m langs væggene. "
+                "Dagslyset er beregnet med Radiance."))
+    def _v(k, fmt="%s"):
+        x = dp.get(k)
+        return (fmt % x) if x not in (None, "") else "Ikke angivet"
+    rows = [["Metode", "Værdi"],
+            ["Måleplan over gulv", _v("maaleplan_m", "%s m").replace(".", ",")],
+            ["Randzone langs vægge", _v("randzone_m", "%s m").replace(".", ",")],
+            ["Netafstand", _v("netafstand_m", "%s m").replace(".", ",")],
+            ["Tidsgrundlag", _v("tidsgrundlag")],
+            ["Reflektanser (gulv / væg / loft)", _v("reflektanser")],
+            ["Omgivelser og skygger", _v("omgivelser")]]
+    ud.append(tabel(rows, [60 * mm, BREDDE - 60 * mm]))
+    ud.append(Spacer(1, 3 * mm))
     if isinstance(dl, list) and len(dl) == 1 and isinstance(dl[0], dict):
         dl = dl[0]
     if isinstance(dl, dict) and dl.get("rum"):
-        rows = [["Rum", "Andel af gulvarealet med 300 lux [%]", "Status"]]
+        rows = [["Rum", "Andel af gulvarealet med mindst 300 lux i mindst halvdelen af dagslystimerne [%]",
+                 "Status"]]
         for r in dl["rum"]:
             rows.append([r["rum"], tal(r["andel_pct"], 0),
                          status(r["ok"], "Opfyldt" if r["ok"] else "Ikke opfyldt")])
-        ud.append(tabel(rows, [60 * mm, 70 * mm, 36 * mm], hoejre=(1,)))
+        ud.append(tabel(rows, [50 * mm, 86 * mm, 34 * mm], hoejre=(1,)))
         ud.append(Spacer(1, 4 * mm))
-        ud += konklusion("<b>%s</b> Kravet er %s." % ("Alle rum opfylder kravet." if dl.get("ok") else
-                                                       "Ikke alle rum opfylder kravet.",
-                                                       escape(dl.get("metode", ""))))
+        ud += konklusion("<b>%s</b>%s" % (
+            ("Alle rum opfylder kriteriet i beregningen." if dl.get("ok") else "Ikke alle rum opfylder kriteriet."),
+            " Resultatet er foreløbigt, indtil måleplan og tidsgrundlag svarer til vejledningen."
+            if FORELOEBIG[0] else ""))
     elif not dl:
         ud.append(p("Resultaterne for dagslys er ikke eksporteret fra modellen."))
     else:
@@ -696,9 +836,10 @@ def afsnit_dagslys(res, billeder):
                 ud.append(p("• " + escape("%s" % v)))
     lux = {n: billeder.pop(n) for n in list(billeder) if n.lower().startswith(("lux", "dagslys_lux", "dagslys_time"))}
     ud += gh_figurer(billeder, ("dagslys",), None, None, None,
-                     "Andel af årets dagslystimer med mindst 300 lux i hvert punkt af målenettet.")
+                     "Andel af tiden med mindst 300 lux i hvert punkt af målenettet (daylight autonomy).")
     ud += gh_figurer(lux, ("lux", "dagslys_lux", "dagslys_time"), None, None, None,
-                     "Belysningsstyrke time for time hen over året i ét målepunkt.")
+                     "Belysningsstyrke time for time hen over året i ét målepunkt. Figuren viser lysforløbet "
+                     "i punktet og siger ikke noget om blænding eller direkte sol (§ 381).")
     return ud
 
 
@@ -709,7 +850,9 @@ def afsnit_forbehold(prj):
               "Resultatet for termisk indeklima afhænger af, at beboerne lufter ud som forudsat i afsnit 3.",
               "U-værdier er beregnet for homogene lag og skal eftervises efter DS 418 med de endelige "
               "opbygninger, træandele og linjetab i projekteringen.",
-              "Notatet skal opdateres, hvis glasarealer, solafskærmning eller opbygninger ændres.") + \
+              "Notatet skal opdateres, hvis glasarealer, solafskærmning eller opbygninger ændres.",
+              "Notatet omfatter varmetab, termisk indeklima (overtemperatur) og dagslys. Det dokumenterer ikke "
+              "luftkvalitet, fugt, radon, lyd eller blænding og gener fra direkte sol (§ 381).") + \
             tuple(prj.get("forbehold") or ()):
         ud.append(Paragraph(t, PUNKT, bulletText="–"))
     return ud
@@ -812,6 +955,12 @@ def byg(eksport, projekt_yaml, ud_fil=None):
                     for f in sorted((eksport / "scenarier").glob("*.json"))] \
         if (eksport / "scenarier").is_dir() else []
     story = [NextPageTemplate("indhold"), PageBreak()] + side_info(prj)
+    _PRJ[0] = prj
+    punkter = udestaaende(res, prj)
+    FORELOEBIG[0] = bool(punkter)
+    if FORELOEBIG[0]:
+        prj["dokumenttype"] = "Foreløbigt notat"
+        prj["kort_titel"] = (prj.get("kort_titel") or prj.get("sag", "")) + " · foreløbig"
     story.append(Overskrift("1.", "Indledning"))
     story.append(p("Dette notat dokumenterer varmetab, termisk indeklima og dagslys for %s, %s, i forhold til "
                    "kravene i BR18. Projektet er et sommerhus, som ikke er omfattet af energirammen "
@@ -819,6 +968,7 @@ def byg(eksport, projekt_yaml, ud_fil=None):
                    % (escape(prj.get("undertitel") or prj.get("sag", "")).lower(),
                       escape(prj.get("adresse") or ""))))
     story += afsnit_sammenfatning(res, regler)
+    story += afsnit_udestaaende(punkter)
     story += afsnit_grundlag(prj, res, regler)
     story += figur(prj.get("_forsidebillede"), "Beregningsmodellen i Rhino/Grasshopper.", maks_h=85 * mm)
     story += gh_figurer(billeder, ("solbane",), None, None, None,
