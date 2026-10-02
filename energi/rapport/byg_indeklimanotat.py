@@ -24,6 +24,7 @@ from pathlib import Path
 
 import yaml
 
+import beskaer
 import figurer
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -530,15 +531,46 @@ def afsnit_indeklima(res, regler, billeder):
         if FIGMAPPE[0]:
             ud += figur(figurer.scenarier(sc, FIGMAPPE[0] / "scenarier.png"),
                         "Timer over 27 °C i det varmeste rum for hvert scenarie.", maks_h=80 * mm)
-    if serier:
-        return ud     # skærmbilleder fra Grasshopper kommer i bilaget
-    for navn, tekst in (("komfort", "Operativ temperatur time for time hen over året."),
-                        ("temperatur", "Operativ temperatur time for time hen over året."),
-                        ("temperatur_plan", "Rummene farvet efter operativ temperatur."),
-                        ("adaptiv", "Adaptiv komfort efter DS/EN 16798-1.")):
-        if navn in billeder:
-            ud += figur(billeder.pop(navn), tekst)
+    ud += gh_figurer(billeder, ("komfort",), "Komfort time for time",
+                     "Plottene er lavet i Ladybug Tools og viser for hver time, om rummet er behageligt, "
+                     "for varmt eller for koldt.", [r["rum"] for r in ot["rum"]],
+                     "Komfort time for time hen over året, %s.")
+    ud += gh_figurer(billeder, ("temperatur", "adaptiv"), None, None, None,
+                     "Operativ temperatur i rummene.")
     return ud
+
+
+def gh_figurer(billeder, foranstillinger, overskrift, tekst, rum, billedtekst):
+    """Skærmbilleder fra Grasshopper, hvis navn starter med en af foranstillingerne.
+    Billeder med flere plots under hinanden (ét pr. rum) deles op, når antallet passer
+    med antallet af rum."""
+    navne = [n for n in list(billeder) if n.lower().startswith(foranstillinger)]
+    if not navne:
+        return []
+    ud = []
+    if overskrift:
+        ud.append(p(overskrift, H2))
+    if tekst:
+        ud.append(p(tekst))
+    for navn in navne:
+        sti = billeder.pop(navn)
+        dele = []
+        if rum and len(rum) > 1:
+            dele = beskaer.del_op(sti, FIGMAPPE[0] / "dele", len(rum))
+        if len(dele) == len(rum or []) and len(dele) > 1:
+            for r, d in zip(rum, dele):
+                ud += figur(d, billedtekst % r if "%s" in billedtekst else billedtekst, maks_h=60 * mm)
+        else:
+            ud += figur(_trim(sti), (billedtekst % "alle rum") if "%s" in billedtekst else billedtekst,
+                        maks_h=85 * mm)
+    return ud
+
+
+def _trim(sti):
+    try:
+        return beskaer.trim(sti, FIGMAPPE[0] / ("trim_" + Path(sti).name))
+    except Exception:
+        return sti
 
 
 def afsnit_dagslys(res, billeder):
@@ -567,8 +599,8 @@ def afsnit_dagslys(res, billeder):
                 ud.append(tabel(rows, [90 * mm, BREDDE - 90 * mm]))
             else:
                 ud.append(p("• " + escape("%s" % v)))
-    if "dagslys" in billeder:
-        ud += figur(billeder.pop("dagslys"), "Dagslys på målenettet.")
+    ud += gh_figurer(billeder, ("dagslys",), None, None, None,
+                     "Andel af årets dagslystimer med mindst 300 lux i hvert punkt af målenettet.")
     return ud
 
 
@@ -637,11 +669,15 @@ def byg(eksport, projekt_yaml, ud_fil=None):
         logo = projekt_yaml.parent / logo
     prj["_logo"] = logo
     forside = prj.get("forsidebillede", "model_syd")
+    if forside not in billeder:
+        forside = next((n for n in billeder if n.lower().startswith("model")), forside)
     prj["_forsidebillede"] = billeder.pop(forside, None)
 
     _FIGNR[0] = 0
     FIGMAPPE[0] = eksport / "_figurer"
     FIGMAPPE[0].mkdir(exist_ok=True)
+    if prj.get("_forsidebillede"):
+        prj["_forsidebillede"] = _trim(prj["_forsidebillede"])
     SCENARIER[0] = [json.loads(f.read_text(encoding="utf-8"))
                     for f in sorted((eksport / "scenarier").glob("*.json"))] \
         if (eksport / "scenarier").is_dir() else []
@@ -664,7 +700,7 @@ def byg(eksport, projekt_yaml, ud_fil=None):
         story.append(PageBreak())
         story.append(Overskrift("", "Bilag – figurer"))
         for navn, sti in billeder.items():
-            story += figur(sti, navn.replace("_", " ").capitalize(), maks_h=110 * mm)
+            story += figur(_trim(sti), navn.replace("_", " ").capitalize(), maks_h=110 * mm)
 
     ud_fil = Path(ud_fil) if ud_fil else eksport / ("%s.pdf" % (prj.get("filnavn") or "Indeklimanotat"))
     Notat(ud_fil, prj).multiBuild(story, canvasmaker=TaelCanvas)
