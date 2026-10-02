@@ -693,6 +693,11 @@ def rens_rumnavne(res):
             r["rum"] = rumnavn(r["rum"])
         if isinstance(ot.get("serier"), dict):
             ot["serier"] = {rumnavn(k): v for k, v in ot["serier"].items()}
+    vt = res.get("varmetab")
+    if isinstance(vt, dict):
+        for r in vt.get("dim_varmetab_pr_rum") or []:
+            if isinstance(r, dict) and "rum" in r:
+                r["rum"] = rumnavn(r["rum"])
     for d in _som_liste(res.get("dagslys")):
         if isinstance(d, dict):
             for r in d.get("rum") or []:
