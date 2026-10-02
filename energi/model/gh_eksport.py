@@ -32,8 +32,8 @@ Inputs:
     _scenarie_    navn på scenariet, fx "1 Som tegnet" eller "2 Solafskærmende glas" (valgfri).
                   Gemmer et resumé i scenarier/, så notatet kan sammenligne koerslerne.
                   Start navnet med et tal - scenarierne vises i den rækkefølge.
-    _bredde_      billedbredde i pixels (standard 1600)
-    _hoejde_      billedhøjde i pixels (standard 1000)
+    _bredde_      billedbredde i pixels (standard 3200 - skarpt i A4 i fuld bredde)
+    _hoejde_      billedhøjde i pixels (standard 2000)
     _eksporter    True for at eksportere
 Outputs:
     filer         de skrevne filer
@@ -42,7 +42,7 @@ from __future__ import division, unicode_literals
 
 import os
 
-STANDARD_BREDDE, STANDARD_HOEJDE = 1600, 1000
+STANDARD_BREDDE, STANDARD_HOEJDE = 3200, 2000
 
 
 TILSTANDE = ("wireframe", "shaded", "rendered", "ghosted", "x-ray", "technical", "artistic", "pen",
@@ -474,9 +474,11 @@ def _fang(view, bredde, hoejde):
         return view.CaptureToBitmap(stoerrelse, False, False, False)
 
     def view_capture():
+        # tegner i høj opløsning og skalerer streger og tekst med, så de ikke bliver tynde
         vc = Rhino.Display.ViewCapture()
-        vc.Width, vc.Height = bredde, hoejde
-        vc.ScaleScreenItems = False
+        vc.Width = bredde
+        vc.Height = hoejde
+        vc.ScaleScreenItems = True
         vc.DrawAxes = False
         vc.DrawGrid = False
         vc.DrawGridAxes = False
@@ -486,14 +488,20 @@ def _fang(view, bredde, hoejde):
     def almindelig():
         return view.CaptureToBitmap(stoerrelse)
 
-    for metode in (uden_gitter, almindelig, view_capture):
+    reserve = None
+    for metode in (view_capture, uden_gitter, almindelig):
         try:
             bmp = metode()
         except Exception:
             continue
         if bmp is None:
             continue
+        if metode is view_capture and _ensfarvet(bmp):
+            reserve = bmp      # ViewCapture kan give et tomt billede - prøv de andre
+            continue
         return bmp
+    if reserve is not None:
+        return reserve
     raise ValueError("Rhino kunne ikke tage et billede af visningen.")
 
 

@@ -84,7 +84,7 @@ def p(tekst, stil=BROED):
     return Paragraph(tekst, stil)
 
 
-def tabel(rows, bredder, hoejre=(), fed_sidste=False, **_):
+def tabel(rows, bredder, hoejre=(), fed_sidste=False, samlet=True, **_):
     """Akademisk tabel (booktabs): streg over, under overskriften og under tabellen.
     rows[0] = overskrift. Kolonner i `hoejre` højrestilles."""
     data = []
@@ -111,7 +111,20 @@ def tabel(rows, bredder, hoejre=(), fed_sidste=False, **_):
     if fed_sidste and len(rows) > 2:
         stil.append(("LINEABOVE", (0, -1), (-1, -1), 0.5, SORT))
     t.setStyle(TableStyle(stil))
-    return t
+    return KeepTogether([t]) if samlet and len(rows) <= 14 else t
+
+
+KONKL = ParagraphStyle("konkl", parent=BROED, fontSize=9.5, leading=14.5, spaceAfter=0)
+PUNKT = ParagraphStyle("punkt", parent=BROED, leftIndent=5 * mm, bulletIndent=0)
+
+
+def konklusion(*tekster):
+    """Konklusion fremhævet med en lodret streg i venstre side."""
+    t = Table([[Paragraph("<br/><br/>".join(tekster), KONKL)]], colWidths=[BREDDE], hAlign="LEFT")
+    t.setStyle(TableStyle([("LINEBEFORE", (0, 0), (0, 0), 2, SORT),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 4 * mm), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                           ("TOPPADDING", (0, 0), (-1, -1), 1.5 * mm), ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm)]))
+    return [Spacer(1, 1 * mm), t, Spacer(1, 5 * mm)]
 
 
 def status(ok, tekst=None):
@@ -207,28 +220,47 @@ def side_indhold(c, doc):
 
 
 def side_forside(c, doc):
+    """Forside: stor, let titel, projektlinje, billede og sagsoplysninger i bunden."""
     prj = doc.prj
     c.saveState()
     _logo(c, prj, W - HM, H - 38 * mm, 18 * mm)
+    c.setFillColor(GRAA)
+    c.setFont("Man-Bold", 7.5)
+    c.drawString(VM, H - 30 * mm, ("%s" % (prj.get("dokumenttype") or "Notat")).upper())
     c.setFillColor(SORT)
-    y = H * 0.62
-    c.setFont("Man-Bold", 12)
+    y = H - 78 * mm
+    c.setFont("Man-Light", 27)
     for linje in prj.get("titel_linjer") or [prj.get("emne", "")]:
-        c.drawString(VM, y, ("%s" % linje).upper())
-        y -= 6.5 * mm
-    y -= 18 * mm
-    c.setFont("Man-Bold", 12)
+        c.drawString(VM, y, "%s" % linje)
+        y -= 11 * mm
+    y -= 3 * mm
+    c.setFont("Man-Semi", 10.5)
     for linje in prj.get("projekt_linjer") or [prj.get("sag", "")]:
-        c.drawString(VM, y, ("%s" % linje).upper())
-        y -= 6.5 * mm
+        c.drawString(VM, y, "%s" % linje)
+        y -= 6 * mm
     omslag = prj.get("_omslag")
+    bund = 62 * mm
     if omslag and Path(omslag).exists():
         iw, ih = ImageReader(str(omslag)).getSize()
-        bh, bb = y - 6 * mm - 52 * mm, BREDDE
+        bh, bb = y - 10 * mm - bund, BREDDE
         f = min(bb / iw, bh / ih)
-        c.drawImage(str(omslag), VM, 52 * mm + (bh - ih * f) / 2, width=iw * f, height=ih * f, mask="auto")
-    c.setFont("Man-Bold", 7.5)
-    c.drawString(VM, 40 * mm, "DATO: %s" % prj["_dato"])
+        c.drawImage(str(omslag), VM, bund + (bh - ih * f) / 2, width=iw * f, height=ih * f, mask="auto")
+    # sagsoplysninger i en række nederst
+    c.setStrokeColor(SORT)
+    c.setLineWidth(0.5)
+    c.line(VM, 48 * mm, W - HM, 48 * mm)
+    felter = [("Adresse", prj.get("adresse")), ("Fase", prj.get("fase")), ("Dato", prj.get("_dato")),
+              ("Revision", prj.get("_rev") or "0")]
+    kol = BREDDE / len(felter)
+    for k, (etiket, vaerdi) in enumerate(felter):
+        x = VM + k * kol
+        c.setFillColor(GRAA)
+        c.setFont("Man-Bold", 6.5)
+        c.drawString(x, 43 * mm, etiket.upper())
+        c.setFillColor(SORT)
+        c.setFont("Man", 8.5)
+        c.drawString(x, 38 * mm, "%s" % (vaerdi or "–"))
+    _sidefod(c, prj)
     c.restoreState()
 
 
@@ -373,8 +405,7 @@ def afsnit_sammenfatning(res, regler):
     else:
         rows.append(["Dagslys", "§ 379: 10 %-regel eller 300 lux", "Se afsnit 7" if dl else "–",
                      status(None, "Se afsnit 7") if dl else status(None)])
-    ud.append(tabel(rows, [30 * mm, 52 * mm, 60 * mm, 28 * mm]))
-    ud.append(Spacer(1, 4 * mm))
+    tabellen = tabel(rows, [30 * mm, 52 * mm, 60 * mm, 28 * mm])
     konkl = []
     if vt:
         konkl.append("Varmetabsrammen er %s med en glasandel på %s %% af det opvarmede etageareal."
@@ -389,7 +420,9 @@ def afsnit_sammenfatning(res, regler):
             konkl.append("Grænserne for termisk indeklima er overskredet i %s. Der skal indarbejdes tiltag, "
                          "fx udvendig solafskærmning, solafskærmende glas eller øget udluftning (afsnit 6)."
                          % ", ".join(daarlige))
-    ud += [p(t) for t in konkl]
+    if konkl:
+        ud += konklusion(*konkl)
+    ud.append(tabellen)
     return ud
 
 
@@ -426,7 +459,7 @@ def afsnit_grundlag(prj, res, regler):
                 ["Infiltration", "%s l/s pr. m² facade" % tal(prog["infiltration_l_s_m2_facade"], 2)],
                 ["Opvarmning", "%s °C" % tal(prog["opvarmning_c"], 0)],
                 ["Køling", "Ingen"]]
-        ud.append(tabel(rows, [55 * mm, BREDDE - 55 * mm], hoejre=(1,)))
+        ud.append(tabel(rows, [60 * mm, 50 * mm], hoejre=(1,)))
     udl = ik.get("udluftning")
     if udl:
         ud.append(p("Udluftning", H2))
@@ -438,7 +471,7 @@ def afsnit_grundlag(prj, res, regler):
                 ["og mindst så meget lavere end inde", "%s °C" % tal(udl.get("delta_c"), 0)],
                 ["Oplukkelig andel af vinduesarealet", "%s %%" % tal(100 * udl.get("andel_oplukkelig", 0), 0)],
                 ["Udledningskoefficient", tal(udl.get("udledningskoefficient"), 2)]]
-        ud.append(tabel(rows, [80 * mm, BREDDE - 80 * mm], hoejre=(1,)))
+        ud.append(tabel(rows, [80 * mm, 30 * mm], hoejre=(1,)))
     return ud
 
 
@@ -469,7 +502,8 @@ def afsnit_opbygninger(res, regler):
             rows.append([lag["materiale"], tal(lag["tykkelse_mm"], 0), tal(lag["lambda_W_mK"], 3),
                          tal(lag["R_m2K_W"], 2)])
         rows.append(["U-værdi inkl. overgangsmodstande", "", "", "%s W/m²K" % tal(o["U_W_m2K"], 3)])
-        blok.append(tabel(rows, [80 * mm, 30 * mm, 30 * mm, 30 * mm], hoejre=(1, 2, 3), fed_sidste=True))
+        blok.append(tabel(rows, [80 * mm, 30 * mm, 30 * mm, 30 * mm], hoejre=(1, 2, 3), fed_sidste=True,
+                          samlet=False))
         ud.append(KeepTogether(blok))
     if v:
         ud.append(p("Glas", H2))
@@ -544,15 +578,16 @@ def afsnit_indeklima(res, regler, billeder):
                      tal(r["timer"].get("over_28"), 0), status(r["ok"])])
     rows.append(["Grænse", "", tal(ti["timer_over_27_max"], 0), tal(ti["timer_over_28_max"], 0), ""])
     ud.append(tabel(rows, [56 * mm, 24 * mm, 28 * mm, 28 * mm, 34 * mm], hoejre=(1, 2, 3), fed_sidste=True))
-    ud.append(Spacer(1, 3 * mm))
+    ud.append(Spacer(1, 4 * mm))
     if ot.get("ok"):
-        ud.append(p("<b>Alle rum overholder grænserne</b> under de forudsætninger for brug og udluftning, der "
-                    "er beskrevet i afsnit 3."))
+        ud += konklusion("<b>Alle rum overholder grænserne</b> under de forudsætninger for brug og udluftning, "
+                         "der er beskrevet i afsnit 3.")
     else:
-        ud.append(p("<b>Grænserne er overskredet</b> i %s. Overophedningen skyldes primært solindfald gennem "
-                    "glas mod syd og vest. Det anbefales at undersøge udvendig solafskærmning, solafskærmende "
-                    "glas med lav g-værdi og større oplukkelige arealer, og at dokumentere effekten med en ny "
-                    "beregning." % ", ".join(r["rum"] for r in ot["rum"] if not r["ok"])))
+        ud += konklusion("<b>Grænserne er overskredet</b> i %s. Overophedningen skyldes primært solindfald "
+                         "gennem glas mod syd og vest. Det anbefales at undersøge udvendig solafskærmning, "
+                         "solafskærmende glas med lav g-værdi og større oplukkelige arealer, og at dokumentere "
+                         "effekten med en ny beregning." % escape(", ".join(r["rum"] for r in ot["rum"]
+                                                                           if not r["ok"])))
     if FIGMAPPE[0]:
         ud += figur(figurer.timer_pr_rum(ot, FIGMAPPE[0] / "timer_pr_rum.png"),
                     "Timer pr. år over 27 og 28 °C i hvert rum. Den stiplede linje er kravet.", maks_h=90 * mm)
@@ -644,9 +679,10 @@ def afsnit_dagslys(res, billeder):
             rows.append([r["rum"], tal(r["andel_pct"], 0),
                          status(r["ok"], "Opfyldt" if r["ok"] else "Ikke opfyldt")])
         ud.append(tabel(rows, [60 * mm, 70 * mm, 36 * mm], hoejre=(1,)))
-        ud.append(Spacer(1, 3 * mm))
-        ud.append(p("<b>%s</b> Kravet er %s." % ("Alle rum opfylder kravet." if dl.get("ok") else
-                                                  "Ikke alle rum opfylder kravet.", escape(dl.get("metode", "")))))
+        ud.append(Spacer(1, 4 * mm))
+        ud += konklusion("<b>%s</b> Kravet er %s." % ("Alle rum opfylder kravet." if dl.get("ok") else
+                                                       "Ikke alle rum opfylder kravet.",
+                                                       escape(dl.get("metode", ""))))
     elif not dl:
         ud.append(p("Resultaterne for dagslys er ikke eksporteret fra modellen."))
     else:
@@ -673,7 +709,7 @@ def afsnit_forbehold(prj):
               "opbygninger, træandele og linjetab i projekteringen.",
               "Notatet skal opdateres, hvis glasarealer, solafskærmning eller opbygninger ændres.") + \
             tuple(prj.get("forbehold") or ()):
-        ud.append(p("• " + t))
+        ud.append(Paragraph(t, PUNKT, bulletText="–"))
     return ud
 
 
