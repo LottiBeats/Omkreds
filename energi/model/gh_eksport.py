@@ -55,9 +55,11 @@ def tolk_billeder(linjer):
                        ind på gruppen set ovenfra (Top)
          uden rhino    Rhino-objekterne skjules, så kun Grasshopper-preview ses
          fast          brug visningen præcis som gemt (ellers zoomes der, så det viste fylder billedet)
+         nr:2          kun plot nr. 2, når komponenten tegner flere plots (fx ét pr. rum)
+         hver          ét billede pr. plot: filnavn_1, filnavn_2, ...
          Shaded/Arctic/Rendered ...   visningstilstand
          andet         Rhino-viewport eller navngiven visning (NamedView)
-    -> liste af dicts med fil, visning, tilstand, gruppe, uden_rhino, fast."""
+    -> liste af dicts med fil, visning, tilstand, gruppe, uden_rhino, fast, nr ("hver" eller tal)."""
     if linjer is None:
         return []
     if not isinstance(linjer, (list, tuple)):
@@ -70,7 +72,7 @@ def tolk_billeder(linjer):
                 continue
             fil, rest = [x.strip() for x in del_.split("=", 1)]
             b = {"fil": _filnavn(fil), "visning": None, "tilstand": None, "gruppe": None, "uden_rhino": False,
-                 "fast": False}
+                 "fast": False, "nr": None}
             for d in [x.strip() for x in rest.split("|") if x.strip()]:
                 if d.lower().startswith("gruppe:"):
                     b["gruppe"] = d.split(":", 1)[1].strip()
@@ -78,12 +80,36 @@ def tolk_billeder(linjer):
                     b["uden_rhino"] = True
                 elif d.lower() in ("fast", "fast visning", "uden zoom"):
                     b["fast"] = True
+                elif d.lower() in ("hver", "hver gren", "hvert plot", "alle"):
+                    b["nr"] = "hver"
+                elif d.lower().replace(" ", "").startswith(("nr:", "gren:", "plot:")) and \
+                        d.split(":", 1)[1].strip().isdigit():
+                    b["nr"] = max(1, int(d.split(":", 1)[1].strip()))
                 elif d.lower() in TILSTANDE:
                     b["tilstand"] = d
                 else:
                     b["visning"] = d
             ud.append(b)
     return ud
+
+
+def vaelg_del(grene, nr):
+    """Del nr (0-baseret) af et outputs data. Flere grene: én gren pr. plot.
+    Én gren: ét element pr. plot. Findes delen ikke -> []."""
+    grene = [list(g) for g in grene]
+    if len(grene) > 1:
+        return grene[nr] if nr < len(grene) else []
+    if grene and nr < len(grene[0]):
+        return [grene[0][nr]]
+    return []
+
+
+def antal_dele(alle_grene):
+    """Antal plots ud fra alle outputs' grene: flest grene, ellers flest elementer i én gren."""
+    flere = [len(g) for g in alle_grene if len(g) > 1]
+    if flere:
+        return max(flere)
+    return max([len(list(g[0])) for g in alle_grene if len(g) == 1] or [0])
 
 
 def _er_tekst(x):
@@ -273,8 +299,15 @@ def _gruppe_medlemmer(gh_doc, navn):
     return ids
 
 
-def _gruppe_boks(gh_doc, ids):
-    """Boks om den geometri, gruppens komponenter faktisk viser (output med preview slået til)."""
+def _grene(param):
+    """Et outputs data som liste af grene (lister af goo)."""
+    d = param.VolatileData
+    return [list(d.get_Branch(p)) for p in d.Paths]
+
+
+def _gruppe_boks(gh_doc, ids, nr=None):
+    """Boks om den geometri, gruppens komponenter faktisk viser (output med preview slået til).
+    Med nr (0-baseret) kun plot nr."""
     import Rhino
     from Grasshopper.Kernel import IGH_Component, IGH_Param, IGH_PreviewObject
     from Grasshopper.Kernel.Types import IGH_GeometricGoo
@@ -285,7 +318,8 @@ def _gruppe_boks(gh_doc, ids):
         try:
             if isinstance(param, IGH_PreviewObject) and param.Hidden:
                 return None
-            for goo in param.VolatileData.AllData(True):
+            data = param.VolatileData.AllData(True) if nr is None else vaelg_del(_grene(param), nr)
+            for goo in data:
                 if isinstance(goo, IGH_GeometricGoo):
                     bb = goo.Boundingbox
                     if bb.IsValid:
@@ -304,6 +338,23 @@ def _gruppe_boks(gh_doc, ids):
             if bb is not None:
                 boks = bb if boks is None else Rhino.Geometry.BoundingBox.Union(boks, bb)
     return boks
+
+
+def _gruppe_antal(gh_doc, ids):
+    """Antal plots, gruppens komponenter tegner (fx ét pr. rum)."""
+    from Grasshopper.Kernel import IGH_Component, IGH_Param
+    from Grasshopper.Kernel.Types import IGH_GeometricGoo
+    alle = []
+    for o in gh_doc.Objects:
+        if o.InstanceGuid not in ids:
+            continue
+        params = list(o.Params.Output) if isinstance(o, IGH_Component) else (
+            [o] if isinstance(o, IGH_Param) else [])
+        for p in params:
+            g = _grene(p)
+            if any(isinstance(x, IGH_GeometricGoo) for gren in g for x in gren):
+                alle.append(g)
+    return antal_dele(alle)
 
 
 def _synlig_boks(rdoc, gh_doc):
@@ -328,9 +379,10 @@ def _synlig_boks(rdoc, gh_doc):
 
 
 def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhino=False, gh_doc=None,
-                fast=False):
+                fast=False, nr=None):
     """Tager billedet. Med gruppe: alle andre Grasshopper-komponenter skjules midlertidigt.
     Visningen (eller Top) zoomes, så det viste fylder billedet, medmindre fast=True.
+    Med nr (1-baseret) zoomes der ind på plot nr., og billedet beskæres til det.
     Kamera, skjulte objekter og visningstilstand gendannes bagefter."""
     import System
     import Rhino
@@ -340,7 +392,9 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
     try:
         if gruppe:
             ids = _gruppe_medlemmer(gh_doc, gruppe)
-            boks = _gruppe_boks(gh_doc, ids)
+            boks = _gruppe_boks(gh_doc, ids, None if nr is None else nr - 1)
+            if nr is not None and (boks is None or not boks.IsValid):
+                raise ValueError('gruppen "%s" har ikke et plot nr. %d' % (gruppe, nr))
             for o in gh_doc.Objects:
                 if not isinstance(o, IGH_PreviewObject):
                     continue
@@ -368,7 +422,13 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
             gammel_tilstand = (vp, vp.DisplayMode)
             vp.DisplayMode = mode
             vp.ParentView.Redraw()
-        bmp = _fang(vp.ParentView, int(bredde), int(hoejde))
+        if nr is not None and boks is not None:
+            # samme format som viewporten, så skærmkoordinater kan skaleres direkte
+            vb, vh = vp.Size.Width, vp.Size.Height
+            bmp = _fang(vp.ParentView, int(bredde), int(round(int(bredde) * vh / float(vb))))
+            bmp = _beskaer(bmp, vp, boks, bmp.Width / float(vb))
+        else:
+            bmp = _fang(vp.ParentView, int(bredde), int(hoejde))
         bmp.Save(sti, System.Drawing.Imaging.ImageFormat.Png)
         if _ensfarvet(bmp):
             print("ADVARSEL  %s ser tom ud (én farve). Vælg visningen %s i Rhino og tjek, at plottet "
@@ -385,6 +445,23 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
         if gammel_tilstand is not None:
             gammel_tilstand[0].DisplayMode = gammel_tilstand[1]
         rdoc.Views.Redraw()
+
+
+def _beskaer(bmp, vp, boks, skala, margen=0.03):
+    """Skær billedet til boksen (set fra viewporten) plus en lille margen."""
+    import System
+    xs, ys = [], []
+    for pt in boks.GetCorners():
+        c = vp.WorldToClient(pt)
+        xs.append(c.X * skala)
+        ys.append(c.Y * skala)
+    mx = (max(xs) - min(xs)) * margen + 4
+    my = (max(ys) - min(ys)) * margen + 4
+    x0, y0 = max(0, int(min(xs) - mx)), max(0, int(min(ys) - my))
+    x1, y1 = min(bmp.Width, int(max(xs) + mx)), min(bmp.Height, int(max(ys) + my))
+    if x1 - x0 < 10 or y1 - y0 < 10:
+        return bmp
+    return bmp.Clone(System.Drawing.Rectangle(x0, y0, x1 - x0, y1 - y0), bmp.PixelFormat)
 
 
 def _fang(view, bredde, hoejde):
@@ -482,15 +559,28 @@ if _i_gh:
         b, h = g("_bredde_") or STANDARD_BREDDE, g("_hoejde_") or STANDARD_HOEJDE
         gh_doc = ghenv.Component.OnPingDocument()  # noqa: F821
         for bil in tolk_billeder(g("_billeder_")):
-            fil = bil["fil"]
-            sti = os.path.join(bmappe, fil + ".png")
-            try:
-                filer.append(tag_billede(bil["visning"], sti, b, h, bil["tilstand"], bil["gruppe"],
-                                         bil["uden_rhino"], gh_doc, bil.get("fast")))
-                navne.append(fil + ".png")
-                print("Billede: %s  <- %s" % (fil + ".png", bil["visning"] or "gruppe " + (bil["gruppe"] or "")))
-            except Exception as e:
-                fejl.append("%s: %s" % (fil, e))
+            numre = [bil["nr"]]
+            if bil["nr"] == "hver":
+                try:
+                    antal = _gruppe_antal(gh_doc, _gruppe_medlemmer(gh_doc, bil["gruppe"])) if bil["gruppe"] else 0
+                except Exception as e:
+                    fejl.append("%s: %s" % (bil["fil"], e))
+                    continue
+                if not antal:
+                    fejl.append('%s: "hver" kræver en gruppe med plots (gruppe:Navn)' % bil["fil"])
+                    continue
+                numre = list(range(1, antal + 1))
+            for nr in numre:
+                fil = bil["fil"] + ("_%d" % nr if bil["nr"] == "hver" else "")
+                sti = os.path.join(bmappe, fil + ".png")
+                try:
+                    filer.append(tag_billede(bil["visning"], sti, b, h, bil["tilstand"], bil["gruppe"],
+                                             bil["uden_rhino"], gh_doc, bil.get("fast"), nr))
+                    navne.append(fil + ".png")
+                    print("Billede: %s  <- %s%s" % (fil + ".png", bil["visning"] or "gruppe " + (bil["gruppe"] or ""),
+                                                    " nr. %d" % nr if nr else ""))
+                except Exception as e:
+                    fejl.append("%s: %s" % (fil, e))
         kilder = g("_filer_") or []
         if _er_tekst(kilder):
             kilder = [kilder]

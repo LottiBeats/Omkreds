@@ -17,10 +17,24 @@ def test_tolk_billeder():
     assert [x["fil"] for x in b] == ["model_syd", "solbane", "Temperatur_stue", "dagslys", "komfort"]
     assert b[0]["visning"] == "Model syd" and b[0]["tilstand"] == "Arctic" and b[0]["gruppe"] is None
     assert b[3] == {"fil": "dagslys", "visning": None, "tilstand": "Shaded", "gruppe": "Dagslys plot",
-                    "uden_rhino": False, "fast": False}
+                    "uden_rhino": False, "fast": False, "nr": None}
     assert b[4]["uden_rhino"] and b[4]["visning"] == "Komfortplot" and b[4]["gruppe"] == "Komfort" and b[4]["fast"]
     assert len(ek.tolk_billeder("a = A\nb = B | Arctic")) == 2
     assert ek.tolk_billeder(None) == []
+
+
+def test_plot_nr_og_hver():
+    b = ek.tolk_billeder("k2 = gruppe:Komfort | nr:2\nk = gruppe:Komfort | hver\nx = gruppe:K | nr: x")
+    assert b[0]["nr"] == 2 and b[1]["nr"] == "hver" and b[2]["nr"] is None
+
+
+def test_vaelg_del_og_antal():
+    tre_grene = [["a1", "a2"], ["b1"], ["c1", "c2"]]
+    flad = [["m1", "m2", "m3"]]
+    assert ek.vaelg_del(tre_grene, 1) == ["b1"] and ek.vaelg_del(tre_grene, 3) == []
+    assert ek.vaelg_del(flad, 2) == ["m3"] and ek.vaelg_del(flad, 3) == []
+    assert ek.antal_dele([flad, tre_grene]) == 3 and ek.antal_dele([flad]) == 3
+    assert ek.antal_dele([]) == 0
 
 
 def test_filnavn_uden_specialtegn():
