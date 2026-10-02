@@ -64,6 +64,7 @@ CELLE = ParagraphStyle("celle", parent=BROED, fontSize=8.2, leading=11, spaceAft
 CELLE_FED = ParagraphStyle("cellefed", parent=CELLE, fontName="Man-Bold")
 CELLE_H = ParagraphStyle("celleh", parent=CELLE, fontName="Man-Bold")
 FIGTEKST = ParagraphStyle("fig", parent=BROED, fontSize=8, leading=11, textColor=GRAA, spaceBefore=4)
+FIGTEKST_C = ParagraphStyle("figc", parent=FIGTEKST, alignment=1)
 NOTE = ParagraphStyle("note", parent=BROED, fontSize=8, leading=11, textColor=GRAA)
 TOC1 = ParagraphStyle("toc1", parent=BROED, fontName="Man-Bold", fontSize=8.5, leading=11,
                       leftIndent=9 * mm, firstLineIndent=-9 * mm, spaceBefore=4)
@@ -151,9 +152,9 @@ def figur(sti, tekst, maks_h=105 * mm):
     if h > maks_h:
         h, b = maks_h, maks_h * iw / float(ih)
     billede = Image(str(sti), width=b, height=h)
-    billede.hAlign = "LEFT"
+    billede.hAlign = "CENTER"
     return [KeepTogether([Spacer(1, 3 * mm), billede,
-                          p("Figur %d – %s" % (_FIGNR[0], escape(tekst)), FIGTEKST), Spacer(1, 2 * mm)])]
+                          p("Figur %d – %s" % (_FIGNR[0], escape(tekst)), FIGTEKST_C), Spacer(1, 2 * mm)])]
 
 
 class Overskrift(Paragraph):
@@ -244,7 +245,8 @@ def side_forside(c, doc):
         iw, ih = ImageReader(str(omslag)).getSize()
         bh, bb = y - 10 * mm - bund, BREDDE
         f = min(bb / iw, bh / ih)
-        c.drawImage(str(omslag), VM, bund + (bh - ih * f) / 2, width=iw * f, height=ih * f, mask="auto")
+        c.drawImage(str(omslag), VM + (bb - iw * f) / 2, bund + (bh - ih * f) / 2, width=iw * f, height=ih * f,
+                    mask="auto")
     # sagsoplysninger i en række nederst
     c.setStrokeColor(SORT)
     c.setLineWidth(0.5)
@@ -802,7 +804,7 @@ def byg(eksport, projekt_yaml, ud_fil=None):
     FIGMAPPE[0].mkdir(exist_ok=True)
     if prj.get("_forsidebillede"):
         prj["_forsidebillede"] = _trim(prj["_forsidebillede"])
-    omslag = prj.get("_forsidebillede") or next(
+    omslag = billeder.get(prj.get("omslag") or "") or prj.get("_forsidebillede") or next(
         (billeder[n] for pre in ("dagslys", "temperatur") for n in billeder
          if n.lower().startswith(pre) and not n.lower().startswith("dagslys_lux")), None)
     prj["_omslag"] = _trim(omslag) if omslag and omslag != prj.get("_forsidebillede") else omslag

@@ -26,7 +26,8 @@ info_projekt: "Hjerlesvej – ombygning og tilbygning af sommerhus"
 firma_kort: "omkreds"          # ordmærke på forside og i sidehoved (byg_notat.py)
 sidefod: "Holst Engineering ApS  ·  København  ·  Cvr: 42 36 53 43  ·  Telefon: 53 85 25 34"
 logo: input/holst_logo.png     # firmaets logo (ligger ikke i git)
-forsidebillede: model_syd      # billede fra eksportmappen/billeder på forsiden
+forsidebillede: model_iso      # modelbillede i beregningsgrundlaget (billeder/model_iso.png)
+omslag: solbane                # billede på forsiden (billeder/solbane.png)
 filnavn: Indeklimanotat_Hjerlesvej
 
 udarbejdet: ""
