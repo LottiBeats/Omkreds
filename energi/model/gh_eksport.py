@@ -474,11 +474,10 @@ def _fang(view, bredde, hoejde):
         return view.CaptureToBitmap(stoerrelse, False, False, False)
 
     def view_capture():
-        # tegner i høj opløsning og skalerer streger og tekst med, så de ikke bliver tynde
         vc = Rhino.Display.ViewCapture()
         vc.Width = bredde
         vc.Height = hoejde
-        vc.ScaleScreenItems = True
+        vc.ScaleScreenItems = False
         vc.DrawAxes = False
         vc.DrawGrid = False
         vc.DrawGridAxes = False
@@ -489,15 +488,15 @@ def _fang(view, bredde, hoejde):
         return view.CaptureToBitmap(stoerrelse)
 
     reserve = None
-    for metode in (view_capture, uden_gitter, almindelig):
+    for metode in (uden_gitter, view_capture, almindelig):
         try:
             bmp = metode()
         except Exception:
             continue
         if bmp is None:
             continue
-        if metode is view_capture and _ensfarvet(bmp):
-            reserve = bmp      # ViewCapture kan give et tomt billede - prøv de andre
+        if _ensfarvet(bmp):
+            reserve = reserve or bmp      # tomt billede - prøv de andre metoder
             continue
         return bmp
     if reserve is not None:
