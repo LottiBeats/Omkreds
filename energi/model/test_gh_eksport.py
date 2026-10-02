@@ -10,14 +10,15 @@ import gh_overtemperatur as ot
 
 
 def test_tolk_billeder():
-    linjer = ["model_syd = Model syd | Shaded", "solbane = Solbane", "# kommentar", "",
-              "Temperatur stue.png = Top"]
-    assert ek.tolk_billeder(linjer) == [
-        ("model_syd", "Model syd", "Shaded"),
-        ("solbane", "Solbane", None),
-        ("Temperatur_stue", "Top", None),
-    ]
-    # Panel med flere linjer som én tekst
+    linjer = ["model_syd = Model syd | Arctic", "solbane = Solbane", "# kommentar", "",
+              "Temperatur stue.png = Top", "dagslys = gruppe:Dagslys plot | Shaded",
+              "komfort = gruppe:Komfort | uden rhino | Komfortplot"]
+    b = ek.tolk_billeder(linjer)
+    assert [x["fil"] for x in b] == ["model_syd", "solbane", "Temperatur_stue", "dagslys", "komfort"]
+    assert b[0]["visning"] == "Model syd" and b[0]["tilstand"] == "Arctic" and b[0]["gruppe"] is None
+    assert b[3] == {"fil": "dagslys", "visning": None, "tilstand": "Shaded", "gruppe": "Dagslys plot",
+                    "uden_rhino": False}
+    assert b[4]["uden_rhino"] and b[4]["visning"] == "Komfortplot" and b[4]["gruppe"] == "Komfort"
     assert len(ek.tolk_billeder("a = A\nb = B | Arctic")) == 2
     assert ek.tolk_billeder(None) == []
 

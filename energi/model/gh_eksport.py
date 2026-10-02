@@ -16,9 +16,12 @@ Slet de inputs, du ikke bruger (tomme inputs stopper Rhino 8-komponenter).
 
 Inputs:
     _mappe        eksportmappen, fx C:\\Sager\\Hjerlesvej\\eksport
-    _billeder_    én linje pr. billede:  filnavn = navngivet visning [| visningstilstand]
-                  fx  "model_syd = Model syd | Shaded"   eller   "solbane = Solbane"
-                  Visningen gemmes i Rhino med NamedView (Gem visning).
+    _billeder_    én linje pr. billede:  filnavn = del | del | ...
+                  fx  "model_syd = Model syd | Arctic"          (navngiven visning)
+                      "dagslys = gruppe:Dagslysplot | Shaded"   (kun den GH-gruppe, ovenfra)
+                      "komfort = gruppe:Komfort | uden rhino"   (gruppen uden Rhino-objekter)
+                  Grupper navngives i Grasshopper (højreklik på gruppen). Med gruppe og
+                  uden visning zoomes der automatisk ind på gruppen set fra Top.
     _filer_       stier til færdige filer (SVG/PNG fra LB Dump VisualizationSet
                   eller LB Capture View), som kopieres ind i billeder/
     _data_        data fra de andre komponenter: JSON-tekst (data fra gh_opbygninger og
@@ -27,7 +30,7 @@ Inputs:
     _noegler_     VALGFRI. Data fra gh_opbygninger, ds418_varmetab, gh_overtemperatur og
                   gh_dagslys genkendes automatisk. Nøgler bruges kun til anden tekst
     _scenarie_    navn på scenariet, fx "1 Som tegnet" eller "2 Solafskærmende glas" (valgfri).
-                  Gemmer et resumé i scenarier/, så notatet kan sammenligne kørslerne.
+                  Gemmer et resumé i scenarier/, så notatet kan sammenligne koerslerne.
                   Start navnet med et tal - scenarierne vises i den rækkefølge.
     _bredde_      billedbredde i pixels (standard 1600)
     _hoejde_      billedhøjde i pixels (standard 1000)
@@ -42,8 +45,18 @@ import os
 STANDARD_BREDDE, STANDARD_HOEJDE = 1600, 1000
 
 
+TILSTANDE = ("wireframe", "shaded", "rendered", "ghosted", "x-ray", "technical", "artistic", "pen",
+             "arctic", "raytraced", "monochrome")
+
+
 def tolk_billeder(linjer):
-    """'filnavn = visning | tilstand' -> [(filnavn, visning, tilstand eller None)]"""
+    """Én linje pr. billede:  filnavn = del | del | ...   hvor hver del er
+         gruppe:Navn   kun Grasshopper-gruppen 'Navn' vises; uden visning zoomes der
+                       ind på gruppen set ovenfra (Top)
+         uden rhino    Rhino-objekterne skjules, så kun Grasshopper-preview ses
+         Shaded/Arctic/Rendered ...   visningstilstand
+         andet         Rhino-viewport eller navngiven visning (NamedView)
+    -> liste af dicts med fil, visning, tilstand, gruppe, uden_rhino."""
     if linjer is None:
         return []
     if not isinstance(linjer, (list, tuple)):
@@ -54,11 +67,18 @@ def tolk_billeder(linjer):
             del_ = del_.strip()
             if not del_ or del_.startswith("#") or "=" not in del_:
                 continue
-            fil, rest = [s.strip() for s in del_.split("=", 1)]
-            tilstand = None
-            if "|" in rest:
-                rest, tilstand = [s.strip() for s in rest.split("|", 1)]
-            ud.append((_filnavn(fil), rest, tilstand or None))
+            fil, rest = [x.strip() for x in del_.split("=", 1)]
+            b = {"fil": _filnavn(fil), "visning": None, "tilstand": None, "gruppe": None, "uden_rhino": False}
+            for d in [x.strip() for x in rest.split("|") if x.strip()]:
+                if d.lower().startswith("gruppe:"):
+                    b["gruppe"] = d.split(":", 1)[1].strip()
+                elif d.lower() in ("uden rhino", "kun gh", "kun grasshopper"):
+                    b["uden_rhino"] = True
+                elif d.lower() in TILSTANDE:
+                    b["tilstand"] = d
+                else:
+                    b["visning"] = d
+            ud.append(b)
     return ud
 
 
@@ -221,21 +241,83 @@ def _visning(navn):
     raise ValueError('Visningen "%s" findes ikke. Gem den i Rhino med NamedView.' % navn)
 
 
-def tag_billede(navn, sti, bredde, hoejde, tilstand=None):
+def _gruppe_medlemmer(gh_doc, navn):
+    """Alle objekter i Grasshopper-gruppen 'navn' (også i undergrupper)."""
+    from Grasshopper.Kernel.Special import GH_Group
+    grupper = [o for o in gh_doc.Objects if isinstance(o, GH_Group) and navn in (o.NickName, o.Name)]
+    if not grupper:
+        raise ValueError('Grasshopper-gruppen "%s" findes ikke. Højreklik på gruppen og giv den navnet.' % navn)
+    ids, koe = set(), list(grupper)
+    while koe:
+        gr = koe.pop()
+        for gid in gr.ObjectIDs:
+            if gid in ids:
+                continue
+            ids.add(gid)
+            o = gh_doc.FindObject(gid, True)
+            if isinstance(o, GH_Group):
+                koe.append(o)
+    return ids
+
+
+def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhino=False, gh_doc=None):
+    """Tager billedet. Med gruppe: alle andre Grasshopper-komponenter skjules midlertidigt,
+    og uden navngiven visning zoomes der ind på gruppen set ovenfra. Alt gendannes bagefter."""
     import System
     import Rhino
-    vp = _visning(navn)
-    vp.ParentView.Redraw()
-    stoerrelse = System.Drawing.Size(int(bredde), int(hoejde))
-    if tilstand:
-        mode = Rhino.Display.DisplayModeDescription.FindByName(tilstand)
-        if mode is None:
-            raise ValueError('Visningstilstanden "%s" findes ikke (fx Shaded, Rendered, Arctic).' % tilstand)
-        bmp = vp.ParentView.CaptureToBitmap(stoerrelse, mode)
-    else:
-        bmp = vp.ParentView.CaptureToBitmap(stoerrelse)
-    bmp.Save(sti, System.Drawing.Imaging.ImageFormat.Png)
-    return sti
+    from Grasshopper.Kernel import IGH_PreviewObject
+    rdoc = Rhino.RhinoDoc.ActiveDoc
+    skjulte_gh, skjulte_rhino, zoomet = [], [], None
+    try:
+        if gruppe:
+            ids = _gruppe_medlemmer(gh_doc, gruppe)
+            boks = Rhino.Geometry.BoundingBox.Empty
+            for o in gh_doc.Objects:
+                if not isinstance(o, IGH_PreviewObject):
+                    continue
+                if o.InstanceGuid in ids:
+                    if not o.Hidden:
+                        try:
+                            boks.Union(o.ClippingBox)
+                        except Exception:
+                            pass
+                elif not o.Hidden:
+                    o.Hidden = True
+                    skjulte_gh.append(o)
+        if uden_rhino:
+            for ob in rdoc.Objects:
+                if ob.Visible and rdoc.Objects.Hide(ob, True):
+                    skjulte_rhino.append(ob.Id)
+        if navn:
+            vp = _visning(navn)
+        else:
+            vp = rdoc.Views.Find("Top", False).ActiveViewport
+            if gruppe and boks.IsValid:
+                vp.PushViewProjection()
+                zoomet = vp
+                d = boks.Diagonal.Length * 0.04
+                boks.Inflate(d)
+                vp.ZoomBoundingBox(boks)
+        rdoc.Views.Redraw()
+        vp.ParentView.Redraw()
+        stoerrelse = System.Drawing.Size(int(bredde), int(hoejde))
+        if tilstand:
+            mode = Rhino.Display.DisplayModeDescription.FindByName(tilstand)
+            if mode is None:
+                raise ValueError('Visningstilstanden "%s" findes ikke (fx Shaded, Rendered, Arctic).' % tilstand)
+            bmp = vp.ParentView.CaptureToBitmap(stoerrelse, mode)
+        else:
+            bmp = vp.ParentView.CaptureToBitmap(stoerrelse)
+        bmp.Save(sti, System.Drawing.Imaging.ImageFormat.Png)
+        return sti
+    finally:
+        for o in skjulte_gh:
+            o.Hidden = False
+        for oid in skjulte_rhino:
+            rdoc.Objects.Show(oid, True)
+        if zoomet is not None:
+            zoomet.PopViewProjection()
+        rdoc.Views.Redraw()
 
 
 def _koer_sidst(komp):
@@ -282,12 +364,15 @@ if _i_gh:
                     "kan Rhino ikke skrive i Dokumenter." % (bmappe, e))
         filer, navne, fejl = [], [], []
         b, h = g("_bredde_") or STANDARD_BREDDE, g("_hoejde_") or STANDARD_HOEJDE
-        for fil, visning, tilstand in tolk_billeder(g("_billeder_")):
+        gh_doc = ghenv.Component.OnPingDocument()  # noqa: F821
+        for bil in tolk_billeder(g("_billeder_")):
+            fil = bil["fil"]
             sti = os.path.join(bmappe, fil + ".png")
             try:
-                filer.append(tag_billede(visning, sti, b, h, tilstand))
+                filer.append(tag_billede(bil["visning"], sti, b, h, bil["tilstand"], bil["gruppe"],
+                                         bil["uden_rhino"], gh_doc))
                 navne.append(fil + ".png")
-                print("Billede: %s  <- %s" % (fil + ".png", visning))
+                print("Billede: %s  <- %s" % (fil + ".png", bil["visning"] or "gruppe " + (bil["gruppe"] or "")))
             except Exception as e:
                 fejl.append("%s: %s" % (fil, e))
         kilder = g("_filer_") or []
