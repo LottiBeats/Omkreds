@@ -31,45 +31,40 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as rl_canvas
+from reportlab.platypus.tableofcontents import TableOfContents
 from reportlab.platypus import (BaseDocTemplate, Frame, Image, KeepTogether, NextPageTemplate,
                                 PageBreak, PageTemplate, Paragraph, Spacer, Table, TableStyle)
 
 HER = Path(__file__).resolve().parent
 REGLER = HER.parent / "regler" / "br18_energi.yaml"
 
-# ── Holst Engineering ──────────────────────────────────────────────────────
-NAVY = colors.HexColor("#252652")
-NAVY_MOERK = colors.HexColor("#0e1022")
-GROEN = colors.HexColor("#5DBDAB")
-GROEN_LYS = colors.HexColor("#e6f4f1")
-ROED = colors.HexColor("#c0392b")
-ROED_LYS = colors.HexColor("#f8e1de")
-GUL = colors.HexColor("#d9a400")
-GUL_LYS = colors.HexColor("#fbf1d0")
-GRAA = colors.HexColor("#666666")
-GRAA_LYS = colors.HexColor("#f2f2f2")
-STREG = colors.HexColor("#d0d0d0")
+# ── stil: sort/hvid og minimalistisk ───────────────────────────────────────
+SORT = colors.black
+GRAA = colors.HexColor("#6b6b6b")
 
 for vaegt, navn in ((300, "Man-Light"), (400, "Man"), (600, "Man-Semi"), (700, "Man-Bold")):
     pdfmetrics.registerFont(TTFont(navn, str(HER / "fonts" / ("Manrope-%d.ttf" % vaegt))))
 pdfmetrics.registerFontFamily("Man", normal="Man", bold="Man-Bold", italic="Man", boldItalic="Man-Bold")
 
 W, H = A4
-VM = HM = 20 * mm
-TOP, BUND = 30 * mm, 22 * mm
+VM = HM = 22 * mm
+TOP, BUND = 32 * mm, 24 * mm
 BREDDE = W - VM - HM
 
-BROED = ParagraphStyle("broed", fontName="Man", fontSize=9.2, leading=14, spaceAfter=7, textColor=NAVY_MOERK)
-H1 = ParagraphStyle("h1", parent=BROED, fontName="Man-Semi", fontSize=13, leading=17,
-                    spaceBefore=16, spaceAfter=8, textColor=NAVY, keepWithNext=1)
-H2 = ParagraphStyle("h2", parent=BROED, fontName="Man-Semi", fontSize=10, leading=13,
-                    spaceBefore=10, spaceAfter=5, textColor=NAVY, keepWithNext=1)
+BROED = ParagraphStyle("broed", fontName="Man", fontSize=9, leading=14, spaceAfter=7, textColor=SORT)
+H1 = ParagraphStyle("h1", parent=BROED, fontName="Man-Bold", fontSize=10, leading=14,
+                    spaceBefore=16, spaceAfter=8, keepWithNext=1)
+H2 = ParagraphStyle("h2", parent=BROED, fontName="Man-Bold", fontSize=9, leading=13,
+                    spaceBefore=10, spaceAfter=4, keepWithNext=1)
 CELLE = ParagraphStyle("celle", parent=BROED, fontSize=8.2, leading=11, spaceAfter=0)
-CELLE_FED = ParagraphStyle("cellefed", parent=CELLE, fontName="Man-Semi")
-CELLE_H = ParagraphStyle("celleh", parent=CELLE, fontName="Man-Semi", textColor=colors.white)
-CELLE_HOEJRE = ParagraphStyle("celleh0", parent=CELLE, alignment=2)
-FIGTEKST = ParagraphStyle("fig", parent=BROED, fontSize=8, leading=11, textColor=GRAA, spaceBefore=3)
+CELLE_FED = ParagraphStyle("cellefed", parent=CELLE, fontName="Man-Bold")
+CELLE_H = ParagraphStyle("celleh", parent=CELLE, fontName="Man-Bold")
+FIGTEKST = ParagraphStyle("fig", parent=BROED, fontSize=8, leading=11, textColor=GRAA, spaceBefore=4)
 NOTE = ParagraphStyle("note", parent=BROED, fontSize=8, leading=11, textColor=GRAA)
+TOC1 = ParagraphStyle("toc1", parent=BROED, fontName="Man-Bold", fontSize=8.5, leading=11,
+                      leftIndent=9 * mm, firstLineIndent=-9 * mm, spaceBefore=4)
+INFO_ETIKET = ParagraphStyle("ie", parent=BROED, fontName="Man-Bold", fontSize=8.5, leading=12, spaceAfter=0)
+INFO_VAERDI = ParagraphStyle("iv", parent=BROED, fontSize=8.5, leading=12, spaceAfter=0)
 
 
 # ── hjælpere ────────────────────────────────────────────────────────────────
@@ -85,8 +80,9 @@ def p(tekst, stil=BROED):
     return Paragraph(tekst, stil)
 
 
-def tabel(rows, bredder, hoejre=(), fed_sidste=False, zebra=True):
-    """rows[0] = overskrift. Tal-kolonner i `hoejre` højrestilles."""
+def tabel(rows, bredder, hoejre=(), fed_sidste=False, **_):
+    """Akademisk tabel (booktabs): streg over, under overskriften og under tabellen.
+    rows[0] = overskrift. Kolonner i `hoejre` højrestilles."""
     data = []
     for i, r in enumerate(rows):
         celler = []
@@ -94,60 +90,58 @@ def tabel(rows, bredder, hoejre=(), fed_sidste=False, zebra=True):
             if isinstance(c, Paragraph):
                 celler.append(c)
                 continue
-            if i == 0:
-                stil = CELLE_H if j not in hoejre else ParagraphStyle("hh", parent=CELLE_H, alignment=2)
-            elif fed_sidste and i == len(rows) - 1:
-                stil = CELLE_FED
-            else:
-                stil = CELLE
-            if j in hoejre and i > 0 and stil is not CELLE_H:
+            stil = CELLE_H if i == 0 else (CELLE_FED if fed_sidste and i == len(rows) - 1 else CELLE)
+            if j in hoejre:
                 stil = ParagraphStyle("h", parent=stil, alignment=2)
             celler.append(Paragraph(escape("%s" % c), stil))
         data.append(celler)
-    t = Table(data, colWidths=bredder, repeatRows=1)
-    stil = [("BACKGROUND", (0, 0), (-1, 0), NAVY),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 3.2), ("BOTTOMPADDING", (0, 0), (-1, -1), 3.2),
-            ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-            ("LINEBELOW", (0, 1), (-1, -1), 0.4, STREG)]
-    if zebra:
-        for i in range(2, len(rows), 2):
-            stil.append(("BACKGROUND", (0, i), (-1, i), GRAA_LYS))
-    if fed_sidste:
-        stil.append(("LINEABOVE", (0, -1), (-1, -1), 0.9, NAVY))
+    t = Table(data, colWidths=bredder, repeatRows=1, hAlign="LEFT")
+    stil = [("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.6), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.6),
+            ("LEFTPADDING", (0, 0), (0, -1), 0), ("LEFTPADDING", (1, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("LINEABOVE", (0, 0), (-1, 0), 0.9, SORT),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, SORT),
+            ("LINEBELOW", (0, -1), (-1, -1), 0.9, SORT),
+            ("TOPPADDING", (0, 1), (-1, 1), 4)]
+    if fed_sidste and len(rows) > 2:
+        stil.append(("LINEABOVE", (0, -1), (-1, -1), 0.5, SORT))
     t.setStyle(TableStyle(stil))
     return t
 
 
 def status(ok, tekst=None):
-    """Farvet statusfelt: True = overholdt, False = ikke overholdt, None = ikke beregnet."""
+    """Status som almindelig tekst. Ikke overholdt fremhæves med fed."""
     if ok is None:
-        t, f, b = tekst or "Ikke beregnet", GRAA, GRAA_LYS
-    elif ok:
-        t, f, b = tekst or "Overholdt", colors.HexColor("#1f6f5f"), GROEN_LYS
-    else:
-        t, f, b = tekst or "Ikke overholdt", ROED, ROED_LYS
-    st = ParagraphStyle("st", parent=CELLE, fontName="Man-Semi", textColor=f, backColor=b,
-                        borderPadding=(2, 4, 2, 4), alignment=1)
-    return Paragraph(escape(t), st)
+        return Paragraph(escape(tekst or "Ikke beregnet"), CELLE)
+    if ok:
+        return Paragraph(escape(tekst or "Overholdt"), CELLE)
+    return Paragraph(escape(tekst or "Ikke overholdt"), CELLE_FED)
+
+
+_FIGNR = [0]
 
 
 def figur(sti, tekst, maks_h=105 * mm):
     if not sti or not Path(sti).exists():
         return []
+    _FIGNR[0] += 1
     iw, ih = ImageReader(str(sti)).getSize()
     b = BREDDE
     h = b * ih / float(iw)
     if h > maks_h:
         h, b = maks_h, maks_h * iw / float(ih)
-    return [KeepTogether([Spacer(1, 3 * mm), Image(str(sti), width=b, height=h),
-                          p(escape(tekst), FIGTEKST), Spacer(1, 2 * mm)])]
+    billede = Image(str(sti), width=b, height=h)
+    billede.hAlign = "LEFT"
+    return [KeepTogether([Spacer(1, 3 * mm), billede,
+                          p("Figur %d – %s" % (_FIGNR[0], escape(tekst)), FIGTEKST), Spacer(1, 2 * mm)])]
 
 
 class Overskrift(Paragraph):
-    """Nummereret afsnitsoverskrift."""
+    """Nummereret afsnitsoverskrift med versaler; kommer i indholdsfortegnelsen."""
     def __init__(self, nr, tekst):
-        Paragraph.__init__(self, '<font color="#5DBDAB">%s</font>&nbsp;&nbsp;%s' % (nr, escape(tekst)), H1)
+        self.toc_tekst = "%s\u00a0\u00a0%s" % (nr, tekst.upper()) if nr else tekst.upper()
+        Paragraph.__init__(self, "%s&nbsp;&nbsp;&nbsp;%s" % (nr, escape(tekst.upper())), H1)
 
 
 # ── sider ───────────────────────────────────────────────────────────────────
@@ -166,49 +160,42 @@ class TaelCanvas(rl_canvas.Canvas):
         for s in self._sider:
             self.__dict__.update(s)
             if self._pageNumber > 1:
-                self.setFont("Man", 7.5)
+                self.setFont("Man", 7)
                 self.setFillColor(GRAA)
-                self.drawRightString(W - HM, 10 * mm, "Side %d af %d" % (self._pageNumber, n))
+                self.drawRightString(W - HM, 12 * mm, "%d / %d" % (self._pageNumber, n))
             rl_canvas.Canvas.showPage(self)
         rl_canvas.Canvas.save(self)
 
 
-def _logo(c, prj, x, y, h):
+def _logo(c, prj, x_hoejre, y, h):
+    """Logo højrestillet med højre kant i x_hoejre. Uden logo: firmanavn som tekst."""
     logo = prj.get("_logo")
     if logo and Path(logo).exists():
         iw, ih = ImageReader(str(logo)).getSize()
-        c.drawImage(str(logo), x, y, width=h * iw / float(ih), height=h, mask="auto")
-        return h * iw / float(ih)
-    c.setFont("Man-Semi", 10)
-    c.setFillColor(NAVY)
-    c.drawString(x, y + h / 3, prj.get("firma") or "")
-    return 0
+        b = h * iw / float(ih)
+        c.drawImage(str(logo), x_hoejre - b, y, width=b, height=h, mask="auto")
+        return
+    c.setFont("Man", 8)
+    c.setFillColor(SORT)
+    c.drawRightString(x_hoejre, y + h / 2, prj.get("firma") or "")
 
 
 def _sidefod(c, prj):
-    c.setStrokeColor(STREG)
-    c.setLineWidth(0.4)
-    c.line(VM, 14 * mm, W - HM, 14 * mm)
-    c.setFont("Man", 7.5)
+    c.setFont("Man", 7)
     c.setFillColor(GRAA)
-    c.drawString(VM, 10 * mm, prj.get("sidefod") or "")
+    c.drawString(VM, 12 * mm, prj.get("sidefod") or "")
 
 
 def side_indhold(c, doc):
     prj = doc.prj
     c.saveState()
-    _logo(c, prj, W - HM - 24 * mm, H - 22 * mm, 13 * mm)
-    c.setFont("Man-Semi", 8.5)
-    c.setFillColor(NAVY)
-    c.drawString(VM, H - 15 * mm, prj.get("kort_titel") or prj.get("sag", ""))
-    c.setFont("Man", 7.5)
-    c.setFillColor(GRAA)
-    c.drawString(VM, H - 19.5 * mm, "   ·   ".join(x for x in (
-        "Sagsnr. %s" % prj["sagsnr"] if prj.get("sagsnr") else "",
-        "Dato: %s" % prj["_dato"], "Rev. %s" % prj["_rev"] if prj.get("_rev") else "") if x))
-    c.setStrokeColor(GROEN)
-    c.setLineWidth(1.2)
-    c.line(VM, H - 24 * mm, W - HM, H - 24 * mm)
+    _logo(c, prj, W - HM, H - 21 * mm, 10 * mm)
+    c.setFont("Man-Bold", 7.5)
+    c.setFillColor(SORT)
+    c.drawString(VM, H - 20 * mm, prj.get("kort_titel") or prj.get("sag", ""))
+    c.setStrokeColor(SORT)
+    c.setLineWidth(0.5)
+    c.line(VM, H - 23.5 * mm, W - HM, H - 23.5 * mm)
     _sidefod(c, prj)
     c.restoreState()
 
@@ -216,55 +203,20 @@ def side_indhold(c, doc):
 def side_forside(c, doc):
     prj = doc.prj
     c.saveState()
-    # grøn lodret stribe som i logoets farver
-    c.setFillColor(GROEN)
-    c.rect(0, 0, 6 * mm, H, stroke=0, fill=1)
-    _logo(c, prj, VM, H - 45 * mm, 26 * mm)
-    y = H - 72 * mm
-    c.setFillColor(GRAA)
-    c.setFont("Man-Semi", 9)
-    c.drawString(VM, y, (prj.get("dokumenttype") or "Notat").upper())
-    y -= 12 * mm
-    c.setFillColor(NAVY)
-    c.setFont("Man-Light", 25)
+    _logo(c, prj, W - HM, H - 38 * mm, 18 * mm)
+    c.setFillColor(SORT)
+    y = H * 0.62
+    c.setFont("Man-Bold", 12)
     for linje in prj.get("titel_linjer") or [prj.get("emne", "")]:
-        c.drawString(VM, y, linje)
-        y -= 10 * mm
-    y -= 3 * mm
-    c.setFont("Man-Semi", 11.5)
+        c.drawString(VM, y, ("%s" % linje).upper())
+        y -= 6.5 * mm
+    y -= 18 * mm
+    c.setFont("Man-Bold", 12)
     for linje in prj.get("projekt_linjer") or [prj.get("sag", "")]:
-        c.drawString(VM, y, linje)
-        y -= 6 * mm
-    # forsidebillede
-    billede = prj.get("_forsidebillede")
-    if billede and Path(billede).exists():
-        iw, ih = ImageReader(str(billede)).getSize()
-        maks_b, maks_h = BREDDE, y - 72 * mm
-        b = maks_b
-        h = b * ih / float(iw)
-        if h > maks_h:
-            h, b = maks_h, maks_h * iw / float(ih)
-        c.drawImage(str(billede), VM + (maks_b - b) / 2, y - 6 * mm - h, width=b, height=h, mask="auto")
-    # sagsoplysninger
-    felter = [("Sag", prj.get("sag")), ("Adresse", prj.get("adresse")), ("Matrikel", prj.get("matrikel")),
-              ("Sagsnr.", prj.get("sagsnr")), ("Dato", prj["_dato"]), ("Revision", prj.get("_rev")),
-              ("Udarbejdet", prj.get("udarbejdet")), ("Kontrolleret", prj.get("kontrolleret"))]
-    felter = [(k, v) for k, v in felter if v]
-    y0 = 58 * mm
-    c.setStrokeColor(STREG)
-    c.setLineWidth(0.4)
-    c.line(VM, y0 + 5 * mm, W - HM, y0 + 5 * mm)
-    kol = 2
-    for i, (k, v) in enumerate(felter):
-        x = VM + (i % kol) * (BREDDE / kol)
-        yy = y0 - (i // kol) * 9 * mm
-        c.setFont("Man", 7)
-        c.setFillColor(GRAA)
-        c.drawString(x, yy, k.upper())
-        c.setFont("Man-Semi", 9)
-        c.setFillColor(NAVY_MOERK)
-        c.drawString(x, yy - 4.2 * mm, "%s" % v)
-    _sidefod(c, prj)
+        c.drawString(VM, y, ("%s" % linje).upper())
+        y -= 6.5 * mm
+    c.setFont("Man-Bold", 7.5)
+    c.drawString(VM, 40 * mm, "DATO: %s" % prj["_dato"])
     c.restoreState()
 
 
@@ -277,6 +229,27 @@ class Notat(BaseDocTemplate):
                       topPadding=0, bottomPadding=0)
         self.addPageTemplates([PageTemplate("forside", [ramme], onPage=side_forside),
                                PageTemplate("indhold", [ramme], onPage=side_indhold)])
+
+    def afterFlowable(self, f):
+        if isinstance(f, Overskrift):
+            self.notify("TOCEntry", (0, f.toc_tekst, self.page))
+
+
+def side_info(prj):
+    """Side 2: sagsoplysninger og indholdsfortegnelse (som i Funktionen-notatet)."""
+    felter = [("PROJEKT", prj.get("sag")), ("ADRESSE", prj.get("adresse")), ("MATRIKEL", prj.get("matrikel")),
+              ("SAGSNR.", prj.get("sagsnr")), ("FASE", prj.get("fase")), ("DATO", prj["_dato"]),
+              ("REVISION", prj.get("_rev")), ("UDARBEJDET", prj.get("udarbejdet")),
+              ("KONTROLLERET", prj.get("kontrolleret"))]
+    rows = [[Paragraph(k, INFO_ETIKET), Paragraph(escape("%s" % v), INFO_VAERDI)] for k, v in felter if v]
+    info = Table(rows, colWidths=[32 * mm, BREDDE - 32 * mm], hAlign="LEFT")
+    info.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 1),
+                              ("BOTTOMPADDING", (0, 0), (-1, -1), 1)]))
+    toc = TableOfContents(dotsMinLevel=0)
+    toc.levelStyles = [TOC1]
+    kant = Table([[Paragraph("INDHOLD", H1)]], colWidths=[BREDDE], hAlign="LEFT")
+    kant.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.5, SORT), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
+    return [info, Spacer(1, 14 * mm), kant, Spacer(1, 2 * mm), toc, PageBreak()]
 
 
 # ── indhold ─────────────────────────────────────────────────────────────────
@@ -512,7 +485,7 @@ def afsnit_indeklima(res, regler, billeder):
                         ("temperatur_plan", "Rummene farvet efter operativ temperatur."),
                         ("adaptiv", "Adaptiv komfort efter DS/EN 16798-1.")):
         if navn in billeder:
-            ud += figur(billeder.pop(navn), "Figur: " + tekst)
+            ud += figur(billeder.pop(navn), tekst)
     return ud
 
 
@@ -532,7 +505,7 @@ def afsnit_dagslys(res, billeder):
             else:
                 ud.append(p("• " + escape("%s" % v)))
     if "dagslys" in billeder:
-        ud += figur(billeder.pop("dagslys"), "Figur: Dagslys på målenettet.")
+        ud += figur(billeder.pop("dagslys"), "Dagslys på målenettet.")
     return ud
 
 
@@ -572,7 +545,8 @@ def byg(eksport, projekt_yaml, ud_fil=None):
     forside = prj.get("forsidebillede", "model_syd")
     prj["_forsidebillede"] = billeder.pop(forside, None)
 
-    story = [NextPageTemplate("indhold"), PageBreak()]
+    _FIGNR[0] = 0
+    story = [NextPageTemplate("indhold"), PageBreak()] + side_info(prj)
     story.append(Overskrift("1.", "Indledning"))
     story.append(p("Dette notat dokumenterer varmetab, termisk indeklima og dagslys for %s, %s, i forhold til "
                    "kravene i BR18. Projektet er et sommerhus, som ikke er omfattet af energirammen "
@@ -581,6 +555,7 @@ def byg(eksport, projekt_yaml, ud_fil=None):
                       escape(prj.get("adresse") or ""))))
     story += afsnit_sammenfatning(res, regler)
     story += afsnit_grundlag(prj, res, regler)
+    story += figur(prj.get("_forsidebillede"), "Beregningsmodellen i Rhino/Grasshopper.", maks_h=85 * mm)
     story += afsnit_opbygninger(res, regler)
     story += afsnit_varmetab(res, regler)
     story += afsnit_indeklima(res, regler, billeder)
@@ -588,12 +563,12 @@ def byg(eksport, projekt_yaml, ud_fil=None):
     story += afsnit_forbehold(prj)
     if billeder:
         story.append(PageBreak())
-        story.append(Overskrift("Bilag", "Figurer"))
+        story.append(Overskrift("", "Bilag – figurer"))
         for navn, sti in billeder.items():
             story += figur(sti, navn.replace("_", " ").capitalize(), maks_h=110 * mm)
 
     ud_fil = Path(ud_fil) if ud_fil else eksport / ("%s.pdf" % (prj.get("filnavn") or "Indeklimanotat"))
-    Notat(ud_fil, prj).build(story, canvasmaker=TaelCanvas)
+    Notat(ud_fil, prj).multiBuild(story, canvasmaker=TaelCanvas)
     return ud_fil
 
 
