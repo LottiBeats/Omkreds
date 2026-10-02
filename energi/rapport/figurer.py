@@ -194,3 +194,29 @@ def scenarier(sc, sti, graense=27):
     ax.set_xlabel("Timer over %d °C i det varmeste rum" % graense)
     ax.set_xlim(0, max(max(vaerdier) * 1.1, maks * 1.6))
     return _gem(fig, sti)
+
+
+def energibehov_maaned(pr_maaned, sti):
+    """Energibehov med energifaktorer pr. måned (kWh/m²) fra energirammeregnearket."""
+    vaerdier = [pr_maaned.get(m.lower()) or 0 for m in MAANEDER]
+    fig, ax = plt.subplots(figsize=(BREDDE, 5.2 * CM))
+    ax.bar(MAANEDER, vaerdier, width=0.6, color=SERIE1)
+    ax.set_title("Energibehov pr. måned, kWh/m²")
+    ax.grid(axis="x", visible=False)
+    ax.tick_params(axis="x", length=0)
+    return _gem(fig, sti)
+
+
+def energiramme_soejler(behov, rammer, sti):
+    """Samlet energibehov mod energirammerne (vandrette søjler, kravlinjer stiplede)."""
+    navne = list(rammer)
+    fig, ax = plt.subplots(figsize=(BREDDE, 0.75 * CM * (len(navne) + 1) + 1.4 * CM))
+    ax.barh(["Projektet"], [behov], height=0.45, color=SERIE1)
+    for i, n in enumerate(navne):
+        ax.barh([n], [rammer[n]], height=0.45, color=KONTEKST)
+    ax.axvline(behov, color=KRAV, linewidth=0.9, linestyle="--")
+    ax.invert_yaxis()
+    ax.set_xlabel("kWh/m² år")
+    ax.grid(axis="y", visible=False)
+    ax.tick_params(axis="y", length=0)
+    return _gem(fig, sti)
