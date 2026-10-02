@@ -599,8 +599,11 @@ def afsnit_dagslys(res, billeder):
                 ud.append(tabel(rows, [90 * mm, BREDDE - 90 * mm]))
             else:
                 ud.append(p("• " + escape("%s" % v)))
+    lux = {n: billeder.pop(n) for n in list(billeder) if n.lower().startswith(("lux", "dagslys_lux", "dagslys_time"))}
     ud += gh_figurer(billeder, ("dagslys",), None, None, None,
                      "Andel af årets dagslystimer med mindst 300 lux i hvert punkt af målenettet.")
+    ud += gh_figurer(lux, ("lux", "dagslys_lux", "dagslys_time"), None, None, None,
+                     "Belysningsstyrke time for time hen over året i ét målepunkt.")
     return ud
 
 
@@ -691,6 +694,8 @@ def byg(eksport, projekt_yaml, ud_fil=None):
     story += afsnit_sammenfatning(res, regler)
     story += afsnit_grundlag(prj, res, regler)
     story += figur(prj.get("_forsidebillede"), "Beregningsmodellen i Rhino/Grasshopper.", maks_h=85 * mm)
+    story += gh_figurer(billeder, ("solbane",), None, None, None,
+                        "Solbanen for vejrfilens placering. Krydsene markerer solens position hver time.")
     story += afsnit_opbygninger(res, regler)
     story += afsnit_varmetab(res, regler)
     story += afsnit_indeklima(res, regler, billeder)
