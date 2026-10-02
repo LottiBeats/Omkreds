@@ -23,13 +23,16 @@ projekt_linjer:
   - "Hjerlesvej – ombygning og tilbygning af sommerhus"
 kort_titel: "Energi og indeklima, Hjerlesvej"
 info_projekt: "Hjerlesvej – ombygning og tilbygning af sommerhus"
-firma_kort: "omkreds"          # ordmærke på forside og i sidehoved – ret til jeres
-sidefod: "Firmanavn (CVR), adresse"   # ret til jeres oplysninger
+firma_kort: "omkreds"          # ordmærke på forside og i sidehoved (byg_notat.py)
+sidefod: "Holst Engineering ApS  ·  København  ·  Cvr: 42 36 53 43  ·  Telefon: 53 85 25 34"
+logo: input/holst_logo.png     # firmaets logo (ligger ikke i git)
+forsidebillede: model_syd      # billede fra eksportmappen/billeder på forsiden
+filnavn: Indeklimanotat_Hjerlesvej
 
 udarbejdet: ""
 kontrolleret: ""
 godkendt: ""
-firma: ""
+firma: "Holst Engineering ApS"
 
 revisioner:
   - rev: "0"
@@ -38,3 +41,15 @@ revisioner:
 
 # Delt redigerbart udkast (Claude Docs):
 udkast_url: https://claude.ai/code/artifact/aafdf528-fac7-4ad9-8391-2945e6dc95ef
+
+# Antagelser til indeklimanotatet (byg_indeklimanotat.py), som modellen ikke selv kender.
+# Skal svare til indstillingerne på HB Ventilation Control og HB Window Opening.
+indeklima:
+  vejrfil: "DRY 2013 (Danish Design Reference Year)"
+  program_version: "Ladybug Tools 1.10 / OpenStudio 3.11 / EnergyPlus / Radiance"
+  udluftning:
+    min_inde_c: 24
+    min_ude_c: 12
+    delta_c: 1
+    andel_oplukkelig: 0.3
+    udledningskoefficient: 0.35

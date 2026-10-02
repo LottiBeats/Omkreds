@@ -116,3 +116,13 @@ filnavne, kopierer SVG/PNG-filer (fx fra LB Dump VisualizationSet) og samler JSO
 (`data` fra gh_overtemperatur, `data_json` fra ds418_varmetab) i `<mappe>/resultater.json`.
 Inputs `_mappe`, `_billeder_` (linjer "filnavn = visning | tilstand"), `_filer_`, `_data_`,
 `_noegler_`, `_bredde_`, `_hoejde_`, `_eksporter`. Slet ubrugte inputs.
+
+## Notatet (PDF)
+
+`energi/rapport/byg_indeklimanotat.py` bygger notatet i Holst Engineerings layout fra eksportmappen
+og projektets `projekt.yaml` (sagsoplysninger, logo, udluftningsantagelser):
+
+    python energi/rapport/byg_indeklimanotat.py <eksportmappe> energi/projekter/hjerlesvej/projekt.yaml
+
+I Grasshopper: `energi/rapport/gh_rapport.py` i en Python 3-komponent med inputs `_pakke`, `_eksport`,
+`_projekt`, `_byg`. `eksempel_eksport.py` laver en eksempelmappe til at afprøve layoutet.
