@@ -15,10 +15,12 @@ Inputs:
     _navne_     rumnavne i samme rækkefølge (valgfri). Ellers bruges zonenavnet
                 fra simuleringen.
     _graenser_  tekst, fx "27=100, 28=25" (valgfri; standard er BR18-vejledningens)
+    _ude_       udetemperatur (dry_bulb_temperature fra LB Import EPW), valgfri.
+                Bruges til figuren over den varmeste uge i rapporten.
 Outputs:
     tabel       tekst til et Panel
     ok          True, hvis alle rum overholder grænserne
-    data        tekst (JSON) til eksport / rapport
+    data        tekst (JSON) til eksport / rapport, inkl. timeværdier til figurer
 """
 from __future__ import division, unicode_literals
 
@@ -80,10 +82,11 @@ def rum_serier(temp):
     return ud
 
 
-def beregn(temp, navne=None, graenser=None):
+def beregn(temp, navne=None, graenser=None, ude=None, med_serier=False):
+    """med_serier=True gemmer også timeværdierne (pr. rum og ude) til figurer i rapporten."""
     graenser = tolk_graenser(graenser) if not isinstance(graenser, list) else graenser
     navne = [n for n in (navne or []) if n]
-    rum = []
+    rum, serier = [], {}
     for i, (zone, vaerdier) in enumerate(rum_serier(temp)):
         if not vaerdier:
             continue
@@ -96,8 +99,15 @@ def beregn(temp, navne=None, graenser=None):
             if h > maks:
                 r["ok"] = False
         rum.append(r)
-    return {"graenser": [{"C": g, "maks_timer": m} for g, m in graenser],
-            "rum": rum, "ok": all(r["ok"] for r in rum) if rum else None}
+        serier[navn] = [round(v, 1) for v in vaerdier]
+    d = {"graenser": [{"C": g, "maks_timer": m} for g, m in graenser],
+         "rum": rum, "ok": all(r["ok"] for r in rum) if rum else None}
+    if med_serier and serier:
+        d["serier"] = serier
+        u = rum_serier(ude)
+        if u and u[0][1]:
+            d["ude"] = [round(v, 1) for v in u[0][1]]
+    return d
 
 
 def tabeltekst(d):
@@ -156,7 +166,8 @@ if _i_gh:
     _n = globals().get("_navne_")
     if _n is not None and not hasattr(_n, "__iter__"):
         _n = [_n]
-    _d = beregn(globals().get("_temp"), ["%s" % x for x in (_n or [])], globals().get("_graenser_"))
+    _d = beregn(globals().get("_temp"), ["%s" % x for x in (_n or [])], globals().get("_graenser_"),
+                ude=globals().get("_ude_"), med_serier=True)
     tabel = tabeltekst(_d)
     ok = _d["ok"]
     data = til_json(_d)

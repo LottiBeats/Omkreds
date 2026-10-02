@@ -1,9 +1,9 @@
-# r: reportlab, pyyaml
+# r: reportlab, pyyaml, matplotlib
 """
 gh_rapport.py - bygger indeklimanotatet (PDF) i Grasshopper med ét klik.
 
 Sæt koden i en Python 3 Script-komponent (Rhino 8). Første gang henter Rhino
-reportlab og pyyaml (linjen øverst); det tager et minut.
+reportlab, pyyaml og matplotlib (linjen øverst); det tager et minut.
 
 Inputs (Item Access):
     _pakke      mappen med rapportpakken (den, der indeholder mapperne rapport og regler)

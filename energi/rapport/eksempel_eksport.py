@@ -38,6 +38,25 @@ def _testhus():
     return Model("Testhus", rum, tolerance=0.01)
 
 
+def _syntetiske_temperaturer():
+    """Syntetisk vejr og rumtemperaturer (ikke simuleret) - kun til at afprøve figurerne."""
+    import math
+    import random
+    random.seed(1)
+    ude, rum = [], {"Stue og køkken": [], "Soveværelse": [], "Værelse": []}
+    sol = {"Stue og køkken": 7.5, "Soveværelse": 4.2, "Værelse": 5.0}
+    for t in range(8760):
+        dag, time = t // 24, t % 24
+        aar = math.sin(2 * math.pi * (dag - 110) / 365.0)
+        doegn = math.sin(2 * math.pi * (time - 9) / 24.0)
+        u = 8 + 8 * aar + 4 * doegn + random.gauss(0, 1.5)
+        ude.append(u)
+        solfaktor = max(0.0, doegn) * max(0.0, aar + 0.3)
+        for n in rum:
+            rum[n].append(max(20.5 + 0.6 * random.random(), 0.45 * u + 12.5 + sol[n] * solfaktor))
+    return ude, rum
+
+
 def lav(mappe):
     mappe = Path(mappe)
     fil = str(HER.parent / "regler" / "opbygninger.txt")
@@ -46,17 +65,25 @@ def lav(mappe):
     u = dict((o["type"], o["U_W_m2K"]) for o in opb["opbygninger"])
     vt = ds.beregn(_testhus(), u="ydervaeg=%s, tag=%s, terraendaek=%s, vindue=%s" % (
         u["Ydervæg"], u["Tag"], u["Terrændæk"], opb["vindue"]["U_W_m2K"]))
-    ot = {"graenser": [{"C": 27.0, "maks_timer": 100}, {"C": 28.0, "maks_timer": 25}],
-          "rum": [{"rum": "Stue og køkken", "max_C": 31.1, "timer": {"over_27": 398, "over_28": 178}, "ok": False},
-                  {"rum": "Soveværelse", "max_C": 27.9, "timer": {"over_27": 3, "over_28": 0}, "ok": True},
-                  {"rum": "Værelse", "max_C": 28.3, "timer": {"over_27": 24, "over_28": 4}, "ok": True}],
-          "ok": False}
+    import gh_overtemperatur as otm
+    ude, rum = _syntetiske_temperaturer()
+    ot = otm.beregn([rum[n] for n in rum], navne=list(rum), ude=ude, med_serier=True)
     dl = ["Stue og køkken: 300 lux på 78 % af gulvarealet i 50 % af dagslystimerne - opfyldt",
           "Soveværelse: 300 lux på 61 % af gulvarealet - opfyldt",
           "Værelse: 300 lux på 55 % af gulvarealet - opfyldt"]
     res = ek.saml_resultater([go.til_json(opb), json.dumps(vt), ek.til_json(ot)] + dl,
                              ["opbygninger", "varmetab", "overtemperatur", "dagslys"], [])
     (mappe / "billeder").mkdir(parents=True, exist_ok=True)
+    (mappe / "scenarier").mkdir(exist_ok=True)
+    for navn, faktor in (("1 Som tegnet", 1.0), ("2 Solafskærmende glas (g 0,35)", 0.62),
+                         ("3 Glas g 0,35 og udhæng 0,8 m", 0.30), ("4 Forsigtig udluftning", 1.45)):
+        o = {"graenser": ot["graenser"], "rum": [dict(r, timer={k: int(v * faktor) for k, v in r["timer"].items()})
+                                                 for r in ot["rum"]]}
+        for r in o["rum"]:
+            r["ok"] = r["timer"]["over_27"] <= 100 and r["timer"]["over_28"] <= 25
+        o["ok"] = all(r["ok"] for r in o["rum"])
+        ek.skriv_tekst(str(mappe / "scenarier" / (ek._filnavn(navn) + ".json")),
+                       ek.til_json({"scenarie": navn, "overtemperatur": o}))
     ek.skriv_tekst(str(mappe / "resultater.json"), ek.til_json(res))
     return mappe
 

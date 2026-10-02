@@ -60,3 +60,10 @@ def test_objekt_uden_float_giver_ikke_fejl():
     assert not ot._er_tal(Mærkelig())
     assert not ot._er_tal(_samling("X", 1, 1))
     assert ot._er_tal(27.5) and ot._er_tal("27,5".replace(",", "."))
+
+
+def test_serier_med_ude():
+    d = ot.beregn([_samling("STUE", 10, 2)], ude=_samling("UDE", 0, 0), med_serier=True)
+    assert len(d["serier"]["STUE"]) == 8760 and d["serier"]["STUE"][0] == 27.5
+    assert len(d["ude"]) == 8760
+    assert "serier" not in ot.beregn([_samling("STUE", 10, 2)])

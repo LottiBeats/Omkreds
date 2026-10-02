@@ -23,6 +23,8 @@ from html import escape
 from pathlib import Path
 
 import yaml
+
+import figurer
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
@@ -120,6 +122,8 @@ def status(ok, tekst=None):
 
 
 _FIGNR = [0]
+FIGMAPPE = [None]     # mappe til figurer tegnet fra data (sættes i byg)
+SCENARIER = [[]]      # resuméer fra eksportmappen/scenarier (sættes i byg)
 
 
 def figur(sti, tekst, maks_h=105 * mm):
@@ -434,6 +438,9 @@ def afsnit_varmetab(res, regler):
     ud.append(p("<b>Varmetabsrammen er %s.</b> Projektets varmetab er %s %% %s rammen."
                 % ("overholdt" if vt.get("overholdt") else "ikke overholdt", tal(abs(margin), 0),
                    "under" if margin >= 0 else "over")))
+    if FIGMAPPE[0]:
+        ud += figur(figurer.varmetab(vt, FIGMAPPE[0] / "varmetab.png"),
+                    "Varmetab pr. bygningsdel for projektet og referencerammen.", maks_h=80 * mm)
     psi = vt.get("psi_W_mK") or {}
     ud.append(p("Linjetab: vindues- og dørsamlinger %s W/mK, fundament %s W/mK, ovenlys %s W/mK. "
                 "Terrændæk og fundament er vægtet med %s (gulvvarme)."
@@ -480,6 +487,43 @@ def afsnit_indeklima(res, regler, billeder):
                     "glas mod syd og vest. Det anbefales at undersøge udvendig solafskærmning, solafskærmende "
                     "glas med lav g-værdi og større oplukkelige arealer, og at dokumentere effekten med en ny "
                     "beregning." % ", ".join(r["rum"] for r in ot["rum"] if not r["ok"])))
+    if FIGMAPPE[0]:
+        ud += figur(figurer.timer_pr_rum(ot, FIGMAPPE[0] / "timer_pr_rum.png"),
+                    "Timer pr. år over 27 og 28 °C i hvert rum. Den stiplede linje er kravet.", maks_h=90 * mm)
+    serier = ot.get("serier") or {}
+    if serier and FIGMAPPE[0]:
+        vaerst = max(ot["rum"], key=lambda r: r["timer"].get("over_27", 0))["rum"]
+        if vaerst in serier:
+            ud.append(p("Hvornår bliver det varmt?", H2))
+            ud.append(p("Figurerne viser det varmeste rum, %s. Overophedningen ligger i sommermånederne og "
+                        "om eftermiddagen, når solen står på glasfladerne." % escape(vaerst)))
+            ud += figur(figurer.maaneder(serier[vaerst], vaerst, 27, FIGMAPPE[0] / "maaneder.png"),
+                        "Timer over 27 °C pr. måned i %s." % vaerst, maks_h=60 * mm)
+            ud += figur(figurer.varighedskurve(serier, vaerst, FIGMAPPE[0] / "varighed.png"),
+                        "Årets varmeste timer sorteret efter temperatur. %s er fremhævet; de øvrige rum er "
+                        "grå." % vaerst, maks_h=70 * mm)
+            ud += figur(figurer.varmeste_uge(serier[vaerst], ot.get("ude"), vaerst, FIGMAPPE[0] / "uge.png"),
+                        "Den varmeste uge time for time i %s%s." % (vaerst, " og udetemperaturen"
+                                                                    if ot.get("ude") else ""), maks_h=70 * mm)
+    sc = SCENARIER[0]
+    if sc:
+        ud.append(p("Scenarier", H2))
+        ud.append(p("Modellen er regnet med forskellige tiltag for at vise, hvad hvert tiltag betyder for "
+                    "overophedningen. Tabellen viser det varmeste rum i hvert scenarie."))
+        rows = [["Scenarie", "Varmeste rum", "Timer > 27 °C", "Timer > 28 °C", "Status"]]
+        for x in sc:
+            o = x.get("overtemperatur") or {}
+            if not o.get("rum"):
+                continue
+            v = max(o["rum"], key=lambda r: r["timer"].get("over_27", 0))
+            rows.append([x["scenarie"], v["rum"], tal(v["timer"].get("over_27"), 0),
+                         tal(v["timer"].get("over_28"), 0), status(o.get("ok"))])
+        ud.append(tabel(rows, [52 * mm, 38 * mm, 24 * mm, 24 * mm, 28 * mm], hoejre=(2, 3)))
+        if FIGMAPPE[0]:
+            ud += figur(figurer.scenarier(sc, FIGMAPPE[0] / "scenarier.png"),
+                        "Timer over 27 °C i det varmeste rum for hvert scenarie.", maks_h=80 * mm)
+    if serier:
+        return ud     # skærmbilleder fra Grasshopper kommer i bilaget
     for navn, tekst in (("komfort", "Operativ temperatur time for time hen over året."),
                         ("temperatur", "Operativ temperatur time for time hen over året."),
                         ("temperatur_plan", "Rummene farvet efter operativ temperatur."),
@@ -546,6 +590,11 @@ def byg(eksport, projekt_yaml, ud_fil=None):
     prj["_forsidebillede"] = billeder.pop(forside, None)
 
     _FIGNR[0] = 0
+    FIGMAPPE[0] = eksport / "_figurer"
+    FIGMAPPE[0].mkdir(exist_ok=True)
+    SCENARIER[0] = [json.loads(f.read_text(encoding="utf-8"))
+                    for f in sorted((eksport / "scenarier").glob("*.json"))] \
+        if (eksport / "scenarier").is_dir() else []
     story = [NextPageTemplate("indhold"), PageBreak()] + side_info(prj)
     story.append(Overskrift("1.", "Indledning"))
     story.append(p("Dette notat dokumenterer varmetab, termisk indeklima og dagslys for %s, %s, i forhold til "

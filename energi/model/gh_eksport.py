@@ -26,6 +26,9 @@ Inputs:
                   eller almindelig tekst (fx summary_grid fra HB Annual Daylight EN17037)
     _noegler_     et navn pr. _data_, fx "opbygninger", "varmetab", "overtemperatur",
                   "dagslys". Er der flere _data_ end nøgler, får resten den sidste nøgle
+    _scenarie_    navn på scenariet, fx "1 Som tegnet" eller "2 Solafskærmende glas" (valgfri).
+                  Gemmer et resumé i scenarier/, så notatet kan sammenligne kørslerne.
+                  Start navnet med et tal - scenarierne vises i den rækkefølge.
     _bredde_      billedbredde i pixels (standard 1600)
     _hoejde_      billedhøjde i pixels (standard 1000)
     _eksporter    True for at eksportere
@@ -109,6 +112,21 @@ def saml_resultater(data, noegler, billeder):
 
 class _Flere(list):
     _flere = True
+
+
+def scenarie_resume(navn, res):
+    """Det, rapporten skal bruge for at sammenligne scenarier (uden timeværdier)."""
+    ud = {"scenarie": "%s" % navn}
+    ot = res.get("overtemperatur")
+    if isinstance(ot, dict):
+        ud["overtemperatur"] = dict((k, v) for k, v in ot.items() if k not in ("serier", "ude"))
+    vt = res.get("varmetab")
+    if isinstance(vt, dict):
+        ud["varmetab"] = dict((k, vt.get(k)) for k in ("projekt_sum_W_K", "ramme_sum_W_K", "overholdt", "glasandel"))
+    opb = res.get("opbygninger")
+    if isinstance(opb, dict) and opb.get("vindue"):
+        ud["vindue"] = opb["vindue"]
+    return ud
 
 
 def til_json(x, indryk=0):
@@ -257,6 +275,15 @@ if _i_gh:
         skriv_tekst(jsti, til_json(res))
         filer.append(jsti)
         print("resultater.json: %s" % ", ".join(k for k in res if k != "billeder"))
+        scen = g("_scenarie_")
+        if scen:
+            smappe = os.path.join(mappe, "scenarier")
+            if not os.path.isdir(smappe):
+                os.makedirs(smappe)
+            ssti = os.path.join(smappe, _filnavn("%s" % scen) + ".json")
+            skriv_tekst(ssti, til_json(scenarie_resume(scen, res)))
+            filer.append(ssti)
+            print("Scenarie gemt: %s" % scen)
         for f in fejl:
             print("FEJL  " + f)
         print("Færdig - %d filer i %s" % (len(filer), mappe))

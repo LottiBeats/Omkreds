@@ -52,3 +52,15 @@ def test_tekst_fil_og_flere_paa_samme_noegle(tmp_path):
     assert res["opbygninger"] == {"a": 1}
     assert res["dagslys"] == [{"sDA": 62.5}, "Stue: 300 lux OK", "Bad: 300 lux OK"]
     assert json.loads(ek.til_json(res))["dagslys"][1] == "Stue: 300 lux OK"
+
+
+def test_scenarie_resume_uden_timevaerdier():
+    res = {"overtemperatur": {"rum": [], "ok": True, "serier": {"A": [1, 2]}, "ude": [1]},
+           "varmetab": {"projekt_sum_W_K": 50.0, "ramme_sum_W_K": 90.0, "overholdt": True, "glasandel": 0.4,
+                        "dim_varmetab_pr_rum": []},
+           "opbygninger": {"vindue": {"navn": "3-lag", "g": 0.5}}}
+    r = ek.scenarie_resume("2 Solafskærmende glas", res)
+    assert "serier" not in r["overtemperatur"] and "ude" not in r["overtemperatur"]
+    assert r["varmetab"] == {"projekt_sum_W_K": 50.0, "ramme_sum_W_K": 90.0, "overholdt": True, "glasandel": 0.4}
+    assert r["vindue"]["g"] == 0.5 and r["scenarie"] == "2 Solafskærmende glas"
+    assert ek._filnavn("2 Solafskærmende glas") == "2_Solafskaermende_glas"
