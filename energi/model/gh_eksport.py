@@ -21,9 +21,11 @@ Inputs:
                   Visningen gemmes i Rhino med NamedView (Gem visning).
     _filer_       stier til færdige filer (SVG/PNG fra LB Dump VisualizationSet
                   eller LB Capture View), som kopieres ind i billeder/
-    _data_        JSON-tekster fra de andre komponenter (fx data fra
-                  gh_overtemperatur og data_json fra ds418_varmetab)
-    _noegler_     et navn pr. _data_, fx "overtemperatur", "varmetab", "dagslys"
+    _data_        data fra de andre komponenter: JSON-tekst (data fra gh_opbygninger og
+                  gh_overtemperatur, data_json fra ds418_varmetab), stier til .json-filer
+                  eller almindelig tekst (fx summary_grid fra HB Annual Daylight EN17037)
+    _noegler_     et navn pr. _data_, fx "opbygninger", "varmetab", "overtemperatur",
+                  "dagslys". Er der flere _data_ end nøgler, får resten den sidste nøgle
     _bredde_      billedbredde i pixels (standard 1600)
     _hoejde_      billedhøjde i pixels (standard 1000)
     _eksporter    True for at eksportere
@@ -72,16 +74,41 @@ def _filnavn(navn):
     return "".join(ch if (ch.isalnum() and ord(ch) < 128) or ch in "-_" else "_" for ch in navn).strip("_")
 
 
-def saml_resultater(data, noegler, billeder):
-    """JSON-tekster + nøgler -> én dict til resultater.json."""
+def tolk_vaerdi(d):
+    """Én _data_-værdi -> Python. Klarer JSON-tekst, sti til en .json-fil (fx dagslysets
+    summary fra HB Annual Daylight EN17037) og almindelig tekst."""
     import json
+    tekst = ("%s" % d).strip()
+    if tekst.lower().endswith(".json") and os.path.isfile(tekst):
+        with open(tekst) as f:
+            tekst = f.read()
+    try:
+        return json.loads(tekst)
+    except ValueError:
+        return tekst
+
+
+def saml_resultater(data, noegler, billeder):
+    """_data_ + _noegler_ -> én dict til resultater.json. Flere værdier med samme nøgle
+    (fx en liste fra summary_grid) samles i en liste."""
     ud = {"billeder": sorted(billeder)}
-    data = [d for d in (data or []) if d]
+    data = [d for d in (data or []) if d is not None and "%s" % d != ""]
     noegler = list(noegler or [])
     for i, d in enumerate(data):
-        noegle = noegler[i] if i < len(noegler) and noegler[i] else "data_%d" % (i + 1)
-        ud["%s" % noegle] = json.loads("%s" % d)
-    return ud
+        noegle = "%s" % (noegler[i] if i < len(noegler) and noegler[i] else
+                         (noegler[-1] if noegler else "data_%d" % (i + 1)))
+        v = tolk_vaerdi(d)
+        if noegle in ud:
+            if not isinstance(ud[noegle], list) or not getattr(ud[noegle], "_flere", False):
+                ud[noegle] = _Flere([ud[noegle]])
+            ud[noegle].append(v)
+        else:
+            ud[noegle] = v
+    return dict((k, list(v) if isinstance(v, _Flere) else v) for k, v in ud.items())
+
+
+class _Flere(list):
+    _flere = True
 
 
 def til_json(x, indryk=0):

@@ -25,6 +25,7 @@ Outputs:
     mod_set       tekst -> HB String to Object -> _mod_set_ på HB Room from Solid.
                   Samme vindue som i constr_set, så dagslys og energi bruger samme glas.
     vindue        vinduets lystransmittans (LT), fx til _trans på HB Glass Modifier
+    data          tekst (JSON) med lag, U-værdier, glas og program -> _data_ på gh_eksport
     program       tekst -> HB String to Object -> _program_ på HB Room from Solid.
                   Interne laster og setpunkter. Valgfrit input _program vælger et
                   [program: ...] i biblioteket; uden det bruges SBi 213 (bolig).
@@ -187,6 +188,37 @@ def byg_saet(fil, ydervaeg, tag, terraendaek, vindue):
     else:
         linjer.append("Vindue: (ikke valgt - Honeybee-standard)")
     return cs, "\n".join(linjer)
+
+
+def rapport_data(fil, ydervaeg, tag, terraendaek, vindue, program=None):
+    """Alt om opbygningerne til rapporten: lag, U-værdier (ISO 6946), glas og program."""
+    materialer, opb = laes(fil)
+    ud = {"opbygninger": [], "vindue": None, "program": None}
+    for typ, titel, navn in (("ydervaeg", "Ydervæg", ydervaeg), ("tag", "Tag", tag),
+                             ("terraendaek", "Terrændæk", terraendaek)):
+        if not navn:
+            continue
+        n, lag = _find(opb, typ, navn)
+        d, u = byg_opak(n, lag, materialer, typ)
+        ud["opbygninger"].append({
+            "type": titel, "navn": n, "U_W_m2K": round(u, 3),
+            "lag": [{"materiale": materialer[m.lower()][0], "tykkelse_mm": t,
+                     "lambda_W_mK": materialer[m.lower()][1],
+                     "R_m2K_W": round(t / 1000.0 / materialer[m.lower()][1], 2)} for m, t in lag]})
+    if vindue:
+        n, felter = _find(opb, "vindue", vindue)
+        v = dict((k.lower(), x) for k, x in felter)
+        ud["vindue"] = {"navn": n, "U_W_m2K": v["u"], "g": v["g"], "LT": v["lt"]}
+    if program:
+        n, felter = _find(opb, "program", program)
+    else:
+        n, felter = STANDARD_PROGRAM
+    v = dict(STANDARD_PROGRAM[1])
+    v.update(dict((k.lower(), x) for k, x in felter))
+    v["navn"] = n
+    v["koeling"] = False
+    ud["program"] = v
+    return ud
 
 
 def _skema(navn, vaerdi, graense):
@@ -395,4 +427,7 @@ if _i_gh:
     _prog, _prog_info = byg_program(_fil, globals().get("_program"))
     program = til_json(_prog)
     info = _prog_info + "\n" + info
+    # Alt om opbygningerne til rapporten -> _data_ på gh_eksport (nøgle "opbygninger")
+    data = til_json(rapport_data(_fil, _ydervaeg, _tag, _terraendaek, _vindue,  # noqa: F821
+                                 globals().get("_program")))
     print("Færdig - constr_set, mod_set og program går hver i sin HB String to Object")

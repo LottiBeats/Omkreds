@@ -106,3 +106,14 @@ def test_program_bliver_til_honeybee():
                                             infiltration_l_s_m2_facade=0.1, friskluft_l_s_m2=0.3,
                                             opvarmning_c=20))
     assert abs(ref.people.people_per_area - p.people.people_per_area) < 1e-12
+
+
+def test_rapport_data():
+    d = json.loads(go.til_json(go.rapport_data(
+        FIL, "Træskelet 250 + 45 installationslag", "Paptag 400", None, "3-lag energi g50")))
+    vaeg = d["opbygninger"][0]
+    assert vaeg["type"] == "Ydervæg" and abs(vaeg["U_W_m2K"] - 0.121) < 0.002
+    assert vaeg["lag"][1]["materiale"] == "Mineraluld 37" and vaeg["lag"][1]["tykkelse_mm"] == 250
+    assert len(d["opbygninger"]) == 2
+    assert d["vindue"] == {"navn": "3-lag energi g50", "U_W_m2K": 0.8, "g": 0.5, "LT": 0.71}
+    assert d["program"]["udstyr_w_m2"] == 3.5 and d["program"]["koeling"] is False

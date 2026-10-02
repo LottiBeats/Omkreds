@@ -42,3 +42,13 @@ def test_saml_og_skriv(tmp_path):
 def test_manglende_noegle_faar_standardnavn():
     res = ek.saml_resultater(['{"a": 1}'], [], [])
     assert res["data_1"] == {"a": 1}
+
+
+def test_tekst_fil_og_flere_paa_samme_noegle(tmp_path):
+    f = tmp_path / "summary.json"
+    f.write_text('{"sDA": 62.5}')
+    res = ek.saml_resultater(['{"a": 1}', str(f), "Stue: 300 lux OK", "Bad: 300 lux OK"],
+                             ["opbygninger", "dagslys"], [])
+    assert res["opbygninger"] == {"a": 1}
+    assert res["dagslys"] == [{"sDA": 62.5}, "Stue: 300 lux OK", "Bad: 300 lux OK"]
+    assert json.loads(ek.til_json(res))["dagslys"][1] == "Stue: 300 lux OK"
