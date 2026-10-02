@@ -64,3 +64,11 @@ def test_scenarie_resume_uden_timevaerdier():
     assert r["varmetab"] == {"projekt_sum_W_K": 50.0, "ramme_sum_W_K": 90.0, "overholdt": True, "glasandel": 0.4}
     assert r["vindue"]["g"] == 0.5 and r["scenarie"] == "2 Solafskærmende glas"
     assert ek._filnavn("2 Solafskærmende glas") == "2_Solafskaermende_glas"
+
+
+def test_tjek_resultater_fanger_tabeltekst():
+    res = {"Temp": "Rum  Max", "varmetab": "Opvarmet etageareal: ...", "opbygninger": {"opbygninger": []}}
+    adv = " | ".join(ek.tjek_resultater(res))
+    assert "varmetab er ikke data" in adv and "overtemperatur mangler" in adv and "Temp" in adv
+    assert ek.tjek_resultater({"opbygninger": {"opbygninger": []}, "varmetab": {"projekt_sum_W_K": 1},
+                               "overtemperatur": {"rum": []}}) == []

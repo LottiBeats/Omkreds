@@ -566,11 +566,29 @@ def afsnit_forbehold(prj):
     return ud
 
 
+def rens_resultater(res):
+    """Fjerner værdier, der er tekst i stedet for data (fx en tabel fra et Panel), så notatet
+    skriver 'ikke eksporteret' i stedet for at fejle. Advarslerne printes."""
+    krav = {"opbygninger": "opbygninger", "varmetab": "projekt_sum_W_K", "overtemperatur": "rum"}
+    for k, felt in krav.items():
+        v = res.get(k)
+        if v is not None and not (isinstance(v, dict) and felt in v):
+            print("ADVARSEL: %s er ikke data (er der forbundet en tabel?) - springes over" % k)
+            res.pop(k)
+    dl = [x for x in _som_liste(res.get("dagslys"))
+          if not (isinstance(x, str) and (x.startswith("Rum ") or "Data Collection" in x))]
+    if res.get("dagslys") is not None and len(dl) != len(_som_liste(res.get("dagslys"))):
+        print("ADVARSEL: dele af dagslys var ikke dagslysresultater - springes over")
+    res["dagslys"] = dl or None
+    return res
+
+
 def byg(eksport, projekt_yaml, ud_fil=None):
     eksport = Path(eksport)
     projekt_yaml = Path(projekt_yaml)
     prj = yaml.safe_load(projekt_yaml.read_text(encoding="utf-8")) or {}
     res = json.loads((eksport / "resultater.json").read_text(encoding="utf-8"))
+    res = rens_resultater(res)
     regler = _br18(prj)
 
     bmappe = eksport / "billeder"

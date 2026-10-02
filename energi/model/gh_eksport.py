@@ -114,6 +114,28 @@ class _Flere(list):
     _flere = True
 
 
+FORVENTET = {
+    "opbygninger": ("opbygninger", "data fra gh_opbygninger"),
+    "varmetab": ("projekt_sum_W_K", "data_json fra ds418_varmetab"),
+    "overtemperatur": ("rum", "data fra gh_overtemperatur"),
+}
+
+
+def tjek_resultater(res):
+    """Advarsler, hvis en nøgle har fået tekst (fx tabel) i stedet for data, eller ukendte nøgler."""
+    adv = []
+    for k, (felt, hvad) in FORVENTET.items():
+        v = res.get(k)
+        if v is None:
+            adv.append("%s mangler (forbind %s)" % (k, hvad))
+        elif not isinstance(v, dict) or felt not in v:
+            adv.append("%s er ikke data - forbind %s, ikke tabel/tekst" % (k, hvad))
+    ukendte = [k for k in res if k not in FORVENTET and k not in ("billeder", "dagslys")]
+    if ukendte:
+        adv.append("ukendte nøgler: %s (tjek Panelet på _noegler_)" % ", ".join(ukendte))
+    return adv
+
+
 def scenarie_resume(navn, res):
     """Det, rapporten skal bruge for at sammenligne scenarier (uden timeværdier)."""
     ud = {"scenarie": "%s" % navn}
@@ -275,6 +297,8 @@ if _i_gh:
         skriv_tekst(jsti, til_json(res))
         filer.append(jsti)
         print("resultater.json: %s" % ", ".join(k for k in res if k != "billeder"))
+        for a in tjek_resultater(res):
+            print("ADVARSEL  " + a)
         scen = g("_scenarie_")
         if scen:
             smappe = os.path.join(mappe, "scenarier")
