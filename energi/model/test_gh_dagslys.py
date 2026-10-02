@@ -17,5 +17,5 @@ def test_sda_fra_da_traee():
         def __init__(s, b): s.b = b; s.BranchCount = len(b)
         def Branch(s, i): return s.b[i]
     sda = gd.sda_fra_da(Tree([[80, 60, 40, 20], [55, 50, 49.9]]))
-    assert sda == [50.0, 2 / 3 * 100]
+    assert sda[0] == 50.0 and abs(sda[1] - 200 / 3.0) < 1e-9
     assert gd.sda_fra_da([[100, 0]]) == [50.0]
