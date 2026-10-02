@@ -213,7 +213,15 @@ if _i_gh:
         mappe = "%s" % g("_mappe")
         bmappe = os.path.join(mappe, "billeder")
         if not os.path.isdir(bmappe):
-            os.makedirs(bmappe)
+            try:
+                os.makedirs(bmappe)
+            except Exception as e:
+                raise IOError(
+                    "Kan ikke oprette mappen %s (%s).\n"
+                    "Opret mappen selv i Stifinder, eller brug en mappe, du ved virker, fx "
+                    "C:\\Users\\<dig>\\Downloads\\eksport. Ligger Dokumenter i OneDrive, "
+                    "eller blokerer Windows Sikkerhed (Beskyttet mappeadgang) Rhino, "
+                    "kan Rhino ikke skrive i Dokumenter." % (bmappe, e))
         filer, navne, fejl = [], [], []
         b, h = g("_bredde_") or STANDARD_BREDDE, g("_hoejde_") or STANDARD_HOEJDE
         for fil, visning, tilstand in tolk_billeder(g("_billeder_")):
