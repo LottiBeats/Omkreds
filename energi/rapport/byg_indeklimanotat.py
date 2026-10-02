@@ -305,8 +305,16 @@ def afsnit_sammenfatning(res, regler):
     else:
         rows.append(["Termisk indeklima", "§ 386", "–", status(None)])
     dl = res.get("dagslys")
-    rows.append(["Dagslys", "§ 379: 10 %-regel eller 300 lux", "Se afsnit 7" if dl else "–",
-                 status(None, "Se afsnit 7") if dl else status(None)])
+    if isinstance(dl, list) and len(dl) == 1 and isinstance(dl[0], dict):
+        dl = dl[0]
+    if isinstance(dl, dict) and dl.get("rum"):
+        laveste = min(dl["rum"], key=lambda r: r["andel_pct"])
+        rows.append(["Dagslys", "§ 379: 300 lux på halvdelen af gulvet i halvdelen af tiden",
+                     "Laveste: %s, %s %%" % (laveste["rum"], tal(laveste["andel_pct"], 0)),
+                     status(dl.get("ok"), "Opfyldt" if dl.get("ok") else "Ikke opfyldt")])
+    else:
+        rows.append(["Dagslys", "§ 379: 10 %-regel eller 300 lux", "Se afsnit 7" if dl else "–",
+                     status(None, "Se afsnit 7") if dl else status(None)])
     ud.append(tabel(rows, [30 * mm, 52 * mm, 60 * mm, 28 * mm]))
     ud.append(Spacer(1, 4 * mm))
     konkl = []
@@ -539,7 +547,18 @@ def afsnit_dagslys(res, billeder):
     ud.append(p("BR18 § 379 kan dokumenteres med 10 %-reglen eller med en beregning, der viser mindst 300 lux "
                 "på mindst halvdelen af gulvarealet i mindst halvdelen af dagslystimerne (DS/EN 17037). "
                 "Dagslyset er beregnet med Radiance på et målenet 0,85 m over gulvet."))
-    if not dl:
+    if isinstance(dl, list) and len(dl) == 1 and isinstance(dl[0], dict):
+        dl = dl[0]
+    if isinstance(dl, dict) and dl.get("rum"):
+        rows = [["Rum", "Andel af gulvarealet med 300 lux [%]", "Status"]]
+        for r in dl["rum"]:
+            rows.append([r["rum"], tal(r["andel_pct"], 0),
+                         status(r["ok"], "Opfyldt" if r["ok"] else "Ikke opfyldt")])
+        ud.append(tabel(rows, [60 * mm, 70 * mm, 36 * mm], hoejre=(1,)))
+        ud.append(Spacer(1, 3 * mm))
+        ud.append(p("<b>%s</b> Kravet er %s." % ("Alle rum opfylder kravet." if dl.get("ok") else
+                                                  "Ikke alle rum opfylder kravet.", escape(dl.get("metode", "")))))
+    elif not dl:
         ud.append(p("Resultaterne for dagslys er ikke eksporteret fra modellen."))
     else:
         for v in _som_liste(dl):

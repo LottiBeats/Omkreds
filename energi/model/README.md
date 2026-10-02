@@ -126,3 +126,9 @@ og projektets `projekt.yaml` (sagsoplysninger, logo, udluftningsantagelser):
 
 I Grasshopper: `energi/rapport/gh_rapport.py` i en Python 3-komponent med inputs `_pakke`, `_eksport`,
 `_projekt`, `_byg`. `eksempel_eksport.py` laver en eksempelmappe til at afprøve layoutet.
+
+## Dagslys (BR18 § 379, 300 lux)
+
+`gh_dagslys.py` (IPy2 + indlæser): `DA` fra HB Annual Daylight (`_thresholds_` = `-t 300`) →
+HB Spatial Daylight Autonomy (`_target_time_` 50, `mesh_` = målenettets mesh) → `sDA` → `_sda`.
+Valgfrit `_navne_`. Output `data` → `_data_` på gh_eksport med nøglen `dagslys`.

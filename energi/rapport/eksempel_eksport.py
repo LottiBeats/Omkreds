@@ -68,9 +68,8 @@ def lav(mappe):
     import gh_overtemperatur as otm
     ude, rum = _syntetiske_temperaturer()
     ot = otm.beregn([rum[n] for n in rum], navne=list(rum), ude=ude, med_serier=True)
-    dl = ["Stue og køkken: 300 lux på 78 % af gulvarealet i 50 % af dagslystimerne - opfyldt",
-          "Soveværelse: 300 lux på 61 % af gulvarealet - opfyldt",
-          "Værelse: 300 lux på 55 % af gulvarealet - opfyldt"]
+    import gh_dagslys as gd
+    dl = [gd.til_json(gd.beregn([78.0, 61.0, 44.0], list(rum)))]
     res = ek.saml_resultater([go.til_json(opb), json.dumps(vt), ek.til_json(ot)] + dl,
                              ["opbygninger", "varmetab", "overtemperatur", "dagslys"], [])
     (mappe / "billeder").mkdir(parents=True, exist_ok=True)
