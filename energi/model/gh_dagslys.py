@@ -6,15 +6,18 @@ Kravet: mindst 300 lux på mindst halvdelen af gulvarealet i mindst halvdelen af
 dagslystimerne. Det svarer til en spatial daylight autonomy (sDA) på mindst 50 %,
 regnet med grænsen 300 lux og tidskravet 50 %:
 
-    HB Annual Daylight (_thresholds_ "-t 300") -> DA
-    DA -> HB Spatial Daylight Autonomy (_target_time_ 50, mesh_ = målenettets mesh) -> sDA
-    sDA -> denne komponent
+    HB Annual Daylight (_thresholds_ "-t 300") -> DA -> _DA på denne komponent
+
+Komponenten regner selv andelen af målepunkter med DA >= 50 % pr. rum (målenettet
+antages jævnt, som fra HB Sensor Grid from Rooms). Alternativt kan sDA fra
+HB Spatial Daylight Autonomy sættes på _sda.
 
 Bruger ikke Ladybug/Honeybee selv og virker i Rhino 8's script-komponenter.
 Slet de inputs, du ikke bruger.
 
 Inputs:
-    _sda        sDA i procent, én værdi pr. målenet/rum (List Access)
+    _DA         DA fra HB Annual Daylight (Tree Access) - én gren pr. rum
+    _sda        ELLER sDA i procent, én værdi pr. rum (List Access)
     _navne_     rumnavne i samme rækkefølge (List Access, valgfri)
     _krav_      krævet andel af gulvarealet i procent (valgfri, standard 50)
 Outputs:
@@ -23,6 +26,22 @@ Outputs:
     data        tekst (JSON) -> _data_ på gh_eksport med nøglen "dagslys"
 """
 from __future__ import division, unicode_literals
+
+
+def sda_fra_da(da, tid=50.0):
+    """DA-træ (én gren pr. rum) -> sDA i procent pr. rum: andel af punkter med DA >= tid."""
+    if da is None:
+        return []
+    if hasattr(da, "BranchCount"):
+        grene = [list(da.Branch(i)) for i in range(da.BranchCount)]
+    else:
+        da = list(da)
+        grene = [list(g) for g in da] if da and isinstance(da[0], (list, tuple)) else [da]
+    ud = []
+    for g in grene:
+        v = [float(x) for x in g]
+        ud.append(100.0 * sum(1 for x in v if x >= tid) / len(v) if v else 0.0)
+    return ud
 
 
 def beregn(sda, navne=None, krav=50.0):
@@ -80,7 +99,7 @@ except NameError:
     _i_gh = False
 
 if _i_gh:
-    _s = globals().get("_sda")
+    _s = sda_fra_da(globals().get("_DA")) if globals().get("_DA") is not None else globals().get("_sda")
     if _s is not None and not hasattr(_s, "__iter__"):
         _s = [_s]
     _n = globals().get("_navne_")
