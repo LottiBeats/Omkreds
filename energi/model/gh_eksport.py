@@ -244,9 +244,14 @@ def _visning(navn):
 def _gruppe_medlemmer(gh_doc, navn):
     """Alle objekter i Grasshopper-gruppen 'navn' (også i undergrupper)."""
     from Grasshopper.Kernel.Special import GH_Group
-    grupper = [o for o in gh_doc.Objects if isinstance(o, GH_Group) and navn in (o.NickName, o.Name)]
+    alle = [o for o in gh_doc.Objects if isinstance(o, GH_Group)]
+    grupper = [o for o in alle if navn.strip().lower() == ("%s" % o.NickName).strip().lower()]
     if not grupper:
-        raise ValueError('Grasshopper-gruppen "%s" findes ikke. Højreklik på gruppen og giv den navnet.' % navn)
+        navne = sorted(set(("%s" % o.NickName).strip() for o in alle) - set(["", "Group"]))
+        raise ValueError('Grasshopper-gruppen "%s" findes ikke. %s' % (navn, (
+            "Navngivne grupper i filen: " + ", ".join(navne)) if navne else
+            "Der er ingen navngivne grupper i filen endnu: marker plottet, Ctrl+G, "
+            "højreklik på gruppen og skriv navnet øverst i menuen."))
     ids, koe = set(), list(grupper)
     while koe:
         gr = koe.pop()
