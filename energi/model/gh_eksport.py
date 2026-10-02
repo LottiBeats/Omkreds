@@ -314,6 +314,10 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
             vp.ParentView.Redraw()
         bmp = _fang(vp.ParentView, int(bredde), int(hoejde))
         bmp.Save(sti, System.Drawing.Imaging.ImageFormat.Png)
+        if _ensfarvet(bmp):
+            raise ValueError("billedet blev tomt (én farve). Tjek at visningen %s viser noget, "
+                             "når du selv vælger den i Rhino, og at gruppen har preview slået til."
+                             % ('"%s"' % navn if navn else "Top"))
         return sti
     finally:
         for o in skjulte_gh:
@@ -328,10 +332,16 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
 
 
 def _fang(view, bredde, hoejde):
-    """Billede af visningen uden gitter og akser (falder tilbage til almindelig skærmbillede)."""
+    """Billede af visningen, helst uden gitter og akser. Prøver flere metoder og springer
+    over dem, der giver et tomt (ensfarvet) billede."""
     import System
     import Rhino
-    try:
+    stoerrelse = System.Drawing.Size(bredde, hoejde)
+
+    def uden_gitter():
+        return view.CaptureToBitmap(stoerrelse, False, False, False)
+
+    def view_capture():
         vc = Rhino.Display.ViewCapture()
         vc.Width, vc.Height = bredde, hoejde
         vc.ScaleScreenItems = False
@@ -339,12 +349,39 @@ def _fang(view, bredde, hoejde):
         vc.DrawGrid = False
         vc.DrawGridAxes = False
         vc.TransparentBackground = False
-        bmp = vc.CaptureToBitmap(view)
-        if bmp is not None:
+        return vc.CaptureToBitmap(view)
+
+    def almindelig():
+        return view.CaptureToBitmap(stoerrelse)
+
+    sidste = None
+    for metode in (uden_gitter, view_capture, almindelig):
+        try:
+            bmp = metode()
+        except Exception:
+            continue
+        if bmp is None:
+            continue
+        sidste = bmp
+        if not _ensfarvet(bmp):
             return bmp
+    if sidste is None:
+        raise ValueError("Rhino kunne ikke tage et billede af visningen.")
+    return sidste
+
+
+def _ensfarvet(bmp):
+    """True, hvis billedet har samme farve overalt (fx helt hvidt)."""
+    try:
+        w, h = bmp.Width, bmp.Height
+        foerste = bmp.GetPixel(0, 0).ToArgb()
+        for a in range(1, 20):
+            for b in range(1, 20):
+                if bmp.GetPixel(w * a // 20, h * b // 20).ToArgb() != foerste:
+                    return False
+        return True
     except Exception:
-        pass
-    return view.CaptureToBitmap(System.Drawing.Size(bredde, hoejde), False, False, False)
+        return False
 
 
 def _koer_sidst(komp):
