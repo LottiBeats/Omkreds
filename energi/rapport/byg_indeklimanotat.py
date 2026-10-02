@@ -588,6 +588,16 @@ def afsnit_forbehold(prj):
 def rens_resultater(res):
     """Fjerner værdier, der er tekst i stedet for data (fx en tabel fra et Panel), så notatet
     skriver 'ikke eksporteret' i stedet for at fejle. Advarslerne printes."""
+    # flyt data, der ligger under en forkert nøgle (fx "Temp"), hen hvor indholdet hører til
+    for k in list(res):
+        for v in _som_liste(res[k]):
+            if isinstance(v, dict):
+                rigtig = ("overtemperatur" if "graenser" in v and "rum" in v else
+                          "varmetab" if "projekt_sum_W_K" in v else
+                          "dagslys" if "krav_pct" in v else
+                          "opbygninger" if "opbygninger" in v and "program" in v else None)
+                if rigtig and rigtig != k and rigtig not in res:
+                    res[rigtig] = v
     krav = {"opbygninger": "opbygninger", "varmetab": "projekt_sum_W_K", "overtemperatur": "rum"}
     for k, felt in krav.items():
         v = res.get(k)
@@ -598,6 +608,9 @@ def rens_resultater(res):
           if not (isinstance(x, str) and (x.startswith("Rum ") or "Data Collection" in x))]
     if res.get("dagslys") is not None and len(dl) != len(_som_liste(res.get("dagslys"))):
         print("ADVARSEL: dele af dagslys var ikke dagslysresultater - springes over")
+    resume = [x for x in dl if isinstance(x, dict) and "krav_pct" in x]
+    if resume:            # samme resultat flere gange (komponenten kørt pr. gren) -> brug ét
+        dl = resume[:1]
     res["dagslys"] = dl or None
     return res
 

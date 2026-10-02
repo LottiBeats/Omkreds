@@ -24,8 +24,8 @@ Inputs:
     _data_        data fra de andre komponenter: JSON-tekst (data fra gh_opbygninger og
                   gh_overtemperatur, data_json fra ds418_varmetab), stier til .json-filer
                   eller almindelig tekst (fx summary_grid fra HB Annual Daylight EN17037)
-    _noegler_     et navn pr. _data_, fx "opbygninger", "varmetab", "overtemperatur",
-                  "dagslys". Er der flere _data_ end nøgler, får resten den sidste nøgle
+    _noegler_     VALGFRI. Data fra gh_opbygninger, ds418_varmetab, gh_overtemperatur og
+                  gh_dagslys genkendes automatisk. Nøgler bruges kun til anden tekst
     _scenarie_    navn på scenariet, fx "1 Som tegnet" eller "2 Solafskærmende glas" (valgfri).
                   Gemmer et resumé i scenarier/, så notatet kan sammenligne kørslerne.
                   Start navnet med et tal - scenarierne vises i den rækkefølge.
@@ -91,18 +91,36 @@ def tolk_vaerdi(d):
         return tekst
 
 
+def genkend(v):
+    """Nøgle ud fra indholdet, så rækkefølgen i _noegler_ ikke kan gå galt."""
+    if isinstance(v, dict):
+        if "graenser" in v and "rum" in v:
+            return "overtemperatur"
+        if "projekt_sum_W_K" in v:
+            return "varmetab"
+        if "opbygninger" in v and "program" in v:
+            return "opbygninger"
+        if "krav_pct" in v and "rum" in v:
+            return "dagslys"
+    return None
+
+
 def saml_resultater(data, noegler, billeder):
-    """_data_ + _noegler_ -> én dict til resultater.json. Flere værdier med samme nøgle
-    (fx en liste fra summary_grid) samles i en liste."""
+    """_data_ (+ evt. _noegler_) -> én dict til resultater.json. Data fra vores egne komponenter
+    genkendes på indholdet; _noegler_ bruges kun til andet (fx tekst). Ens værdier gemmes én gang;
+    forskellige værdier med samme nøgle samles i en liste."""
     ud = {"billeder": sorted(billeder)}
     data = [d for d in (data or []) if d is not None and "%s" % d != ""]
     noegler = list(noegler or [])
     for i, d in enumerate(data):
-        noegle = "%s" % (noegler[i] if i < len(noegler) and noegler[i] else
-                         (noegler[-1] if noegler else "data_%d" % (i + 1)))
         v = tolk_vaerdi(d)
+        noegle = genkend(v) or "%s" % (noegler[i] if i < len(noegler) and noegler[i] else
+                                         (noegler[-1] if noegler else "data_%d" % (i + 1)))
         if noegle in ud:
-            if not isinstance(ud[noegle], list) or not getattr(ud[noegle], "_flere", False):
+            eksisterende = ud[noegle] if isinstance(ud[noegle], _Flere) else [ud[noegle]]
+            if v in eksisterende:
+                continue
+            if not isinstance(ud[noegle], _Flere):
                 ud[noegle] = _Flere([ud[noegle]])
             ud[noegle].append(v)
         else:

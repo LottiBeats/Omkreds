@@ -72,3 +72,13 @@ def test_tjek_resultater_fanger_tabeltekst():
     assert "varmetab er ikke data" in adv and "overtemperatur mangler" in adv and "Temp" in adv
     assert ek.tjek_resultater({"opbygninger": {"opbygninger": []}, "varmetab": {"projekt_sum_W_K": 1},
                                "overtemperatur": {"rum": []}}) == []
+
+
+def test_genkendes_uanset_noegler_og_dubletter():
+    import gh_dagslys as gd
+    over = ot.til_json(ot.beregn([[28.5] * 30 + [20.0] * 8730], navne=["Stue"]))
+    dl = gd.til_json(gd.beregn([80.0], ["Stue"]))
+    varme = json.dumps({"projekt_sum_W_K": 50.0, "ramme_sum_W_K": 90.0})
+    res = ek.saml_resultater([over, varme, dl, dl, dl], ["Temp", "x", "y"], [])
+    assert set(res) == {"billeder", "overtemperatur", "varmetab", "dagslys"}
+    assert isinstance(res["dagslys"], dict) and ek.tjek_resultater(dict(res, opbygninger={"opbygninger": []})) == []
