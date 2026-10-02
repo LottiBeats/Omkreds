@@ -267,7 +267,7 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
     import Rhino
     from Grasshopper.Kernel import IGH_PreviewObject
     rdoc = Rhino.RhinoDoc.ActiveDoc
-    skjulte_gh, skjulte_rhino, zoomet = [], [], None
+    skjulte_gh, skjulte_rhino, zoomet, gammel_tilstand = [], [], None, None
     try:
         if gruppe:
             ids = _gruppe_medlemmer(gh_doc, gruppe)
@@ -300,14 +300,14 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
                 vp.ZoomBoundingBox(boks)
         rdoc.Views.Redraw()
         vp.ParentView.Redraw()
-        stoerrelse = System.Drawing.Size(int(bredde), int(hoejde))
         if tilstand:
             mode = Rhino.Display.DisplayModeDescription.FindByName(tilstand)
             if mode is None:
                 raise ValueError('Visningstilstanden "%s" findes ikke (fx Shaded, Rendered, Arctic).' % tilstand)
-            bmp = vp.ParentView.CaptureToBitmap(stoerrelse, mode)
-        else:
-            bmp = vp.ParentView.CaptureToBitmap(stoerrelse)
+            gammel_tilstand = (vp, vp.DisplayMode)
+            vp.DisplayMode = mode
+            vp.ParentView.Redraw()
+        bmp = _fang(vp.ParentView, int(bredde), int(hoejde))
         bmp.Save(sti, System.Drawing.Imaging.ImageFormat.Png)
         return sti
     finally:
@@ -317,7 +317,29 @@ def tag_billede(navn, sti, bredde, hoejde, tilstand=None, gruppe=None, uden_rhin
             rdoc.Objects.Show(oid, True)
         if zoomet is not None:
             zoomet.PopViewProjection()
+        if gammel_tilstand is not None:
+            gammel_tilstand[0].DisplayMode = gammel_tilstand[1]
         rdoc.Views.Redraw()
+
+
+def _fang(view, bredde, hoejde):
+    """Billede af visningen uden gitter og akser (falder tilbage til almindelig skærmbillede)."""
+    import System
+    import Rhino
+    try:
+        vc = Rhino.Display.ViewCapture()
+        vc.Width, vc.Height = bredde, hoejde
+        vc.ScaleScreenItems = False
+        vc.DrawAxes = False
+        vc.DrawGrid = False
+        vc.DrawGridAxes = False
+        vc.TransparentBackground = False
+        bmp = vc.CaptureToBitmap(view)
+        if bmp is not None:
+            return bmp
+    except Exception:
+        pass
+    return view.CaptureToBitmap(System.Drawing.Size(bredde, hoejde), False, False, False)
 
 
 def _koer_sidst(komp):
