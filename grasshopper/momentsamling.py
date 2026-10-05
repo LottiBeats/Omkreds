@@ -75,6 +75,11 @@ Opsætning i Grasshopper (højreklik på hver input):
     k_mod      float,   Item   (0.8)
     gamma_M    float,   Item   (1.3)
     use_nef    bool,    Item   n_ef for rækker langs fiberen (True)
+    nef_method str,     Item   "komponent" (standard): n_ef kun på
+                               komposanten langs fiberen, interaktion
+                               (F_0/F_Rd,0)^2 + (F_90/F_Rd,90)^2 <= 1;
+                               "vinkel": interpolation efter hver
+                               forbindelses vinkel; "konservativ": n_ef,0
     Fv_Rd      float,   Item   (valgfri – fast bæreevne pr. dorn [kN])
   Visning
     scale      float,   Item   pilelængde pr. kN (auto)
@@ -95,6 +100,9 @@ Bæreevne pr. dorn, alpha = vinkel mellem kraft og fiber:
     Bolte: + F_ax,Rk/4 i g, h (A) / j, k (B), højst 25 %; F_ax,Rk = min(
     3 f_c,90,k A_skive, 0.9 f_ub A_s). Afstande efter tabel 8.4.
     F_v,Rd = n_ef/n k_mod F_v,Rk / gamma_M   (B: mindste n_ef af emnerne)
+    n_ef i momentsamlinger (typ A): komposanten langs fiberen er ens for
+    alle forbindelser i en række (N/n + M x/Ip), så den får n_ef,0/n;
+    tværkomposanten varierer og skifter fortegn og reduceres ikke.
 
 Stålplade-rammehjørne (lokalt): stalplade_hjorne() regner spærets og
 søjlens dorngruppe og stålpladen (snit mellem grupperne + hulrandstryk);
@@ -749,7 +757,8 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
             both_signs=True, rule="omhyllende", timber="GL24h", t1=80.0,
             t2=None, f_uk=360.0, k_mod=0.8, gamma_M=1.3, use_nef=True,
             Fv_Rd=None, load_angle=None, fastener="dorn", d_w=None,
-            t_w=None, slip=None, M_ser=None, n_plates=1, t_p=None):
+            t_w=None, slip=None, M_ser=None, n_plates=1, t_p=None,
+            nef_method="komponent"):
     """Kraftfordeling og kontrol for alle lasttilfælde. fastener "dorn"
     eller "bolt" (bolt: rebvirkning fra skive d_w × t_w [mm], standard
     3d × 0.3d, og boltenes afstandskrav). Stivhed: K_ser efter EC5 7.1,
@@ -778,9 +787,35 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
         F_ax, vals, gov_ax = bolt_axial(d_mm, f_c90, f_uk, d_w, t_w)
         ax_info = (f_c90, d_w, t_w, vals, gov_ax)
 
+    nef_method = str(nef_method or "komponent").strip().lower()
+
+    def rk_at(alpha):
+        if n_plates == 2:
+            return johansen_steel_two_plates(d_mm, t1, t2, t_p or d_mm,
+                                             rho_k, f_uk, alpha, hard, F_ax)
+        return johansen_steel_center(d_mm, t1, rho_k, f_uk, alpha, hard,
+                                     F_ax)
+
     def capacity(f, i):
         if Fv_Rd:
             return float(Fv_Rd), None
+        if typ != "B" and use_nef and nef_method.startswith("komp"):
+            # komposantmetode: n_ef kun på komposanten langs fiberen, som
+            # er ens for hele rækken; tværkomposanten uden reduktion
+            Rk0, x = rk_at(0.0)
+            Rk90, x90 = rk_at(90.0)
+            kef0 = n_ef_factor(rinfo[0][i][0], rinfo[0][i][1], d, 0.0)
+            Rd0 = kef0 * k_mod * Rk0 / gamma_M
+            Rd90 = k_mod * Rk90 / gamma_M
+            Fp, Fq = abs(dot(f, g0)), abs(dot(f, perp(g0)))
+            eta = math.hypot(Fp / Rd0, Fq / Rd90)
+            F = math.hypot(*f)
+            rd = F / eta if eta > 0 else Rd90
+            x = dict(x, kef=kef0, Rk=Rk0, comp=dict(
+                Fp=Fp, Fq=Fq, Rk0=Rk0, Rk90=Rk90, Rd0=Rd0, Rd90=Rd90,
+                kef0=kef0, n=rinfo[0][i][0], a1=rinfo[0][i][1], eta=eta,
+                mode0=x["mode"], mode90=x90["mode"]))
+            return rd, x
         if typ == "B":
             Rk, x = johansen_timber_double(
                 d_mm, t1, t2, rho_k, f_uk, angle_to_grain(f, mems[0]["g"]),
@@ -795,9 +830,10 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
                     d_mm, t1, rho_k, f_uk, angle_to_grain(f, g0), hard,
                     F_ax)
         kef = 1.0
-        if use_nef:
+        if use_nef:                     # "vinkel" eller "konservativ"
             kef = min(n_ef_factor(ri[i][0], ri[i][1], d,
-                                  angle_to_grain(f, m["g"]))
+                                  0.0 if nef_method.startswith("kons")
+                                  else angle_to_grain(f, m["g"]))
                       for m, ri in zip(mems, rinfo))
         x = dict(x, kef=kef, Rk=Rk)
         return kef * k_mod * Rk / gamma_M, x
@@ -875,7 +911,25 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
                   + " N -> {:.0f} N ({})".format(F_ax, gov_ax),
                   "Rebvirkning F_ax,Rk/4 = {:.0f} N pr. snit (højst 25 % "
                   "af Johansen-delen)".format(F_ax / 4)]
-        L += [
+        if "comp" in x:
+            c = x["comp"]
+            L += ["Komposantmetode: n_ef kun på komposanten langs fiberen "
+                  "(den er ens for alle i rækken)",
+                  "  F_langs = {:.2f} kN, F_tværs = {:.2f} kN".format(
+                      c["Fp"], c["Fq"]),
+                  "  alpha = 0:  F_v,Rk,0 = {:.2f} kN (brudform {}), n_ef,0/n "
+                  "= {:.3f} (n = {}, a1 = {:.0f} mm)".format(
+                      c["Rk0"], c["mode0"], c["kef0"], c["n"], c["a1"] * 1000),
+                  "              F_v,Rd,0 = {:.3f} x {:g} x {:.2f} / {:g} = "
+                  "{:.2f} kN".format(c["kef0"], k_mod, c["Rk0"], gamma_M,
+                                     c["Rd0"]),
+                  "  alpha = 90: F_v,Rk,90 = {:.2f} kN (brudform {}), "
+                  "F_v,Rd,90 = {:.2f} kN".format(c["Rk90"], c["mode90"],
+                                                 c["Rd90"]),
+                  "  eta = sqrt((F_langs/F_v,Rd,0)^2 + (F_tværs/F_v,Rd,90)^2)"
+                  " = {:.2f}".format(c["eta"])]
+        else:
+          L += [
               "Brudformer pr. snit: " + ", ".join(
                   "{} = {:.2f}".format(k, v / 1000)
                   for k, v in x["modes"].items()) + " kN",
@@ -1267,8 +1321,8 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
                   grain_mid, free_mid, grid_angle, a_edge, a_end, s_par,
                   s_perp, pts, N, V, M, load_pt, load_angle, both_signs,
                   n_plates, t_p, fastener, d_w, t_w, slip, M_ser, rule,
-                  timber, t1, t2, f_uk, k_mod, gamma_M, use_nef, Fv_Rd,
-                  scale, plot):
+                  timber, t1, t2, f_uk, k_mod, gamma_M, use_nef, nef_method,
+                  Fv_Rd, scale, plot):
         self._draw = None
         empty = (None,) * 15
         lvl = Grasshopper.Kernel.GH_RuntimeMessageLevel
@@ -1312,7 +1366,7 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
                         _d(t1, 80.0), t2, _d(f_uk, 360.0), _d(k_mod, 0.8),
                         _d(gamma_M, 1.3), _d(use_nef, True), Fv_Rd,
                         load_angle, fastener, d_w, t_w, slip, M_ser,
-                        int(_d(n_plates, 1)), t_p)
+                        int(_d(n_plates, 1)), t_p, nef_method)
         except ValueError as exc:
             self.Component.AddRuntimeMessage(lvl.Error, str(exc))
             return empty
