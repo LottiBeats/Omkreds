@@ -68,10 +68,14 @@ kløvning vinkelret på fiberen (8.1.4) og flere indslidsede plader.
 
 import math
 
-import Grasshopper
-import Rhino
-import Rhino.Geometry as rg
-import System.Drawing as sd
+try:                                    # i Rhino/Grasshopper
+    import Grasshopper
+    import Rhino
+    import Rhino.Geometry as rg
+    import System.Drawing as sd
+    IN_RHINO = True
+except ImportError:                     # lokalt, fx i VS Code
+    IN_RHINO = False
 
 
 # ---------------------------------------------------------------- beregning
@@ -328,13 +332,15 @@ def _d(v, default):
     return default if v is None else v
 
 
-RED = sd.Color.FromArgb(170, 0, 0)
-GREEN = sd.Color.FromArgb(0, 120, 40)
-GREY = sd.Color.FromArgb(120, 120, 120)
-BLUE = sd.Color.FromArgb(0, 70, 160)
+if IN_RHINO:
+    RED = sd.Color.FromArgb(170, 0, 0)
+    GREEN = sd.Color.FromArgb(0, 120, 40)
+    GREY = sd.Color.FromArgb(120, 120, 120)
+    BLUE = sd.Color.FromArgb(0, 70, 160)
 
 
-class MyComponent(Grasshopper.Kernel.GH_ScriptInstance):
+class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
+                  else object):
 
     def RunScript(self, area, x_size, y_size, dorn, a_edge, a_end, s_par,
                   s_perp, grain, pts, N, V, M, load_pt, timber, t1, f_uk,
@@ -522,3 +528,112 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance):
             pt = rg.Point3d(x0, y0 + Ly + dy * (n - i), z)
             col = (GREEN if dr["ok"] else RED) if i == n - 1 else RED
             dsp.Draw2dText(t, col, pt, False, 14)
+
+
+# ------------------------------------------------------- lokalt (VS Code)
+# Kør filen direkte:  python momentsamling.py
+# Ret værdierne i bunden af filen. Kræver matplotlib (pip install matplotlib).
+# Alle længder er i meter, dorn og t1 i mm, kræfter i kN, M i kNm.
+
+def solve(x_size=0.333, y_size=0.369, dorn="M12", a_edge=4.0, a_end=7.0,
+          s_par=5.0, s_perp=5.0, grain="y", pts=None, N=0.0, V=0.0, M=0.0,
+          load_pt=None, timber="GL24h", t1=80.0, f_uk=360.0, k_mod=0.8,
+          gamma_M=1.3, use_nef=True, Fv_Rd=None):
+    """Samme beregning som komponenten, uden Rhino. Område fra (0, 0)."""
+    grain = grain.strip().lower()
+    d_mm = parse_dorn(dorn)
+    d = d_mm / 1000.0
+    if grain == "x":
+        ex, ey, sx, sy = a_end * d, a_edge * d, s_par * d, s_perp * d
+    else:
+        ex, ey, sx, sy = a_edge * d, a_end * d, s_perp * d, s_par * d
+    if pts is None:
+        pts = [(x, y) for y in grid_1d(y_size, ey, sy)
+               for x in grid_1d(x_size, ex, sx)]
+    if not pts:
+        raise ValueError("Ingen dorne – området er mindre end "
+                         "2 x kant-/endeafstand.")
+    Fx, Fy = (N, V) if grain == "x" else (V, N)
+    res = distribute(pts, Fx, Fy, M, load_pt)
+    chk = check(pts, res["mags"], res["forces"], grain, d_mm, t1, timber,
+                f_uk, k_mod, gamma_M, use_nef, Fv_Rd,
+                (0.0, 0.0, x_size, y_size))
+    res.update(chk)
+    res.update({"pts": pts, "size": (x_size, y_size), "edge": (ex, ey),
+                "d_mm": d_mm, "F_res": math.hypot(Fx, Fy)})
+    return res
+
+
+def plot_mpl(r, scale=None, show=True, save=None):
+    """Tegner samlingen som i viewporten: pile, kræfter og udnyttelse."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
+    Lx, Ly = r["size"]
+    ex, ey = r["edge"]
+    Fmax = max(r["mags"])
+    if not scale:
+        scale = 0.4 * max(Lx, Ly) / Fmax if Fmax > 0 else 0.0
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.add_patch(Rectangle((0, 0), Lx, Ly, fill=False, ec="#aa0000"))
+    if Lx > 2 * ex and Ly > 2 * ey:
+        ax.add_patch(Rectangle((ex, ey), Lx - 2 * ex, Ly - 2 * ey,
+                               fill=False, ec="grey", ls=":"))
+    for i, (mx, my) in enumerate([(Lx / 2, 0), (Lx, Ly / 2),
+                                  (Lx / 2, Ly), (0, Ly / 2)]):
+        ax.text(mx, my, str(i + 1), color="#aa0000", ha="center",
+                va="center", backgroundcolor="white")
+
+    for i, ((x, y), (fx, fy), F, e) in enumerate(
+            zip(r["pts"], r["forces"], r["mags"], r["eta"])):
+        col = "#007828" if e <= 1.0 else "#aa0000"
+        ax.plot(x, y, "x", color=col, ms=8, mew=2)
+        if i == r["i_max"]:
+            ax.plot(x, y, "o", mfc="none", mec="#0046a0", ms=16, mew=2)
+        if F > 1e-9:
+            ax.annotate("", xy=(x + fx * scale, y + fy * scale), xytext=(x, y),
+                        arrowprops=dict(arrowstyle="-|>", color=col, lw=1.2))
+        ax.text(x, y - 0.012, "{:.1f} kN ({:.2f})".format(F, e), color=col,
+                ha="center", va="top", fontsize=8,
+                bbox=dict(fc="white", ec="none", alpha=0.75, pad=1))
+
+    cx, cy = r["centroid"]
+    ax.plot(cx, cy, "o", color="grey", ms=4)
+    if r["ic"] is not None:
+        ax.plot(*r["ic"], "o", color="#0046a0", ms=6)
+        ax.annotate("rotationscenter", r["ic"], color="#0046a0",
+                    xytext=(5, 5), textcoords="offset points", fontsize=8)
+
+    head = "M{:g}, n = {}   F = {:.1f} kN   M_tot = {:.2f} kNm   " \
+           "Fmax = {:.2f} kN   udnyttelse = {:.2f}  {}".format(
+               r["d_mm"], len(r["pts"]), r["F_res"], r["M_tot"], Fmax,
+               r["util"], "OK" if r["ok"] else "IKKE OK")
+    ax.set_title(head, fontsize=9,
+                 color="#007828" if r["ok"] else "#aa0000")
+    ax.set_aspect("equal")
+    ax.autoscale_view()
+    ax.margins(0.15)
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    fig.tight_layout()
+    if save:
+        fig.savefig(save, dpi=150)
+    if show:
+        plt.show()
+    return fig
+
+
+if __name__ == "__main__":
+    r = solve(
+        x_size=0.333, y_size=0.369,     # forbindelsesområde [m]
+        dorn="M12",
+        a_edge=4, a_end=7,              # kant-/endeafstand [x d]
+        s_par=5, s_perp=5,              # min. dornafstand [x d]
+        grain="y",                      # fiberretning
+        N=10.0, V=5.0, M=8.0,           # [kN], [kN], [kNm]
+        timber="GL24h", t1=80,          # træ og sidetykkelse [mm]
+        f_uk=360, k_mod=0.8, gamma_M=1.3,
+    )
+    print("\n".join(r["lines"]))
+    plot_mpl(r)
