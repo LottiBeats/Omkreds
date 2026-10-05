@@ -1436,9 +1436,9 @@ if __name__ == "__main__":
     # Stålplade-rammehjørne: søjle + skråt spær. N, V og M er søjlens
     # snitkræfter i systemknuden (N langs søjlen, V +90 grader, M mod uret).
     res = stalplade_hjorne(
-        b=0.4,                  # søjlebredde [m]
-        h=0.4,                  # spærhøjde vinkelret på fiberen [m]
-        slope=-35,              # spærets fiberretning [grader]
+        b=0.333,                # søjlebredde [m] (165 x 333 GL24h)
+        h=0.333,                # spærhøjde vinkelret på fiberen [m]
+        slope=-38.7,            # spærets fiberretning [grader]
         H_col=0.5,              # højde af søjlens dornområde [m]
         dorn="M12",
         fastener="dorn",        # "dorn" eller "bolt" (bolt: d_w, t_w, slip)
@@ -1446,9 +1446,9 @@ if __name__ == "__main__":
         N=[27.42], V=[15.49], M=[43.55],  # lasttilfælde [kN], [kN], [kNm]
         M_ser=43.55 / 1.5,      # moment i anvendelsesgrænsetilstand [kNm]
         rule="omhyllende",      # eller "dorn"
-        n_plates=1,             # 1 plade: t1 = træ på hver side
-        timber="GL24h", t1=165,  # 2 plader: t1 = ydertræ, t2 = midtertræ
-        t2=None,                # fx n_plates=2, t1=100, t2=120
+        n_plates=2,             # 1 plade: t1 = træ på hver side
+        timber="GL24h", t1=45,  # 2 plader: t1 = ydertræ, t2 = midtertræ
+        t2=51,                  # 45 + 12 + 51 + 12 + 45 = 165 mm
         t_p=12, f_y=355, f_u=490,  # plade(r) S355
         f_uk=360,               # dorne S235
         k_mod=0.9,              # vind: kort (0.9) – momentan (1.1)
