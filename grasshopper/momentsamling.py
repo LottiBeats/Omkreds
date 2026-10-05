@@ -61,6 +61,8 @@ Opsætning i Grasshopper (højreklik på hver input):
     fastener   str,     Item   "dorn" eller "bolt" ("dorn")
     d_w        float,   Item   bolt: skivens diameter [mm] (3d)
     t_w        float,   Item   bolt: skivens tykkelse [mm] (0.3d)
+    slip       float,   Item   hulluft pr. forbindelse [mm] (bolt 1, dorn 0)
+    M_ser      float,   Item   moment i anvendelse [kNm] -> rotation (valgfri)
     rule       str,     Item   "omhyllende" eller "dorn" ("omhyllende")
     timber     str,     Item   "GL24h", "C24" ... eller rho_k (GL24h)
     t1         float,   Item   A: træ på hver side af pladen; B: sidetræ
@@ -76,7 +78,8 @@ Opsætning i Grasshopper (højreklik på hver input):
     plot       bool,    Item   tegn i viewporten (True)
 
 Outputs: pts, F_vec, F, Fmax, Ip, centroid, IC, arrows, outline, inner,
-Rd, eta, util, ok, info.  (Pile og kræfter er fra det styrende
+Rd, eta, util, ok, info.  Stivheden (K_r,ser, K_r,u, rotation) står i info;
+i et hjørne lægges de to gruppers stivhed i serie: 1/K = 1/K1 + 1/K2.  (Pile og kræfter er fra det styrende
 lasttilfælde.)
 
 Kraftfordeling (elastisk, stiv plade):
@@ -136,6 +139,18 @@ F_C90 = {
 }
 
 # Spændingsareal A_s [mm2] for metriske bolte
+# rho_mean [kg/m3] – EN 338 og EN 14080 (til K_ser)
+RHO_MEAN = {
+    "C14": 350, "C16": 370, "C18": 380, "C20": 390, "C22": 410,
+    "C24": 420, "C27": 430, "C30": 460, "C35": 470, "C40": 480,
+    "D30": 640, "D35": 650, "D40": 660, "D50": 750, "D60": 840,
+    "D70": 1080,
+    "GL20H": 370, "GL22H": 410, "GL24H": 420, "GL26H": 445,
+    "GL28H": 460, "GL30H": 480, "GL32H": 490,
+    "GL20C": 390, "GL22C": 390, "GL24C": 400, "GL26C": 420,
+    "GL28C": 420, "GL30C": 430, "GL32C": 440,
+}
+
 A_S = {10: 58.0, 12: 84.3, 14: 115.0, 16: 157.0, 20: 245.0, 22: 303.0,
        24: 353.0, 27: 459.0, 30: 561.0}
 
@@ -528,6 +543,39 @@ def bolt_axial(d, f_c90, f_ub, d_w, t_w, d_hole=None):
     return vals[gov], vals, gov
 
 
+def k_ser_fastener(d_mm, rho_m, planes=2, steel=True):
+    """K_ser pr. forbindelse [N/mm]: rho_m^1.5 d / 23 pr. snit (EC5 tabel
+    7.1), x 2 for stål mod træ (7.1(3))."""
+    return planes * (2.0 if steel else 1.0) * rho_m ** 1.5 * d_mm / 23.0
+
+
+def group_rotation(points_mm, K, M_Nmm, slip=0.0):
+    """Rotation [rad] af en gruppe om tyngdepunktet ved momentet M [Nmm].
+    Hver forbindelse (stivhed K [N/mm]) bærer først, når dens hulluft
+    `slip` [mm] er taget op: M(phi) = sum K r_i max(0, phi r_i - slip)."""
+    M_Nmm = abs(M_Nmm)
+    n = len(points_mm)
+    cx = sum(p[0] for p in points_mm) / n
+    cy = sum(p[1] for p in points_mm) / n
+    rs = [math.hypot(p[0] - cx, p[1] - cy) for p in points_mm]
+    if M_Nmm <= 0 or max(rs) <= 0:
+        return 0.0
+
+    def moment(phi):
+        return sum(K * r * max(0.0, phi * r - slip) for r in rs)
+    hi = slip / max(rs) + M_Nmm / (K * sum(r * r for r in rs))
+    while moment(hi) < M_Nmm:
+        hi *= 2
+    lo = 0.0
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        if moment(mid) < M_Nmm:
+            lo = mid
+        else:
+            hi = mid
+    return hi
+
+
 def n_ef_factor(n, a1, d, alpha_deg):
     """n_ef,alpha / n for en række med n dorne og afstand a1 (samme enhed
     som d). EC5 (8.34) og 8.5.1.1(4)."""
@@ -660,10 +708,12 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
             both_signs=True, rule="omhyllende", timber="GL24h", t1=80.0,
             t2=None, f_uk=360.0, k_mod=0.8, gamma_M=1.3, use_nef=True,
             Fv_Rd=None, load_angle=None, fastener="dorn", d_w=None,
-            t_w=None):
+            t_w=None, slip=None, M_ser=None):
     """Kraftfordeling og kontrol for alle lasttilfælde. fastener "dorn"
     eller "bolt" (bolt: rebvirkning fra skive d_w × t_w [mm], standard
-    3d × 0.3d, og boltenes afstandskrav). points, P og
+    3d × 0.3d, og boltenes afstandskrav). Stivhed: K_ser efter EC5 7.1,
+    hulluft `slip` [mm] (bolt 1.0, dorn 0) og rotationen ved M_ser [kNm].
+    points, P og
     load_pt i meter. N virker langs load_angle (standard: første emnes
     fiber), V +90 grader derfra. Returnerer dict for det styrende
     lasttilfælde."""
@@ -796,8 +846,33 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
                 nm, a * 1000, r * 1000, res_txt))
     L.append("SAMLET: " + ("OK" if ok else "IKKE OK"))
 
+    # ---- stivhed (EC5 7.1)
+    rho_m = RHO_MEAN.get(str(timber).strip().upper(), 1.09 * rho_k)
+    K_f = k_ser_fastener(d_mm, rho_m, 2, steel=(typ != "B"))
+    slip = (1.0 if bolt else 0.0) if slip is None else float(slip)
+    pts_mm = [(p[0] * 1000, p[1] * 1000) for p in points]
+    Ip_mm = gov["Ip"] * 1e6
+    K_r = K_f * Ip_mm / 1e6                     # kNm/rad
+    L += ["STIVHED (DS/EN 1995-1-1, 7.1)",
+          "rho_m = {:g} kg/m3; K_ser = 2 snit x {}rho_m^1.5 d/23 = {:.0f} "
+          "N/mm pr. {}".format(rho_m, "2 (stål) x " if typ != "B" else "",
+                               K_f, word),
+          "K_r,ser = K_ser x sum r^2 = {:.0f} N/mm x {:.0f} mm2 = {:.0f} "
+          "kNm/rad;  K_r,u = 2/3 K_r,ser = {:.0f} kNm/rad".format(
+              K_f, Ip_mm, K_r, 2 * K_r / 3),
+          "Hulluft {:g} mm pr. {} (lægges til separat)".format(slip, word)]
+    phi = None
+    if M_ser:
+        phi = group_rotation(pts_mm, K_f, float(M_ser) * 1e6, slip)
+        phi_el = abs(float(M_ser)) / K_r
+        L.append("Rotation ved M_ser = {:.2f} kNm: {:.2f} mrad (elastisk "
+                 "{:.2f} + hulluft {:.2f})".format(
+                     float(M_ser), phi * 1000, phi_el * 1000,
+                     (phi - phi_el) * 1000))
+
     out = dict(gov)
-    out.update({"util": util, "i_max": i_max, "ok": ok, "spacing": spacing,
+    out.update({"K_f": K_f, "K_r": K_r, "slip": slip, "phi_ser": phi,
+                "rho_m": rho_m, "util": util, "i_max": i_max, "ok": ok, "spacing": spacing,
                 "lines": L, "cases": results, "members": mems})
     return out
 
@@ -1018,18 +1093,41 @@ def stalplade_hjorne(b=0.4, h=0.4, slope=-35.0, H_col=0.5, dorn="M12",
             worst = pc
     plate = worst
 
+    # stivhed: spær- og søjlegruppe i serie (pladen regnes stiv)
+    K_ser = 1.0 / (1.0 / rafter["K_r"] + 1.0 / column["K_r"])
+    stiff = ["HJØRNETS ROTATIONSSTIVHED (spær + søjle i serie, stiv plade)",
+             "K_ser = 1/(1/{:.0f} + 1/{:.0f}) = {:.0f} kNm/rad (SLS)".format(
+                 rafter["K_r"], column["K_r"], K_ser),
+             "K_u = 2/3 K_ser = {:.0f} kNm/rad (ULS, kraftfordeling)".format(
+                 2 * K_ser / 3),
+             "K_fin = K_ser / (1 + psi2 k_def) – vind: psi2 = 0, så K_fin = "
+             "K_ser"]
+    phi0 = None
+    if rafter["phi_ser"] is not None:
+        phi = rafter["phi_ser"] + column["phi_ser"]
+        M_ser = kw.get("M_ser")
+        phi0 = phi - abs(M_ser) / K_ser
+        stiff += ["Rotation ved M_ser = {:.2f} kNm: {:.2f} mrad i alt "
+                  "(spær {:.2f} + søjle {:.2f})".format(
+                      M_ser, phi * 1000, rafter["phi_ser"] * 1000,
+                      column["phi_ser"] * 1000),
+                  "  heraf hulluft ca. {:.2f} mrad – i rammemodellen: fjeder "
+                  "K_ser + en ekstra knæk på {:.2f} mrad".format(
+                      phi0 * 1000, phi0 * 1000)]
+
     ok = rafter["ok"] and column["ok"] and plate["ok"]
     grp = ("BOLT" if str(kw.get("fastener") or "").lower().startswith("b")
            else "DORN") + "GRUPPE"
     lines = (["=== SPÆRETS {} ===".format(grp)] + rafter["lines"]
              + ["", "=== SØJLENS {} ===".format(grp)] + column["lines"]
-             + [""] + plate["lines"]
+             + [""] + plate["lines"] + [""] + stiff
              + ["", "HJØRNE SAMLET: {}  (spær {:.2f}, søjle {:.2f}, plade "
                 "{:.2f})".format("OK" if ok else "IKKE OK", rafter["util"],
                                  column["util"], plate["util"])])
     return {"rafter": rafter, "column": column, "plate": plate, "ok": ok,
             "node": node, "lines": lines, "b": b, "h": h, "slope": slope,
-            "H_col": H_col}
+            "H_col": H_col, "K_ser": K_ser, "K_u": 2 * K_ser / 3,
+            "phi_slip": phi0}
 
 
 def plot_hjorne(res, show=True, save=None):
@@ -1104,8 +1202,8 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
     def RunScript(self, area, x_size, y_size, dorn, typ, grain, free,
                   grain_mid, free_mid, grid_angle, a_edge, a_end, s_par,
                   s_perp, pts, N, V, M, load_pt, load_angle, both_signs,
-                  fastener, d_w, t_w, rule, timber, t1, t2, f_uk, k_mod,
-                  gamma_M, use_nef, Fv_Rd, scale, plot):
+                  fastener, d_w, t_w, slip, M_ser, rule, timber, t1, t2,
+                  f_uk, k_mod, gamma_M, use_nef, Fv_Rd, scale, plot):
         self._draw = None
         empty = (None,) * 15
         lvl = Grasshopper.Kernel.GH_RuntimeMessageLevel
@@ -1148,7 +1246,7 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
                         N, V, M, lp, _d(both_signs, True), rule, timber,
                         _d(t1, 80.0), t2, _d(f_uk, 360.0), _d(k_mod, 0.8),
                         _d(gamma_M, 1.3), _d(use_nef, True), Fv_Rd,
-                        load_angle, fastener, d_w, t_w)
+                        load_angle, fastener, d_w, t_w, slip, M_ser)
         except ValueError as exc:
             self.Component.AddRuntimeMessage(lvl.Error, str(exc))
             return empty
@@ -1280,6 +1378,8 @@ if __name__ == "__main__":
         fastener="bolt",        # "bolt" (med rebvirkning) eller "dorn"
         d_w=36, t_w=3.6,        # skive [mm]
         N=[27.42], V=[15.49], M=[43.55],  # lasttilfælde [kN], [kN], [kNm]
+        M_ser=43.55 / 1.5,      # moment i anvendelsesgrænsetilstand [kNm]
+        slip=1.0,               # hulluft pr. bolt [mm] (træ d+1)
         rule="omhyllende",      # eller "dorn"
         timber="GL24h", t1=165,  # træ på hver side af pladen [mm]
         t_p=12, f_y=355, f_u=490,  # plade S355
