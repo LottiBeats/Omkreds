@@ -45,7 +45,7 @@ Opsætning i Grasshopper (højreklik på hver input):
     a_edge     float,   Item   kantafstand til placering [x d] (4)
     a_end      float,   Item   endeafstand til placering [x d] (7)
     s_par      float,   Item   dornafstand langs fiberen [x d] (5)
-    s_perp     float,   Item   dornafstand på tværs [x d] (3)
+    s_perp     float,   Item   afstand på tværs [x d] (3 dorn / 4 bolt)
     pts        Point3d, List   (valgfri – egne dornplaceringer)
   Last (lister = lasttilfælde; korte lister gentages)
     N          float,   List   [kN] langs grain
@@ -58,6 +58,9 @@ Opsætning i Grasshopper (højreklik på hver input):
                                spærets dorngruppe.
     both_signs bool,    Item   regn også med modsat fortegn (True)
   Kontrol
+    fastener   str,     Item   "dorn" eller "bolt" ("dorn")
+    d_w        float,   Item   bolt: skivens diameter [mm] (3d)
+    t_w        float,   Item   bolt: skivens tykkelse [mm] (0.3d)
     rule       str,     Item   "omhyllende" eller "dorn" ("omhyllende")
     timber     str,     Item   "GL24h", "C24" ... eller rho_k (GL24h)
     t1         float,   Item   A: træ på hver side af pladen; B: sidetræ
@@ -82,6 +85,8 @@ Bæreevne pr. dorn, alpha = vinkel mellem kraft og fiber:
     f_h,0,k = 0.082 (1 - 0.01 d) rho_k;  f_h,a,k = f_h,0,k/(k90 sin^2 + cos^2)
     M_y,Rk = 0.3 f_u,k d^2.6
     A: F_v,Rk = 2 min(f, g, h) (8.11);  B: F_v,Rk = 2 min(g, h, j, k) (8.7)
+    Bolte: + F_ax,Rk/4 i g, h (A) / j, k (B), højst 25 %; F_ax,Rk = min(
+    3 f_c,90,k A_skive, 0.9 f_ub A_s). Afstande efter tabel 8.4.
     F_v,Rd = n_ef/n k_mod F_v,Rk / gamma_M   (B: mindste n_ef af emnerne)
 
 Stålplade-rammehjørne (lokalt): stalplade_hjorne() regner spærets og
@@ -121,6 +126,18 @@ RHO_K = {
     "GL28C": 390, "GL30C": 390, "GL32C": 400,
 }
 EPS = 1e-9
+
+# f_c,90,k [MPa] – EN 338 og EN 14080 (til skivetryk ved bolte)
+F_C90 = {
+    "C14": 2.0, "C16": 2.2, "C18": 2.2, "C20": 2.3, "C22": 2.4,
+    "C24": 2.5, "C27": 2.6, "C30": 2.7, "C35": 2.7, "C40": 2.8,
+    "D30": 8.0, "D35": 8.1, "D40": 8.3, "D50": 9.3, "D60": 10.5,
+    "D70": 13.5,
+}
+
+# Spændingsareal A_s [mm2] for metriske bolte
+A_S = {10: 58.0, 12: 84.3, 14: 115.0, 16: 157.0, 20: 245.0, 22: 303.0,
+       24: 353.0, 27: 459.0, 30: 561.0}
 
 
 # ---- små vektorhjælpere
@@ -453,44 +470,62 @@ def f_h_alpha(d, rho_k, alpha_deg, hardwood=False):
     return f_h0 / (k90 * math.sin(a) ** 2 + math.cos(a) ** 2), f_h0, k90
 
 
-def johansen_steel_center(d, t1, rho_k, f_uk, alpha_deg, hardwood=False):
-    """EC5 (8.11): stålplade som midterdel, dobbeltsnit, dorn (F_ax = 0).
-    Returnerer F_v,Rk pr. dorn [kN] og mellemregninger."""
+def rope(johansen, F_ax):
+    """Rebvirkning F_ax,Rk/4, højst 25 % af Johansen-delen (bolte,
+    EC5 8.2.2(2)). N."""
+    return min(F_ax / 4.0, 0.25 * johansen)
+
+
+def johansen_steel_center(d, t1, rho_k, f_uk, alpha_deg, hardwood=False,
+                          F_ax=0.0):
+    """EC5 (8.11): stålplade som midterdel, dobbeltsnit. F_ax = F_ax,Rk [N]
+    (0 for dorne). Returnerer F_v,Rk pr. forbindelse [kN] (2 snit) og
+    mellemregninger."""
     f_ha, f_h0, k90 = f_h_alpha(d, rho_k, alpha_deg, hardwood)
     M_y = 0.3 * f_uk * d ** 2.6
-    modes = {
-        "f": f_ha * t1 * d,
-        "g": f_ha * t1 * d * (math.sqrt(2 + 4 * M_y / (f_ha * d * t1 ** 2))
-                              - 1),
-        "h": 2.3 * math.sqrt(M_y * f_ha * d),
-    }
+    g = f_ha * t1 * d * (math.sqrt(2 + 4 * M_y / (f_ha * d * t1 ** 2)) - 1)
+    h = 2.3 * math.sqrt(M_y * f_ha * d)
+    modes = {"f": f_ha * t1 * d, "g": g + rope(g, F_ax),
+             "h": h + rope(h, F_ax)}
     mode = min(modes, key=modes.get)
     return 2 * modes[mode] / 1000.0, {
         "f_h0": f_h0, "k90": k90, "f_h": {"træ": f_ha}, "M_y": M_y,
-        "modes": modes, "mode": mode}
+        "modes": modes, "mode": mode, "F_ax": F_ax}
 
 
 def johansen_timber_double(d, t1, t2, rho_k, f_uk, a_side, a_mid,
-                           hardwood=False):
-    """EC5 (8.7): træ-træ, dobbeltsnit, dorn (F_ax = 0). Sidetræ t1 med
-    vinkel a_side til fiberen, midtertræ t2 med a_mid."""
+                           hardwood=False, F_ax=0.0):
+    """EC5 (8.7): træ-træ, dobbeltsnit. Sidetræ t1 med vinkel a_side til
+    fiberen, midtertræ t2 med a_mid. F_ax = F_ax,Rk [N] (0 for dorne)."""
     f_h1, f_h0, k90 = f_h_alpha(d, rho_k, a_side, hardwood)
     f_h2, _, _ = f_h_alpha(d, rho_k, a_mid, hardwood)
     M_y = 0.3 * f_uk * d ** 2.6
     b = f_h2 / f_h1
-    modes = {
-        "g": f_h1 * t1 * d,
-        "h": 0.5 * f_h2 * t2 * d,
-        "j": 1.05 * f_h1 * t1 * d / (2 + b) * (
-            math.sqrt(2 * b * (1 + b)
-                      + 4 * b * (2 + b) * M_y / (f_h1 * d * t1 ** 2)) - b),
-        "k": 1.15 * math.sqrt(2 * b / (1 + b))
-        * math.sqrt(2 * M_y * f_h1 * d),
-    }
+    j = 1.05 * f_h1 * t1 * d / (2 + b) * (
+        math.sqrt(2 * b * (1 + b)
+                  + 4 * b * (2 + b) * M_y / (f_h1 * d * t1 ** 2)) - b)
+    k = 1.15 * math.sqrt(2 * b / (1 + b)) * math.sqrt(2 * M_y * f_h1 * d)
+    modes = {"g": f_h1 * t1 * d, "h": 0.5 * f_h2 * t2 * d,
+             "j": j + rope(j, F_ax), "k": k + rope(k, F_ax)}
     mode = min(modes, key=modes.get)
     return 2 * modes[mode] / 1000.0, {
         "f_h0": f_h0, "k90": k90, "f_h": {"side": f_h1, "midte": f_h2},
-        "beta": b, "M_y": M_y, "modes": modes, "mode": mode}
+        "beta": b, "M_y": M_y, "modes": modes, "mode": mode, "F_ax": F_ax}
+
+
+def bolt_axial(d, f_c90, f_ub, d_w, t_w, d_hole=None):
+    """F_ax,Rk for en bolt [N]: skivetryk 3 f_c,90,k på skivens areal
+    (EC5 8.5.2(2), skivens diameter højst 12 t_w og 4d) og boltens
+    trækbæreevne 0.9 f_ub A_s. Som SømDIM: hullet trækkes kun fra den
+    faktiske skive."""
+    d_hole = d_hole or d + 2
+    R_w = {"skive": 3 * f_c90 * math.pi / 4 * (d_w ** 2 - d_hole ** 2),
+           "12 t_w": 3 * f_c90 * math.pi / 4 * (12 * t_w) ** 2,
+           "4d": 3 * f_c90 * math.pi / 4 * (4 * d) ** 2}
+    R_t = 0.9 * f_ub * A_S.get(int(round(d)), 0.78 * math.pi * d ** 2 / 4)
+    vals = dict(R_w, bolt=R_t)
+    gov = min(vals, key=vals.get)
+    return vals[gov], vals, gov
 
 
 def n_ef_factor(n, a1, d, alpha_deg):
@@ -528,25 +563,27 @@ def rows_along_grain(points, g, tol):
     return rows, info
 
 
-# ---- afstandskrav, tabel 8.5 (dorne)
+# ---- afstandskrav, tabel 8.4 (bolte) og 8.5 (dorne)
 
-def req_end(f, toward, d, env):
+def req_end(f, toward, d, env, bolt=False):
     """Krævet a3 (langs fiberen) til en ende i retning `toward`."""
     a3t = max(7 * d, 0.080)
+    a3c_min = (4 if bolt else 3) * d
     if env:
         return a3t
     F = math.hypot(f[0], f[1])
     if F < 1e-12:
-        return 3 * d
+        return a3c_min
     th = math.degrees(math.acos(max(-1.0, min(1.0, dot(f, toward) / F))))
     if th <= 90:
         return a3t                                  # belastet ende
     if th < 150:
-        return max(a3t * math.sin(math.radians(th)), 3 * d)
-    return 3 * d
+        sn = math.sin(math.radians(th))
+        return max((1 + 6 * sn) * d if bolt else a3t * sn, a3c_min)
+    return a3c_min
 
 
-def req_edge(f, toward, d, env):
+def req_edge(f, toward, d, env, bolt=False):
     """Krævet a4 (vinkelret på fiberen) til en kant i retning `toward`."""
     if env:
         return 4 * d
@@ -557,15 +594,16 @@ def req_edge(f, toward, d, env):
     return max((2 + 2 * c) * d, 3 * d) if c > 0 else 3 * d
 
 
-def req_a1(f, g, d, env):
+def req_a1(f, g, d, env, bolt=False):
     if env:
         return 5 * d
-    return (3 + 2 * abs(math.cos(math.radians(angle_to_grain(f, g))))) * d
+    c = abs(math.cos(math.radians(angle_to_grain(f, g))))
+    return ((4 + c) if bolt else (3 + 2 * c)) * d
 
 
-def distance_checks(points, P, d, mems, case_forces, env):
-    """Afstande mod tabel 8.5. Returnerer [(navn, aktuel, krav, ok, tekst)]
-    for den dorn/det par, der har mindst margin."""
+def distance_checks(points, P, d, mems, case_forces, env, bolt=False):
+    """Afstande mod tabel 8.4/8.5. Returnerer [(navn, aktuel, krav, ok,
+    tekst)] for den forbindelse/det par, der har mindst margin."""
     sides = poly_sides(P)
     out = []
     many = len(mems) > 1
@@ -574,9 +612,9 @@ def distance_checks(points, P, d, mems, case_forces, env):
         tag = " ({})".format(m["name"]) if many else ""
 
         # dornafstande: a1 langs fiberen eller a2 på tværs
-        a1_i = [max(req_a1(fs[i], g, d, env) for fs in case_forces)
+        a1_i = [max(req_a1(fs[i], g, d, env, bolt) for fs in case_forces)
                 for i in range(len(points))]
-        a2 = 3 * d
+        a2 = (4 if bolt else 3) * d
         worst = None
         for i in range(len(points)):
             for j in range(i + 1, len(points)):
@@ -588,8 +626,8 @@ def distance_checks(points, P, d, mems, case_forces, env):
                     worst = (margin, i, j, sp, sq, a1)
         if worst:
             mg, i, j, sp, sq, a1 = worst
-            out.append(("dornafstand" + tag, mg, 1.0, mg >= 1 - 1e-9,
-                        "dorn {}-{}: langs {:.0f} (a1 {:.0f}) / tværs {:.0f} "
+            out.append(("indbyrdes afstand" + tag, mg, 1.0, mg >= 1 - 1e-9,
+                        "nr. {}-{}: langs {:.0f} (a1 {:.0f}) / tværs {:.0f} "
                         "(a2 {:.0f}) mm".format(i + 1, j + 1, sp * 1000,
                                                 a1 * 1000, sq * 1000,
                                                 a2 * 1000)))
@@ -608,7 +646,8 @@ def distance_checks(points, P, d, mems, case_forces, env):
             worst = None
             for i, p in enumerate(points):
                 act = inside_dist(p, s) / abs(c)
-                req = max(fn(fs[i], toward, d, env) for fs in case_forces)
+                req = max(fn(fs[i], toward, d, env, bolt)
+                          for fs in case_forces)
                 if worst is None or act - req < worst[0] - worst[1]:
                     worst = (act, req)
             out.append(("{} side {}{}".format(nm, k + 1, tag), worst[0],
@@ -620,8 +659,11 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
             free_mid=None, N=0.0, V=0.0, M=0.0, load_pt=None,
             both_signs=True, rule="omhyllende", timber="GL24h", t1=80.0,
             t2=None, f_uk=360.0, k_mod=0.8, gamma_M=1.3, use_nef=True,
-            Fv_Rd=None, load_angle=None):
-    """Kraftfordeling og kontrol for alle lasttilfælde. points, P og
+            Fv_Rd=None, load_angle=None, fastener="dorn", d_w=None,
+            t_w=None):
+    """Kraftfordeling og kontrol for alle lasttilfælde. fastener "dorn"
+    eller "bolt" (bolt: rebvirkning fra skive d_w × t_w [mm], standard
+    3d × 0.3d, og boltenes afstandskrav). points, P og
     load_pt i meter. N virker langs load_angle (standard: første emnes
     fiber), V +90 grader derfra. Returnerer dict for det styrende
     lasttilfælde."""
@@ -635,6 +677,15 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
     cases = load_cases(N, V, M, both_signs)
     g0 = mems[0]["g"]
     rinfo = [rows_along_grain(points, m["g"], d / 2)[1] for m in mems]
+    bolt = str(fastener or "dorn").strip().lower().startswith("b")
+    word = "bolt" if bolt else "dorn"
+    F_ax, ax_info = 0.0, None
+    if bolt:
+        d_w = d_w or 3 * d_mm
+        t_w = t_w or 0.3 * d_mm
+        f_c90 = F_C90.get(str(timber).strip().upper(), 2.5)
+        F_ax, vals, gov_ax = bolt_axial(d_mm, f_c90, f_uk, d_w, t_w)
+        ax_info = (f_c90, d_w, t_w, vals, gov_ax)
 
     def capacity(f, i):
         if Fv_Rd:
@@ -642,10 +693,10 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
         if typ == "B":
             Rk, x = johansen_timber_double(
                 d_mm, t1, t2, rho_k, f_uk, angle_to_grain(f, mems[0]["g"]),
-                angle_to_grain(f, mems[1]["g"]), hard)
+                angle_to_grain(f, mems[1]["g"]), hard, F_ax)
         else:
             Rk, x = johansen_steel_center(
-                d_mm, t1, rho_k, f_uk, angle_to_grain(f, g0), hard)
+                d_mm, t1, rho_k, f_uk, angle_to_grain(f, g0), hard, F_ax)
         kef = 1.0
         if use_nef:
             kef = min(n_ef_factor(ri[i][0], ri[i][1], d,
@@ -673,7 +724,7 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
     i_max = max(range(len(points)), key=lambda i: gov["eta"][i])
     util = gov["eta"][i_max]
     spacing = distance_checks(points, P, d, mems,
-                              [r["forces"] for r in results], env)
+                              [r["forces"] for r in results], env, bolt)
     ok = util <= 1.0 and all(s[3] for s in spacing)
 
     # ---- rapport
@@ -687,8 +738,8 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
                 "dobbeltsnit (8.11))")
         thick = "t1 = {:g} mm".format(t1)
     L = [head,
-         "Træ: {}, rho_k = {:g} kg/m3; dorn d = {:g} mm, f_u,k = {:g} MPa"
-         .format(tname, rho_k, d_mm, f_uk),
+         "Træ: {}, rho_k = {:g} kg/m3; {} d = {:g} mm, f_u,k = {:g} MPa"
+         .format(tname, rho_k, word, d_mm, f_uk),
          "{}, k_mod = {:g}, gamma_M = {:g}".format(thick, k_mod, gamma_M)]
     for m in mems:
         L.append("{} (fiber {:g} grader): {}".format(
@@ -703,19 +754,29 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
     if x is None:
         L.append("F_v,Rd = {:.2f} kN (givet)".format(rd))
     else:
-        L.append("Styrende dorn nr. {}: F = {:.2f} kN, alpha = {}".format(
-            i_max + 1, gov["mags"][i_max], " / ".join(
+        L.append("Styrende {} nr. {}: F = {:.2f} kN, alpha = {}".format(
+            word, i_max + 1, gov["mags"][i_max], " / ".join(
                 "{:.1f} grader ({})".format(angle_to_grain(f, m["g"]),
                                             m["name"]) for m in mems)))
         L += ["f_h,0,k = 0.082(1-0.01d)rho_k = {:.2f} MPa, k90 = {:.3f}"
               .format(x["f_h0"], x["k90"]),
               "f_h,a,k: " + ", ".join("{} {:.2f} MPa".format(k, v)
                                       for k, v in x["f_h"].items()),
-              "M_y,Rk = 0.3 f_u,k d^2.6 = {:.0f} Nmm".format(x["M_y"]),
+              "M_y,Rk = 0.3 f_u,k d^2.6 = {:.0f} Nmm".format(x["M_y"])]
+        if ax_info:
+            f_c90, dw, tw, vals, gov_ax = ax_info
+            L += ["F_ax,Rk = min(3 f_c,90,k A (skive {:g} x {:g}, f_c,90,k = "
+                  "{:g} MPa), 0.9 f_ub A_s): ".format(dw, tw, f_c90)
+                  + ", ".join("{} {:.0f}".format(k, v)
+                              for k, v in vals.items())
+                  + " N -> {:.0f} N ({})".format(F_ax, gov_ax),
+                  "Rebvirkning F_ax,Rk/4 = {:.0f} N pr. snit (højst 25 % "
+                  "af Johansen-delen)".format(F_ax / 4)]
+        L += [
               "Brudformer pr. snit: " + ", ".join(
                   "{} = {:.2f}".format(k, v / 1000)
                   for k, v in x["modes"].items()) + " kN",
-              "F_v,Rk = 2 x {:.2f} = {:.2f} kN (brudform {})".format(
+              "F_v,Rk = 2 snit x {:.2f} = {:.2f} kN (brudform {})".format(
                   x["Rk"] / 2, x["Rk"], x["mode"]),
               "n_ef/n = {:.3f}".format(x["kef"]) if use_nef
               else "n_ef ikke medregnet",
@@ -724,7 +785,8 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
     L.append("eta = {:.2f} / {:.2f} = {:.2f}  {}".format(
         gov["mags"][i_max], rd, util, "OK" if util <= 1 else "IKKE OK"))
     L.append("Afstande ({}):".format("ugunstigste retning" if env
-                                     else "pr. dorn efter kraftretning"))
+                                     else "pr. {} efter kraftretning".format(
+                                         word)))
     for nm, a, r, sok, txt in spacing:
         res_txt = "OK" if sok else "IKKE OK"
         if txt:
@@ -744,7 +806,7 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
 
 def solve(poly=None, x_size=0.333, y_size=0.4, dorn="M12", typ="A",
           grain="y", free=None, grain_mid=None, free_mid=None,
-          grid_angle=None, a_edge=4.0, a_end=7.0, s_par=5.0, s_perp=3.0,
+          grid_angle=None, a_edge=4.0, a_end=7.0, s_par=5.0, s_perp=None,
           pts=None, **kw):
     """Placerer dornene og kører analyse(). poly i meter (ellers rektangel
     x_size × y_size fra 0,0). Øvrige argumenter går til analyse()."""
@@ -752,6 +814,9 @@ def solve(poly=None, x_size=0.333, y_size=0.4, dorn="M12", typ="A",
     P = poly or rect_poly(x_size, y_size)
     d_mm = parse_dorn(dorn)
     mems = members(typ, grain, free, grain_mid, free_mid)
+    if s_perp is None:                  # a2 = 4d for bolte, 3d for dorne
+        bolt = str(kw.get("fastener") or "dorn").lower().startswith("b")
+        s_perp = 4.0 if bolt else 3.0
     auto, Q = layout(P, d_mm / 1000.0, mems, a_edge, a_end, s_par, s_perp,
                      grid_angle)
     if pts is None:
@@ -954,8 +1019,10 @@ def stalplade_hjorne(b=0.4, h=0.4, slope=-35.0, H_col=0.5, dorn="M12",
     plate = worst
 
     ok = rafter["ok"] and column["ok"] and plate["ok"]
-    lines = (["=== SPÆRETS DORNGRUPPE ==="] + rafter["lines"]
-             + ["", "=== SØJLENS DORNGRUPPE ==="] + column["lines"]
+    grp = ("BOLT" if str(kw.get("fastener") or "").lower().startswith("b")
+           else "DORN") + "GRUPPE"
+    lines = (["=== SPÆRETS {} ===".format(grp)] + rafter["lines"]
+             + ["", "=== SØJLENS {} ===".format(grp)] + column["lines"]
              + [""] + plate["lines"]
              + ["", "HJØRNE SAMLET: {}  (spær {:.2f}, søjle {:.2f}, plade "
                 "{:.2f})".format("OK" if ok else "IKKE OK", rafter["util"],
@@ -1037,8 +1104,8 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
     def RunScript(self, area, x_size, y_size, dorn, typ, grain, free,
                   grain_mid, free_mid, grid_angle, a_edge, a_end, s_par,
                   s_perp, pts, N, V, M, load_pt, load_angle, both_signs,
-                  rule, timber, t1, t2, f_uk, k_mod, gamma_M, use_nef, Fv_Rd,
-                  scale, plot):
+                  fastener, d_w, t_w, rule, timber, t1, t2, f_uk, k_mod,
+                  gamma_M, use_nef, Fv_Rd, scale, plot):
         self._draw = None
         empty = (None,) * 15
         lvl = Grasshopper.Kernel.GH_RuntimeMessageLevel
@@ -1066,9 +1133,10 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
                               float(_d(y_size, 0.4)) * u)
 
             mems = members(typ, grain, free, grain_mid, free_mid)
+            bolt = str(fastener or "dorn").lower().startswith("b")
             auto, Q = layout(P, d_mm / 1000.0, mems, _d(a_edge, 4.0),
                              _d(a_end, 7.0), _d(s_par, 5.0),
-                             _d(s_perp, 3.0), grid_angle)
+                             _d(s_perp, 4.0 if bolt else 3.0), grid_angle)
             Pm = [(p.X * u, p.Y * u) for p in pts] if pts else auto
             if not Pm:
                 raise ValueError("Ingen dorne – området er for lille til "
@@ -1080,7 +1148,7 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
                         N, V, M, lp, _d(both_signs, True), rule, timber,
                         _d(t1, 80.0), t2, _d(f_uk, 360.0), _d(k_mod, 0.8),
                         _d(gamma_M, 1.3), _d(use_nef, True), Fv_Rd,
-                        load_angle)
+                        load_angle, fastener, d_w, t_w)
         except ValueError as exc:
             self.Component.AddRuntimeMessage(lvl.Error, str(exc))
             return empty
@@ -1207,13 +1275,15 @@ if __name__ == "__main__":
         b=0.4,                  # søjlebredde [m]
         h=0.4,                  # spærhøjde vinkelret på fiberen [m]
         slope=-35,              # spærets fiberretning [grader]
-        H_col=0.5,              # højde af søjlens dornområde [m]
+        H_col=0.55,             # højde af søjlens dornområde [m]
         dorn="M12",
+        fastener="bolt",        # "bolt" (med rebvirkning) eller "dorn"
+        d_w=36, t_w=3.6,        # skive [mm]
         N=[27.42], V=[15.49], M=[43.55],  # lasttilfælde [kN], [kN], [kNm]
         rule="omhyllende",      # eller "dorn"
-        timber="GL24h", t1=80,  # træ på hver side af pladen [mm]
-        t_p=10, f_y=355, f_u=490,  # plade S355
-        f_uk=360, k_mod=0.8, gamma_M=1.3,
+        timber="GL24h", t1=165,  # træ på hver side af pladen [mm]
+        t_p=12, f_y=355, f_u=490,  # plade S355
+        f_uk=300, k_mod=0.8, gamma_M=1.3,
     )
     print("\n".join(res["lines"]))
     plot_hjorne(res)
