@@ -1275,7 +1275,7 @@ if __name__ == "__main__":
         b=0.4,                  # søjlebredde [m]
         h=0.4,                  # spærhøjde vinkelret på fiberen [m]
         slope=-35,              # spærets fiberretning [grader]
-        H_col=0.55,             # højde af søjlens dornområde [m]
+        H_col=0.5,              # højde af søjlens dornområde [m]
         dorn="M12",
         fastener="bolt",        # "bolt" (med rebvirkning) eller "dorn"
         d_w=36, t_w=3.6,        # skive [mm]
@@ -1283,7 +1283,9 @@ if __name__ == "__main__":
         rule="omhyllende",      # eller "dorn"
         timber="GL24h", t1=165,  # træ på hver side af pladen [mm]
         t_p=12, f_y=355, f_u=490,  # plade S355
-        f_uk=300, k_mod=0.8, gamma_M=1.3,
+        f_uk=300,
+        k_mod=0.9,              # vind: kort (0.9) – momentan (1.1)
+        gamma_M=1.35,
     )
     print("\n".join(res["lines"]))
     plot_hjorne(res)
