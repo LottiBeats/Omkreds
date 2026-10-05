@@ -12,8 +12,8 @@ Opsætning i komponenten (højreklik på hver input):
     dorn      str,    Item Access   ("M12" eller 12, diameter i mm)
     a_edge    float,  Item Access   kantafstand  [x d]          (4)
     a_end     float,  Item Access   endeafstand  [x d]          (7)
-    s_par     float,  Item Access   min. afstand mod fiber [x d] (5)
-    s_perp    float,  Item Access   min. afstand vinkelret [x d] (5)
+    s_par     float,  Item Access   min. afstand mod fiber [x d] (5, a1 = 5d)
+    s_perp    float,  Item Access   min. afstand vinkelret [x d] (3, a2 = 3d)
     grain     str,    Item Access   fiberretning "x" eller "y"   ("y")
     pts       Point3d, List Access  (valgfri – egne dornplaceringer)
   Last
@@ -354,7 +354,7 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
         a_edge = _d(a_edge, 4.0)
         a_end = _d(a_end, 7.0)
         s_par = _d(s_par, 5.0)
-        s_perp = _d(s_perp, 5.0)
+        s_perp = _d(s_perp, 3.0)
         grain = (grain or "y").strip().lower()
         N, V, M = N or 0.0, V or 0.0, M or 0.0
         t1 = _d(t1, 80.0)
@@ -536,7 +536,7 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
 # Alle længder er i meter, dorn og t1 i mm, kræfter i kN, M i kNm.
 
 def solve(x_size=0.333, y_size=0.369, dorn="M12", a_edge=4.0, a_end=7.0,
-          s_par=5.0, s_perp=5.0, grain="y", pts=None, N=0.0, V=0.0, M=0.0,
+          s_par=5.0, s_perp=3.0, grain="y", pts=None, N=0.0, V=0.0, M=0.0,
           load_pt=None, timber="GL24h", t1=80.0, f_uk=360.0, k_mod=0.8,
           gamma_M=1.3, use_nef=True, Fv_Rd=None):
     """Samme beregning som komponenten, uden Rhino. Område fra (0, 0)."""
@@ -629,7 +629,7 @@ if __name__ == "__main__":
         x_size=0.333, y_size=0.369,     # forbindelsesområde [m]
         dorn="M12",
         a_edge=4, a_end=7,              # kant-/endeafstand [x d]
-        s_par=5, s_perp=5,              # min. dornafstand [x d]
+        s_par=5, s_perp=3,              # min. dornafstand [x d]
         grain="y",                      # fiberretning
         N=10.0, V=5.0, M=8.0,           # [kN], [kN], [kNm]
         timber="GL24h", t1=80,          # træ og sidetykkelse [mm]
