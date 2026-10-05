@@ -51,7 +51,11 @@ Opsætning i Grasshopper (højreklik på hver input):
     N          float,   List   [kN] langs grain
     V          float,   List   [kN] vinkelret på grain (+90 grader)
     M          float,   List   [kNm], positiv mod uret
-    load_pt    Point3d, Item   (valgfri – angrebspunkt for N og V)
+    load_pt    Point3d, Item   (valgfri – angrebspunkt for N og V, fx
+                               systemknuden)
+    load_angle str,     Item   retning N virker i (valgfri – standard
+                               grain). Fx "y" for søjlens kræfter på
+                               spærets dorngruppe.
     both_signs bool,    Item   regn også med modsat fortegn (True)
   Kontrol
     rule       str,     Item   "omhyllende" eller "dorn" ("omhyllende")
@@ -80,7 +84,14 @@ Bæreevne pr. dorn, alpha = vinkel mellem kraft og fiber:
     A: F_v,Rk = 2 min(f, g, h) (8.11);  B: F_v,Rk = 2 min(g, h, j, k) (8.7)
     F_v,Rd = n_ef/n k_mod F_v,Rk / gamma_M   (B: mindste n_ef af emnerne)
 
-Ikke med: stålpladen (EC3), blokforskydning (bilag A), kløvning (8.1.4).
+Stålplade-rammehjørne (lokalt): stalplade_hjorne() regner spærets og
+søjlens dorngruppe og stålpladen (snit mellem grupperne + hulrandstryk);
+plot_hjorne() tegner det hele. I Grasshopper: to komponenter med hver sin
+gruppe (area, grain, free, grid_angle) og samme N, V, M, load_pt og
+load_angle = "y".
+
+Ikke med: blokforskydning (bilag A), kløvning (8.1.4), pladens svejsninger
+og evt. knæk/stabilitet af pladen.
 """
 
 import math
@@ -609,9 +620,11 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
             free_mid=None, N=0.0, V=0.0, M=0.0, load_pt=None,
             both_signs=True, rule="omhyllende", timber="GL24h", t1=80.0,
             t2=None, f_uk=360.0, k_mod=0.8, gamma_M=1.3, use_nef=True,
-            Fv_Rd=None):
+            Fv_Rd=None, load_angle=None):
     """Kraftfordeling og kontrol for alle lasttilfælde. points, P og
-    load_pt i meter. Returnerer dict for det styrende lasttilfælde."""
+    load_pt i meter. N virker langs load_angle (standard: første emnes
+    fiber), V +90 grader derfra. Returnerer dict for det styrende
+    lasttilfælde."""
     typ = str(typ or "A").strip().upper()
     rule = str(rule or "omhyllende").strip().lower()
     env = not rule.startswith("d")
@@ -643,8 +656,9 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
 
     results = []
     for (n_, v_, m_) in cases:
-        q0 = perp(g0)
-        Fx, Fy = n_ * g0[0] + v_ * q0[0], n_ * g0[1] + v_ * q0[1]
+        gl = g0 if load_angle is None else unit(parse_grain(load_angle))
+        q0 = perp(gl)
+        Fx, Fy = n_ * gl[0] + v_ * q0[0], n_ * gl[1] + v_ * q0[1]
         res = distribute(points, Fx, Fy, m_, load_pt)
         Rd, eta = [], []
         for i, (f, F) in enumerate(zip(res["forces"], res["mags"])):
@@ -759,8 +773,9 @@ def side_labels(P, mems):
     return out
 
 
-def plot_mpl(r, scale=None, show=True, save=None):
-    """Tegner samlingen: pile og kræfter fra det styrende lasttilfælde."""
+def plot_mpl(r, scale=None, show=True, save=None, ax=None, labels="all"):
+    """Tegner samlingen: pile og kræfter fra det styrende lasttilfælde.
+    labels="max" skriver kun tekst ved den styrende dorn."""
     import matplotlib.pyplot as plt
     from matplotlib.patches import Polygon
 
@@ -771,7 +786,9 @@ def plot_mpl(r, scale=None, show=True, save=None):
     if not scale:
         scale = 0.35 * size / Fmax if Fmax > 0 else 0.0
 
-    fig, ax = plt.subplots(figsize=(8, 8))
+    own = ax is None
+    if own:
+        fig, ax = plt.subplots(figsize=(8, 8))
     ax.add_patch(Polygon(P, closed=True, fill=False, ec="#aa0000"))
     if r["inner"]:
         ax.add_patch(Polygon(r["inner"], closed=True, fill=False, ec="grey",
@@ -804,6 +821,8 @@ def plot_mpl(r, scale=None, show=True, save=None):
         if F > 1e-9:
             ax.annotate("", xy=(x + fx * scale, y + fy * scale), xytext=(x, y),
                         arrowprops=dict(arrowstyle="-|>", color=col, lw=1.2))
+        if labels != "all" and i != r["i_max"]:
+            continue
         ax.text(x, y - 0.008, "{:.1f} kN ({:.2f})".format(F, e), color=col,
                 ha="center", va="top", fontsize=7,
                 bbox=dict(fc="white", ec="none", alpha=0.75, pad=1))
@@ -819,10 +838,157 @@ def plot_mpl(r, scale=None, show=True, save=None):
             "Fmax = {:.1f} kN   udnyttelse = {:.2f}  {}").format(
         r["d_mm"], len(r["pts"]), n_, v_, m_, Fmax, r["util"],
         "OK" if r["ok"] else "IKKE OK")
+    if not own:
+        return ax
     ax.set_title(head, fontsize=9, color="#007828" if r["ok"] else "#aa0000")
     ax.set_aspect("equal")
     ax.autoscale_view()
     ax.margins(0.15)
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    fig.tight_layout()
+    if save:
+        fig.savefig(save, dpi=150)
+    if show:
+        plt.show()
+    return fig
+
+
+# ------------------------------------------------- stålplade-rammehjørne
+# Søjle (lodret, bredde b, x = 0..b) og skråt spær (højde h vinkelret på
+# fiberen, fiberretning `slope`), forbundet med en indslidset stålplade.
+# Spæret ligger over søjlen; søjletoppen er skåret efter spærets underside,
+# og spærenden er skåret lodret ved søjlens yderside (x = b).
+#   spærgruppe:  dorne i spæret over søjlen (parallelogrammet overlap_poly)
+#   søjlegruppe: dorne i søjlen under spærets underside, højde H_col
+# Begge grupper får knudens N, V og M (med excentriciteten fra
+# systemknuden til gruppens tyngdepunkt). Pladen eftervises i snittet
+# mellem grupperne (langs spærets underside) og for hulrandstryk.
+
+def column_poly(b, H, slope):
+    """Søjlens dornområde: lodret højde H under spærets underside.
+    Side 1 = bund (søjlen fortsætter), 2 = yderside, 3 = top (skrå ende),
+    4 = inderside."""
+    t = -b * math.tan(math.radians(slope))      # undersiden ved x = 0
+    return [(0.0, t - H), (b, -H), (b, 0.0), (0.0, t)]
+
+
+def system_node(b, h, slope):
+    """Skæring mellem søjlens akse (x = b/2) og spærets akse."""
+    s = math.radians(slope)
+    return (b / 2, -b / 2 * math.tan(s) + h / (2 * math.cos(s)))
+
+
+def plate_check(F, M, node, a, b, t_p, f_y, f_u, Fmax_dowel, d_mm,
+                f_ub, gamma_M0=1.10, gamma_M2=1.35):
+    """Stålpladen (EC3). F = (Fx, Fy) [kN] og M [kNm] i knuden `node`.
+    Snittet går fra a til b [m] (fuldt tværsnit uden huller). Hulrandstryk
+    pr. dorn med k1 = 2.5 og alpha_b = min(f_ub/f_u, 1) – forudsætter
+    e1 >= 3 d0 og e2 >= 1.5 d0 i pladen."""
+    e = sub(b, a)
+    L = math.hypot(*e)
+    t_dir = (e[0] / L, e[1] / L)
+    n_dir = perp(t_dir)
+    mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+    dx, dy = node[0] - mid[0], node[1] - mid[1]
+    M_s = M + dx * F[1] - dy * F[0]             # moment i snittets midte
+    N_s, V_s = dot(F, n_dir), dot(F, t_dir)
+    t = t_p / 1000.0
+    A, W = t * L, t * L ** 2 / 6
+    sig = (abs(N_s) / A + abs(M_s) / W) / 1000.0     # MPa
+    tau = 1.5 * abs(V_s) / A / 1000.0                # MPa, parabolsk
+    vm = math.sqrt(sig ** 2 + 3 * tau ** 2)
+    f_d = f_y / gamma_M0
+    alpha_b = min(f_ub / f_u, 1.0)
+    F_bRd = 2.5 * alpha_b * f_u * d_mm * t_p / gamma_M2 / 1000.0
+    u_sec, u_b = vm / f_d, Fmax_dowel / F_bRd
+    L_ = ["STÅLPLADE (DS/EN 1993-1-8, gamma_M0 = {:g}, gamma_M2 = {:g})"
+          .format(gamma_M0, gamma_M2),
+          "t = {:g} mm, f_y = {:g} MPa, f_u = {:g} MPa".format(t_p, f_y, f_u),
+          "Snit langs spærets underside: L = {:.0f} mm".format(L * 1000),
+          "N = {:.1f} kN, V = {:.1f} kN, M = {:.2f} kNm (i snittets midte)"
+          .format(N_s, V_s, M_s),
+          "sigma = N/A + M/W = {:.0f} MPa, tau = 1.5 V/A = {:.0f} MPa"
+          .format(sig, tau),
+          "von Mises = {:.0f} MPa <= f_y/gamma_M0 = {:.0f} MPa  ({:.2f})  {}"
+          .format(vm, f_d, u_sec, "OK" if u_sec <= 1 else "IKKE OK"),
+          "Hulrandstryk: F_b,Rd = 2.5 x {:.2f} x {:g} x {:g} x {:g} / {:g} "
+          "= {:.1f} kN".format(alpha_b, f_u, d_mm, t_p, gamma_M2, F_bRd),
+          "  F_max = {:.1f} kN  ({:.2f})  {}".format(
+              Fmax_dowel, u_b, "OK" if u_b <= 1 else "IKKE OK")]
+    return {"util": max(u_sec, u_b), "ok": max(u_sec, u_b) <= 1,
+            "lines": L_, "section": (a, b)}
+
+
+def stalplade_hjorne(b=0.4, h=0.4, slope=-35.0, H_col=0.5, dorn="M12",
+                     N=0.0, V=0.0, M=0.0, node=None, timber="GL24h",
+                     t1=80.0, t_p=10.0, f_y=355.0, f_u=490.0, f_uk=360.0,
+                     k_mod=0.8, gamma_M=1.3, rule="omhyllende",
+                     both_signs=True, **kw):
+    """Stålplade-rammehjørne. N, V og M er søjlens snitkræfter i
+    systemknuden (N langs søjlen, V +90 grader, M mod uret). Øvrige
+    argumenter (a_edge, s_par ...) går til solve()."""
+    node = node or system_node(b, h, slope)
+    common = dict(dorn=dorn, typ="A", N=N, V=V, M=M, load_pt=node,
+                  load_angle=90, timber=timber, t1=t1, f_uk=f_uk,
+                  k_mod=k_mod, gamma_M=gamma_M, rule=rule,
+                  both_signs=both_signs, **kw)
+    # rækker langs hvert emnes egen fiber giver flest dorne
+    rafter = solve(poly=overlap_poly(b, h, slope), grain=slope, free="4",
+                   grid_angle=slope, **common)
+    column = solve(poly=column_poly(b, H_col, slope), grain=90, free="1",
+                   grid_angle=90, **common)
+    rafter["members"][0]["name"] = "spær"
+    column["members"][0]["name"] = "søjle"
+
+    # pladen: snit langs spærets underside, styrende lasttilfælde
+    t = -b * math.tan(math.radians(slope))
+    worst = None
+    for n_, v_, m_ in load_cases(N, V, M, both_signs):
+        F = (-v_, n_)                           # N langs +y, V mod -x
+        Fd = max(max(r["mags"]) for r in (rafter, column))
+        pc = plate_check(F, m_, node, (0.0, t), (b, 0.0), t_p, f_y, f_u,
+                         Fd, parse_dorn(dorn), f_uk)
+        if worst is None or pc["util"] > worst["util"]:
+            worst = pc
+    plate = worst
+
+    ok = rafter["ok"] and column["ok"] and plate["ok"]
+    lines = (["=== SPÆRETS DORNGRUPPE ==="] + rafter["lines"]
+             + ["", "=== SØJLENS DORNGRUPPE ==="] + column["lines"]
+             + [""] + plate["lines"]
+             + ["", "HJØRNE SAMLET: {}  (spær {:.2f}, søjle {:.2f}, plade "
+                "{:.2f})".format("OK" if ok else "IKKE OK", rafter["util"],
+                                 column["util"], plate["util"])])
+    return {"rafter": rafter, "column": column, "plate": plate, "ok": ok,
+            "node": node, "lines": lines, "b": b, "h": h, "slope": slope,
+            "H_col": H_col}
+
+
+def plot_hjorne(res, show=True, save=None):
+    """Hele hjørnet: begge dorngrupper med fælles pileskala, pladesnit og
+    systemknude."""
+    import matplotlib.pyplot as plt
+    ra, co = res["rafter"], res["column"]
+    Fmax = max(max(ra["mags"]), max(co["mags"]))
+    scale = 0.2 * res["b"] / Fmax if Fmax > 0 else 0.0
+    fig, ax = plt.subplots(figsize=(9, 10))
+    plot_mpl(ra, scale=scale, ax=ax, labels="max")
+    plot_mpl(co, scale=scale, ax=ax, labels="max")
+    a, b = res["plate"]["section"]
+    ax.plot([a[0], b[0]], [a[1], b[1]], color="#555555", lw=3, alpha=0.4)
+    ax.text((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, "pladesnit",
+            color="#555555", fontsize=8, ha="center", va="bottom")
+    ax.plot(*res["node"], "s", color="black", ms=6)
+    ax.annotate("systemknude", res["node"], xytext=(6, -10),
+                textcoords="offset points", fontsize=8)
+    ax.set_title("Stålplade-hjørne: spær {:.2f}, søjle {:.2f}, plade {:.2f}"
+                 "  {}".format(ra["util"], co["util"], res["plate"]["util"],
+                               "OK" if res["ok"] else "IKKE OK"),
+                 color="#007828" if res["ok"] else "#aa0000", fontsize=10)
+    ax.set_aspect("equal")
+    ax.autoscale_view()
+    ax.margins(0.1)
     ax.set_xlabel("x [m]")
     ax.set_ylabel("y [m]")
     fig.tight_layout()
@@ -870,9 +1036,9 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
 
     def RunScript(self, area, x_size, y_size, dorn, typ, grain, free,
                   grain_mid, free_mid, grid_angle, a_edge, a_end, s_par,
-                  s_perp, pts, N, V, M, load_pt, both_signs, rule, timber,
-                  t1, t2, f_uk, k_mod, gamma_M, use_nef, Fv_Rd, scale,
-                  plot):
+                  s_perp, pts, N, V, M, load_pt, load_angle, both_signs,
+                  rule, timber, t1, t2, f_uk, k_mod, gamma_M, use_nef, Fv_Rd,
+                  scale, plot):
         self._draw = None
         empty = (None,) * 15
         lvl = Grasshopper.Kernel.GH_RuntimeMessageLevel
@@ -913,7 +1079,8 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
             r = analyse(Pm, P, d_mm, typ, grain, free, grain_mid, free_mid,
                         N, V, M, lp, _d(both_signs, True), rule, timber,
                         _d(t1, 80.0), t2, _d(f_uk, 360.0), _d(k_mod, 0.8),
-                        _d(gamma_M, 1.3), _d(use_nef, True), Fv_Rd)
+                        _d(gamma_M, 1.3), _d(use_nef, True), Fv_Rd,
+                        load_angle)
         except ValueError as exc:
             self.Component.AddRuntimeMessage(lvl.Error, str(exc))
             return empty
@@ -1034,25 +1201,24 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
 
 
 if __name__ == "__main__":
-    # Rammehjørne: delt søjle (sidetræ, fiber lodret) omkring et skråt spær
-    # (midtertræ). Overlappet er et parallelogram – se overlap_poly.
-    poly = overlap_poly(b=0.333, h=0.33, slope=-35)
-
-    r = solve(
-        poly=poly,                      # eller x_size=..., y_size=...
+    # Stålplade-rammehjørne: søjle + skråt spær. N, V og M er søjlens
+    # snitkræfter i systemknuden (N langs søjlen, V +90 grader, M mod uret).
+    res = stalplade_hjorne(
+        b=0.4,                  # søjlebredde [m]
+        h=0.4,                  # spærhøjde vinkelret på fiberen [m]
+        slope=-35,              # spærets fiberretning [grader]
+        H_col=0.5,              # højde af søjlens dornområde [m]
         dorn="M12",
-        typ="B",                        # "A" stålplade, "B" træ-træ
-        grain=90,                       # sidetræ (søjle): lodret
-        free="1",                       # søjlen fortsætter under spæret
-        grain_mid=-35,                  # midtertræ (spær)
-        free_mid="4",                   # spæret fortsætter ind over søjlen
-        a_edge=4, a_end=7,              # placering: kant/ende [x d]
-        s_par=5, s_perp=3,              # placering: dornafstand [x d]
-        N=[27.42], V=[15.49], M=[43.55],  # lasttilfælde, N/V langs `grain`
-        both_signs=True,
-        rule="omhyllende",              # eller "dorn"
-        timber="GL24h", t1=80, t2=160,  # sidetræ og midtertræ [mm]
+        N=[27.42], V=[15.49], M=[43.55],  # lasttilfælde [kN], [kN], [kNm]
+        rule="omhyllende",      # eller "dorn"
+        timber="GL24h", t1=80,  # træ på hver side af pladen [mm]
+        t_p=10, f_y=355, f_u=490,  # plade S355
         f_uk=360, k_mod=0.8, gamma_M=1.3,
     )
-    print("\n".join(r["lines"]))
-    plot_mpl(r)
+    print("\n".join(res["lines"]))
+    plot_hjorne(res)
+
+    # Én dorngruppe for sig (fx i Grasshopper-stil):
+    # r = solve(poly=overlap_poly(0.4, 0.4, -35), grain=-35, free="4",
+    #           N=[27.42], V=[15.49], M=[43.55], load_angle=90)
+    # print("\n".join(r["lines"])); plot_mpl(r)
