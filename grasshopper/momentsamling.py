@@ -58,6 +58,9 @@ Opsætning i Grasshopper (højreklik på hver input):
                                spærets dorngruppe.
     both_signs bool,    Item   regn også med modsat fortegn (True)
   Kontrol
+    n_plates   int,     Item   typ A: 1 eller 2 indslidsede plader (1).
+                               Ved 2: t1 = ydertræ, t2 = midtertræ
+    t_p        float,   Item   pladetykkelse [mm] (d) – tynd/tyk plade
     fastener   str,     Item   "dorn" eller "bolt" ("dorn")
     d_w        float,   Item   bolt: skivens diameter [mm] (3d)
     t_w        float,   Item   bolt: skivens tykkelse [mm] (0.3d)
@@ -88,6 +91,7 @@ Bæreevne pr. dorn, alpha = vinkel mellem kraft og fiber:
     f_h,0,k = 0.082 (1 - 0.01 d) rho_k;  f_h,a,k = f_h,0,k/(k90 sin^2 + cos^2)
     M_y,Rk = 0.3 f_u,k d^2.6
     A: F_v,Rk = 2 min(f, g, h) (8.11);  B: F_v,Rk = 2 min(g, h, j, k) (8.7)
+    A med 2 plader: 2 ydre snit (8.11) + 2 indre snit (8.12/8.13), 8.1.3
     Bolte: + F_ax,Rk/4 i g, h (A) / j, k (B), højst 25 %; F_ax,Rk = min(
     3 f_c,90,k A_skive, 0.9 f_ub A_s). Afstande efter tabel 8.4.
     F_v,Rd = n_ef/n k_mod F_v,Rk / gamma_M   (B: mindste n_ef af emnerne)
@@ -528,6 +532,43 @@ def johansen_timber_double(d, t1, t2, rho_k, f_uk, a_side, a_mid,
         "beta": b, "M_y": M_y, "modes": modes, "mode": mode, "F_ax": F_ax}
 
 
+def johansen_steel_two_plates(d, t1, t2, t_p, rho_k, f_uk, alpha_deg,
+                              hardwood=False, F_ax=0.0):
+    """To indslidsede stålplader, 4 snit (EC5 8.1.3).
+    Ydre snit (ydertræ t1 mod plade) som stålplade i midten (8.11): f, g, h.
+    Indre snit (midtertræ t2 mellem pladerne) som stålplader udenpå
+    (8.12 tynd / 8.13 tyk, interpoleret for 0.5d < t_p < d): l, m.
+    Rebvirkning kun i de ydre snit (skiverne sidder på ydersiderne).
+    F_v,Rk = 2 F_ydre + 2 F_indre, hvis brudformerne er forenelige (begge
+    hultryk eller begge flydning), ellers 4 x det mindste."""
+    f_ha, f_h0, k90 = f_h_alpha(d, rho_k, alpha_deg, hardwood)
+    M_y = 0.3 * f_uk * d ** 2.6
+    g = f_ha * t1 * d * (math.sqrt(2 + 4 * M_y / (f_ha * d * t1 ** 2)) - 1)
+    h = 2.3 * math.sqrt(M_y * f_ha * d)
+    outer = {"f": f_ha * t1 * d, "g": g + rope(g, F_ax),
+             "h": h + rope(h, F_ax)}
+    m_thin = 1.15 * math.sqrt(2 * M_y * f_ha * d)          # (8.12 k)
+    m_thick = 2.3 * math.sqrt(M_y * f_ha * d)              # (8.13 m)
+    w = min(1.0, max(0.0, (t_p - 0.5 * d) / (0.5 * d)))
+    inner = {"l": 0.5 * f_ha * t2 * d, "m": m_thin + w * (m_thick - m_thin)}
+    o = min(outer, key=outer.get)
+    i = min(inner, key=inner.get)
+    if (o == "f") == (i == "l"):
+        Rk = 2 * outer[o] + 2 * inner[i]
+        txt = "2 x {:.2f} (ydre, {}) + 2 x {:.2f} (indre, {})".format(
+            outer[o] / 1000, o, inner[i] / 1000, i)
+    else:
+        lo = min(outer[o], inner[i])
+        Rk = 4 * lo
+        txt = ("brudform {} og {} er ikke forenelige -> 4 x {:.2f}"
+               .format(o, i, lo / 1000))
+    modes = dict([("ydre " + k, v) for k, v in outer.items()]
+                 + [("indre " + k, v) for k, v in inner.items()])
+    return Rk / 1000.0, {
+        "f_h0": f_h0, "k90": k90, "f_h": {"træ": f_ha}, "M_y": M_y,
+        "modes": modes, "mode": o + "/" + i, "F_ax": F_ax, "Rk_text": txt}
+
+
 def bolt_axial(d, f_c90, f_ub, d_w, t_w, d_hole=None):
     """F_ax,Rk for en bolt [N]: skivetryk 3 f_c,90,k på skivens areal
     (EC5 8.5.2(2), skivens diameter højst 12 t_w og 4d) og boltens
@@ -708,7 +749,7 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
             both_signs=True, rule="omhyllende", timber="GL24h", t1=80.0,
             t2=None, f_uk=360.0, k_mod=0.8, gamma_M=1.3, use_nef=True,
             Fv_Rd=None, load_angle=None, fastener="dorn", d_w=None,
-            t_w=None, slip=None, M_ser=None):
+            t_w=None, slip=None, M_ser=None, n_plates=1, t_p=None):
     """Kraftfordeling og kontrol for alle lasttilfælde. fastener "dorn"
     eller "bolt" (bolt: rebvirkning fra skive d_w × t_w [mm], standard
     3d × 0.3d, og boltenes afstandskrav). Stivhed: K_ser efter EC5 7.1,
@@ -745,8 +786,14 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
                 d_mm, t1, t2, rho_k, f_uk, angle_to_grain(f, mems[0]["g"]),
                 angle_to_grain(f, mems[1]["g"]), hard, F_ax)
         else:
-            Rk, x = johansen_steel_center(
-                d_mm, t1, rho_k, f_uk, angle_to_grain(f, g0), hard, F_ax)
+            if n_plates == 2:
+                Rk, x = johansen_steel_two_plates(
+                    d_mm, t1, t2, t_p or d_mm, rho_k, f_uk,
+                    angle_to_grain(f, g0), hard, F_ax)
+            else:
+                Rk, x = johansen_steel_center(
+                    d_mm, t1, rho_k, f_uk, angle_to_grain(f, g0), hard,
+                    F_ax)
         kef = 1.0
         if use_nef:
             kef = min(n_ef_factor(ri[i][0], ri[i][1], d,
@@ -784,9 +831,15 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
         thick = "t1 = {:g} mm (sidetræ), t2 = {:g} mm (midtertræ)".format(
             t1, t2)
     else:
-        head = ("KONTROL (DS/EN 1995-1-1, indslidset stålplade, "
-                "dobbeltsnit (8.11))")
-        thick = "t1 = {:g} mm".format(t1)
+        if n_plates == 2:
+            head = ("KONTROL (DS/EN 1995-1-1, to indslidsede stålplader, "
+                    "4 snit (8.11 + 8.13, 8.1.3))")
+            thick = ("t1 = {:g} mm (ydre), t2 = {:g} mm (indre), plader "
+                     "t = {:g} mm".format(t1, t2, t_p or d_mm))
+        else:
+            head = ("KONTROL (DS/EN 1995-1-1, indslidset stålplade, "
+                    "dobbeltsnit (8.11))")
+            thick = "t1 = {:g} mm".format(t1)
     L = [head,
          "Træ: {}, rho_k = {:g} kg/m3; {} d = {:g} mm, f_u,k = {:g} MPa"
          .format(tname, rho_k, word, d_mm, f_uk),
@@ -826,8 +879,10 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
               "Brudformer pr. snit: " + ", ".join(
                   "{} = {:.2f}".format(k, v / 1000)
                   for k, v in x["modes"].items()) + " kN",
-              "F_v,Rk = 2 snit x {:.2f} = {:.2f} kN (brudform {})".format(
-                  x["Rk"] / 2, x["Rk"], x["mode"]),
+              ("F_v,Rk = {} = {:.2f} kN".format(x["Rk_text"], x["Rk"])
+               if "Rk_text" in x else
+               "F_v,Rk = 2 snit x {:.2f} = {:.2f} kN (brudform {})".format(
+                   x["Rk"] / 2, x["Rk"], x["mode"])),
               "n_ef/n = {:.3f}".format(x["kef"]) if use_nef
               else "n_ef ikke medregnet",
               "F_v,Rd = {:.3f} x {:g} x {:.2f} / {:g} = {:.2f} kN".format(
@@ -848,14 +903,16 @@ def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
 
     # ---- stivhed (EC5 7.1)
     rho_m = RHO_MEAN.get(str(timber).strip().upper(), 1.09 * rho_k)
-    K_f = k_ser_fastener(d_mm, rho_m, 2, steel=(typ != "B"))
+    planes = 2 * n_plates if typ != "B" else 2
+    K_f = k_ser_fastener(d_mm, rho_m, planes, steel=(typ != "B"))
     slip = (1.0 if bolt else 0.0) if slip is None else float(slip)
     pts_mm = [(p[0] * 1000, p[1] * 1000) for p in points]
     Ip_mm = gov["Ip"] * 1e6
     K_r = K_f * Ip_mm / 1e6                     # kNm/rad
     L += ["STIVHED (DS/EN 1995-1-1, 7.1)",
-          "rho_m = {:g} kg/m3; K_ser = 2 snit x {}rho_m^1.5 d/23 = {:.0f} "
-          "N/mm pr. {}".format(rho_m, "2 (stål) x " if typ != "B" else "",
+          "rho_m = {:g} kg/m3; K_ser = {} snit x {}rho_m^1.5 d/23 = {:.0f} "
+          "N/mm pr. {}".format(rho_m, planes,
+                               "2 (stål) x " if typ != "B" else "",
                                K_f, word),
           "K_r,ser = K_ser x sum r^2 = {:.0f} N/mm x {:.0f} mm2 = {:.0f} "
           "kNm/rad;  K_r,u = 2/3 K_r,ser = {:.0f} kNm/rad".format(
@@ -1020,11 +1077,15 @@ def system_node(b, h, slope):
 
 
 def plate_check(F, M, node, a, b, t_p, f_y, f_u, Fmax_dowel, d_mm,
-                f_ub, gamma_M0=1.10, gamma_M2=1.35):
+                f_ub, gamma_M0=1.10, gamma_M2=1.35, n_plates=1):
     """Stålpladen (EC3). F = (Fx, Fy) [kN] og M [kNm] i knuden `node`.
     Snittet går fra a til b [m] (fuldt tværsnit uden huller). Hulrandstryk
     pr. dorn med k1 = 2.5 og alpha_b = min(f_ub/f_u, 1) – forudsætter
-    e1 >= 3 d0 og e2 >= 1.5 d0 i pladen."""
+    e1 >= 3 d0 og e2 >= 1.5 d0 i pladen. Med n_plates deles kræfterne
+    ligeligt mellem pladerne."""
+    F = (F[0] / n_plates, F[1] / n_plates)
+    M = M / n_plates
+    Fmax_dowel = Fmax_dowel / n_plates
     e = sub(b, a)
     L = math.hypot(*e)
     t_dir = (e[0] / L, e[1] / L)
@@ -1044,7 +1105,9 @@ def plate_check(F, M, node, a, b, t_p, f_y, f_u, Fmax_dowel, d_mm,
     u_sec, u_b = vm / f_d, Fmax_dowel / F_bRd
     L_ = ["STÅLPLADE (DS/EN 1993-1-8, gamma_M0 = {:g}, gamma_M2 = {:g})"
           .format(gamma_M0, gamma_M2),
-          "t = {:g} mm, f_y = {:g} MPa, f_u = {:g} MPa".format(t_p, f_y, f_u),
+          "{} plade{} t = {:g} mm, f_y = {:g} MPa, f_u = {:g} MPa – "
+          "kræfter pr. plade".format(n_plates, "r" if n_plates > 1 else "",
+                                     t_p, f_y, f_u),
           "Snit langs spærets underside: L = {:.0f} mm".format(L * 1000),
           "N = {:.1f} kN, V = {:.1f} kN, M = {:.2f} kNm (i snittets midte)"
           .format(N_s, V_s, M_s),
@@ -1054,7 +1117,7 @@ def plate_check(F, M, node, a, b, t_p, f_y, f_u, Fmax_dowel, d_mm,
           .format(vm, f_d, u_sec, "OK" if u_sec <= 1 else "IKKE OK"),
           "Hulrandstryk: F_b,Rd = 2.5 x {:.2f} x {:g} x {:g} x {:g} / {:g} "
           "= {:.1f} kN".format(alpha_b, f_u, d_mm, t_p, gamma_M2, F_bRd),
-          "  F_max = {:.1f} kN  ({:.2f})  {}".format(
+          "  F_max pr. plade = {:.1f} kN  ({:.2f})  {}".format(
               Fmax_dowel, u_b, "OK" if u_b <= 1 else "IKKE OK")]
     return {"util": max(u_sec, u_b), "ok": max(u_sec, u_b) <= 1,
             "lines": L_, "section": (a, b)}
@@ -1064,7 +1127,7 @@ def stalplade_hjorne(b=0.4, h=0.4, slope=-35.0, H_col=0.5, dorn="M12",
                      N=0.0, V=0.0, M=0.0, node=None, timber="GL24h",
                      t1=80.0, t_p=10.0, f_y=355.0, f_u=490.0, f_uk=360.0,
                      k_mod=0.8, gamma_M=1.3, rule="omhyllende",
-                     both_signs=True, **kw):
+                     both_signs=True, n_plates=1, t2=None, **kw):
     """Stålplade-rammehjørne. N, V og M er søjlens snitkræfter i
     systemknuden (N langs søjlen, V +90 grader, M mod uret). Øvrige
     argumenter (a_edge, s_par ...) går til solve()."""
@@ -1072,7 +1135,8 @@ def stalplade_hjorne(b=0.4, h=0.4, slope=-35.0, H_col=0.5, dorn="M12",
     common = dict(dorn=dorn, typ="A", N=N, V=V, M=M, load_pt=node,
                   load_angle=90, timber=timber, t1=t1, f_uk=f_uk,
                   k_mod=k_mod, gamma_M=gamma_M, rule=rule,
-                  both_signs=both_signs, **kw)
+                  both_signs=both_signs, n_plates=n_plates, t2=t2, t_p=t_p,
+                  **kw)
     # rækker langs hvert emnes egen fiber giver flest dorne
     rafter = solve(poly=overlap_poly(b, h, slope), grain=slope, free="4",
                    grid_angle=slope, **common)
@@ -1088,7 +1152,7 @@ def stalplade_hjorne(b=0.4, h=0.4, slope=-35.0, H_col=0.5, dorn="M12",
         F = (-v_, n_)                           # N langs +y, V mod -x
         Fd = max(max(r["mags"]) for r in (rafter, column))
         pc = plate_check(F, m_, node, (0.0, t), (b, 0.0), t_p, f_y, f_u,
-                         Fd, parse_dorn(dorn), f_uk)
+                         Fd, parse_dorn(dorn), f_uk, n_plates=n_plates)
         if worst is None or pc["util"] > worst["util"]:
             worst = pc
     plate = worst
@@ -1202,8 +1266,9 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
     def RunScript(self, area, x_size, y_size, dorn, typ, grain, free,
                   grain_mid, free_mid, grid_angle, a_edge, a_end, s_par,
                   s_perp, pts, N, V, M, load_pt, load_angle, both_signs,
-                  fastener, d_w, t_w, slip, M_ser, rule, timber, t1, t2,
-                  f_uk, k_mod, gamma_M, use_nef, Fv_Rd, scale, plot):
+                  n_plates, t_p, fastener, d_w, t_w, slip, M_ser, rule,
+                  timber, t1, t2, f_uk, k_mod, gamma_M, use_nef, Fv_Rd,
+                  scale, plot):
         self._draw = None
         empty = (None,) * 15
         lvl = Grasshopper.Kernel.GH_RuntimeMessageLevel
@@ -1246,7 +1311,8 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
                         N, V, M, lp, _d(both_signs, True), rule, timber,
                         _d(t1, 80.0), t2, _d(f_uk, 360.0), _d(k_mod, 0.8),
                         _d(gamma_M, 1.3), _d(use_nef, True), Fv_Rd,
-                        load_angle, fastener, d_w, t_w, slip, M_ser)
+                        load_angle, fastener, d_w, t_w, slip, M_ser,
+                        int(_d(n_plates, 1)), t_p)
         except ValueError as exc:
             self.Component.AddRuntimeMessage(lvl.Error, str(exc))
             return empty
@@ -1381,8 +1447,10 @@ if __name__ == "__main__":
         M_ser=43.55 / 1.5,      # moment i anvendelsesgrænsetilstand [kNm]
         slip=1.0,               # hulluft pr. bolt [mm] (træ d+1)
         rule="omhyllende",      # eller "dorn"
-        timber="GL24h", t1=165,  # træ på hver side af pladen [mm]
-        t_p=12, f_y=355, f_u=490,  # plade S355
+        n_plates=1,             # 1 plade: t1 = træ på hver side
+        timber="GL24h", t1=165,  # 2 plader: t1 = ydertræ, t2 = midtertræ
+        t2=None,                # fx n_plates=2, t1=100, t2=120
+        t_p=12, f_y=355, f_u=490,  # plade(r) S355
         f_uk=300,
         k_mod=0.9,              # vind: kort (0.9) – momentan (1.1)
         gamma_M=1.35,
