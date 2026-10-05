@@ -1441,17 +1441,16 @@ if __name__ == "__main__":
         slope=-35,              # spærets fiberretning [grader]
         H_col=0.5,              # højde af søjlens dornområde [m]
         dorn="M12",
-        fastener="bolt",        # "bolt" (med rebvirkning) eller "dorn"
-        d_w=36, t_w=3.6,        # skive [mm]
+        fastener="dorn",        # "dorn" eller "bolt" (bolt: d_w, t_w, slip)
+        slip=0.0,               # hulluft [mm] – dorne i tætte huller: 0
         N=[27.42], V=[15.49], M=[43.55],  # lasttilfælde [kN], [kN], [kNm]
         M_ser=43.55 / 1.5,      # moment i anvendelsesgrænsetilstand [kNm]
-        slip=1.0,               # hulluft pr. bolt [mm] (træ d+1)
         rule="omhyllende",      # eller "dorn"
         n_plates=1,             # 1 plade: t1 = træ på hver side
         timber="GL24h", t1=165,  # 2 plader: t1 = ydertræ, t2 = midtertræ
         t2=None,                # fx n_plates=2, t1=100, t2=120
         t_p=12, f_y=355, f_u=490,  # plade(r) S355
-        f_uk=300,
+        f_uk=360,               # dorne S235
         k_mod=0.9,              # vind: kort (0.9) – momentan (1.1)
         gamma_M=1.35,
     )
