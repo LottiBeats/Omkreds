@@ -3,63 +3,70 @@
 Kører både som Grasshopper Python 3-komponent (Rhino 8) og lokalt:
     python momentsamling.py        (ret værdierne nederst i filen)
 
-To samlingstyper:
+Samlingstyper:
   typ "A"  Indslidset stålplade, dorne i ét træemne (dobbeltsnit, 8.11).
-           Fiberretning = grain. I et rammehjørne regnes bjælkens og
-           søjlens dorngruppe hver for sig.
-  typ "B"  Træ-træ: de samme dorne går gennem to emner med fibre i x og y
-           (fx delt søjle omkring bjælken). Dobbeltsnit (8.7): sidetræ med
-           tykkelse t1, midtertræ med tykkelse t2 og fiber "mid".
+  typ "B"  Træ-træ, de samme dorne gennem to emner (dobbeltsnit, 8.7):
+           sidetræ (fx delt søjle) med fiber `grain` og tykkelse t1,
+           midtertræ (fx spær) med fiber `grain_mid` og tykkelse t2.
 
-Sider: 1 = bund, 2 = højre, 3 = top, 4 = venstre. For hvert emne er en
-side en ENDE (vinkelret på fiberen) eller en KANT (parallel med fiberen),
-medmindre emnet fortsætter forbi den (free_x / free_y) – så gælder der
-intet krav, og dornene placeres en halv dornafstand fra siden.
+Område: en vilkårlig konveks polygon (fx overlappet mellem en søjle og et
+skråt spær = et parallelogram, se overlap_poly). Siderne nummereres 1, 2,
+3 ... i polygonens rækkefølge. For hvert emne er en side automatisk en
+ENDE (skærer fiberen, også skrå afskæringer) eller en KANT (parallel med
+fiberen) – eller FRI, hvis emnet fortsætter forbi den (free / free_mid).
 
-Afstandskrav (rule):
-  "omhyllende"  ugunstigste kraftretning (a1 = 5d, a2 = 3d,
-                a3,t = max(7d; 80 mm), a4,t = 4d)
-  "dorn"        tabel 8.5 for hver dorn med dens egen kraftretning, i alle
-                lasttilfælde (og med modsat fortegn, hvis both_signs).
+Fiberretninger angives i grader fra x-aksen ("x" = 0, "y" = 90, skråt
+spær fx -35). N virker langs `grain`, V vinkelret (drejet +90 grader, mod
+uret), M er positiv mod uret.
+
+Afstande (tabel 8.5):
+  - Kantafstand a4 måles vinkelret på fiberen, endeafstand a3 langs
+    fiberen – også ved skrå afskæringer.
+  - To dorne skal for hvert emne enten ligge a1 fra hinanden langs fiberen
+    eller a2 på tværs (bogstavelig læsning af EC5; dorne i forskudte
+    rækker skal altså have a2 mellem rækkerne).
+  - rule "omhyllende": ugunstigste retning (a1 = 5d, a2 = 3d,
+    a3,t = max(7d; 80 mm), a4,t = 4d). rule "dorn": hver dorn med sin
+    egen kraftretning i alle lasttilfælde.
 
 Opsætning i Grasshopper (højreklik på hver input):
   Geometri
-    area      Curve,  Item     (valgfri – ellers x_size/y_size fra 0,0)
-    x_size    float,  Item     model-enheder (0.333)
-    y_size    float,  Item     model-enheder (0.369)
-    dorn      str,    Item     "M12" eller 12 (mm)
-    typ       str,    Item     "A" eller "B" ("A")
-    grain     str,    Item     typ A: fiberretning "x"/"y". Begge typer:
-                               N virker langs denne akse ("y")
-    free_x    str,    Item     sider hvor emnet med fiber i x fortsætter,
-                               fx "2" eller "2,3" (valgfri)
-    free_y    str,    Item     det samme for emnet med fiber i y
-    a_edge    float,  Item     kantafstand til placering [x d] (4)
-    a_end     float,  Item     endeafstand til placering [x d] (7)
-    s_par     float,  Item     dornafstand langs fiberen [x d] (5)
-    s_perp    float,  Item     dornafstand på tværs [x d] (3)
-    pts       Point3d, List    (valgfri – egne dornplaceringer)
+    area       Curve,   Item   lukket polylinje (valgfri – ellers
+                               rektangel x_size × y_size fra 0,0)
+    x_size     float,   Item   (0.333)
+    y_size     float,   Item   (0.4)
+    dorn       str,     Item   "M12" eller 12 (mm)
+    typ        str,     Item   "A" eller "B" ("A")
+    grain      str,     Item   fiber for træ (A) / sidetræ (B) ("y")
+    free       str,     Item   sider hvor det emne fortsætter, fx "1"
+    grain_mid  str,     Item   typ B: midtertræets fiber, fx "-35"
+    free_mid   str,     Item   typ B: sider hvor midtertræet fortsætter
+    grid_angle float,   Item   retning for dornrækkerne (side 1's retning)
+    a_edge     float,   Item   kantafstand til placering [x d] (4)
+    a_end      float,   Item   endeafstand til placering [x d] (7)
+    s_par      float,   Item   dornafstand langs fiberen [x d] (5)
+    s_perp     float,   Item   dornafstand på tværs [x d] (3)
+    pts        Point3d, List   (valgfri – egne dornplaceringer)
   Last (lister = lasttilfælde; korte lister gentages)
-    N         float,  List     [kN] langs grain
-    V         float,  List     [kN] vinkelret
-    M         float,  List     [kNm], positiv mod uret
-    load_pt   Point3d, Item    (valgfri – angrebspunkt for N og V)
-    both_signs bool,  Item     regn også med modsat fortegn (True)
+    N          float,   List   [kN] langs grain
+    V          float,   List   [kN] vinkelret på grain (+90 grader)
+    M          float,   List   [kNm], positiv mod uret
+    load_pt    Point3d, Item   (valgfri – angrebspunkt for N og V)
+    both_signs bool,    Item   regn også med modsat fortegn (True)
   Kontrol
-    rule      str,    Item     "omhyllende" eller "dorn" ("omhyllende")
-    timber    str,    Item     "GL24h", "C24" ... eller rho_k (GL24h)
-    t1        float,  Item     typ A: træ på hver side af pladen [mm];
-                               typ B: sidetræets tykkelse [mm] (80)
-    t2        float,  Item     typ B: midtertræets tykkelse [mm] (2*t1)
-    mid       str,    Item     typ B: midtertræets fiber "x"/"y" ("x")
-    f_uk      float,  Item     dornens trækstyrke [MPa] (360)
-    k_mod     float,  Item     (0.8)
-    gamma_M   float,  Item     (1.3)
-    use_nef   bool,   Item     n_ef for rækker langs fiberen (True)
-    Fv_Rd     float,  Item     (valgfri – fast bæreevne pr. dorn [kN])
+    rule       str,     Item   "omhyllende" eller "dorn" ("omhyllende")
+    timber     str,     Item   "GL24h", "C24" ... eller rho_k (GL24h)
+    t1         float,   Item   A: træ på hver side af pladen; B: sidetræ
+                               [mm] (80)
+    t2         float,   Item   B: midtertræ [mm] (2*t1)
+    f_uk       float,   Item   dornens trækstyrke [MPa] (360)
+    k_mod      float,   Item   (0.8)
+    gamma_M    float,   Item   (1.3)
+    use_nef    bool,    Item   n_ef for rækker langs fiberen (True)
+    Fv_Rd      float,   Item   (valgfri – fast bæreevne pr. dorn [kN])
   Visning
-    scale     float,  Item     pilelængde pr. kN (auto)
-    plot      bool,   Item     tegn i viewporten (True)
+    scale      float,   Item   pilelængde pr. kN (auto)
+    plot       bool,    Item   tegn i viewporten (True)
 
 Outputs: pts, F_vec, F, Fmax, Ip, centroid, IC, arrows, outline, inner,
 Rd, eta, util, ok, info.  (Pile og kræfter er fra det styrende
@@ -67,13 +74,11 @@ lasttilfælde.)
 
 Kraftfordeling (elastisk, stiv plade):
     F_i = F/n + M_tot/Ip * (-y_i, x_i),   Ip = sum(x_i^2 + y_i^2)
-
-Bæreevne pr. dorn (EN 1995-1-1), alpha = vinkel mellem kraft og fiber:
+Bæreevne pr. dorn, alpha = vinkel mellem kraft og fiber:
     f_h,0,k = 0.082 (1 - 0.01 d) rho_k;  f_h,a,k = f_h,0,k/(k90 sin^2 + cos^2)
     M_y,Rk = 0.3 f_u,k d^2.6
-    typ A: F_v,Rk = 2 min(f, g, h)  (8.11)
-    typ B: F_v,Rk = 2 min(g, h, j, k)  (8.7), beta = f_h,mid / f_h,side
-    F_v,Rd = n_ef/n k_mod F_v,Rk / gamma_M   (typ B: mindste n_ef af emnerne)
+    A: F_v,Rk = 2 min(f, g, h) (8.11);  B: F_v,Rk = 2 min(g, h, j, k) (8.7)
+    F_v,Rd = n_ef/n k_mod F_v,Rk / gamma_M   (B: mindste n_ef af emnerne)
 
 Ikke med: stålpladen (EC3), blokforskydning (bilag A), kløvning (8.1.4).
 """
@@ -104,11 +109,29 @@ RHO_K = {
     "GL20C": 355, "GL22C": 355, "GL24C": 365, "GL26C": 385,
     "GL28C": 390, "GL30C": 390, "GL32C": 400,
 }
+EPS = 1e-9
 
-SIDE_NAMES = {1: "bund", 2: "højre", 3: "top", 4: "venstre"}
-SIDE_NORMAL = {1: (0.0, -1.0), 2: (1.0, 0.0), 3: (0.0, 1.0), 4: (-1.0, 0.0)}
-GRAIN_VEC = {"x": (1.0, 0.0), "y": (0.0, 1.0)}
 
+# ---- små vektorhjælpere
+
+def unit(a_deg):
+    a = math.radians(a_deg)
+    return (math.cos(a), math.sin(a))
+
+
+def perp(v):
+    return (-v[1], v[0])
+
+
+def dot(a, b):
+    return a[0] * b[0] + a[1] * b[1]
+
+
+def sub(a, b):
+    return (a[0] - b[0], a[1] - b[1])
+
+
+# ---- input
 
 def parse_dorn(dorn):
     """'M12', 'm12', '12' eller 12 -> 12.0 (mm)."""
@@ -135,6 +158,18 @@ def parse_timber(timber):
     return float(RHO_K[key]), s, key.startswith("D")
 
 
+def parse_grain(g, default=90.0):
+    """'x' -> 0, 'y' -> 90, '-35' / -35 -> -35 (grader fra x-aksen)."""
+    if g is None or str(g).strip() == "":
+        return default
+    s = str(g).strip().lower()
+    if s == "x":
+        return 0.0
+    if s == "y":
+        return 90.0
+    return float(s.replace(",", "."))
+
+
 def parse_sides(v):
     """None, 2, '2,3', '2 3', [2, '3'] -> {2, 3}."""
     if v is None:
@@ -145,13 +180,7 @@ def parse_sides(v):
         items = v.replace(",", " ").replace(";", " ").split()
     else:
         items = list(v)
-    out = set()
-    for it in items:
-        s = int(float(it))
-        if s not in SIDE_NAMES:
-            raise ValueError("Side skal være 1-4, fik {}".format(it))
-        out.add(s)
-    return out
+    return set(int(float(it)) for it in items)
 
 
 def _as_list(v):
@@ -180,53 +209,190 @@ def load_cases(N, V, M, both_signs=True):
     return cases
 
 
-def members(typ, grain, free_x, free_y):
-    """[(fiber, frie sider)] – ét emne for typ A, to for typ B."""
-    fx, fy = parse_sides(free_x), parse_sides(free_y)
+def members(typ, grain, free, grain_mid=None, free_mid=None):
+    """Emner som dicts: navn, fiber (grader), g (enhedsvektor), frie sider.
+    Første emne er det, N og V hører til (og sidetræet i typ B)."""
+    g1 = parse_grain(grain)
     if typ == "B":
-        return [("x", fx), ("y", fy)]
-    return [(grain, fx if grain == "x" else fy)]
+        g2 = parse_grain(grain_mid, 0.0)
+        return [{"name": "sidetræ", "angle": g1, "g": unit(g1),
+                 "free": parse_sides(free)},
+                {"name": "midtertræ", "angle": g2, "g": unit(g2),
+                 "free": parse_sides(free_mid)}]
+    return [{"name": "træ", "angle": g1, "g": unit(g1),
+             "free": parse_sides(free)}]
 
 
-def side_type(grain, side, free):
-    if side in free:
+# ---- polygon
+
+def rect_poly(Lx, Ly):
+    """Rektangel fra (0, 0): side 1 bund, 2 højre, 3 top, 4 venstre."""
+    return [(0.0, 0.0), (Lx, 0.0), (Lx, Ly), (0.0, Ly)]
+
+
+def overlap_poly(b, h, slope):
+    """Overlap mellem en lodret søjle (bredde b, x = 0..b) og et spær med
+    højde h vinkelret på fiberen og fiberretning `slope` grader, hvor
+    spærets underside går gennem søjlens ydre hjørne (b, 0).
+    Side 1 = spærets underside, 2 = søjlens yderside (x = b),
+    3 = spærets overside, 4 = søjlens inderside (x = 0)."""
+    t = math.tan(math.radians(slope))
+    H = h / math.cos(math.radians(slope))       # lodret højde af spæret
+    y0 = -b * t                                 # undersiden ved x = 0
+    return [(0.0, y0), (b, 0.0), (b, H), (0.0, y0 + H)]
+
+
+def poly_sides(P):
+    """For hver side i (nr. i+1): (startpunkt, retning, udadrettet normal,
+    længde, midtpunkt)."""
+    n = len(P)
+    area2 = sum(P[i][0] * P[(i + 1) % n][1] - P[(i + 1) % n][0] * P[i][1]
+                for i in range(n))
+    o = 1.0 if area2 > 0 else -1.0
+    out = []
+    for i in range(n):
+        a, b = P[i], P[(i + 1) % n]
+        e = sub(b, a)
+        L = math.hypot(*e)
+        if L < EPS:
+            raise ValueError("Polygonen har to ens punkter")
+        e = (e[0] / L, e[1] / L)
+        out.append((a, e, (o * e[1], -o * e[0]), L,
+                    ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)))
+    return out
+
+
+def inside_dist(p, side):
+    """Vinkelret afstand fra p ind til sidens linje (positiv indenfor)."""
+    return -dot(sub(p, side[0]), side[2])
+
+
+def side_type(m, s_no, side):
+    if s_no in m["free"]:
         return "fri"
-    n = SIDE_NORMAL[side]
-    g = GRAIN_VEC[grain]
-    return "ende" if abs(n[0] * g[0] + n[1] * g[1]) > 0.5 else "kant"
+    return "kant" if abs(dot(side[1], m["g"])) >= math.cos(
+        math.radians(45)) else "ende"
 
 
-def grid_1d(length, e_lo, e_hi, s_min):
-    """Positioner langs én akse med afstand e_lo/e_hi til siderne og
-    mindst s_min imellem, jævnt fordelt."""
-    inner = length - e_lo - e_hi
-    if inner < -1e-12:
+def offset_poly(P, sides, offs):
+    """Polygon med hver side flyttet offs[i] indad. None hvis den
+    forsvinder."""
+    n = len(P)
+    c = [dot(s[0], s[2]) - o for s, o in zip(sides, offs)]
+    Q = []
+    for j in range(n):
+        i = (j - 1) % n
+        n1, n2 = sides[i][2], sides[j][2]
+        det = n1[0] * n2[1] - n1[1] * n2[0]
+        if abs(det) < EPS:
+            return None
+        Q.append(((c[i] * n2[1] - n1[1] * c[j]) / det,
+                  (n1[0] * c[j] - c[i] * n2[0]) / det))
+    for q in Q:
+        for s, o in zip(sides, offs):
+            if inside_dist(q, s) < o - 1e-7:
+                return None
+    return Q
+
+
+# ---- placering
+
+def grid_1d(length, s_min):
+    """Positioner 0..length med mindst s_min imellem, jævnt fordelt."""
+    if length < -1e-9:
         return []
-    n = int(math.floor(inner / s_min + 1e-9)) + 1 if s_min > 0 else 1
+    length = max(length, 0.0)
+    n = int(math.floor(length / s_min + 1e-9)) + 1 if s_min > 0 else 1
     if n == 1:
-        return [e_lo + inner / 2.0]
-    step = inner / (n - 1)
-    return [e_lo + i * step for i in range(n)]
+        return [length / 2.0]
+    return [i * length / (n - 1) for i in range(n)]
 
 
-def layout(Lx, Ly, d, mems, a_edge=4.0, a_end=7.0, s_par=5.0, s_perp=3.0):
-    """Dornnet i området (0..Lx, 0..Ly). d og Lx/Ly i samme enhed.
-    Returnerer (xs, ys, afstande {side: afstand})."""
-    # afstand mellem dorne pr. retning: langs fiber for et af emnerne -> s_par
-    sx = max((s_par if g == "x" else s_perp) for g, _ in mems) * d
-    sy = max((s_par if g == "y" else s_perp) for g, _ in mems) * d
-    dist = {}
-    for side in SIDE_NAMES:
-        req = [{"ende": a_end, "kant": a_edge}[side_type(g, side, fr)] * d
-               for g, fr in mems if side_type(g, side, fr) != "fri"]
-        if req:
-            dist[side] = max(req)
-        else:                           # fortsætter: halv dornafstand
-            dist[side] = (sx if side in (2, 4) else sy) / 2.0
-    xs = grid_1d(Lx, dist[4], dist[2], sx)
-    ys = grid_1d(Ly, dist[1], dist[3], sy)
-    return xs, ys, dist
+def min_len(direction, mems, a1, a2):
+    """Mindste afstand langs `direction`, så to dorne på linjen har a1
+    langs eller a2 på tværs af fiberen i alle emner."""
+    L = 0.0
+    for m in mems:
+        c = abs(dot(direction, m["g"]))
+        s = abs(dot(direction, perp(m["g"])))
+        cand = []
+        if c > EPS:
+            cand.append(a1 / c)
+        if s > EPS:
+            cand.append(a2 / s)
+        L = max(L, min(cand))
+    return L
 
+
+def pair_ok(p, q, mems, a1, a2):
+    s = sub(q, p)
+    for m in mems:
+        if abs(dot(s, m["g"])) < a1 - 1e-9 and \
+                abs(dot(s, perp(m["g"]))) < a2 - 1e-9:
+            return False
+    return True
+
+
+def layout(P, d, mems, a_edge=4.0, a_end=7.0, s_par=5.0, s_perp=3.0,
+           grid_angle=None):
+    """Dorne i rækker langs grid_angle inden for polygonen P minus kant- og
+    endeafstande. d og P i meter. Returnerer (punkter, indre polygon)."""
+    sides = poly_sides(P)
+    u = sides[0][1] if grid_angle is None else unit(grid_angle)
+    v = perp(u)
+    a1, a2 = s_par * d, s_perp * d
+    sx = min_len(u, mems, a1, a2)
+    sy = min_len(v, mems, a1, a2)
+
+    offs = []
+    for k, s in enumerate(sides):
+        req = []
+        for m in mems:
+            t = side_type(m, k + 1, s)
+            if t == "ende":                     # a3 langs fiberen
+                req.append(a_end * d * abs(dot(m["g"], s[2])))
+            elif t == "kant":                   # a4 vinkelret på fiberen
+                req.append(a_edge * d * abs(dot(perp(m["g"]), s[2])))
+        offs.append(max(req) if req else 0.5 * min(sx, sy))
+    Q = offset_poly(P, sides, offs)
+    if Q is None:
+        return [], None
+    qs = poly_sides(Q)
+
+    def generate(sy):
+        ws = [dot(q, v) for q in Q]
+        pts = []
+        for w in grid_1d(max(ws) - min(ws), sy):
+            w += min(ws)
+            p0 = (v[0] * w, v[1] * w)
+            tmin, tmax = -1e18, 1e18
+            for s in qs:
+                un = dot(u, s[2])
+                rhs = dot(s[0], s[2]) - dot(p0, s[2])
+                if un > EPS:
+                    tmax = min(tmax, rhs / un)
+                elif un < -EPS:
+                    tmin = max(tmin, rhs / un)
+                elif rhs < -1e-9:
+                    tmin, tmax = 1, 0
+            if tmax - tmin < -1e-9:
+                continue
+            for t in grid_1d(tmax - tmin, sx):
+                t += tmin
+                pts.append((p0[0] + u[0] * t, p0[1] + u[1] * t))
+        return pts
+
+    pts = generate(sy)
+    for _ in range(80):                         # forskudte rækker
+        if all(pair_ok(pts[i], pts[j], mems, a1, a2)
+               for i in range(len(pts)) for j in range(i + 1, len(pts))):
+            break
+        sy *= 1.04
+        pts = generate(sy)
+    return pts, Q
+
+
+# ---- kræfter
 
 def distribute(points, Fx, Fy, M, load_pt=None):
     """Elastisk fordeling. points/load_pt i meter, kræfter i kN, M i kNm."""
@@ -259,14 +425,14 @@ def distribute(points, Fx, Fy, M, load_pt=None):
             "forces": forces, "mags": mags, "ic": ic}
 
 
-def angle_to_grain(f, grain):
-    """Vinkel 0..90 grader mellem kraft og fiber."""
+# ---- bæreevne
+
+def angle_to_grain(f, g):
+    """Vinkel 0..90 grader mellem kraft f og fiber (enhedsvektor g)."""
     F = math.hypot(f[0], f[1])
     if F < 1e-12:
         return 0.0
-    g = GRAIN_VEC[grain]
-    return math.degrees(math.acos(min(1.0, abs(f[0] * g[0] + f[1] * g[1])
-                                      / F)))
+    return math.degrees(math.acos(min(1.0, abs(dot(f, g)) / F)))
 
 
 def f_h_alpha(d, rho_k, alpha_deg, hardwood=False):
@@ -289,7 +455,7 @@ def johansen_steel_center(d, t1, rho_k, f_uk, alpha_deg, hardwood=False):
     }
     mode = min(modes, key=modes.get)
     return 2 * modes[mode] / 1000.0, {
-        "f_h0": f_h0, "k90": k90, "f_h": {"side": f_ha}, "M_y": M_y,
+        "f_h0": f_h0, "k90": k90, "f_h": {"træ": f_ha}, "M_y": M_y,
         "modes": modes, "mode": mode}
 
 
@@ -326,23 +492,25 @@ def n_ef_factor(n, a1, d, alpha_deg):
     return nef / n
 
 
-def rows_along_grain(points, grain, tol=1e-6):
-    """Rækker langs fiberen: liste af indeks-lister, sorteret langs fiberen,
-    og for hver dorn (antal i rækken, mindste afstand i rækken)."""
-    gi, pi = (0, 1) if grain == "x" else (1, 0)
+def rows_along_grain(points, g, tol):
+    """Rækker langs fiberen g (dorne med samme tværposition inden for tol).
+    Returnerer rækkerne (sorteret langs fiberen) og pr. dorn
+    (antal i rækken, mindste afstand i rækken)."""
+    q = perp(g)
     rows = []
     for idx, p in enumerate(points):
         for r in rows:
-            if abs(points[r[0]][pi] - p[pi]) < tol:
+            if abs(dot(points[r[0]], q) - dot(p, q)) < tol:
                 r.append(idx)
                 break
         else:
             rows.append([idx])
     info = [None] * len(points)
     for r in rows:
-        r.sort(key=lambda i: points[i][gi])
-        gaps = [points[b][gi] - points[a][gi] for a, b in zip(r, r[1:])]
-        gaps = [g for g in gaps if g > tol]
+        r.sort(key=lambda i: dot(points[i], g))
+        gaps = [dot(points[b], g) - dot(points[a], g)
+                for a, b in zip(r, r[1:])]
+        gaps = [x for x in gaps if x > 1e-9]
         a1 = min(gaps) if gaps else 0.0
         for i in r:
             info[i] = (len(r), a1)
@@ -351,15 +519,15 @@ def rows_along_grain(points, grain, tol=1e-6):
 
 # ---- afstandskrav, tabel 8.5 (dorne)
 
-def req_end(f, side, d, env):
-    """Krævet afstand til en ENDE. d i meter."""
+def req_end(f, toward, d, env):
+    """Krævet a3 (langs fiberen) til en ende i retning `toward`."""
     a3t = max(7 * d, 0.080)
+    if env:
+        return a3t
     F = math.hypot(f[0], f[1])
-    if env or F < 1e-12:
-        return a3t if env else 3 * d
-    n = SIDE_NORMAL[side]
-    th = math.degrees(math.acos(max(-1.0, min(1.0, (f[0] * n[0] + f[1] * n[1])
-                                              / F))))
+    if F < 1e-12:
+        return 3 * d
+    th = math.degrees(math.acos(max(-1.0, min(1.0, dot(f, toward) / F))))
     if th <= 90:
         return a3t                                  # belastet ende
     if th < 150:
@@ -367,117 +535,116 @@ def req_end(f, side, d, env):
     return 3 * d
 
 
-def req_edge(f, side, d, env):
-    """Krævet afstand til en KANT. d i meter."""
+def req_edge(f, toward, d, env):
+    """Krævet a4 (vinkelret på fiberen) til en kant i retning `toward`."""
     if env:
         return 4 * d
     F = math.hypot(f[0], f[1])
     if F < 1e-12:
         return 3 * d
-    n = SIDE_NORMAL[side]
-    c = (f[0] * n[0] + f[1] * n[1]) / F            # = sin(alpha) mod kanten
-    if c > 0:                                       # belastet kant
-        return max((2 + 2 * c) * d, 3 * d)
-    return 3 * d
+    c = dot(f, toward) / F                         # = sin(alpha)
+    return max((2 + 2 * c) * d, 3 * d) if c > 0 else 3 * d
 
 
-def req_a1(f, grain, d, env):
+def req_a1(f, g, d, env):
     if env:
         return 5 * d
-    a = math.radians(angle_to_grain(f, grain))
-    return (3 + 2 * abs(math.cos(a))) * d
+    return (3 + 2 * abs(math.cos(math.radians(angle_to_grain(f, g))))) * d
 
 
-def distance_checks(points, box, d, mems, case_forces, env):
-    """Afstande mod tabel 8.5. Returnerer [(navn, aktuel, krav, ok)] med
-    den dorn/det par, der har mindst margin."""
-    x0, y0, x1, y1 = box
-    dist_to = {1: lambda p: p[1] - y0, 2: lambda p: x1 - p[0],
-               3: lambda p: y1 - p[1], 4: lambda p: p[0] - x0}
+def distance_checks(points, P, d, mems, case_forces, env):
+    """Afstande mod tabel 8.5. Returnerer [(navn, aktuel, krav, ok, tekst)]
+    for den dorn/det par, der har mindst margin."""
+    sides = poly_sides(P)
     out = []
     many = len(mems) > 1
-    for g, free in mems:
-        tag = " (fiber {})".format(g) if many else ""
-        rows, _ = rows_along_grain(points, g)
+    for m in mems:
+        g, q = m["g"], perp(m["g"])
+        tag = " ({})".format(m["name"]) if many else ""
 
-        # a1 langs fiberen
+        # dornafstande: a1 langs fiberen eller a2 på tværs
+        a1_i = [max(req_a1(fs[i], g, d, env) for fs in case_forces)
+                for i in range(len(points))]
+        a2 = 3 * d
         worst = None
-        for r in rows:
-            for i, j in zip(r, r[1:]):
-                act = math.hypot(points[j][0] - points[i][0],
-                                 points[j][1] - points[i][1])
-                req = max(req_a1(fs[k], g, d, env)
-                          for fs in case_forces for k in (i, j))
-                if worst is None or act - req < worst[1] - worst[2]:
-                    worst = ("a1" + tag, act, req)
+        for i in range(len(points)):
+            for j in range(i + 1, len(points)):
+                s = sub(points[j], points[i])
+                sp, sq = abs(dot(s, g)), abs(dot(s, q))
+                a1 = max(a1_i[i], a1_i[j])
+                margin = max(sp / a1, sq / a2)
+                if worst is None or margin < worst[0]:
+                    worst = (margin, i, j, sp, sq, a1)
         if worst:
-            out.append(worst)
-
-        # a2 mellem rækker
-        pi = 1 if g == "x" else 0
-        lines = sorted(set(round(points[r[0]][pi], 9) for r in rows))
-        gaps = [b - a for a, b in zip(lines, lines[1:])]
-        if gaps:
-            out.append(("a2" + tag, min(gaps), 3 * d))
+            mg, i, j, sp, sq, a1 = worst
+            out.append(("dornafstand" + tag, mg, 1.0, mg >= 1 - 1e-9,
+                        "dorn {}-{}: langs {:.0f} (a1 {:.0f}) / tværs {:.0f} "
+                        "(a2 {:.0f}) mm".format(i + 1, j + 1, sp * 1000,
+                                                a1 * 1000, sq * 1000,
+                                                a2 * 1000)))
 
         # ender og kanter
-        for side in sorted(SIDE_NAMES):
-            st = side_type(g, side, free)
+        for k, s in enumerate(sides):
+            st = side_type(m, k + 1, s)
             if st == "fri":
                 continue
-            fn = req_end if st == "ende" else req_edge
+            if st == "ende":
+                dvec, fn, nm = g, req_end, "a3"
+            else:
+                dvec, fn, nm = q, req_edge, "a4"
+            c = dot(dvec, s[2])
+            toward = dvec if c > 0 else (-dvec[0], -dvec[1])
             worst = None
             for i, p in enumerate(points):
-                act = dist_to[side](p)
-                req = max(fn(fs[i], side, d, env) for fs in case_forces)
+                act = inside_dist(p, s) / abs(c)
+                req = max(fn(fs[i], toward, d, env) for fs in case_forces)
                 if worst is None or act - req < worst[0] - worst[1]:
                     worst = (act, req)
-            name = "{} side {} {}{}".format(
-                "a3" if st == "ende" else "a4", side, SIDE_NAMES[side], tag)
-            out.append((name, worst[0], worst[1]))
-    return [(n, a, r, a >= r - 1e-9) for n, a, r in out]
+            out.append(("{} side {}{}".format(nm, k + 1, tag), worst[0],
+                        worst[1], worst[0] >= worst[1] - 1e-9, None))
+    return out
 
 
-def analyse(points, box, d_mm, typ="A", grain="y", free_x=None, free_y=None,
-            N=0.0, V=0.0, M=0.0, load_pt=None, both_signs=True,
-            rule="omhyllende", timber="GL24h", t1=80.0, t2=None, mid="x",
-            f_uk=360.0, k_mod=0.8, gamma_M=1.3, use_nef=True, Fv_Rd=None):
-    """Kraftfordeling og kontrol for alle lasttilfælde. points, box og
-    load_pt i meter. Returnerer dict (styrende lasttilfælde øverst)."""
+def analyse(points, P, d_mm, typ="A", grain="y", free=None, grain_mid=None,
+            free_mid=None, N=0.0, V=0.0, M=0.0, load_pt=None,
+            both_signs=True, rule="omhyllende", timber="GL24h", t1=80.0,
+            t2=None, f_uk=360.0, k_mod=0.8, gamma_M=1.3, use_nef=True,
+            Fv_Rd=None):
+    """Kraftfordeling og kontrol for alle lasttilfælde. points, P og
+    load_pt i meter. Returnerer dict for det styrende lasttilfælde."""
     typ = str(typ or "A").strip().upper()
-    grain = str(grain or "y").strip().lower()
-    mid = str(mid or "x").strip().lower()
     rule = str(rule or "omhyllende").strip().lower()
     env = not rule.startswith("d")
     t2 = 2 * t1 if not t2 else t2
     rho_k, tname, hard = parse_timber(timber)
     d = d_mm / 1000.0
-    mems = members(typ, grain, free_x, free_y)
-    side_g = "y" if mid == "x" else "x"
+    mems = members(typ, grain, free, grain_mid, free_mid)
     cases = load_cases(N, V, M, both_signs)
-
-    rinfo = {g: rows_along_grain(points, g)[1] for g, _ in mems}
+    g0 = mems[0]["g"]
+    rinfo = [rows_along_grain(points, m["g"], d / 2)[1] for m in mems]
 
     def capacity(f, i):
         if Fv_Rd:
             return float(Fv_Rd), None
         if typ == "B":
-            a_s, a_m = angle_to_grain(f, side_g), angle_to_grain(f, mid)
-            Rk, mid_ = johansen_timber_double(d_mm, t1, t2, rho_k, f_uk,
-                                              a_s, a_m, hard)
+            Rk, x = johansen_timber_double(
+                d_mm, t1, t2, rho_k, f_uk, angle_to_grain(f, mems[0]["g"]),
+                angle_to_grain(f, mems[1]["g"]), hard)
         else:
-            Rk, mid_ = johansen_steel_center(
-                d_mm, t1, rho_k, f_uk, angle_to_grain(f, grain), hard)
+            Rk, x = johansen_steel_center(
+                d_mm, t1, rho_k, f_uk, angle_to_grain(f, g0), hard)
         kef = 1.0
         if use_nef:
-            kef = min(n_ef_factor(rinfo[g][i][0], rinfo[g][i][1], d,
-                                  angle_to_grain(f, g)) for g, _ in mems)
-        mid_ = dict(mid_, kef=kef, Rk=Rk)
-        return kef * k_mod * Rk / gamma_M, mid_
+            kef = min(n_ef_factor(ri[i][0], ri[i][1], d,
+                                  angle_to_grain(f, m["g"]))
+                      for m, ri in zip(mems, rinfo))
+        x = dict(x, kef=kef, Rk=Rk)
+        return kef * k_mod * Rk / gamma_M, x
 
     results = []
     for (n_, v_, m_) in cases:
-        Fx, Fy = (n_, v_) if grain == "x" else (v_, n_)
+        q0 = perp(g0)
+        Fx, Fy = n_ * g0[0] + v_ * q0[0], n_ * g0[1] + v_ * q0[1]
         res = distribute(points, Fx, Fy, m_, load_pt)
         Rd, eta = [], []
         for i, (f, F) in enumerate(zip(res["forces"], res["mags"])):
@@ -491,64 +658,66 @@ def analyse(points, box, d_mm, typ="A", grain="y", free_x=None, free_y=None,
     gov = max(results, key=lambda r: max(r["eta"]))
     i_max = max(range(len(points)), key=lambda i: gov["eta"][i])
     util = gov["eta"][i_max]
-    spacing = distance_checks(points, box, d, mems,
+    spacing = distance_checks(points, P, d, mems,
                               [r["forces"] for r in results], env)
     ok = util <= 1.0 and all(s[3] for s in spacing)
 
     # ---- rapport
+    sides = poly_sides(P)
     if typ == "B":
-        head = ("KONTROL (DS/EN 1995-1-1, træ-træ, dobbeltsnit (8.7)) – "
-                "sidetræ fiber {}, midtertræ fiber {}".format(side_g, mid))
-        thick = "t1 = {:g} mm (side), t2 = {:g} mm (midte)".format(t1, t2)
+        head = "KONTROL (DS/EN 1995-1-1, træ-træ, dobbeltsnit (8.7))"
+        thick = "t1 = {:g} mm (sidetræ), t2 = {:g} mm (midtertræ)".format(
+            t1, t2)
     else:
         head = ("KONTROL (DS/EN 1995-1-1, indslidset stålplade, "
-                "dobbeltsnit (8.11)) – fiber {}".format(grain))
+                "dobbeltsnit (8.11))")
         thick = "t1 = {:g} mm".format(t1)
     L = [head,
          "Træ: {}, rho_k = {:g} kg/m3; dorn d = {:g} mm, f_u,k = {:g} MPa"
          .format(tname, rho_k, d_mm, f_uk),
          "{}, k_mod = {:g}, gamma_M = {:g}".format(thick, k_mod, gamma_M)]
-    for g, fr in mems:
-        L.append("Sider, emne med fiber {}: {}".format(g, ", ".join(
-            "{} {}".format(s, side_type(g, s, fr)) for s in sorted(SIDE_NAMES))))
+    for m in mems:
+        L.append("{} (fiber {:g} grader): {}".format(
+            m["name"].capitalize(), m["angle"], ", ".join(
+                "{} {}".format(k + 1, side_type(m, k + 1, s))
+                for k, s in enumerate(sides))))
     L.append("Lasttilfælde: {}{}; styrende N = {:g}, V = {:g}, M = {:g}"
              .format(len(cases), " (inkl. modsat fortegn)" if both_signs
                      else "", *gov["case"]))
     f = gov["forces"][i_max]
-    rd, mid_ = capacity(f, i_max)
-    if mid_ is None:
+    rd, x = capacity(f, i_max)
+    if x is None:
         L.append("F_v,Rd = {:.2f} kN (givet)".format(rd))
     else:
-        if typ == "B":
-            L.append("Styrende dorn nr. {}: F = {:.2f} kN, alpha = {:.1f} "
-                     "(side) / {:.1f} grader (midte)".format(
-                         i_max + 1, gov["mags"][i_max],
-                         angle_to_grain(f, side_g), angle_to_grain(f, mid)))
-        else:
-            L.append("Styrende dorn nr. {}: F = {:.2f} kN, alpha = {:.1f} "
-                     "grader".format(i_max + 1, gov["mags"][i_max],
-                                     angle_to_grain(f, grain)))
+        L.append("Styrende dorn nr. {}: F = {:.2f} kN, alpha = {}".format(
+            i_max + 1, gov["mags"][i_max], " / ".join(
+                "{:.1f} grader ({})".format(angle_to_grain(f, m["g"]),
+                                            m["name"]) for m in mems)))
         L += ["f_h,0,k = 0.082(1-0.01d)rho_k = {:.2f} MPa, k90 = {:.3f}"
-              .format(mid_["f_h0"], mid_["k90"]),
+              .format(x["f_h0"], x["k90"]),
               "f_h,a,k: " + ", ".join("{} {:.2f} MPa".format(k, v)
-                                      for k, v in mid_["f_h"].items()),
-              "M_y,Rk = 0.3 f_u,k d^2.6 = {:.0f} Nmm".format(mid_["M_y"]),
+                                      for k, v in x["f_h"].items()),
+              "M_y,Rk = 0.3 f_u,k d^2.6 = {:.0f} Nmm".format(x["M_y"]),
               "Brudformer pr. snit: " + ", ".join(
                   "{} = {:.2f}".format(k, v / 1000)
-                  for k, v in mid_["modes"].items()) + " kN",
+                  for k, v in x["modes"].items()) + " kN",
               "F_v,Rk = 2 x {:.2f} = {:.2f} kN (brudform {})".format(
-                  mid_["Rk"] / 2, mid_["Rk"], mid_["mode"]),
-              "n_ef/n = {:.3f}".format(mid_["kef"]) if use_nef
+                  x["Rk"] / 2, x["Rk"], x["mode"]),
+              "n_ef/n = {:.3f}".format(x["kef"]) if use_nef
               else "n_ef ikke medregnet",
               "F_v,Rd = {:.3f} x {:g} x {:.2f} / {:g} = {:.2f} kN".format(
-                  mid_["kef"], k_mod, mid_["Rk"], gamma_M, rd)]
+                  x["kef"], k_mod, x["Rk"], gamma_M, rd)]
     L.append("eta = {:.2f} / {:.2f} = {:.2f}  {}".format(
         gov["mags"][i_max], rd, util, "OK" if util <= 1 else "IKKE OK"))
     L.append("Afstande ({}):".format("ugunstigste retning" if env
                                      else "pr. dorn efter kraftretning"))
-    for n_, a, r, sok in spacing:
-        L.append("  {} = {:.0f} mm >= {:.0f} mm  {}".format(
-            n_, a * 1000, r * 1000, "OK" if sok else "IKKE OK"))
+    for nm, a, r, sok, txt in spacing:
+        res_txt = "OK" if sok else "IKKE OK"
+        if txt:
+            L.append("  {}: {}  {}".format(nm, txt, res_txt))
+        else:
+            L.append("  {} = {:.0f} mm >= {:.0f} mm  {}".format(
+                nm, a * 1000, r * 1000, res_txt))
     L.append("SAMLET: " + ("OK" if ok else "IKKE OK"))
 
     out = dict(gov)
@@ -559,60 +728,72 @@ def analyse(points, box, d_mm, typ="A", grain="y", free_x=None, free_y=None,
 
 # ------------------------------------------------------- lokalt (VS Code)
 
-def solve(x_size=0.333, y_size=0.369, dorn="M12", typ="A", grain="y",
-          free_x=None, free_y=None, a_edge=4.0, a_end=7.0, s_par=5.0,
-          s_perp=3.0, pts=None, **kw):
-    """Placerer dornene og kører analyse(). Område fra (0, 0) i meter.
-    Øvrige argumenter (N, V, M, rule, timber, t1 ...) går til analyse()."""
+def solve(poly=None, x_size=0.333, y_size=0.4, dorn="M12", typ="A",
+          grain="y", free=None, grain_mid=None, free_mid=None,
+          grid_angle=None, a_edge=4.0, a_end=7.0, s_par=5.0, s_perp=3.0,
+          pts=None, **kw):
+    """Placerer dornene og kører analyse(). poly i meter (ellers rektangel
+    x_size × y_size fra 0,0). Øvrige argumenter går til analyse()."""
     typ = str(typ).strip().upper()
-    grain = str(grain).strip().lower()
+    P = poly or rect_poly(x_size, y_size)
     d_mm = parse_dorn(dorn)
-    mems = members(typ, grain, free_x, free_y)
-    xs, ys, dist = layout(x_size, y_size, d_mm / 1000.0, mems,
-                          a_edge, a_end, s_par, s_perp)
+    mems = members(typ, grain, free, grain_mid, free_mid)
+    auto, Q = layout(P, d_mm / 1000.0, mems, a_edge, a_end, s_par, s_perp,
+                     grid_angle)
     if pts is None:
-        pts = [(x, y) for y in ys for x in xs]
+        pts = auto
     if not pts:
         raise ValueError("Ingen dorne – området er for lille til "
                          "kant-/endeafstandene.")
-    r = analyse(pts, (0.0, 0.0, x_size, y_size), d_mm, typ, grain, free_x,
-                free_y, **kw)
-    r.update({"pts": pts, "size": (x_size, y_size), "dist": dist,
-              "d_mm": d_mm})
+    r = analyse(pts, P, d_mm, typ, grain, free, grain_mid, free_mid, **kw)
+    r.update({"pts": pts, "poly": P, "inner": Q, "d_mm": d_mm})
     return r
 
 
-def side_label(side, mems):
-    t = [side_type(g, side, fr) for g, fr in mems]
-    if len(mems) == 1:
-        return "{} {}".format(side, t[0])
-    return "{} {}(x)/{}(y)".format(side, t[0], t[1])
+def side_labels(P, mems):
+    sides = poly_sides(P)
+    out = []
+    for k, s in enumerate(sides):
+        t = "/".join(side_type(m, k + 1, s) for m in mems)
+        out.append(("{} {}".format(k + 1, t), s[4], s[2]))
+    return out
 
 
 def plot_mpl(r, scale=None, show=True, save=None):
     """Tegner samlingen: pile og kræfter fra det styrende lasttilfælde."""
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
+    from matplotlib.patches import Polygon
 
-    Lx, Ly = r["size"]
-    dist = r["dist"]
+    P = r["poly"]
+    xs, ys = [p[0] for p in P], [p[1] for p in P]
+    size = max(max(xs) - min(xs), max(ys) - min(ys))
     Fmax = max(r["mags"])
     if not scale:
-        scale = 0.4 * max(Lx, Ly) / Fmax if Fmax > 0 else 0.0
+        scale = 0.35 * size / Fmax if Fmax > 0 else 0.0
 
     fig, ax = plt.subplots(figsize=(8, 8))
-    ax.add_patch(Rectangle((0, 0), Lx, Ly, fill=False, ec="#aa0000"))
-    ix0, iy0 = dist[4], dist[1]
-    iw, ih = Lx - dist[4] - dist[2], Ly - dist[1] - dist[3]
-    if iw > 0 and ih > 0:
-        ax.add_patch(Rectangle((ix0, iy0), iw, ih, fill=False, ec="grey",
-                               ls=":"))
-    pos = {1: (Lx / 2, 0), 2: (Lx, Ly / 2), 3: (Lx / 2, Ly), 4: (0, Ly / 2)}
-    for s, (mx, my) in pos.items():
-        ax.text(mx, my, side_label(s, r["members"]), color="#aa0000",
-                ha="center", va="center", fontsize=8,
-                rotation=90 if s in (2, 4) else 0,
+    ax.add_patch(Polygon(P, closed=True, fill=False, ec="#aa0000"))
+    if r["inner"]:
+        ax.add_patch(Polygon(r["inner"], closed=True, fill=False, ec="grey",
+                             ls=":"))
+    for txt, mid, n in side_labels(P, r["members"]):
+        ax.text(mid[0] + n[0] * 0.03 * size, mid[1] + n[1] * 0.03 * size,
+                txt, color="#aa0000", ha="center", va="center", fontsize=8,
                 bbox=dict(fc="white", ec="none", pad=1))
+
+    # fiberretninger
+    cx, cy = r["centroid"]
+    for k, m in enumerate(r["members"]):
+        g = m["g"]
+        L = 0.2 * size
+        ox, oy = min(xs) - 0.15 * size, max(ys) - 0.25 * size * k
+        ends = [(ox + g[0] * L / 2, oy + g[1] * L / 2),
+                (ox - g[0] * L / 2, oy - g[1] * L / 2)]
+        ax.annotate("", xy=ends[0], xytext=ends[1],
+                    arrowprops=dict(arrowstyle="<->", color="#8a6d3b"))
+        ax.plot(*zip(*ends), alpha=0)           # med i aksegrænserne
+        ax.text(ox, oy, " fiber " + m["name"], color="#8a6d3b", fontsize=8,
+                ha="left", va="bottom")
 
     for i, ((x, y), (fx, fy), F, e) in enumerate(
             zip(r["pts"], r["forces"], r["mags"], r["eta"])):
@@ -623,11 +804,10 @@ def plot_mpl(r, scale=None, show=True, save=None):
         if F > 1e-9:
             ax.annotate("", xy=(x + fx * scale, y + fy * scale), xytext=(x, y),
                         arrowprops=dict(arrowstyle="-|>", color=col, lw=1.2))
-        ax.text(x, y - 0.01, "{:.1f} kN ({:.2f})".format(F, e), color=col,
+        ax.text(x, y - 0.008, "{:.1f} kN ({:.2f})".format(F, e), color=col,
                 ha="center", va="top", fontsize=7,
                 bbox=dict(fc="white", ec="none", alpha=0.75, pad=1))
 
-    cx, cy = r["centroid"]
     ax.plot(cx, cy, "o", color="grey", ms=4)
     if r["ic"] is not None:
         ax.plot(*r["ic"], "o", color="#0046a0", ms=6)
@@ -682,90 +862,87 @@ if IN_RHINO:
     GREEN = sd.Color.FromArgb(0, 120, 40)
     GREY = sd.Color.FromArgb(120, 120, 120)
     BLUE = sd.Color.FromArgb(0, 70, 160)
+    BROWN = sd.Color.FromArgb(138, 109, 59)
 
 
 class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
                   else object):
 
-    def RunScript(self, area, x_size, y_size, dorn, typ, grain, free_x,
-                  free_y, a_edge, a_end, s_par, s_perp, pts, N, V, M,
-                  load_pt, both_signs, rule, timber, t1, t2, mid, f_uk,
-                  k_mod, gamma_M, use_nef, Fv_Rd, scale, plot):
+    def RunScript(self, area, x_size, y_size, dorn, typ, grain, free,
+                  grain_mid, free_mid, grid_angle, a_edge, a_end, s_par,
+                  s_perp, pts, N, V, M, load_pt, both_signs, rule, timber,
+                  t1, t2, f_uk, k_mod, gamma_M, use_nef, Fv_Rd, scale,
+                  plot):
         self._draw = None
         empty = (None,) * 15
-        err = Grasshopper.Kernel.GH_RuntimeMessageLevel
+        lvl = Grasshopper.Kernel.GH_RuntimeMessageLevel
 
         typ = str(typ or "A").strip().upper()
-        grain = str(grain or "y").strip().lower()
         plot = _d(plot, True)
         u = _unit_to_m()                      # model-enhed -> m
         d_mm = parse_dorn(dorn)
 
-        # --- område (regnes i meter, tegnes i model-enheder)
-        crv = _coerce_curve(area)
-        if crv is not None:
-            bb = crv.GetBoundingBox(True)
-            x0, y0, z = bb.Min.X, bb.Min.Y, bb.Min.Z
-            Lx, Ly = bb.Max.X - x0, bb.Max.Y - y0
-        else:
-            x0, y0, z = 0.0, 0.0, 0.0
-            Lx, Ly = float(_d(x_size, 0.333)), float(_d(y_size, 0.369))
-
         try:
-            mems = members(typ, grain, free_x, free_y)
-            xs, ys, dist = layout(Lx * u, Ly * u, d_mm / 1000.0, mems,
-                                  _d(a_edge, 4.0), _d(a_end, 7.0),
-                                  _d(s_par, 5.0), _d(s_perp, 3.0))
-            if pts:
-                Pm = [((p.X - x0) * u, (p.Y - y0) * u) for p in pts]
+            # --- område (regnes i meter, tegnes i model-enheder)
+            crv = _coerce_curve(area)
+            z = 0.0
+            if crv is not None:
+                okp, pl = crv.TryGetPolyline()
+                if not okp:
+                    raise ValueError("area skal være en lukket polylinje")
+                V3 = list(pl)
+                if V3[0].DistanceTo(V3[-1]) < 1e-9:
+                    V3 = V3[:-1]
+                z = V3[0].Z
+                P = [(p.X * u, p.Y * u) for p in V3]
             else:
-                Pm = [(x, y) for y in ys for x in xs]
+                P = rect_poly(float(_d(x_size, 0.333)) * u,
+                              float(_d(y_size, 0.4)) * u)
+
+            mems = members(typ, grain, free, grain_mid, free_mid)
+            auto, Q = layout(P, d_mm / 1000.0, mems, _d(a_edge, 4.0),
+                             _d(a_end, 7.0), _d(s_par, 5.0),
+                             _d(s_perp, 3.0), grid_angle)
+            Pm = [(p.X * u, p.Y * u) for p in pts] if pts else auto
             if not Pm:
                 raise ValueError("Ingen dorne – området er for lille til "
                                  "kant-/endeafstandene.")
             lp = None
             if load_pt is not None:
-                lp = ((load_pt.X - x0) * u, (load_pt.Y - y0) * u)
-            r = analyse(Pm, (0.0, 0.0, Lx * u, Ly * u), d_mm, typ, grain,
-                        free_x, free_y, N, V, M, lp, _d(both_signs, True),
-                        rule, timber, _d(t1, 80.0), t2, mid,
-                        _d(f_uk, 360.0), _d(k_mod, 0.8), _d(gamma_M, 1.3),
-                        _d(use_nef, True), Fv_Rd)
+                lp = (load_pt.X * u, load_pt.Y * u)
+            r = analyse(Pm, P, d_mm, typ, grain, free, grain_mid, free_mid,
+                        N, V, M, lp, _d(both_signs, True), rule, timber,
+                        _d(t1, 80.0), t2, _d(f_uk, 360.0), _d(k_mod, 0.8),
+                        _d(gamma_M, 1.3), _d(use_nef, True), Fv_Rd)
         except ValueError as exc:
-            self.Component.AddRuntimeMessage(err.Error, str(exc))
+            self.Component.AddRuntimeMessage(lvl.Error, str(exc))
             return empty
         if not r["ok"]:
             self.Component.AddRuntimeMessage(
-                err.Warning, "Kontrol IKKE OK – udnyttelse {:.2f}".format(
+                lvl.Warning, "Kontrol IKKE OK – udnyttelse {:.2f}".format(
                     r["util"]))
 
         def to_model(p):
-            return rg.Point3d(x0 + p[0] / u, y0 + p[1] / u, z)
+            return rg.Point3d(p[0] / u, p[1] / u, z)
 
-        P = [to_model(p) for p in Pm]
+        Pts = [to_model(p) for p in Pm]
         F_vec = [rg.Vector3d(fx, fy, 0) for fx, fy in r["forces"]]
         F = r["mags"]
         Fmax = max(F)
         c = to_model(r["centroid"])
         IC = to_model(r["ic"]) if r["ic"] is not None else None
+        outline = rg.Polyline([to_model(p) for p in P + P[:1]])
+        inner = rg.Polyline([to_model(p) for p in Q + Q[:1]]) if Q else None
 
-        outline = rg.Rectangle3d(
-            rg.Plane(rg.Point3d(x0, y0, z), rg.Vector3d.ZAxis), Lx, Ly)
-        iw = Lx - (dist[4] + dist[2]) / u
-        ih = Ly - (dist[1] + dist[3]) / u
-        inner = None
-        if iw > 0 and ih > 0:
-            inner = rg.Rectangle3d(rg.Plane(
-                rg.Point3d(x0 + dist[4] / u, y0 + dist[1] / u, z),
-                rg.Vector3d.ZAxis), iw, ih)
-
+        bb = outline.BoundingBox
+        size = max(bb.Max.X - bb.Min.X, bb.Max.Y - bb.Min.Y)
         if not scale:
-            scale = 0.4 * max(Lx, Ly) / Fmax if Fmax > 0 else 0.0
-        arrows = [rg.Line(p, p + v * scale) for p, v in zip(P, F_vec)]
+            scale = 0.35 * size / Fmax if Fmax > 0 else 0.0
+        arrows = [rg.Line(p, p + v * scale) for p, v in zip(Pts, F_vec)]
 
         n_, v_, m_ = r["case"]
         summary = [
-            "Dorn: M{:g}, n = {}, typ {}".format(d_mm, len(P), typ),
+            "Dorn: M{:g}, n = {}, typ {}".format(d_mm, len(Pts), typ),
             "Styrende: N = {:g}, V = {:g} kN, M = {:g} kNm".format(
                 n_, v_, m_),
             "Ip = {:.5f} m2, Fmax = {:.2f} kN".format(r["Ip"], Fmax),
@@ -775,22 +952,33 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
         info = "\n".join(summary + [""] + r["lines"])
 
         if plot:
+            labels = [(t, to_model((m[0] + n[0] * 0.03 * size * u,
+                                    m[1] + n[1] * 0.03 * size * u)))
+                      for t, m, n in side_labels(P, mems)]
+            grains = []
+            for k, m in enumerate(mems):
+                o = rg.Point3d(bb.Min.X - 0.12 * size,
+                               bb.Max.Y - 0.1 * size * k, z)
+                gv = rg.Vector3d(m["g"][0], m["g"][1], 0) * (0.1 * size)
+                grains.append((rg.Line(o - gv, o + gv), m["name"]))
             self._draw = {
-                "P": P, "F": F, "eta": r["eta"], "i_max": r["i_max"],
+                "P": Pts, "F": F, "eta": r["eta"], "i_max": r["i_max"],
                 "arrows": arrows, "outline": outline, "inner": inner,
                 "c": c, "IC": IC, "info": summary, "ok": r["ok"],
-                "labels": [side_label(s, mems) for s in sorted(SIDE_NAMES)],
-                "x0": x0, "y0": y0, "Lx": Lx, "Ly": Ly, "z": z,
+                "labels": labels, "grains": grains, "bb": bb, "size": size,
+                "z": z,
             }
-            bb = outline.BoundingBox
+            box = rg.BoundingBox(bb.Min, bb.Max)
             for a in arrows:
-                bb.Union(a.BoundingBox)
+                box.Union(a.BoundingBox)
+            for ln, _ in grains:
+                box.Union(ln.BoundingBox)
             if IC is not None:
-                bb.Union(IC)
-            bb.Inflate(0.05 * max(Lx, Ly))
-            self._bbox = bb
+                box.Union(IC)
+            box.Inflate(0.1 * size)
+            self._bbox = box
 
-        return (P, F_vec, F, Fmax, r["Ip"], c, IC, arrows,
+        return (Pts, F_vec, F, Fmax, r["Ip"], c, IC, arrows,
                 outline.ToNurbsCurve(),
                 inner.ToNurbsCurve() if inner else None,
                 r["Rd"], r["eta"], r["util"], r["ok"], info)
@@ -808,15 +996,14 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
             return
         dsp = a[-1].Display                   # IGH_PreviewArgs er sidste arg
 
-        dsp.DrawPolyline(dr["outline"].ToPolyline(), RED, 1)
+        dsp.DrawPolyline(dr["outline"], RED, 1)
         if dr["inner"] is not None:
-            dsp.DrawDottedPolyline(dr["inner"].ToPolyline(), GREY, True)
-
-        x0, y0, Lx, Ly, z = dr["x0"], dr["y0"], dr["Lx"], dr["Ly"], dr["z"]
-        mids = [(x0 + Lx / 2, y0), (x0 + Lx, y0 + Ly / 2),
-                (x0 + Lx / 2, y0 + Ly), (x0, y0 + Ly / 2)]
-        for (mx, my), t in zip(mids, dr["labels"]):
-            dsp.Draw2dText(t, RED, rg.Point3d(mx, my, z), True, 12)
+            dsp.DrawDottedPolyline(dr["inner"], GREY, True)
+        for t, p in dr["labels"]:
+            dsp.Draw2dText(t, RED, p, True, 12)
+        for ln, name in dr["grains"]:
+            dsp.DrawArrow(ln, BROWN)
+            dsp.Draw2dText("fiber " + name, BROWN, ln.To, False, 12)
 
         # grøn = OK, rød = overskredet, blå ring = styrende dorn
         for i, (p, f, e, ln) in enumerate(
@@ -837,27 +1024,34 @@ class MyComponent(Grasshopper.Kernel.GH_ScriptInstance if IN_RHINO
                           5, BLUE)
             dsp.Draw2dText("rotationscenter", BLUE, dr["IC"], False, 12)
 
-        dy = 0.06 * max(Lx, Ly)
+        bb, size, z = dr["bb"], dr["size"], dr["z"]
+        dy = 0.06 * size
         n = len(dr["info"])
         for i, t in enumerate(dr["info"]):
-            pt = rg.Point3d(x0, y0 + Ly + dy * (n - i), z)
+            pt = rg.Point3d(bb.Min.X, bb.Max.Y + dy * (n - i), z)
             col = (GREEN if dr["ok"] else RED) if i == n - 1 else RED
             dsp.Draw2dText(t, col, pt, False, 14)
 
 
 if __name__ == "__main__":
+    # Rammehjørne: delt søjle (sidetræ, fiber lodret) omkring et skråt spær
+    # (midtertræ). Overlappet er et parallelogram – se overlap_poly.
+    poly = overlap_poly(b=0.333, h=0.33, slope=-35)
+
     r = solve(
-        x_size=0.333, y_size=0.4,       # forbindelsesområde [m]
+        poly=poly,                      # eller x_size=..., y_size=...
         dorn="M12",
-        typ="A",                        # "A" stålplade, "B" træ-træ
-        grain="y",                      # typ A: fiber; begge: N's retning
-        free_x=None, free_y=None,       # sider hvor emnet fortsætter, "2,3"
+        typ="B",                        # "A" stålplade, "B" træ-træ
+        grain=90,                       # sidetræ (søjle): lodret
+        free="1",                       # søjlen fortsætter under spæret
+        grain_mid=-35,                  # midtertræ (spær)
+        free_mid="4",                   # spæret fortsætter ind over søjlen
         a_edge=4, a_end=7,              # placering: kant/ende [x d]
         s_par=5, s_perp=3,              # placering: dornafstand [x d]
-        N=[27.42], V=[15.49], M=[43.55],  # lasttilfælde [kN], [kN], [kNm]
+        N=[27.42], V=[15.49], M=[43.55],  # lasttilfælde, N/V langs `grain`
         both_signs=True,
         rule="omhyllende",              # eller "dorn"
-        timber="GL24h", t1=80,          # typ B: også t2=..., mid="x"
+        timber="GL24h", t1=80, t2=160,  # sidetræ og midtertræ [mm]
         f_uk=360, k_mod=0.8, gamma_M=1.3,
     )
     print("\n".join(r["lines"]))
