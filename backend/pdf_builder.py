@@ -1169,18 +1169,56 @@ def _forside_blokke(project: dict, doc_id: str = "") -> list:
     return ud
 
 
+_ELEMENT_ART = {
+    "bjaelke": "Bjælke", "spaer": "Spær", "hanebaand": "Hanebånd",
+    "soejle": "Søjle", "vaeg": "Væg", "daek": "Dæk", "samling": "Samling",
+    "fundament": "Fundament", "andet": "Element",
+}
+_ELEMENT_MATERIALE = {"trae": "træ", "staal": "stål", "beton": "beton",
+                      "murvaerk": "murværk"}
+
+
+def _element_blocks(block: dict) -> list:
+    """
+    Et konstruktionselement (A2.2) som overskrift og en linje om det.
+
+    Overskriften baerer elementets eget nummer -- "B.1  Bjaelke over doer" --
+    og nummereres ikke af _number_headings: B.1 er det nummer, tegningerne og
+    kontrolplanen bruger, og et "3.2" foran ville vaere et andet navn for det
+    samme element.
+    """
+    d = block.get("data") or {}
+    nr = str(d.get("nr") or "").strip()
+    navn = str(d.get("navn") or "").strip() or _ELEMENT_ART.get(d.get("art"), "Element")
+    ud = [{"type": "heading",
+           "data": {"level": d.get("level") or 2,
+                    "text": f"{nr}  {navn}" if nr else navn,
+                    "nummereret": False}}]
+    art = _ELEMENT_ART.get(d.get("art"), "")
+    mat = _ELEMENT_MATERIALE.get(d.get("materiale"), "")
+    linje = f"{art} i {mat}" if art and mat else (art or mat)
+    beskrivelse = str(d.get("beskrivelse") or "").strip()
+    if beskrivelse:
+        linje = f"{linje}. {beskrivelse}" if linje else beskrivelse
+    if linje:
+        ud.append({"type": "text", "data": {"text": linje.rstrip(".") + "."}})
+    return ud
+
+
 def _expand_generated_blocks(blocks: list, project: dict,
                              doc_id: str = "") -> list:
     """
     Replace blocks that are generated from the project rather than authored.
 
-    Currently just `doclist`. These are expanded at render time, never stored,
+    `doclist` and `element`. These are expanded at render time, never stored,
     so what is printed is always the current state.
     """
     out = []
     for block in blocks:
         if block.get("type") == "doclist":
             out.append(_doclist_table(project))
+        elif block.get("type") == "element":
+            out.extend(_element_blocks(block))
         elif block.get("type") == "projektforside":
             # Den staar automatisk i hvert dokument (se build_pdf). Ligger den
             # ogsaa som en blok i et dokument fra da den var det, udelades den
@@ -1291,7 +1329,8 @@ def _number_headings(blocks: list) -> list:
             text  = block["data"].get("text", "")
             idx   = level - 1  # 0, 1, or 2
 
-            if _ALREADY_NUMBERED.match(text.strip()):
+            if (block["data"].get("nummereret") is False
+                    or _ALREADY_NUMBERED.match(text.strip())):
                 result.append(block)
                 continue
 

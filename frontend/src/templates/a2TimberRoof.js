@@ -247,8 +247,9 @@ export function makeTimberRoofTemplate() {
       text: '3. Kapacitetskontrol (DS/EN 1995-1-1)' } },
 
     // ── Venstre spær — member 1 (elem 1 + 2, samlet) ─────────────────────
-    { id: ids.hSpærVenstre, type: 'heading', data: { level: 3,
-      text: 'Venstre spær — 45×145 C24 (member 1: elem 1+2, L_total = 3,61 m)' } },
+    { id: ids.hSpærVenstre, type: 'element', data: { level: 3,
+      nr: 'SP.1', navn: 'Venstre spær 45×145 C24', art: 'spaer', materiale: 'trae',
+      beskrivelse: 'Member 1 i rammeberegningen (elem 1+2, L_total = 3,61 m)' } },
     { id: ids.txtSpærNote, type: 'text', data: { text:
       'Spæret er i FEM-modellen opdelt i to elementer ved hanebåndssamlingen (node 3):\n' +
       '  Nedre del: elem 1 — L₁ = 2,163 m  (murplade → hanebåndssamling)\n' +
@@ -260,7 +261,7 @@ export function makeTimberRoofTemplate() {
       '  Længste uafstivede del: L_ef = L₁ = 2,163 m (nedre del — dimensionerende for LTB)\n' +
       '  "span_m" er sat til 2,163 m da denne er bestemmende for sideudknækning.' } },
     { id: ids.chkSpærV, type: 'timber_beam', data: {
-      title: 'Venstre spær 45×145 C24 — member 1 (worst-case M/V/N)', label: 'S1',
+      title: 'Venstre spær 45×145 C24 — member 1 (worst-case M/V/N)', label: 'SP.1',
       span_m: 2.163, b_mm: 45, h_mm: 145,
       timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: null,
       load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 1001, fem_end: 'max',
@@ -269,10 +270,11 @@ export function makeTimberRoofTemplate() {
     }},
 
     // ── Højre spær — member 2 (elem 3 + 4, samlet) ───────────────────────
-    { id: ids.hSpærHøjre, type: 'heading', data: { level: 3,
-      text: 'Højre spær — 45×145 C24 (member 2: elem 3+4, L_total = 3,61 m)' } },
+    { id: ids.hSpærHøjre, type: 'element', data: { level: 3,
+      nr: 'SP.2', navn: 'Højre spær 45×145 C24', art: 'spaer', materiale: 'trae',
+      beskrivelse: 'Member 2 i rammeberegningen (elem 3+4, L_total = 3,61 m)' } },
     { id: ids.chkSpærH, type: 'timber_beam', data: {
-      title: 'Højre spær 45×145 C24 — member 2 (worst-case M/V/N)', label: 'S2',
+      title: 'Højre spær 45×145 C24 — member 2 (worst-case M/V/N)', label: 'SP.2',
       span_m: 2.163, b_mm: 45, h_mm: 145,
       timber_grade: 'C24', service_class: 2, load_duration: 'short', gamma_M: null,
       load_source: 'fem', fem_block_id: ids.fem, fem_elem_id: 1002, fem_end: 'max',
@@ -281,8 +283,9 @@ export function makeTimberRoofTemplate() {
     }},
 
     // ── Hanebånd — trækcheck (elem 5) ────────────────────────────────────
-    { id: ids.hHane, type: 'heading', data: { level: 3,
-      text: 'Hanebånd — 45×95 C24 (elem 5, L = 2,40 m) — Trækcheck EN 1995-1-1 §6.1.2' } },
+    { id: ids.hHane, type: 'element', data: { level: 3,
+      nr: 'HB.1', navn: 'Hanebånd 45×95 C24', art: 'hanebaand', materiale: 'trae',
+      beskrivelse: 'Element 5 i rammeberegningen (L = 2,40 m), træk efter EN 1995-1-1 §6.1.2' } },
     // N_Ed står tom med vilje. Den stod som 0, og så gav eftervisningen η = 0 og
     // "OK" i rapporten for et hanebånd, ingen havde eftervist. Tekstfeltet over
     // tæller som "mangler", indtil trækkraften er aflæst og indsat.
@@ -318,9 +321,9 @@ export function makeTimberRoofTemplate() {
       'FEM-analyse (kør "General Frame FEM" blokken):\n' +
       '  Alle kombinationer enveloperet · Snitkræfter M/V/N pr. element\n\n' +
       'Kapacitetskontrol:\n' +
-      '  S1 — Venstre spær (member 1, L_ef=2,16 m, worst-case M/V/N):  η = … %   ✓/✗\n' +
-      '  S2 — Højre spær   (member 2, L_ef=2,16 m, worst-case M/V/N):  η = … %   ✓/✗\n' +
-      '  H1 — Hanebånd (elem 5, L=2,40 m): N_Ed = … kN  ≤  N_Rd = 41,4 kN   ✓/✗\n\n' +
+      '  SP.1 — Venstre spær (member 1, L_ef=2,16 m, worst-case M/V/N):  η = … %   ✓/✗\n' +
+      '  SP.2 — Højre spær   (member 2, L_ef=2,16 m, worst-case M/V/N):  η = … %   ✓/✗\n' +
+      '  HB.1 — Hanebånd (elem 5, L=2,40 m): N_Ed = … kN  ≤  N_Rd = 41,4 kN   ✓/✗\n\n' +
       'Bemærkninger:\n' +
       '  • Hvert spær udgøres af 2 FEM-elementer (nedre + øvre) — checket bruger member-niveau worst-case\n' +
       '  • Effektiv LTB-længde = 2,163 m (nedre del — bestemmende afstivningsafstand)\n' +

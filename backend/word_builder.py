@@ -599,25 +599,16 @@ def _convert_doc_block(doc: Document, block: dict, tmp_files: list):
     # Unknown block types — skip silently
 
 
-# ── Heading numbering (mirror of pdf_builder) ─────────────────────────────────
+# ── Heading numbering ─────────────────────────────────────────────────────────
+#
+# Den samme som PDF'ens, ikke en kopi af den. Kopien her var gledet: den
+# sprang ikke overskrifter over, der selv bar et nummer, saa "1. Lastgrundlag"
+# blev til "1.  1. Lastgrundlag" i Word -- og den kendte ikke elementerne,
+# hvis nummer (B.1) er deres eget.
 
 def _number_headings(blocks: list) -> list:
-    result   = []
-    counters = [0, 0, 0]
-    for block in blocks:
-        if block.get("type") == "heading":
-            level = block["data"].get("level", 1)
-            text  = block["data"].get("text", "")
-            idx   = level - 1
-            if idx < 3:
-                counters[idx] += 1
-                for j in range(idx + 1, 3):
-                    counters[j] = 0
-                num      = ".".join(str(counters[k]) for k in range(idx + 1))
-                new_text = f"{num}  {text}" if text else num
-                block = {**block, "data": {**block["data"], "text": new_text}}
-        result.append(block)
-    return result
+    from pdf_builder import _number_headings as nummerer
+    return nummerer(blocks)
 
 
 # ── Cover page ────────────────────────────────────────────────────────────────

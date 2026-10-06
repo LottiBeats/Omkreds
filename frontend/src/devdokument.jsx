@@ -17,6 +17,10 @@ import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import BlockList from './components/blocks/BlockList.jsx'
+import { makeTimberRoofTemplate } from './templates/a2TimberRoof.js'
+// Appens farver og knapper, så siden ser ud som i editoren.
+import './index.css'
+import './ui/ui.css'
 
 // Fire blokke, der dækker de tilstande, siden kan være i: en med felter at
 // taste i, en ren tekst, en uden resultat endnu, og en med et resultat.
@@ -78,7 +82,9 @@ const START = [
 ]
 
 function Harness() {
-  const [blocks, setBlocks] = useState(START)
+  // ?tag åbner A2 fra projekttypen "Tagkonstruktion — enfamiliehus".
+  const [blocks, setBlocks] = useState(() =>
+    new URLSearchParams(location.search).has('tag') ? makeTimberRoofTemplate() : START)
   const [clipboard, setClipboard] = useState(null)
 
   return (
@@ -94,6 +100,7 @@ function Harness() {
         clipboard={clipboard}
         onCopyBlock={setClipboard}
         project={{ name: 'Udvikling', consequence_class: 'CC2' }}
+        elementer
       />
     </div>
   )

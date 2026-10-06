@@ -20,6 +20,9 @@ import { hashCalcInputs, hasCalcResult, isStaleResult, staleReason, calcRevision
 import HeadingBlock      from './HeadingBlock.jsx'
 const TableBlock = lazy(() => import('./TableBlock.jsx'))
 import DocListBlock      from './DocListBlock.jsx'
+import ElementBlock, { ElementPreview } from './ElementBlock.jsx'
+import ElementPanel      from './ElementPanel.jsx'
+import { naesteNr, nytElement, indsaetPlads } from '../../lib/elementer.js'
 // The text editor (TipTap) is loaded on demand; until then the same text is
 // shown formatted by RichTextStatic, so nothing jumps when it arrives.
 const TextBlock = lazy(() => import('./TextBlock.jsx'))
@@ -73,6 +76,10 @@ const BLOCK_TYPES = [
   // and no palette entry — it arrives with the B1 template.
   { type: 'doclist',       label: 'Dokumentliste',     icon: 'DOC', color: '#64748b', component: null,
     default: {} },
+  // Et konstruktionselement i A2.2 (B.1, S.1 …). Blokkene under det hører til
+  // elementet -- se lib/elementer.js. nr gives af h.addBlock / ElementPanel.
+  { type: 'element',       label: 'Konstruktionselement', icon: 'EL', color: '#b83d22', component: ElementBlock,
+    default: { nr: '', navn: '', art: 'bjaelke', materiale: 'trae', beskrivelse: '', level: 2 } },
   { type: 'custom_calc',   label: 'Egen beregning',    icon: 'CLC', color: '#7c3aed', component: CustomCalcBlock,
     default: { title: 'Egen beregning', version: 2, subst: true,
                lines: ['# Forudsætninger', 'L = 4,0 m | spændvidde',
@@ -281,6 +288,10 @@ const PANEL_GROUPS = [
     types: ['roof_dead_load', 'snow_load', 'wind_load', 'load_combo'],
   },
   {
+    label: 'Konstruktion',
+    types: ['element'],
+  },
+  {
     label: 'Stål  (EC3)',
     // beam_column er stadig ude: den dumper sin egen referencetest. EN 1993-1-1
     // lign. 6.61/6.62 giver 0,432 hvor Vayas et al. (Springer 2019, tabel
@@ -350,6 +361,9 @@ function BlockPreview({ block, project }) {
     // Generated from the project, not authored — see DocListBlock.jsx
     case 'doclist':
       return <DocListBlock data={d} project={project} />
+
+    case 'element':
+      return <ElementPreview data={d} />
 
     case 'heading': {
       const sz = { 1: 26, 2: 20, 3: 16 }[d.level] || 18
@@ -659,7 +673,7 @@ function AddZone({ onAdd, templates = [], onAddTemplate, clipboard, onPaste }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock, project, focusRequest }) {
+export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock, project, focusRequest, elementer = false }) {
   const confirm = useConfirm()
   const [selectedId,  setSelectedId]  = useState(null)
   // IDs of selected blocks where the editor is collapsed (preview only, blue border)
@@ -708,8 +722,15 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   // Jump to a block on request (from the export and issue checklists)
   useEffect(() => {
     if (!focusRequest) return
-    const id = focusRequest.id
-    if (!blocks.some(b => b.id === id)) return
+    gaaTil(focusRequest.id)
+  }, [focusRequest])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Et nyindsat element er først i listen, når dokumentet har tegnet sig igen.
+  function gaaTil(id, forsoeg = 0) {
+    if (!blocksRef.current.some(b => b.id === id)) {
+      if (forsoeg < 20) setTimeout(() => gaaTil(id, forsoeg + 1), 25)
+      return
+    }
     setSelectedId(id)
     setMinimised(prev => { const s = new Set(prev); s.delete(id); return s })
     requestAnimationFrame(() => {
@@ -718,7 +739,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
       el.classList.remove('ed-flash'); void el.offsetWidth; el.classList.add('ed-flash')
     })
-  }, [focusRequest])   // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   // ── Mutations ──────────────────────────────────────────────────────────
   //
@@ -774,7 +795,21 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
   h.addBlock = (type, atIndex) => {
     const def = TYPE_MAP[type]; if (!def) return
-    h.insertAt(atIndex, { id: Date.now(), type, data: { ...def.default } })
+    const data = { ...def.default }
+    if (type === 'element') data.nr = naesteNr(blocksRef.current, data.art)
+    h.insertAt(atIndex, { id: Date.now(), type, data })
+  }
+
+  // Et element fra listen: overskriften og dens beregning, efter det sidste
+  // element. Beregningen får bloktypens standardfelter som fra paletten.
+  h.addElement = (valg) => {
+    const cur = blocksRef.current
+    const nye = nytElement(cur, valg).map((b, i) => ({
+      id: Date.now() + i, type: b.type, data: { ...(TYPE_MAP[b.type]?.default ?? {}), ...b.data },
+    }))
+    const n = [...cur]; n.splice(indsaetPlads(cur), 0, ...nye); onChange(n)
+    setMinimised(prev => { const s = new Set(prev); nye.forEach(b => s.delete(b.id)); return s })
+    gaaTil(nye[1].id)
   }
 
   // Enter i en overskrift: et tekstafsnit lige under, med markøren i.
@@ -1018,6 +1053,16 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
       </aside>
 
+      <div style={s.col}>
+      {elementer && (
+        <ElementPanel
+          blocks={blocks}
+          typeLabel={t => TYPE_MAP[t]?.label ?? t}
+          onAdd={valg => h.addElement(valg)}
+          onGo={gaaTil}
+        />
+      )}
+
       {/* ── Document page ── */}
       <div ref={pageRef} style={s.page} onClick={() => setSelectedId(null)}>
 
@@ -1060,6 +1105,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
           />
         ))}
 
+      </div>
       </div>
     </div>
   )
@@ -1247,10 +1293,12 @@ const s = {
   },
 
   // ── Document page ─────────────────────────────────────────────────────
-  page: {
+  col: {
     flex:       1,
     minWidth:   0,
     maxWidth:   760,
+  },
+  page: {
     background: 'var(--surface)',
     padding:    '44px 56px 80px',
     boxShadow:  'var(--shadow-doc)',

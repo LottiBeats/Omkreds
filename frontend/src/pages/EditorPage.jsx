@@ -511,6 +511,7 @@ export default function EditorPage() {
                 clipboard={clipboard}
                 onCopyBlock={onCopyBlock}
                 focusRequest={focusRequest}
+                elementer={activeDoc === 'A2'}
               />
             </>
           )}

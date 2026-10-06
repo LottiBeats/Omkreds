@@ -1,0 +1,56 @@
+/* Elementer.css — konstruktionselementer: overskriften i dokumentet og listen over A2. */
+
+/* ── Elementet på siden ─────────────────────────────────────────────────── */
+.elb { padding: 2px 0; }
+.elb-head { display: flex; align-items: baseline; gap: 12px; line-height: 1.3; }
+.elb-nr { font: 600 0.8em/1 var(--font-mono); color: var(--brand-ink); white-space: nowrap; }
+.elb-navn { font-weight: 700; color: var(--ink); }
+.elb-navn.is-tom { color: var(--faint); }
+.elb-2 .elb-head { font-size: 20px; }
+.elb-3 .elb-head { font-size: 16px; }
+.elb-meta { margin-top: 3px; font-size: 12.5px; color: var(--muted); }
+
+.elb-form { display: grid; grid-template-columns: 90px minmax(0, 1fr) 130px 120px; gap: 10px 12px; }
+.elb-f { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+.elb-f input, .elb-f select {
+  height: 30px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink);
+}
+.elb-f--nr input { font-family: var(--font-mono); }
+.elb-f--fuld { grid-column: 1 / -1; }
+
+/* ── Listen over A2 ─────────────────────────────────────────────────────── */
+.elp {
+  max-width: 760px; margin-bottom: 14px; box-sizing: border-box;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.elp-head { display: flex; align-items: baseline; gap: 12px; padding: 12px 16px 8px; }
+.elp-titel { font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.elp-sum { font-size: 12px; color: var(--muted); }
+.elp-sum .is-fail { color: var(--fail); font-weight: 600; }
+.elp-sum .is-warn { color: var(--warn); font-weight: 600; }
+.elp-tom { margin: 0; padding: 0 16px 4px; font-size: 12.5px; line-height: 1.55; color: var(--muted); max-width: 62ch; }
+
+.elp-liste { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.elp-liste li + li { border-top: 1px solid var(--line); }
+.elp-rk {
+  display: grid; grid-template-columns: 52px minmax(0, 1fr) 130px 40px 96px; align-items: center; gap: 10px;
+  width: 100%; padding: 7px 16px; background: none; border: 0; text-align: left; font-size: 13px; color: var(--ink-2);
+}
+.elp-rk:hover { background: var(--sunk); color: var(--ink); }
+.elp-nr { font: 600 12px/1 var(--font-mono); color: var(--brand-ink); }
+.elp-navn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.elp-beregning { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.elp-eta { font: 500 12px/1 var(--font-mono); text-align: right; color: var(--ink-2); }
+.elp-rk .ui-pill { justify-self: end; }
+
+.elp-fod { padding: 10px 16px 12px; }
+.elp-liste + .elp-fod { border-top: 1px solid var(--line); }
+.elp-ny {
+  display: grid; grid-template-columns: 120px 110px minmax(0, 1fr) auto auto; gap: 8px; align-items: center;
+  padding: 10px 16px 12px; border-top: 1px solid var(--line);
+}
+.elp-ny select, .elp-ny input {
+  height: 28px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink); min-width: 0;
+}
