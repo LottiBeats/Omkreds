@@ -1178,14 +1178,60 @@ _ELEMENT_MATERIALE = {"trae": "træ", "staal": "stål", "beton": "beton",
                       "murvaerk": "murværk"}
 
 
-def _element_blocks(block: dict) -> list:
+def _ramme_linje(kilde: dict, femmer: dict, materiale: str) -> str:
+    """
+    Hvad rammeberegningen siger om den stang, et element er koblet til.
+
+    Rammen eftervisner hver stang -- som soejle med knaeklaengden og N og M fra
+    samme kombination, naar der er tryk -- men skrev det ingen steder i
+    rapporten: kun kurverne og hovedresultaterne kom med. For en soejle uden
+    egen beregningsblok var eftervisningen dermed usynlig for kontrollanten.
+    """
+    fem = femmer.get(kilde.get("fem_block_id"))
+    member = kilde.get("member_id")
+    stang = f"stang {member}" if member is not None else f"element {kilde.get('elem_id')}"
+    if fem is None:
+        return f"Koblet til {stang} i en rammeberegning, der ikke findes i dokumentet."
+    titel = (fem.get("data") or {}).get("title") or "rammeberegningen"
+    linje = f"Snitkræfter fra {titel}, {stang}."
+    if member is None:
+        return linje
+    check = ((fem.get("data") or {}).get("_member_checks") or {}).get(str(member))         or ((fem.get("data") or {}).get("_member_checks") or {}).get(member)
+    if not check:
+        return linje + " Rammeberegningen er ikke kørt, så stangen er ikke eftervist i den."
+    if check.get("skipped"):
+        return linje + f" Rammeberegningen eftervisner ikke stangen: {check['skipped']}."
+    eta = check.get("eta")
+    if not isinstance(eta, (int, float)):
+        return linje
+    if check.get("mode") == "column":
+        norm = "DS/EN 1995-1-1 §6.3" if materiale == "trae" else "DS/EN 1993-1-1 §6.3.3"
+        dele = [f"η = {_dk(eta)}"]
+        if check.get("combo"):
+            dele.append(f"kombination {check['combo']}")
+        if isinstance(check.get("N_Ed_kN"), (int, float)):
+            dele.append(f"N_Ed = {_dk(check['N_Ed_kN'], 1)} kN")
+        if isinstance(check.get("M_Ed_kNm"), (int, float)):
+            dele.append(f"M_Ed = {_dk(check['M_Ed_kNm'], 1)} kNm")
+        if isinstance(check.get("L_cr_m"), (int, float)):
+            dele.append(f"L_cr = {_dk(check['L_cr_m'])} m")
+        linje += f" Eftervist i rammeberegningen som søjle med tryk og bøjning ({norm}): " + ", ".join(dele) + "."
+    else:
+        linje += f" Eftervist i rammeberegningen for bøjning og forskydning: η = {_dk(eta)}."
+    if isinstance(check.get("tension"), (int, float)):
+        linje += f" Træk N = {_dk(check['tension'], 1)} kN er ikke med i den eftervisning."
+    return linje
+
+
+def _element_blocks(block: dict, femmer: dict = None) -> list:
     """
     Et konstruktionselement (A2.2) som overskrift og en linje om det.
 
     Overskriften baerer elementets eget nummer -- "B.1  Bjaelke over doer" --
     og nummereres ikke af _number_headings: B.1 er det nummer, tegningerne og
     kontrolplanen bruger, og et "3.2" foran ville vaere et andet navn for det
-    samme element.
+    samme element. Er elementet en stang i en rammeberegning, staar rammens
+    eftervisning af stangen under.
     """
     d = block.get("data") or {}
     nr = str(d.get("nr") or "").strip()
@@ -1202,6 +1248,8 @@ def _element_blocks(block: dict) -> list:
         linje = f"{linje}. {beskrivelse}" if linje else beskrivelse
     if linje:
         ud.append({"type": "text", "data": {"text": linje.rstrip(".") + "."}})
+    if isinstance(d.get("kilde"), dict):
+        ud.append({"type": "text", "data": {"text": _ramme_linje(d["kilde"], femmer or {}, d.get("materiale"))}})
     return ud
 
 
@@ -1213,12 +1261,13 @@ def _expand_generated_blocks(blocks: list, project: dict,
     `doclist` and `element`. These are expanded at render time, never stored,
     so what is printed is always the current state.
     """
+    femmer = {b.get("id"): b for b in blocks if b.get("type") == "general_frame_fem"}
     out = []
     for block in blocks:
         if block.get("type") == "doclist":
             out.append(_doclist_table(project))
         elif block.get("type") == "element":
-            out.extend(_element_blocks(block))
+            out.extend(_element_blocks(block, femmer))
         elif block.get("type") == "projektforside":
             # Den staar automatisk i hvert dokument (se build_pdf). Ligger den
             # ogsaa som en blok i et dokument fra da den var det, udelades den

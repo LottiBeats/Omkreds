@@ -12,7 +12,9 @@ import './Elementer.css'
 /** Sådan står elementet på siden -- det samme, som kommer i rapporten. */
 export function ElementPreview({ data }) {
   const d = data ?? {}
-  const meta = [artLabel(d.art), materialeLabel(d.materiale)].filter(Boolean).join(' · ')
+  const k = d.kilde
+  const stang = k ? (k.member_id != null ? `stang ${k.member_id} i rammen` : `element ${k.elem_id} i rammen`) : null
+  const meta = [artLabel(d.art), materialeLabel(d.materiale), stang].filter(Boolean).join(' · ')
   return (
     <div className={`elb elb-${d.level ?? 2}`}>
       <div className="elb-head">

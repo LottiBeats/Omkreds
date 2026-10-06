@@ -78,3 +78,42 @@ def test_elementet_naar_ud_paa_siden():
         except OSError:
             pass
     assert "B.1" in tekst and "Bjælke over dør" in tekst
+
+
+# ── Elementer, der er stænger i en rammeberegning ────────────────────────────
+
+def _ramme(checks):
+    return {"id": 77, "type": "general_frame_fem",
+            "data": {"title": "Portalramme", "_member_checks": checks}}
+
+
+def _linjer(element, ramme):
+    return _tekst(_expand_generated_blocks([ramme, element], {}))[1:]   # rammen selv er ikke et element
+
+
+def test_en_soejle_i_rammen_faar_rammens_knaekeftervisning_i_rapporten():
+    soejle = {"type": "element", "data": {
+        "nr": "S.1", "navn": "Søjle", "art": "soejle", "materiale": "trae",
+        "kilde": {"fem_block_id": 77, "member_id": 3, "elem_id": None}}}
+    ramme = _ramme({"3": {"eta": 0.734, "mode": "column", "combo": "6.10b sne",
+                          "N_Ed_kN": 42.15, "M_Ed_kNm": 3.2, "L_cr_m": 3.1}})
+    linje = _linjer(soejle, ramme)[-1]
+    assert "stang 3" in linje
+    assert "søjle" in linje and "DS/EN 1995-1-1 §6.3" in linje
+    assert "η = 0,73" in linje and "6.10b sne" in linje
+    assert "N_Ed = 42,1 kN" in linje or "N_Ed = 42,2 kN" in linje
+    assert "L_cr = 3,10 m" in linje
+
+
+def test_en_stang_rammen_springer_over_siges_at_vaere_det():
+    hb = {"type": "element", "data": {
+        "nr": "HB.1", "art": "hanebaand", "materiale": "trae",
+        "kilde": {"fem_block_id": 77, "member_id": 4, "elem_id": None}}}
+    linje = _linjer(hb, _ramme({"4": {"skipped": "træk N = 3,1 kN — eftervises særskilt"}}))[-1]
+    assert "eftervisner ikke stangen" in linje and "eftervises særskilt" in linje
+
+
+def test_en_ramme_der_ikke_er_koert_eftervisner_intet():
+    b = {"type": "element", "data": {"nr": "B.1", "art": "bjaelke", "materiale": "staal",
+                                     "kilde": {"fem_block_id": 77, "member_id": 1, "elem_id": None}}}
+    assert "ikke kørt" in _linjer(b, _ramme(None))[-1]

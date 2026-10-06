@@ -62,3 +62,58 @@ test('tagskabelonen har spær og hanebånd som elementer', () => {
   assert.deepEqual(e.map(x => x.beregninger.map(b => b.type)),
     [['timber_beam'], ['timber_beam'], ['custom_calc']])
 })
+
+// ── Rammekonstruktioner ──────────────────────────────────────────────────────
+import { rammeStaenger, ledigeStaenger, forslagFor } from '../src/lib/elementer.js'
+
+const RAMME = { id: 9, type: 'general_frame_fem', data: {
+  nodes: [{ id: 1, x: 0, y: 0 }, { id: 2, x: 0, y: 4 }, { id: 3, x: 6, y: 6 }, { id: 4, x: 12, y: 4 }, { id: 5, x: 3, y: 5 }, { id: 6, x: 9, y: 5 }],
+  elements: [
+    { id: 1, ni: 1, nj: 2, member_id: 1, material: 'timber', section: '90x190', grade: 'GL24h' },
+    { id: 2, ni: 2, nj: 3, member_id: 2, material: 'timber', section: '45x195', grade: 'C24' },
+    { id: 3, ni: 3, nj: 4, member_id: 3, material: 'steel',  section: 'IPE200', grade: 'S355' },
+    { id: 4, ni: 5, nj: 6, release: 'both', material: 'timber', section: '45x95', grade: 'C24' },
+  ],
+  _member_checks: { 1: { eta: 0.64, mode: 'column' }, 2: { eta: 1.08 } },
+  _summary: {}, _result: [], _calc_rev: calcRevision('general_frame_fem'),
+} }
+
+test('stængerne i rammen og hvad de nok er', () => {
+  const st = rammeStaenger([RAMME])
+  assert.deepEqual(st.map(s => s.exportId), [1001, 1002, 1003, 4])
+  assert.deepEqual(st.map(s => forslagFor(s).art), ['soejle', 'spaer', 'bjaelke', 'hanebaand'])
+  assert.deepEqual(st.map(s => forslagFor(s).materiale), ['trae', 'trae', 'staal', 'trae'])
+})
+
+test('et element fra en stang er koblet til den', () => {
+  const [soejle, spaer, staal, hb] = rammeStaenger([RAMME])
+  // Søjlen: ingen blok -- rammen eftervisner den som søjle.
+  assert.equal(nytElement([RAMME], { ...forslagFor(soejle), stang: soejle }).length, 1)
+  // Spæret: en træbjælke, der henter stangens snitkræfter.
+  const [el, tb] = nytElement([RAMME], { ...forslagFor(spaer), stang: spaer })
+  assert.deepEqual(el.data.kilde, { fem_block_id: 9, member_id: 2, elem_id: null })
+  assert.equal(tb.type, 'timber_beam')
+  assert.deepEqual([tb.data.load_source, tb.data.fem_block_id, tb.data.fem_elem_id, tb.data.b_mm, tb.data.h_mm, tb.data.timber_grade],
+                   ['fem', 9, 1002, 45, 195, 'C24'])
+  assert.equal(nytElement([RAMME], { ...forslagFor(staal), stang: staal })[1].data.section, 'IPE200')
+  // Hanebåndet har kun normalkraft: ikke en bjælkeblok med η ≈ 0.
+  assert.equal(nytElement([RAMME], { ...forslagFor(hb), stang: hb })[1].type, 'custom_calc')
+})
+
+test('status læser rammens eftervisning; en koblet stang er ikke ledig', () => {
+  const [soejle, spaer] = rammeStaenger([RAMME])
+  const blokke = [RAMME,
+    ...nytElement([RAMME], { ...forslagFor(soejle), stang: soejle }).map((b, i) => ({ ...b, id: 100 + i }))]
+  const [s1] = elementerI(blokke)
+  assert.deepEqual([s1.status.tone, s1.status.eta], ['ok', 0.64])
+  assert.equal(ledigeStaenger(blokke).length, 3)
+  const med = [...blokke, { id: 200, type: 'element', data: { nr: 'SP.1', kilde: { fem_block_id: 9, member_id: 2, elem_id: null } } }]
+  assert.equal(elementerI(med)[1].status.tone, 'fail')   // rammen siger η = 1,08
+})
+
+test('tagskabelonens elementer er koblet til rammens stænger', () => {
+  const blokke = makeTimberRoofTemplate()
+  assert.equal(ledigeStaenger(blokke).length, 0)
+  const fem = blokke.find(b => b.type === 'general_frame_fem')
+  assert.ok(elementerI(blokke).every(e => e.block.data.kilde.fem_block_id === fem.id))
+})

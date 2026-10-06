@@ -248,7 +248,7 @@ export function makeTimberRoofTemplate() {
 
     // ── Venstre spær — member 1 (elem 1 + 2, samlet) ─────────────────────
     { id: ids.hSpærVenstre, type: 'element', data: { level: 3,
-      nr: 'SP.1', navn: 'Venstre spær 45×145 C24', art: 'spaer', materiale: 'trae',
+      nr: 'SP.1', kilde: { fem_block_id: ids.fem, member_id: 1, elem_id: null }, navn: 'Venstre spær 45×145 C24', art: 'spaer', materiale: 'trae',
       beskrivelse: 'Member 1 i rammeberegningen (elem 1+2, L_total = 3,61 m)' } },
     { id: ids.txtSpærNote, type: 'text', data: { text:
       'Spæret er i FEM-modellen opdelt i to elementer ved hanebåndssamlingen (node 3):\n' +
@@ -271,7 +271,7 @@ export function makeTimberRoofTemplate() {
 
     // ── Højre spær — member 2 (elem 3 + 4, samlet) ───────────────────────
     { id: ids.hSpærHøjre, type: 'element', data: { level: 3,
-      nr: 'SP.2', navn: 'Højre spær 45×145 C24', art: 'spaer', materiale: 'trae',
+      nr: 'SP.2', kilde: { fem_block_id: ids.fem, member_id: 2, elem_id: null }, navn: 'Højre spær 45×145 C24', art: 'spaer', materiale: 'trae',
       beskrivelse: 'Member 2 i rammeberegningen (elem 3+4, L_total = 3,61 m)' } },
     { id: ids.chkSpærH, type: 'timber_beam', data: {
       title: 'Højre spær 45×145 C24 — member 2 (worst-case M/V/N)', label: 'SP.2',
@@ -284,7 +284,7 @@ export function makeTimberRoofTemplate() {
 
     // ── Hanebånd — trækcheck (elem 5) ────────────────────────────────────
     { id: ids.hHane, type: 'element', data: { level: 3,
-      nr: 'HB.1', navn: 'Hanebånd 45×95 C24', art: 'hanebaand', materiale: 'trae',
+      nr: 'HB.1', kilde: { fem_block_id: ids.fem, member_id: null, elem_id: 5 }, navn: 'Hanebånd 45×95 C24', art: 'hanebaand', materiale: 'trae',
       beskrivelse: 'Element 5 i rammeberegningen (L = 2,40 m), træk efter EN 1995-1-1 §6.1.2' } },
     // N_Ed står tom med vilje. Den stod som 0, og så gav eftervisningen η = 0 og
     // "OK" i rapporten for et hanebånd, ingen havde eftervist. Tekstfeltet over

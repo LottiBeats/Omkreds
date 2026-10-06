@@ -5,20 +5,34 @@
  * element. Et klik går til elementet i dokumentet; "Tilføj element" sætter
  * overskriften og den rigtige beregning ind efter det sidste element.
  *
+ * Er der en rammeberegning i dokumentet, er elementerne dens stænger:
+ * "Elementer fra rammeberegningen" opretter ét pr. stang, der ikke har et,
+ * koblet til stangens snitkræfter og rammens eftervisning af den.
+ *
  * Panelet er ikke en del af rapporten. Det viser bloklisten fra en anden
  * vinkel og ændrer den kun gennem de samme handlinger som resten af editoren.
  */
 import React, { useMemo, useState } from 'react'
 import Button from '../../ui/Button.jsx'
 import StatusPill from '../../ui/StatusPill.jsx'
-import { ARTER, MATERIALER, elementerI } from '../../lib/elementer.js'
+import { ARTER, MATERIALER, elementerI, ledigeStaenger, forslagFor } from '../../lib/elementer.js'
 import './Elementer.css'
 
 const komma = (x) => x.toFixed(2).replace('.', ',')
+const BLANK = { art: 'bjaelke', materiale: 'trae', navn: '', stang: null }
+
+function beregningTekst({ beregninger, ramme }, typeLabel) {
+  const egne = beregninger.length === 0 ? ''
+    : beregninger.length === 1 ? typeLabel(beregninger[0].type)
+    : `${beregninger.length} beregninger`
+  if (!ramme) return egne || '—'
+  return egne ? `${egne} + ramme` : 'Rammeberegning'
+}
 
 export default function ElementPanel({ blocks, typeLabel, onAdd, onGo }) {
   const elementer = useMemo(() => elementerI(blocks), [blocks])
-  const [ny, setNy] = useState(null)   // { art, materiale, navn } mens der tilføjes
+  const ledige = useMemo(() => ledigeStaenger(blocks), [blocks])
+  const [ny, setNy] = useState(null)   // valgene mens der tilføjes
 
   const etaMaks = elementer.reduce((m, e) => (e.status.eta !== null && e.status.eta > m ? e.status.eta : m), -1)
   const ikkeOk = elementer.filter(e => e.status.tone === 'fail').length
@@ -26,8 +40,13 @@ export default function ElementPanel({ blocks, typeLabel, onAdd, onGo }) {
 
   function tilfoej(e) {
     e.preventDefault()
-    onAdd(ny)
+    onAdd([ny])
     setNy(null)
+  }
+
+  function vaelgStang(key) {
+    const st = ledige.find(x => x.key === key) ?? null
+    setNy(st ? { ...forslagFor(st), stang: st } : { ...ny, stang: null })
   }
 
   return (
@@ -53,26 +72,35 @@ export default function ElementPanel({ blocks, typeLabel, onAdd, onGo }) {
 
       {elementer.length > 0 && (
         <ol className="elp-liste">
-          {elementer.map(({ block, beregninger, status }) => (
-            <li key={block.id}>
-              <button type="button" className="elp-rk" onClick={() => onGo(block.id)}>
-                <span className="elp-nr">{block.data?.nr || '—'}</span>
-                <span className="elp-navn">{block.data?.navn || 'Unavngivet element'}</span>
-                <span className="elp-beregning">
-                  {beregninger.length === 0 ? '—'
-                    : beregninger.length === 1 ? typeLabel(beregninger[0].type)
-                    : `${beregninger.length} beregninger`}
-                </span>
-                <span className="elp-eta">{status.eta !== null ? komma(status.eta) : ''}</span>
-                <StatusPill tone={status.tone}>{status.tekst}</StatusPill>
-              </button>
-            </li>
-          ))}
+          {elementer.map((el) => {
+            const { block, status } = el
+            return (
+              <li key={block.id}>
+                <button type="button" className="elp-rk" onClick={() => onGo(block.id)} title={status.note}>
+                  <span className="elp-nr">{block.data?.nr || '—'}</span>
+                  <span className="elp-navn">{block.data?.navn || 'Unavngivet element'}</span>
+                  <span className="elp-beregning">{beregningTekst(el, typeLabel)}</span>
+                  <span className="elp-eta">{status.eta !== null ? komma(status.eta) : ''}</span>
+                  <StatusPill tone={status.tone}>{status.tekst}</StatusPill>
+                </button>
+              </li>
+            )
+          })}
         </ol>
       )}
 
       {ny ? (
         <form className="elp-ny" onSubmit={tilfoej}>
+          {ledige.length > 0 && (
+            <select className="elp-stang" value={ny.stang?.key ?? ''} onChange={e => vaelgStang(e.target.value)} aria-label="Stang i rammen">
+              <option value="">Ikke en stang i rammen</option>
+              {ledige.map(st => (
+                <option key={st.key} value={st.key}>
+                  Rammens {st.navn}{st.section ? ` · ${st.section}` : ''} · L = {st.L.toFixed(2).replace('.', ',')} m
+                </option>
+              ))}
+            </select>
+          )}
           <select value={ny.art} onChange={e => setNy({ ...ny, art: e.target.value })} aria-label="Art">
             {ARTER.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
           </select>
@@ -86,7 +114,14 @@ export default function ElementPanel({ blocks, typeLabel, onAdd, onGo }) {
         </form>
       ) : (
         <div className="elp-fod">
-          <Button size="sm" onClick={() => setNy({ art: 'bjaelke', materiale: 'trae', navn: '' })}>+ Tilføj element</Button>
+          <Button size="sm" onClick={() => setNy(BLANK)}>+ Tilføj element</Button>
+          {ledige.length > 0 && (
+            <Button size="sm" variant="ghost"
+                    title="Ét element pr. stang, koblet til stangens snitkræfter og rammens eftervisning"
+                    onClick={() => onAdd(ledige.map(st => ({ ...forslagFor(st), stang: st })))}>
+              Elementer fra rammeberegningen ({ledige.length})
+            </Button>
+          )}
         </div>
       )}
     </section>

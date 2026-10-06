@@ -44,12 +44,13 @@
 .elp-eta { font: 500 12px/1 var(--font-mono); text-align: right; color: var(--ink-2); }
 .elp-rk .ui-pill { justify-self: end; }
 
-.elp-fod { padding: 10px 16px 12px; }
+.elp-fod { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 16px 12px; }
 .elp-liste + .elp-fod { border-top: 1px solid var(--line); }
 .elp-ny {
   display: grid; grid-template-columns: 120px 110px minmax(0, 1fr) auto auto; gap: 8px; align-items: center;
   padding: 10px 16px 12px; border-top: 1px solid var(--line);
 }
+.elp-ny .elp-stang { grid-column: 1 / -1; }
 .elp-ny select, .elp-ny input {
   height: 28px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--ink); min-width: 0;

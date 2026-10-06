@@ -800,16 +800,25 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     h.insertAt(atIndex, { id: Date.now(), type, data })
   }
 
-  // Et element fra listen: overskriften og dens beregning, efter det sidste
+  // Elementer fra listen: overskriften og dens beregning, efter det sidste
   // element. Beregningen får bloktypens standardfelter som fra paletten.
-  h.addElement = (valg) => {
+  // Flere ad gangen (alle stænger i en ramme) nummereres videre fra hinanden.
+  h.addElementer = (valgListe) => {
     const cur = blocksRef.current
-    const nye = nytElement(cur, valg).map((b, i) => ({
-      id: Date.now() + i, type: b.type, data: { ...(TYPE_MAP[b.type]?.default ?? {}), ...b.data },
-    }))
-    const n = [...cur]; n.splice(indsaetPlads(cur), 0, ...nye); onChange(n)
+    let n = [...cur]
+    const nye = []
+    let id = Date.now()
+    for (const valg of valgListe) {
+      const blokke = nytElement(n, valg).map(b => ({
+        id: id++, type: b.type, data: { ...(TYPE_MAP[b.type]?.default ?? {}), ...b.data },
+      }))
+      n.splice(indsaetPlads(n), 0, ...blokke)
+      nye.push(...blokke)
+    }
+    if (!nye.length) return
+    onChange(n)
     setMinimised(prev => { const s = new Set(prev); nye.forEach(b => s.delete(b.id)); return s })
-    gaaTil(nye[1].id)
+    gaaTil(nye[0].id)
   }
 
   // Enter i en overskrift: et tekstafsnit lige under, med markøren i.
@@ -1058,7 +1067,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
         <ElementPanel
           blocks={blocks}
           typeLabel={t => TYPE_MAP[t]?.label ?? t}
-          onAdd={valg => h.addElement(valg)}
+          onAdd={valgListe => h.addElementer(valgListe)}
           onGo={gaaTil}
         />
       )}
