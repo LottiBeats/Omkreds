@@ -48,6 +48,11 @@ const CALC_REVISION = {
   // 2 — læsidens vægtryk blev regnet som (c_pe + c_pi)·q_p i stedet for
   // (c_pe − c_pi)·q_p, så sugningen var for lille ved indvendigt overtryk.
   wind_load: 2,
+  // 2 — 2026-10-06: enheder og navne delte navnerum. Med m = 2 over sig blev
+  // "L = 3 m" til tallet 6, med N = 50 kN blev "3 N/mm²" til 150 000 MPa, og
+  // et udefineret h eller L blev stille til timer og liter. Gemte rækker kan
+  // vaere regnet saadan og skal regnes igen, foer de kan komme i en rapport.
+  custom_calc: 2,
 }
 
 export function calcRevision(type) {

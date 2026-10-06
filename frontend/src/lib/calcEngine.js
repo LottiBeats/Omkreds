@@ -209,6 +209,85 @@ function usesVariables(n, scope) {
   return hit
 }
 
+// ── Navne og enheder ───────────────────────────────────────────────────────
+//
+// mathjs har enheder og variable i samme navnerum, og en variabel vinder.
+// Med m = 2 over sig blev "L = 3 m" til tallet 6, og med N = 50 kN blev
+// "3 N/mm²" til 150 000 MPa -- uden en fejl nogen steder. Omvendt blev et
+// navn, der ikke var defineret, stille til en enhed eller konstant: b·h uden
+// h gav "mm·h" (timer), L blev liter og phi blev 1,618.
+//
+// Derfor afgøres det af skrivemåden, hvad et navn er:
+//   - lige efter et tal (3 m, 5 kN/m, 24 N/mm², 10 kN·m) er det en enhed
+//   - alle andre steder er det et navn fra linjerne over
+// Er det begge dele, eller ingen af delene, er det en fejl.
+
+const isUnitName = (s) => { try { return math.Unit.isValuelessUnit(s) } catch { return false } }
+const FREE_NAMES = new Set(['pi'])
+
+function isUnitTerm(n) {
+  if (n.type === 'SymbolNode') return isUnitName(n.name)
+  if (n.type === 'ParenthesisNode') return isUnitTerm(n.content)
+  if (n.type !== 'OperatorNode') return false
+  if (n.op === '^') return isUnitTerm(n.args[0]) && !hasSymbols(n.args[1])
+  if (n.op === '*' || n.op === '/') return n.args.length === 2 && n.args.every(isUnitTerm)
+  return false
+}
+
+function hasSymbols(n) {
+  let hit = false
+  n.traverse(x => { if (x.type === 'SymbolNode') hit = true })
+  return hit
+}
+
+// Et tal (eller et tal med enhed), som en enhed kan hægtes på.
+function isLiteral(n) {
+  if (n.type === 'ConstantNode') return true
+  if (n.type === 'ParenthesisNode') return !hasSymbols(n.content) || isQuantity(n.content)
+  if (n.type === 'OperatorNode' && (n.fn === 'unaryMinus' || n.fn === 'unaryPlus')) return isLiteral(n.args[0])
+  return isQuantity(n)
+}
+
+// 3 m, 5 kN/m, 24 N/mm², 10 kN·m. Et bart tal tager kun en enhed uden
+// gangetegn: 2·L er to gange L, ikke to liter.
+function isQuantity(n) {
+  if (n.type === 'ParenthesisNode') return isQuantity(n.content)
+  if (n.type !== 'OperatorNode' || (n.op !== '*' && n.op !== '/') || n.args.length !== 2) return false
+  const [a, b] = n.args
+  if (!isUnitTerm(b)) return false
+  if (n.op === '*' && n.implicit) return isLiteral(a)
+  return isQuantity(a)
+}
+
+/** Kaster, hvis et navn i udtrykket kan læses på to måder eller slet ikke. */
+export function checkNames(node, scope, defined = {}) {
+  const unitPos = new Set()
+  node.traverse(n => {
+    if (n.type === 'OperatorNode' && isQuantity(n)) {
+      n.args[1].traverse(x => { if (x.type === 'SymbolNode') unitPos.add(x) })
+    }
+  })
+  node.traverse((n, path, parent) => {
+    if (n.type !== 'SymbolNode') return
+    if (parent && parent.type === 'FunctionNode' && path === 'fn') return
+    const known = Object.prototype.hasOwnProperty.call(scope, n.name)
+    const nm = displayName(n.name)
+    if (unitPos.has(n)) {
+      if (known) {
+        const at = defined[n.name] ? ` (linje ${defined[n.name]})` : ''
+        throw new Error(`${nm} står som enhed efter et tal, men ${nm} er også en værdi ovenfor${at}. ` +
+          `Giv værdien et andet navn, fx ${nm}_1, så der ikke er tvivl om, hvad der regnes med.`)
+      }
+      return
+    }
+    if (known || FREE_NAMES.has(n.name)) return
+    if (isUnitName(n.name)) {
+      throw new Error(`${nm} er ikke defineret endnu. Er det enheden, skal den stå lige efter tallet, fx 3 ${nm}.`)
+    }
+    throw new Error(`${nm} er ikke defineret endnu.`)
+  })
+}
+
 function danish(msg) {
   let m
   if ((m = String(msg).match(/Undefined symbol (\S+)/))) return `${m[1]} er ikke defineret endnu.`
@@ -228,7 +307,8 @@ function danish(msg) {
  */
 export function evaluate(lines) {
   const scope = {}
-  return (lines ?? []).map((raw) => {
+  const defined = {}
+  return (lines ?? []).map((raw, idx) => {
     const c = classify(raw)
     if (c.kind === 'assign') {
       if (/^(…|\.\.\.)?(\s|$)/.test(c.expr.trim())) {
@@ -236,6 +316,7 @@ export function evaluate(lines) {
       }
       try {
         const node = math.parse(pre(c.expr))
+        checkNames(node, scope, defined)
         let v = node.evaluate(scope)
         if (c.out) {
           if (!isUnit(v)) throw new Error(`Resultatet har ingen enhed at vise i ${c.out}.`)
@@ -252,12 +333,14 @@ export function evaluate(lines) {
         const formula = input ? null : linear(node, scope, false)
         const subst = input ? null : linear(node, scope, true)
         scope[c.name] = v
+        defined[c.name] = idx + 1
         return { ...c, raw, value: v, input, formula, subst }
       } catch (e) { return { ...c, raw, error: danish(e.message) } }
     }
     if (c.kind === 'check') {
       try {
         const L = math.parse(pre(c.lhs)), R = math.parse(pre(c.rhs))
+        checkNames(L, scope, defined); checkNames(R, scope, defined)
         const lv = plain(L.evaluate(scope)), rv = plain(R.evaluate(scope))
         if (isUnit(lv) !== isUnit(rv) || (isUnit(lv) && !lv.equalBase(rv))) throw new Error('Units do not match')
         const eta = plain(math.divide(lv, rv))

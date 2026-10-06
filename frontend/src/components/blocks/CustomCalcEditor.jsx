@@ -12,6 +12,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { evaluate, toReportBlocks, itemsToLines, chip, SYMBOLS } from '../../lib/calcEngine.js'
+import { calcRevision } from '../../lib/calcState.js'
 import CalcResultView from '../CalcResultView.jsx'
 import './CustomCalcEditor.css'
 
@@ -53,8 +54,13 @@ export default function CustomCalcEditor({ block, onChange }) {
   }
 
   // First open of an old block: rewrite to lines once, and give it its report.
+  // Every open: regn rapportrækkerne igen. De gemte er regnet af den motor,
+  // der var dengang, og en rettet regnefejl skal også ud af de dokumenter,
+  // der allerede ligger -- ellers printer PDF'en stadig det gamle tal.
   useEffect(() => {
-    if (!Array.isArray(d.lines) || !d._result) commit(lines)
+    const fresh = toReportBlocks(d.title, evaluate(lines), { subst })
+    if (!Array.isArray(d.lines) || (d._calc_rev ?? 1) !== calcRevision('custom_calc') ||
+        JSON.stringify(fresh) !== JSON.stringify(d._result ?? null)) commit(lines)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
