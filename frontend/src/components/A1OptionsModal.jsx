@@ -14,7 +14,8 @@ import { useMemo, useState } from 'react'
 import {
   ANVENDELSER, KONSTRUKTIONSTYPER, MATERIALER, BYGNINGSKATEGORIER,
   BRANDKLASSER, ANVENDELSESKATEGORIER,
-  DEFAULT_OPTIONS, suggestCC, suggestKK,
+  TAGFORMER, STABILISERING, FUNDERINGER, TERRAENKATEGORIER, MILJOER,
+  DEFAULT_OPTIONS, suggestCC, suggestKK, mu1,
 } from '../templates/a1.js'
 
 const BRAND = '#d94a2b'
@@ -27,6 +28,7 @@ export default function A1OptionsModal({ metadata = {}, initial, docId = 'A1', o
     ...DEFAULT_OPTIONS,
     ...(initial || {}),
     materialer: { ...DEFAULT_OPTIONS.materialer, ...(initial?.materialer || {}) },
+    stabilisering: { ...DEFAULT_OPTIONS.stabilisering, ...(initial?.stabilisering || {}) },
   }))
   const reused = !!initial
 
@@ -34,6 +36,9 @@ export default function A1OptionsModal({ metadata = {}, initial, docId = 'A1', o
   const setNum = (k, v) => set(k, v === '' ? '' : Number(v))
   const toggleMat = (key) =>
     setO(prev => ({ ...prev, materialer: { ...prev.materialer, [key]: !prev.materialer[key] } }))
+  const toggleStab = (key) =>
+    setO(prev => ({ ...prev, stabilisering: { ...prev.stabilisering, [key]: !prev.stabilisering[key] } }))
+  const skraatTag = o.tagform === 'saddel' || o.tagform === 'ensidig'
 
   const { cc, begrundelse } = useMemo(() => suggestCC(o), [o])
   const kk = useMemo(() => suggestKK({ ...o, cc }), [o, cc])
@@ -186,6 +191,57 @@ export default function A1OptionsModal({ metadata = {}, initial, docId = 'A1', o
             )}
           </Field>
 
+          {/* Det, der ellers stod som [skiver / rammer / kryds / kerne] og
+              [ensidig / tosidig / fladt] i dokumentet. Svaret her skriver
+              afsnit 1.2, 4.1, 3.3 og 6.4 -- og snelastens μ₁. */}
+          <div style={S.row}>
+            <Field label="Tag" flex="1 1 200px">
+              <select style={S.input} value={o.tagform} onChange={e => set('tagform', e.target.value)}>
+                {TAGFORMER.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+            </Field>
+            {skraatTag && (
+              <Field label="Taghældning [°]" flex="0 1 120px">
+                <input style={S.input} type="number" min="0" max="75" step="1" value={o.taghaeldning}
+                       onChange={e => setNum('taghaeldning', e.target.value)} />
+              </Field>
+            )}
+            <Field label="Fundering" flex="1 1 200px">
+              <select style={S.input} value={o.fundering} onChange={e => set('fundering', e.target.value)}>
+                {FUNDERINGER.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+              </select>
+            </Field>
+          </div>
+          {skraatTag && (
+            <div style={S.brandHint}>
+              μ₁ = {mu1(o.taghaeldning).toFixed(2).replace('.', ',')} · tagsnelast s = {mu1(o.taghaeldning).toFixed(2).replace('.', ',')} kN/m² (DS/EN 1991-1-3 Tabel 5.2)
+            </div>
+          )}
+
+          <Field label="Stabiliserende system">
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', paddingTop: 2 }}>
+              {STABILISERING.map(x => (
+                <label key={x.key} style={S.check}>
+                  <input type="checkbox" checked={!!o.stabilisering[x.key]} onChange={() => toggleStab(x.key)} />
+                  <span>{x.label}</span>
+                </label>
+              ))}
+            </div>
+          </Field>
+
+          <div style={S.row}>
+            <Field label="Terrænkategori — vind" flex="1 1 220px">
+              <select style={S.input} value={o.terraenkategori} onChange={e => set('terraenkategori', e.target.value)}>
+                {TERRAENKATEGORIER.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Miljø" flex="1 1 220px">
+              <select style={S.input} value={o.miljoe} onChange={e => set('miljoe', e.target.value)}>
+                {MILJOER.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+              </select>
+            </Field>
+          </div>
+
           <Field label="Forhold der skal beskrives">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7, paddingTop: 2 }}>
               <label style={S.check}>
@@ -196,6 +252,11 @@ export default function A1OptionsModal({ metadata = {}, initial, docId = 'A1', o
                 <input type="checkbox" checked={o.geoteknisk} onChange={() => set('geoteknisk', !o.geoteknisk)} />
                 <span>Der foreligger en geoteknisk rapport</span>
               </label>
+              {o.geoteknisk && (
+                <input style={{ ...S.input, marginLeft: 22, width: 'calc(100% - 22px)' }} value={o.geoRapport}
+                       onChange={e => set('geoRapport', e.target.value)}
+                       placeholder="Rapporten: firma, rapportnr., dato" />
+              )}
               <label style={S.check}>
                 <input type="checkbox" checked={o.eksisterende} onChange={() => set('eksisterende', !o.eksisterende)} />
                 <span>Eksisterende konstruktioner indgår i projektet</span>
@@ -205,6 +266,11 @@ export default function A1OptionsModal({ metadata = {}, initial, docId = 'A1', o
                 <span>Tilstødende bygværker påvirker eller påvirkes</span>
               </label>
             </div>
+          </Field>
+
+          <Field label="Øvrige programmer — valgfrit">
+            <input style={S.input} value={o.software} onChange={e => set('software', e.target.value)}
+                   placeholder="fx FEM-Design, Revit — kommasepareret. Omkreds står der altid." />
           </Field>
 
           <div style={S.note}>

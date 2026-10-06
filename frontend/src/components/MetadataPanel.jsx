@@ -52,6 +52,7 @@ const SECTIONS = [
       { key: 'project_ref',  label: 'Projektreference',   hint: 'fx 2024-042' },
       { key: 'client',       label: 'Bygherre' },
       { key: 'address',      label: 'Adresse / lokalitet' },
+      { key: 'matrikel',     label: 'Matrikelnummer',     hint: 'fx 12a Aarhus Bygrunde' },
       { key: 'standard',     label: 'Norm',               hint: 'fx DS/EN 1993-1-1' },
     ],
   },

@@ -279,6 +279,57 @@ export const MATERIALER = [
   { key: 'trae',     label: 'Træ' },
 ]
 
+// ── Valg, der erstatter fritekst ──────────────────────────────────────────────
+//
+// Det meste af et A1 er det samme fra sag til sag. Hvor det varierer, er det
+// typisk ét af få svar -- saddeltag eller fladt tag, skiver eller rammer,
+// stribe- eller punktfundamenter. Så er det et valg i beskrivelsen og ikke en
+// tekst i firkantede parenteser, der skal skrives om i hvert dokument.
+
+export const TAGFORMER = [
+  { key: 'saddel',  label: 'Saddeltag' },
+  { key: 'ensidig', label: 'Ensidigt tag' },
+  { key: 'fladt',   label: 'Fladt tag' },
+  { key: 'ingen',   label: 'Ingen tagkonstruktion i projektet' },
+]
+
+export const STABILISERING = [
+  { key: 'skiver', label: 'Vægskiver',  tekst: 'vægge, der virker som skiver' },
+  { key: 'rammer', label: 'Rammer',     tekst: 'momentstive rammer' },
+  { key: 'kryds',  label: 'Vindkryds',  tekst: 'vindkryds' },
+  { key: 'kerne',  label: 'Kerner',     tekst: 'stabiliserende kerner' },
+]
+
+export const FUNDERINGER = [
+  { key: 'stribe',       label: 'Stribefundamenter',        tekst: 'stribefundamenter',           bestemt: 'stribefundamenterne' },
+  { key: 'punkt',        label: 'Punktfundamenter',         tekst: 'punktfundamenter',           bestemt: 'punktfundamenterne' },
+  { key: 'plade',        label: 'Pladefundament',           tekst: 'et pladefundament',         bestemt: 'pladefundamentet' },
+  { key: 'pael',         label: 'Pælefundering',            tekst: 'pæle',                      bestemt: 'pælene' },
+  { key: 'eksisterende', label: 'Eksisterende fundamenter', tekst: 'de eksisterende fundamenter', bestemt: 'de eksisterende fundamenter' },
+]
+
+export const TERRAENKATEGORIER = [
+  { key: '0',   label: '0 — hav og kyst' },
+  { key: 'I',   label: 'I — søer, flade åbne områder' },
+  { key: 'II',  label: 'II — åbent land, lav bevoksning' },
+  { key: 'III', label: 'III — forstæder, landsbyer, skov' },
+  { key: 'IV',  label: 'IV — tæt bybebyggelse' },
+]
+
+export const MILJOER = [
+  { key: 'normal',    label: 'Almindeligt indlandsmiljø' },
+  { key: 'kyst',      label: 'Kystnært (salt i luften)' },
+  { key: 'aggressiv', label: 'Aggressivt miljø (forurenet jord, kemikalier)' },
+]
+
+/** μ₁ for saddel-, ensidige og flade tage, DS/EN 1991-1-3 Tabel 5.2. */
+export function mu1(alpha) {
+  const a = Math.max(0, Number(alpha) || 0)
+  if (a <= 30) return 0.8
+  if (a < 60) return 0.8 * (60 - a) / 30
+  return 0
+}
+
 export const DEFAULT_OPTIONS = {
   konstruktionstype: 'Nybyggeri',
   anvendelseNr: 1,
@@ -297,6 +348,14 @@ export const DEFAULT_OPTIONS = {
   naboer: false,
   brandklasse: '',
   anvendelseskategori: '',
+  tagform: 'saddel',
+  taghaeldning: 30,
+  stabilisering: { skiver: true, rammer: false, kryds: false, kerne: false },
+  fundering: 'stribe',
+  terraenkategori: 'II',
+  miljoe: 'normal',
+  geoRapport: '',
+  software: '',
 }
 
 // ── Template ──────────────────────────────────────────────────────────────────
@@ -304,15 +363,37 @@ export const DEFAULT_OPTIONS = {
 const IKKE_RELEVANT = 'Ikke relevant for dette projekt.'
 
 /** Join a list the way Danish prose does: "beton, stål og træ". */
-function ogListe(items) {
+export function ogListe(items) {
   if (items.length === 0) return ''
   if (items.length === 1) return items[0]
   return `${items.slice(0, -1).join(', ')} og ${items[items.length - 1]}`
 }
 
+/**
+ * Det bærende system, sagt ud fra beskrivelsen. A1 og B1 bruger den samme,
+ * så de to dokumenter beskriver bygningen med de samme ord.
+ */
+export function baerendeSystem(o) {
+  const mat = { ...DEFAULT_OPTIONS.materialer, ...(o.materialer || {}) }
+  const stabValg = { ...DEFAULT_OPTIONS.stabilisering, ...(o.stabilisering || {}) }
+  const fund = FUNDERINGER.find(f => f.key === o.fundering) ?? FUNDERINGER[0]
+  const stab = STABILISERING.filter(x => stabValg[x.key])
+  const harTag  = (o.tagform ?? DEFAULT_OPTIONS.tagform) !== 'ingen'
+  const harDaek = (o.etager ?? 1) > 1 || !!o.kaelder
+  // De bærende dele, sagt som de er: "træskeletvægge og spær i træ".
+  const dele = []
+  if (mat.murvaerk) dele.push('bærende murværksvægge')
+  if (mat.beton)    dele.push(harDaek ? 'betonvægge og betondæk' : 'betonvægge')
+  if (mat.staal)    dele.push('stålsøjler og stålbjælker')
+  if (mat.trae)     dele.push(harTag ? (harDaek ? 'træskeletvægge, træbjælkelag og spær i træ' : 'træskeletvægge og spær i træ')
+                                     : (harDaek ? 'træskeletvægge og træbjælkelag' : 'træskeletvægge'))
+  return { mat, fund, stab, harTag, harDaek, dele }
+}
+
 export function makeA1Template(options = {}, metadata = {}) {
   const o = { ...DEFAULT_OPTIONS, ...options,
-              materialer: { ...DEFAULT_OPTIONS.materialer, ...(options.materialer || {}) } }
+              materialer: { ...DEFAULT_OPTIONS.materialer, ...(options.materialer || {}) },
+              stabilisering: { ...DEFAULT_OPTIONS.stabilisering, ...(options.stabilisering || {}) } }
   const m = metadata || {}
 
   const { cc, row, begrundelse } = suggestCC(o)
@@ -322,6 +403,7 @@ export function makeA1Template(options = {}, metadata = {}) {
   const kfi  = kfiFor(cc)
   const g3   = gamma3For(kk)
   const brug = MATERIALER.filter(x => o.materialer[x.key]).map(x => x.label)
+  const { mat, fund, stab, harTag, harDaek, dele } = baerendeSystem(o)
 
   let id = Date.now()
   const B = []
@@ -340,26 +422,25 @@ export function makeA1Template(options = {}, metadata = {}) {
   T(
     `Nærværende statiske dokumentation vedrører ${o.konstruktionstype.toLowerCase()} af ` +
     `${row.kort}` +
-    `${m.address ? ` beliggende ${m.address}` : ' beliggende [adresse]'}, matr. [matrikelnummer].\n\n` +
-    `Bygherren er: ${m.client || '…'}\n` +
-    `Sagsnr.: ${m.project_ref || '…'}\n\n` +
+    `${m.address ? ` beliggende ${m.address}` : ' beliggende [adresse]'}, ` +
+    `matr. ${m.matrikel || '[matrikelnummer]'}.\n\n` +
+    `Bygherren er: ${m.client || '[bygherre]'}\n` +
+    (m.project_ref ? `Sagsnr.: ${m.project_ref}\n` : '') + '\n' +
     `Bygningen er ${o.etager} etage${o.etager === 1 ? '' : 'r'} over terræn ` +
-    `${o.kaelder ? 'med kælder' : 'uden kælder'}. Det samlede bebyggede areal er ca. … m², ` +
-    `og det samlede etageareal er ca. … m².\n\n` +
-    `[Beskriv bygningens opdeling i konstruktionsafsnit og hvilke dele der er omfattet af ` +
-    `nærværende dokumentation. Indsæt oversigtstegning som billede.]`
+    `${o.kaelder ? 'med kælder' : 'uden kælder'}. Dokumentationen omfatter de bærende ` +
+    `konstruktioner i de konstruktionsafsnit, der er listet i afsnit 1.3, og de elementer, ` +
+    `der eftervises i A2.`
   )
+  push('image', { image_b64: null, caption: 'Oversigtstegning', width_pct: 100 })
 
   H(3, '1.2 Konstruktioners art og opbygning')
   T(
-    `Bygningens primære bærende system er opbygget i ${brug.length ? ogListe(brug).toLowerCase() : '[materiale]'}.\n` +
-    `[Beskriv konstruktionsprincippet, fx: CLT-dæk båret af limtræbjælker og lette træskeletvægge / ` +
-    `in-situ betondæk med stålsøjler og betonkerner.]\n\n` +
-    `Lodrette laster: dæk → bjælker → søjler/vægge → fundament → undergrund\n` +
-    `Vandret stabilisering: [skiver / rammer / kryds / kerne]\n\n` +
-    `[Beskriv spændretning for dæk, udkragninger og særlige konstruktive forhold. ` +
-    `Indsæt opstalt/snit som billede.]`
+    `Bygningens primære bærende system består af ${dele.length ? ogListe(dele) : '[bærende dele]'}, ` +
+    `funderet på ${fund.tekst}.\n\n` +
+    `Lodrette laster: ${harTag ? 'tag → ' : ''}${harDaek ? 'dæk → ' : ''}bjælker → søjler/vægge → fundament → undergrund\n` +
+    `Vandret stabilisering: ${stab.length ? ogListe(stab.map(x => x.tekst)) : '[stabiliserende system]'}`
   )
+  push('image', { image_b64: null, caption: 'Snit / opstalt', width_pct: 100 })
 
   H(3, '1.3 Konstruktionsafsnit')
   T('Opbygningen følger SBi-anvisning 271, 3. udgave. Nærværende dokumentation omhandler de konstruktionsafsnit der er markeret nedenfor.')
@@ -451,9 +532,7 @@ export function makeA1Template(options = {}, metadata = {}) {
     `Antal etager over terræn: ${o.etager}\n\n` +
     `Valgt konsekvensklasse: CC${cc}\n` +
     `Pålidelighedsklasse: ${rc}\n\n` +
-    `Teknisk-faglig vurdering og begrundelse:\n${begrundelse}\n\n` +
-    `[Kontrollér indplaceringen og suppler med projektets egne forhold. Afvigelse fra ` +
-    `tabellens vejledende værdier skal begrundes her.]`
+    `Teknisk-faglig vurdering og begrundelse:\n${begrundelse}`
   )
   TBL('Tabel 2.2a — K_FI-faktorer pr. konsekvensklasse (DS/EN 1990 DK NA:2024)', [
     ['Konsekvensklasse', 'Pålidelighedsklasse', 'K_FI — STR/GEO (6.10a/b)', 'K_FI — EQU', 'K_FI — Geoteknisk'],
@@ -527,17 +606,16 @@ export function makeA1Template(options = {}, metadata = {}) {
     `  Pålidelighedsklasse:         ${rc}\n` +
     `  K_FI-faktor (STR/GEO):       ${kfi}   (se Tabel 2.2a for CC-afhængighed)\n` +
     '  K_FI-faktor (EQU/geoteknik): 1,0    (gælder uafhængigt af CC iht. DK NA:2024)\n' +
-    `  Geoteknisk kategori:         GK[${cc}]\n` +
-    `  Brandklasse:                 ${o.brandklasse || '[fastlægges — se afsnit 4.7]'}\n` +
-    `  Anvendelseskategori:         ${o.anvendelseskategori || '[fastlægges — se afsnit 4.7]'}`
+    `  Geoteknisk kategori:         GK${Math.min(cc, 3)}\n` +
+    `  Brandklasse:                 ${o.brandklasse || 'fastlægges af brandrådgiveren, se afsnit 4.7'}\n` +
+    `  Anvendelseskategori:         ${o.anvendelseskategori || 'fastlægges af brandrådgiveren, se afsnit 4.7'}`
   )
 
   H(3, '2.4 IKT-værktøjer')
   T(
     'Følgende software er anvendt i projekteringen:\n' +
-    '  Omkreds — statisk dokumentation og eftervisninger\n' +
-    '  [Evt. øvrigt beregningsprogram, fx Tekla Tedds / FEM-Design / RFEM]\n' +
-    '  [BIM-program, fx Revit / Archicad]'
+    '  Omkreds — statisk dokumentation og eftervisninger' +
+    String(o.software || '').split(/[,;\n]/).map(x => x.trim()).filter(Boolean).map(x => `\n  ${x}`).join('')
   )
 
   H(3, '2.5 Referencer')
@@ -547,9 +625,9 @@ export function makeA1Template(options = {}, metadata = {}) {
       '[2] SBi-anvisning 271, 3. udgave — Dokumentation og kontrol af bærende konstruktioner',
       '[3] DS/INF 1990:2024 — Vejledning til konsekvensklasser',
     ]
-    if (o.geoteknisk)   refs.push(`[${refs.length + 1}] [Geoteknisk rapport — firma, rapportnr., dato]`)
+    if (o.geoteknisk)   refs.push(`[${refs.length + 1}] ${String(o.geoRapport || '').trim() ? `Geoteknisk rapport: ${o.geoRapport.trim()}` : '[Geoteknisk rapport — firma, rapportnr., dato]'}`)
     if (o.eksisterende) refs.push(`[${refs.length + 1}] [Dokumentation for eksisterende konstruktioner]`)
-    refs.push(`[${refs.length + 1}] [Arkitekttegninger — tegningsliste, revisioner]`)
+    refs.push(`[${refs.length + 1}] Arkitekttegninger, jf. tegningslisten`)
     T(refs.join('\n'))
   }
 
@@ -560,12 +638,16 @@ export function makeA1Template(options = {}, metadata = {}) {
   H(2, '3. Forundersøgelser')
 
   H(3, '3.1 Grunden og lokale forhold')
-  T('[Beskriv grundens beskaffenhed, terræn, afvandingsforhold og lokale påvirkninger.]')
+  T(o.geoteknisk
+    ? 'Grundens beskaffenhed og jordbundsforhold fremgår af den geotekniske rapport, se afsnit 3.2. ' +
+      'Overfladevand bortledes fra fundamenterne.'
+    : 'Der er ikke kendskab til særlige forhold ved grunden. Overfladevand bortledes fra ' +
+      'fundamenterne.')
 
   H(3, '3.2 Geotekniske forhold')
   T(o.geoteknisk
-    ? `Geoteknisk kategori: GK[${cc}] (DS/EN 1997-1)\n\n` +
-      'Funderingsforhold (fra geoteknisk rapport [ref.]):\n' +
+    ? `Geoteknisk kategori: GK${Math.min(cc, 3)} (DS/EN 1997-1)\n\n` +
+      'Funderingsforhold (fra den geotekniske rapport, se afsnit 2.5):\n' +
       '  Bæredygtig jordbundsydelse: σ = … kN/m²\n' +
       '  Fundamentskote (underkant): +… m DVR90 (ca. … m under terræn)\n' +
       '  Frostfri dybde: 0,9 m (DK NA til DS/EN 1997-1)\n' +
@@ -574,11 +656,21 @@ export function makeA1Template(options = {}, metadata = {}) {
       '  Friktionsvinkel: φ_k = … °\n' +
       '  Kohæsion: c_k = … kPa\n' +
       '  Effektiv rumvægt: γ_k = … kN/m³'
-    : 'Der foreligger ikke en geoteknisk rapport for projektet. Funderingsforholdene ' +
-      'fastlægges på baggrund af [grundlag] — vurderingen skal bekræftes inden udførelse.')
+    : `Der foreligger ikke en geoteknisk rapport for projektet. Der funderes på ${fund.tekst}, ` +
+      'ført til frostfri dybde (mindst 0,9 m under terræn) på intakt, bæredygtig jord. ' +
+      'Forudsætningen kontrolleres ved besigtigelse af udgravningen inden støbning; afviger ' +
+      'jordbundsforholdene, kontaktes den statiske rådgiver.')
 
   H(3, '3.3 Klima- og miljøtekniske forhold')
-  T('[Beskriv relevante klima- og miljøtekniske påvirkninger, fx aggressivt miljø, kysteksponering, høj luftfugtighed eller forurenet jord.]')
+  T({
+    normal: 'Bygværket ligger i et almindeligt indlandsmiljø uden aggressive påvirkninger, ' +
+            'kysteksponering eller forurenet jord.',
+    kyst: 'Bygværket ligger kystnært og er udsat for salt i luften. Udvendige stålkonstruktioner ' +
+          'og samlingsmidler korrosionsbeskyttes for korrosivitetskategori C4 iht. DS/EN ISO 12944.',
+    aggressiv: 'Bygværket er udsat for et aggressivt miljø. Konstruktioner i kontakt med jord ' +
+               'eller kemikalier dimensioneres for den aktuelle eksponering: ' +
+               '[beskriv påvirkningen og de valgte beskyttelsesforanstaltninger].',
+  }[o.miljoe] ?? '')
 
   H(3, '3.4 Eksisterende konstruktioner')
   T(o.eksisterende
@@ -603,20 +695,20 @@ export function makeA1Template(options = {}, metadata = {}) {
 
   H(3, '4.1.1 Lodret lastnedføring')
   T(
-    '[Beskriv lastvejen for lodrette laster. Eksempel:\n' +
-    '"De lodrette laster fra egenlast, nyttelast og naturlaster påvirker dækkene som en ' +
-    'fladelast, der fordeles til de bærende elementer. Dækkene fungerer som stive plader, ' +
-    'der fordeler fladelasterne til understøtningerne, hvor lasterne omdannes til ' +
-    'linjelaster/punktlaster og overføres til søjler/vægge, fundament og undergrund."\n\n' +
-    'Indsæt evt. snit- eller principskitse som billede.]'
+    `De lodrette laster fra egenlast, nyttelast${harTag ? ' og snelast' : ''} virker som fladelaster ` +
+    `på ${harTag && harDaek ? 'tag og dæk' : harTag ? 'taget' : 'dækkene'}. ` +
+    (harTag ? `${mat.trae ? 'Spærene' : 'Tagkonstruktionen'} fører tagets laster til de bærende vægge og bjælker. ` : '') +
+    (harDaek ? 'Dækkene spænder mellem understøtningerne og fører lasten videre som linje- og punktlaster. ' : '') +
+    `Væggene og søjlerne fører lasterne ned til ${fund.bestemt}, som overfører dem til undergrunden.`
   )
 
   H(3, '4.1.2 Vandret lastføring')
   T(
-    '[Beskriv stabiliseringssystemet, og hvilke vægge/kerner der stabiliserer i x- og ' +
-    'y-retningen. Eksempel:\n"Bygningens stabiliserende hovedsystem udføres som vægge, der ' +
-    'virker som skiver. Dækkene fungerer som stive plader, der fordeler de vandrette kræfter ' +
-    'til stabiliseringselementerne."]'
+    `Vindlasten optages af facaderne og føres via ${harTag ? 'tagfladen' : harDaek ? 'dækkene' : 'væggene'}` +
+    `${harTag || harDaek ? ', der virker som skive,' : ''} til bygningens stabiliserende system: ` +
+    `${stab.length ? ogListe(stab.map(x => x.tekst)) : '[stabiliserende system]'}. ` +
+    'Systemet stabiliserer bygningen i begge hovedretninger og fører de vandrette kræfter til ' +
+    'fundamenterne, hvor de optages ved friktion og jordtryk.'
   )
 
   H(3, '4.2 Anvendelseskrav')
@@ -625,21 +717,30 @@ export function makeA1Template(options = {}, metadata = {}) {
     '  Dæk og bjælker generelt: L/300 for karakteristiske lastkombinationer\n' +
     '  Dæk med skrøbelig belægning (fliser, terrazzo): L/400\n' +
     '  Tagelementer: L/200\n\n' +
-    '[Tilpas efter projektets krav og aftale med bygherren. Angiv evt. absolutte værdier i mm.]'
+    'Kravene gælder, medmindre andet er aftalt med bygherren.'
   )
 
   H(3, '4.3 Komfortkrav')
-  T('Der stilles krav til vibrationskomfort for etagedæk iht. DS/EN 1990 DK NA:2024 Tabel A1.4. Kravene angiver minimumsegenfrekvens og maksimal RMS-acceleration.')
-  TBL('Tabel 4.1 — Krav til vibrationskomfort for etagedæk (DS/EN 1990 DK NA:2024, Tabel A1.4)', [
-    ['Konstruktionstype / rum', 'Min. egenfrekvens f₁ [Hz]', 'Maks. RMS-acceleration a_rms [% g]', 'a_rms ca. [m/s²]'],
-    ['Tribuner med fikserede sæder', '3,4', '5,0', '~0,49'],
-    ['Boliger og hotelværelser', '8,0', '0,5', '~0,049'],
-    ['Kontorlokaler', '4,0', '1,0', '~0,098'],
-  ])
-  T('Egenfrekvens og acceleration kontrolleres for den dominerende fodgængerfrekvens (typisk 2 Hz lodrette trin) iht. bilag til DS/EN 1990.\n\nValgt anvendelse: […] — krav: f₁ ≥ […] Hz og a_rms ≤ […] % g\nBeregnede værdier eftervises i A2.')
+  if (!harDaek) {
+    T('Ikke relevant — bygningen har ingen etagedæk, der kan give gener fra svingninger.')
+  } else {
+    const kontor = o.anvendelseskategori === '1'
+    T('Der stilles krav til vibrationskomfort for etagedæk iht. DS/EN 1990 DK NA:2024 Tabel A1.4. Kravene angiver minimumsegenfrekvens og maksimal RMS-acceleration.')
+    TBL('Tabel 4.1 — Krav til vibrationskomfort for etagedæk (DS/EN 1990 DK NA:2024, Tabel A1.4)', [
+      ['Konstruktionstype / rum', 'Min. egenfrekvens f₁ [Hz]', 'Maks. RMS-acceleration a_rms [% g]', 'a_rms ca. [m/s²]'],
+      ['Tribuner med fikserede sæder', '3,4', '5,0', '~0,49'],
+      ['Boliger og hotelværelser', '8,0', '0,5', '~0,049'],
+      ['Kontorlokaler', '4,0', '1,0', '~0,098'],
+    ], { highlighted: Array.from({ length: 4 }, (_, ci) => `${kontor ? 3 : 2},${ci}`) })
+    T('Egenfrekvens og acceleration kontrolleres for den dominerende fodgængerfrekvens (typisk 2 Hz lodrette trin) iht. bilag til DS/EN 1990.\n\n' +
+      `Valgt anvendelse: ${kontor ? 'kontorlokaler — krav: f₁ ≥ 4,0 Hz og a_rms ≤ 1,0 % g' : 'boliger — krav: f₁ ≥ 8,0 Hz og a_rms ≤ 0,5 % g'}\n` +
+      'Beregnede værdier eftervises i A2.')
+  }
 
   H(3, '4.4 Funktionskrav')
-  T('Byggeriet gennemføres iht. bestemmelserne i BR18 og gældende normer.\n[Beskriv særlige funktionskrav — akustik, vandtæthed, brandadskillende vægge, adskillelse fra installationer.]')
+  T('Byggeriet gennemføres iht. bestemmelserne i BR18 og gældende normer. Der stilles ikke ' +
+    'funktionskrav til de bærende konstruktioner ud over styrke, stabilitet og anvendelseskravene ' +
+    'i afsnit 4.2 og 4.3.')
 
   H(3, '4.5 Robusthed')
   T('Konstruktionernes robusthed vurderes iht. DS/EN 1990 og DS/EN 1991-1-7. Minimumskrav for mekaniske forbindelser til sikring mod progressivt kollaps:')
@@ -653,7 +754,7 @@ export function makeA1Template(options = {}, metadata = {}) {
   T('Værdier i parentes gælder ved CC2 med mere end 2 etager.')
 
   H(3, '4.6 Levetid')
-  T('Bygværket henføres til kategori 4 iht. DS/EN 1990 Tabel 2.1 — almindelige konstruktioner med en vejledende forventet levetid på 50 år.\n[Kategori 5 (100 år) ved monumentale bygninger, broer og anlægskonstruktioner.]')
+  T('Bygværket henføres til kategori 4 iht. DS/EN 1990 Tabel 2.1 — almindelige konstruktioner med en vejledende forventet levetid på 50 år.')
 
   H(3, '4.7 Brand')
   {
@@ -661,8 +762,8 @@ export function makeA1Template(options = {}, metadata = {}) {
     const ak  = ANVENDELSESKATEGORIER.find(x => x.key === o.anvendelseskategori)
                 ?? ANVENDELSESKATEGORIER[0]
     T(
-      `Brandklasse: ${bk.key || '[fastlægges]'} — ${bk.kort}.\n` +
-      `Anvendelseskategori: ${ak.key || '[fastlægges]'} — ${ak.kort}.\n\n` +
+      `Brandklasse: ${bk.key || 'ikke fastlagt'} — ${bk.kort}.\n` +
+      `Anvendelseskategori: ${ak.key || 'ikke fastlagt'} — ${ak.kort}.\n\n` +
       'Den brandtekniske dokumentation udarbejdes særskilt og er ikke en del af ' +
       'denne A1. Grænsefladen er, at brandstrategien fastlægger den krævede ' +
       'brandmodstandsevne for hver bygningsdel, og at de bærende konstruktioner ' +
@@ -725,13 +826,26 @@ export function makeA1Template(options = {}, metadata = {}) {
     'Eventuel midlertidig afstivning hører til den arbejdsudførende i fuld udstrækning, ' +
     'inkl. evt. udarbejdelse af midlertidigt afstivningsprojekt.\n\n' +
     'Der regnes med god byggeskik og faglært arbejde på byggepladsen. Det anbefales, at der ' +
-    'udføres tilsyn og kvalitetssikring i alle byggeriets faser.\n\n' +
-    '[Særlige udførelseskrav — tolerancer, udstøbningsrækkefølge, hærde- og hviletider for ' +
-    'beton, krav til montage af præfabrikerede elementer.]'
+    'udføres tilsyn og kvalitetssikring i alle byggeriets faser.' +
+    [
+      mat.trae && '\n\nTræ: Konstruktionstræ indbygges med et fugtindhold på højst 18 % og beskyttes ' +
+        'mod nedbør i byggeperioden. Samlinger udføres med de beslag og forbindelsesmidler, der er ' +
+        'angivet på tegningerne, og med de angivne kant- og endeafstande.',
+      mat.staal && `\n\nStål: Stålkonstruktioner udføres i udførelsesklasse EXC${Math.min(cc, 3)} iht. DS/EN 1090-2.`,
+      mat.beton && '\n\nBeton: Betonarbejder udføres iht. DS/EN 13670. Afforskalling sker først, ' +
+        'når betonen har opnået tilstrækkelig styrke.',
+      mat.murvaerk && '\n\nMurværk: Murværk udføres iht. DS/EN 1996-2, og bærende vægge afstives ' +
+        'midlertidigt, indtil dæk og tag er monteret.',
+    ].filter(Boolean).join('')
   )
 
   H(3, '4.9 Drift og vedligehold')
-  T('[Beskriv særlige krav til drift og vedligehold, fx inspektion af ekspansionsbolte, vedligehold af overfladebehandling på stålkonstruktioner, kontrol af tagdækningens tæthed.]')
+  T(['De bærende konstruktioner kræver ikke særlig drift ud over almindeligt vedligehold.',
+     harTag && 'Tagdækningens tæthed kontrolleres jævnligt, så de bærende dele ikke opfugtes.',
+     mat.trae && 'Trækonstruktioner holdes tørre; fugtskader og råd udbedres straks.',
+     mat.staal && 'Overfladebehandling og brandbeskyttelse af stål efterses og udbedres ved skader.',
+     mat.beton && 'Revner og afskalninger i beton efterses, så armeringen ikke korroderer.',
+    ].filter(Boolean).join(' '))
 
   // ── 5. Konstruktionsmaterialer ──────────────────────────────────────────────
   H(2, '5. Konstruktionsmaterialer')
@@ -764,7 +878,7 @@ export function makeA1Template(options = {}, metadata = {}) {
       ['S355', '40 < t ≤ 80', '335', '470', '210', '78,5'],
       ['S420', 't ≤ 40', '420', '520', '210', '78,5'],
     ])
-    T(`Partialkoefficienter: γ_M0 = 1,00 (flydning), γ_M1 = 1,00 (instabilitet), γ_M2 = 1,25 (brud/forbindelser)\nUdførelsesklasse: EXC[2] iht. DS/EN 1090-2 (CC${cc}, SC1, PC2)`)
+    T(`Partialkoefficienter: γ_M0 = 1,00 (flydning), γ_M1 = 1,00 (instabilitet), γ_M2 = 1,25 (brud/forbindelser)\nUdførelsesklasse: EXC${Math.min(cc, 3)} iht. DS/EN 1090-2 (CC${cc}, SC1, PC2)`)
   } else {
     T('Ikke anvendt i dette projekt.')
   }
@@ -878,15 +992,32 @@ export function makeA1Template(options = {}, metadata = {}) {
 
   H(3, '6.3 Nyttelast')
   T('Nyttelaster fastsættes iht. DS/EN 1991-1-1 DK NA:2024. Nedenstående tabel angiver projektets valgte nyttelaster med ψ-faktorer.')
-  TBL('Tabel 6.3 — Projektets nyttelaster (lodrette flade- og punktlaster)', [
-    ['Betegnelse', 'Beskrivelse / rum', 'Kat.', 'q_k [kN/m²]', 'Q_k [kN]', 'ψ_0', 'ψ_1 (brand)', 'ψ_2 (ulykke)'],
-    ['Q01', '[fx boliger / hotelværelser]', 'A', '1,5', '2', '0,5', '0,3', '0,2'],
-    ['Q02', '[fx altaner]', 'A', '2,5', '2', '0,5', '0,3', '0,2'],
-    ['Q03', '[fx loftsrum]', 'A', '1,0', '0,5', '0,5', '0,3', '0,2'],
-    ['Q04', '[fx kontorer / administration]', 'B', '2,5', '2,5', '0,6', '0,4', '0,2'],
-    ['Q05', '[fx trapper, gange, fællesarealer]', 'C', '5,0', '4', '0,6', '0,6', '0,5'],
-    ['Q06', '[fx tag — ikke tilgængeligt]', 'H', '0,5', '1,0', '0', '0', '0'],
-  ])
+  {
+    // Rækkerne efter bygningen: et A1 for et enfamiliehus skal ikke liste
+    // kontorer og fællesarealer, som så skal slettes igen.
+    const kat = o.bygningskategori
+    const kontor = o.anvendelseskategori === '1'
+    const rk = {
+      bolig:  ['Boliger', 'A', '1,5', '2', '0,5', '0,3', '0,2'],
+      altan:  ['Altaner', 'A', '2,5', '2', '0,5', '0,3', '0,2'],
+      loft:   ['Loftsrum (ikke til beboelse)', 'A', '1,0', '0,5', '0,5', '0,3', '0,2'],
+      kontor: ['Kontorer og administration', 'B', '2,5', '2,5', '0,6', '0,4', '0,2'],
+      trappe: ['Trapper, gange og fællesarealer', 'C', '5,0', '4', '0,6', '0,6', '0,5'],
+      tag:    ['Tag — ikke tilgængeligt', 'H', '0,5', '1,0', '0', '0', '0'],
+    }
+    const valgt =
+      kat === 'enfamiliehus' ? [...(harDaek ? ['bolig'] : []), ...(harTag ? ['loft', 'tag'] : [])]
+      : kat === 'etagebyggeri' ? [kontor ? 'kontor' : 'bolig', ...(kontor ? [] : ['altan']), 'trappe', ...(harTag ? ['tag'] : [])]
+      : kat === 'landbrug' || kat === 'industri' ? (harTag ? ['tag'] : [])
+      : ['bolig', 'altan', 'loft', 'kontor', 'trappe', ...(harTag ? ['tag'] : [])]
+    TBL('Tabel 6.3 — Projektets nyttelaster (lodrette flade- og punktlaster)', [
+      ['Betegnelse', 'Beskrivelse / rum', 'Kat.', 'q_k [kN/m²]', 'Q_k [kN]', 'ψ_0', 'ψ_1 (brand)', 'ψ_2 (ulykke)'],
+      ...valgt.map((k, i) => [`Q${String(i + 1).padStart(2, '0')}`, ...rk[k]]),
+    ])
+    if (kat === 'landbrug' || kat === 'industri') {
+      T('Nyttelaster fra oplag, maskiner og dyrehold fastsættes efter den konkrete anvendelse iht. DS/EN 1991-1-1 og angives ved de berørte konstruktionsdele i A2.')
+    }
+  }
   TBL('Tabel 6.4 — ψ-faktorer for variable laster (DS/EN 1990 DK NA:2024, Tabel A1.1)', [
     ['Lasttype', 'Lastkategori / anvendelse', 'ψ_0', 'ψ_1', 'ψ_2'],
     ['Nyttelast — kat. A', 'Boliger og boligformål', '0,5', '0,3', '0,2'],
@@ -912,29 +1043,45 @@ export function makeA1Template(options = {}, metadata = {}) {
     '(DS/EN 1991-1-3 DK NA). En højere værdi, fx for en højtliggende eller ' +
     'særligt snebelastet lokalitet, begrundes her.'
   )
-  T(
-    'Grundet tagets udformning:\n' +
-    '  s_k = 1,0 kN/m² (DK NA)\n' +
-    '  Tagtype: [ensidig / tosidig / fladt]   Hældning: α = … °\n' +
-    '  Formfaktor: μ₁ = … (fra DK NA Figur DK.3)\n' +
-    '  Karakteristisk tagsnelast: s = μ₁ × C_e × C_t × s_k = … kN/m²\n\n' +
-    '[Beskriv evt. særlige snelastforhold — snefygning, snelommer ved højdespring.]'
-  )
+  if (!harTag) {
+    T('Projektet omfatter ingen tagkonstruktion. Snelast indgår kun, hvor den føres videre til de konstruktioner, der eftervises.')
+  } else {
+    const alpha = o.tagform === 'fladt' ? 0 : Number(o.taghaeldning) || 0
+    const m1 = mu1(alpha)
+    const k = (x, d = 2) => x.toFixed(d).replace('.', ',')
+    const form = (TAGFORMER.find(t => t.key === o.tagform)?.label ?? 'Tag').toLowerCase()
+    T(
+      'Grundet tagets udformning:\n' +
+      '  s_k = 1,0 kN/m² (DK NA)\n' +
+      `  Tagtype: ${form}   Hældning: α = ${k(alpha, 0)}°\n` +
+      `  Formfaktor: μ₁ = ${k(m1)} (DS/EN 1991-1-3 Tabel 5.2)\n` +
+      '  C_e = 1,0 (normal topografi), C_t = 1,0\n' +
+      `  Karakteristisk tagsnelast: s = μ₁ × C_e × C_t × s_k = ${k(m1)} kN/m²` +
+      (o.tagform === 'saddel'
+        ? `\n\nFor saddeltaget undersøges desuden skæv fordeling med ${k(0.5 * m1)} kN/m² (0,5·μ₁) på den ene tagflade (DS/EN 1991-1-3 Figur 5.3).`
+        : '') +
+      '\n\nDer er ikke højdespring eller tilstødende højere bygninger, der giver snelommer. ' +
+      'Opstår de, eftervises de særskilt i A2.'
+    )
+  }
 
   H(3, '6.4.2 Vindlast')
   T(
     'Vindlast beregnes iht. DS/EN 1991-1-4 DK NA:2024.\n\n' +
     '  Basisvindhastighed: v_b,0 = 24 m/s\n' +
-    '  Terrænkategori: [0 / I / II / III / IV]   (0 = hav, II = normal, IV = tæt bybebyggelse)\n' +
-    `  Referencehøjde: z_ref = ${o.hoejdeOver || '…'} m\n` +
-    '  Karakteristisk vindhastighedstryk: q_p = … kN/m²\n\n' +
-    'Formfaktorer og vindtryk fremgår af A2.'
+    `  Terrænkategori: ${TERRAENKATEGORIER.find(t => t.key === o.terraenkategori)?.label ?? o.terraenkategori}\n` +
+    `  Referencehøjde: z_ref = ${o.hoejdeOver || '[højde]'} m\n\n` +
+    'Det karakteristiske vindhastighedstryk q_p, formfaktorer og vindtryk fremgår af vindberegningen i A2.'
   )
 
   H(3, '6.5 Geometriske imperfektioner')
   T(o.materialer.staal || o.materialer.beton
-    ? '[Beskriv indledende krængning φ₀ og reduktionsfaktor α_h iht. DS/EN 1993-1-1 § 5.3 (stål) ' +
-      'eller DS/EN 1992-1-1 § 5.2 (beton).]'
+    ? [
+        mat.staal && 'Stål: Globale imperfektioner medtages som en indledende krængning φ = φ₀·α_h·α_m ' +
+          'med φ₀ = 1/200 iht. DS/EN 1993-1-1 § 5.3.2.',
+        mat.beton && 'Beton: Geometriske imperfektioner medtages som en hældning θ_i = θ₀·α_h·α_m ' +
+          'med θ₀ = 1/200 iht. DS/EN 1992-1-1 § 5.2.',
+      ].filter(Boolean).join('\n')
     : IKKE_RELEVANT)
 
   H(3, '6.6 Ulykkeslaster')
@@ -950,7 +1097,10 @@ export function makeA1Template(options = {}, metadata = {}) {
   T('Ikke relevant — den seismiske påvirkning er forsvindende i Danmark.')
 
   H(3, '6.8 Midlertidige laster')
-  T('[Beskriv udførelseslaster iht. DS/EN 1991-1-6, fx last fra stilladser, kraner eller støbning af overliggende etage. Alternativt: ikke relevant.]')
+  T('Laster i udførelsesfasen iht. DS/EN 1991-1-6 håndteres af den udførende ved midlertidig ' +
+    'afstivning og understøtning, jf. afsnit 4.8. De permanente konstruktioner er ikke ' +
+    'dimensioneret for særlige udførelseslaster' +
+    (mat.beton && harDaek ? ', bortset fra støbning af overliggende dæk, som eftervises i A2.' : '.'))
 
   // ── Referencedokumenter ─────────────────────────────────────────────────────
   H(2, 'Referencedokumenter')

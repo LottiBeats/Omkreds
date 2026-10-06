@@ -45,6 +45,15 @@ export const PROJECT_TYPES = [
       geoteknisk:        false,
       eksisterende:      false,
       naboer:            false,
+      // Et enfamiliehus med præaccepterede løsninger: BK1, og en bolig er
+      // anvendelseskategori 4. Begge kan rettes i dialogen, hvis brandstrategien
+      // siger andet.
+      brandklasse:       'BK1',
+      anvendelseskategori: '4',
+      tagform:           'saddel',
+      taghaeldning:      34,
+      stabilisering:     { skiver: true, rammer: false, kryds: false, kerne: false },
+      fundering:         'stribe',
     },
     makeA2: makeTimberRoofTemplate,
   },

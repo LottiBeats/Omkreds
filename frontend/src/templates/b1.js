@@ -13,14 +13,7 @@
  * a live `doclist` block that reads the project's actual documents and their
  * issued revisions when it renders.
  */
-import { suggestCC, suggestKK, ANVENDELSER, MATERIALER, DEFAULT_OPTIONS } from './a1.js'
-
-/** Join a list the way Danish prose does: "beton, stål og træ". */
-function ogListe(items) {
-  if (items.length === 0) return ''
-  if (items.length === 1) return items[0]
-  return `${items.slice(0, -1).join(', ')} og ${items[items.length - 1]}`
-}
+import { suggestCC, suggestKK, MATERIALER, DEFAULT_OPTIONS, baerendeSystem, ogListe } from './a1.js'
 
 export function makeB1Template(options = {}, metadata = {}) {
   const o = { ...DEFAULT_OPTIONS, ...options,
@@ -31,6 +24,8 @@ export function makeB1Template(options = {}, metadata = {}) {
   const kkResult = suggestKK({ ...o, cc })
   const kk   = kkResult.kk
   const brug = MATERIALER.filter(x => o.materialer[x.key]).map(x => x.label)
+  const { fund, stab, harTag, harDaek, dele } = baerendeSystem(o)
+  const stabTekst = stab.length ? ogListe(stab.map(x => x.tekst)) : '[stabiliserende system]'
 
   let id = Date.now()
   const B = []
@@ -46,10 +41,10 @@ export function makeB1Template(options = {}, metadata = {}) {
 
   H(2, '1. Projekt- og konstruktionstype')
   T(
-    `Projektets betegnelse: ${m.project_name || '…'}\n` +
-    `Sagsnr.: ${m.project_ref || '…'}\n` +
-    `Bygherre: ${m.client || '…'}\n` +
-    `Adresse/matrikel: ${m.address || '…'}\n` +
+    `Projektets betegnelse: ${m.project_name || '[projektnavn]'}\n` +
+    (m.project_ref ? `Sagsnr.: ${m.project_ref}\n` : '') +
+    `Bygherre: ${m.client || '[bygherre]'}\n` +
+    `Adresse/matrikel: ${m.address || '[adresse]'}, matr. ${m.matrikel || '[matrikelnummer]'}\n` +
     `Konstruktionstype: ${o.konstruktionstype}\n` +
     `Anvendelse: ${row.navn}`
   )
@@ -60,32 +55,30 @@ export function makeB1Template(options = {}, metadata = {}) {
     `${o.kaelder ? 'med kælder' : 'uden kælder'}, udført i ` +
     `${brug.length ? ogListe(brug).toLowerCase() : '[materiale]'}. ` +
     `Største konstruktionsspændvidde er ${o.spaendvidde} m.\n\n` +
-    'Overordnet beskrivelse af det bærende system:\n' +
-    '• Bærende elementer (bjælker, søjler, dæk, vægge): …\n' +
-    '• Primær bærende retning: …\n' +
-    '• Spændvidder og etagehøjder: …\n' +
-    '• Principper for lastnedføring: …\n\n' +
+    `Det bærende system består af ${dele.length ? ogListe(dele) : '[bærende dele]'}. ` +
+    `De lodrette laster føres ${harTag || harDaek ? `fra ${[harTag && 'tag', harDaek && 'dæk'].filter(Boolean).join(' og ')} ` : ''}` +
+    `via bjælker, vægge og søjler til ${fund.bestemt}.\n\n` +
     'Uddybende beskrivelse findes i A1 Konstruktionsgrundlag, afsnit 1.2 og 4.1.'
   )
 
   H(2, '3. Fundering')
   T(
-    'Funderingsprincip: [direkte fundering / pælefundering]\n' +
-    'Fundamenttype: [punktfundamenter / stribefundamenter / pladefundament]\n' +
-    'Fundamentskote: +… m DVR90\n' +
-    'Bæredygtig jordbundsydelse: sigma = … kN/m²\n\n' +
+    `Funderingsprincip: ${o.fundering === 'pael' ? 'pælefundering' : o.fundering === 'eksisterende' ? 'eksisterende fundering' : 'direkte fundering'}\n` +
+    `Fundamenttype: ${fund.label.toLowerCase()}\n\n` +
     (o.geoteknisk
-      ? 'Funderingsforholdene er fastlagt på grundlag af den geotekniske rapport, jf. A1 afsnit 3.2.'
-      : 'Der foreligger ikke en geoteknisk rapport. Funderingsforholdene er fastlagt på ' +
-        'grundlag af [grundlag] og skal bekræftes inden udførelse, jf. A1 afsnit 3.2.')
+      ? 'Funderingsforholdene, herunder fundamentskote og bæreevne, er fastlagt på grundlag af ' +
+        'den geotekniske rapport, jf. A1 afsnit 3.2.'
+      : 'Der foreligger ikke en geoteknisk rapport. Der funderes i frostfri dybde på intakt, ' +
+        'bæredygtig jord, og forudsætningen kontrolleres ved besigtigelse af udgravningen, ' +
+        'jf. A1 afsnit 3.2.')
   )
 
   H(2, '4. Stabilisering')
   T(
-    'Vandret stabilisering: [skiver / rammer / kerner / kryds]\n' +
-    'Lodret lastnedføring: [bærende vægge / søjlesystem]\n\n' +
-    'Beskriv de stabiliserende elementers placering og funktion i både x- og y-retningen, ' +
-    'samt hvordan de vandrette kræfter føres til fundamentet. Uddybes i A1 afsnit 4.1.2.'
+    `Vandret stabilisering: ${stabTekst}\n\n` +
+    `Vindlasten føres via ${harTag ? 'tagfladen' : harDaek ? 'dækkene' : 'væggene'} til ${stabTekst}, ` +
+    'som stabiliserer bygningen i begge hovedretninger og fører de vandrette kræfter til ' +
+    'fundamenterne. Uddybes i A1 afsnit 4.1.2.'
   )
 
   H(2, '5. Konsekvensklasse og konstruktionsklasse')
@@ -103,20 +96,21 @@ export function makeB1Template(options = {}, metadata = {}) {
 
   H(2, '6. Organisation og koordinering')
   T(
-    'Projekterende for de bærende konstruktioner: ' + (m.firm_name || '…') + '\n' +
-    'Udarbejdet af: ' + (m.engineer || '…') + '\n' +
-    'Kontrol af projektering: ' + (m.checker || '…') +
+    'Projekterende for de bærende konstruktioner: ' + (m.firm_name || '[firma]') + '\n' +
+    'Udarbejdet af: ' + (m.engineer || '[udarbejdet af]') + '\n' +
+    'Kontrol af projektering: ' + (m.checker || '[kontrolleret af]') +
     (kk === 'KK2' ? ' (en anden person end den, der har udført delen; BR18 kap. 30)'
       : kk === 'KK3' ? ' (certificeret statiker, der ikke har deltaget i projekteringen; BR18 kap. 30)'
       : kk === 'KK4' ? ' (certificeret statiker, der ikke har deltaget i projekteringen, samt tredjepartskontrol; BR18 kap. 30)'
       : '') + '\n' +
-    'Godkendt af: ' + (m.approver || '…') + '\n' +
+    (m.approver ? 'Godkendt af: ' + m.approver + '\n' : '') +
     // Certificeret statiker kræves i KK2–KK4, ikke kun ved CC3.
     (['KK2', 'KK3', 'KK4'].includes(kk) ? 'Certificeret statiker: …\n' : '') +
     (kk === 'KK4' ? 'Tredjepartskontrollant: …\n' : '') +
     '\nAnsvarsfordeling og grænseflader:\n' +
-    '[Beskriv hvilke konstruktionsafsnit der projekteres af andre (fx leverandørprojekterede ' +
-    'elementer, trapper, altaner), og hvordan grænsefladerne koordineres. Se A1 tabel 1.1.]\n\n' +
+    `Alle bærende konstruktioner projekteres af ${m.firm_name || 'den statiske rådgiver'}. ` +
+    'Projekteres dele af andre, fx leverandørprojekterede elementer, fremgår det af A1 tabel 1.1, ' +
+    'og grænsefladerne koordineres af den statiske rådgiver.\n\n' +
     'Kontrollen planlægges i B2 Statisk kontrolplan og dokumenteres i B3 Statisk kontrolrapport.'
   )
 
@@ -135,9 +129,8 @@ export function makeB1Template(options = {}, metadata = {}) {
     if (Number(o.anvendelseNr) === 12) punkter.push('• Påkørselslast skal eftervises for parkeringsdækket, jf. DS/EN 1991-1-7.')
     T(
       (punkter.length
-        ? punkter.join('\n') + '\n\n'
-        : '') +
-      'Angiv øvrige særlige forudsætninger, begrænsninger eller opmærksomhedspunkter:\n…'
+        ? punkter.join('\n')
+        : 'Der er ingen særlige konstruktive forhold ud over det, der er beskrevet i A1.')
     )
   }
 

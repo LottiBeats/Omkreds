@@ -23,6 +23,7 @@ export function isPlaceholderLabel(inner) {
   if (!c) return false
   if (c === '…' || c === '...') return true
   if (!/[a-zæøå]/.test(c)) return false                 // codes, numbers, CC2, DS/EN 1990
+  if (/^(k?Hz|%\s?g|m\/s²?|kg\/m³)$/.test(c)) return false  // units that look like words
   return /\s|…/.test(c) || /[a-zæøå]{3,}/.test(c) || /^[A-ZÆØÅ][a-zæøå]/.test(c)
 }
 
