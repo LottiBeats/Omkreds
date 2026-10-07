@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "node scripts/check-klasser.js && node scripts/check-projekttyper.js && node scripts/check-blokvariabler.js",
-    "test": "node --test tests/calcEngine.test.mjs tests/elementer.test.mjs tests/a1.test.mjs"
+    "test": "node --test tests/calcEngine.test.mjs tests/elementer.test.mjs tests/a1.test.mjs tests/importDokumenter.test.mjs"
   },
   "dependencies": {
     "@clerk/react": "latest",

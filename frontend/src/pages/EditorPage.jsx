@@ -31,6 +31,7 @@ import { docCounts, docProblems } from '../lib/docStatus.js'
 import { DOC_IDS, DOC_TITLES } from '../templates/docs.js'
 import { DOC_TEMPLATES } from '../templates/docTemplates.js'
 import { PROJECT_TYPES, makeProjectDocuments, optionsFor } from '../templates/projectTypes.js'
+import { laesImport, anvendImport, beskrivImport } from '../lib/importDokumenter.js'
 
 import BlockList from '../components/blocks/BlockList.jsx'
 import EditorRail from '../components/editor/EditorRail.jsx'
@@ -419,6 +420,39 @@ export default function EditorPage() {
     }
   }
 
+  // ── Import af færdige dokumenter fra en fil ───────────────────────────────
+  const importInput = useRef(null)
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''   // samme fil kan vælges igen
+    if (!file) return
+    const imp = laesImport(await file.text())
+    if (!imp.ok) { toast.fail('Filen kunne ikke importeres: ' + imp.fejl); return }
+
+    const ok = await confirm({
+      title: 'Importér dokumenter?',
+      body: `${beskrivImport(imp)} erstattes med indholdet fra ${file.name}. ` +
+            'Underdokumenter og de øvrige dokumenter røres ikke. ' +
+            'Der gemmes en version først, så alt kan gendannes fra Versionshistorik.',
+      confirmLabel: 'Importér',
+    })
+    if (!ok) return
+
+    // Samme regel som projekttyper: flere dokumenter overskrives kun, når der
+    // er et gendannelsespunkt, der med sikkerhed findes.
+    try {
+      await flushSave(project)
+      await createVersion(projectId, `Før import: ${Object.keys(imp.docs).sort().join(', ')}`, 'manual')
+    } catch (err) {
+      toast.fail('Kunne ikke gemme en version før importen, så intet er ændret. ' + (err?.message ?? ''))
+      return
+    }
+    undoClear()
+    save(anvendImport(project, imp))
+    toast.ok(`Importeret: ${beskrivImport(imp)}.`)
+  }
+
   function downloadLocalCopy() {
     const local = conflict?.local ?? project
     if (!local) return
@@ -464,7 +498,9 @@ export default function EditorPage() {
         onIssue={() => setIssueOpen(true)}
         onHistory={() => setHistoryOpen(true)}
         onSaveAsTemplate={() => setNameDialog({ kind: 'template', initial: project.metadata?.project_name || '' })}
+        onImport={() => importInput.current?.click()}
       />
+      <input ref={importInput} type="file" accept=".json,application/json" hidden onChange={handleImportFile} />
 
       <EditorRail
         project={project}

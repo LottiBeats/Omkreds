@@ -41,7 +41,7 @@ export default function EditorTopBar({
   undo, onUndo, onRedo,
   activeDoc, hasSubdocs, busy,
   onPreview, onExportPdf, onExportZip, onExportWord, onIssue,
-  onHistory, onSaveAsTemplate,
+  onHistory, onSaveAsTemplate, onImport,
 }) {
   const meta = project.metadata ?? {}
   return (
@@ -71,6 +71,7 @@ export default function EditorTopBar({
       <Menu align="right" trigger={() => <Button variant="ghost" size="sm" title="Projekt">Projekt ▾</Button>}>
         <MenuItem onSelect={onHistory} hint="Se og gendan tidligere versioner af hele projektet">Versionshistorik</MenuItem>
         <MenuItem onSelect={onSaveAsTemplate} hint="Genbrug dokumentstrukturen i nye projekter">Gem som projektskabelon…</MenuItem>
+        <MenuItem onSelect={onImport} hint="Læg færdige dokumenter ind fra en .json-fil">Importér dokumenter…</MenuItem>
         <MenuSeparator />
         <MenuItem onSelect={onBack}>Alle projekter</MenuItem>
       </Menu>
