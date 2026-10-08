@@ -35,6 +35,7 @@ import { laesImport, anvendImport, beskrivImport } from '../lib/importDokumenter
 
 import BlockList from '../components/blocks/BlockList.jsx'
 import EditorRail from '../components/editor/EditorRail.jsx'
+import Indholdsfortegnelse from '../components/editor/Indholdsfortegnelse.jsx'
 import EditorTopBar from '../components/editor/EditorTopBar.jsx'
 import DocHeader, { NameDialog } from '../components/editor/DocHeader.jsx'
 import ExportCheckDialog from '../components/editor/ExportCheckDialog.jsx'
@@ -206,6 +207,8 @@ export default function EditorPage() {
     go(live.current.loc.doc, problem.sub)
     setFocusRequest({ id: problem.id, n: Date.now() })
   }, [go])
+  // Hovedspalten, som indholdsfortegnelsen følger rullepositionen i.
+  const mainRef = useRef(null)
 
   // ── Metadata ──────────────────────────────────────────────────────────────
   const updateMeta = (newMeta) => project && save({ ...project, metadata: newMeta })
@@ -507,9 +510,19 @@ export default function EditorPage() {
         active={loc}
         onGo={(doc, sub) => go(doc, sub)}
         onAddSubdoc={(docId) => setNameDialog({ kind: 'add-subdoc', docId, initial: '' })}
-      />
+      >
+        {activeDoc && !loc.info && (
+          <Indholdsfortegnelse
+            key={locKey}
+            blocks={currentBlocks}
+            docLabel={loc.sub !== null ? `${activeDoc}.${loc.sub + 1}` : activeDoc}
+            scrollRef={mainRef}
+            onGaaTil={(id) => setFocusRequest({ id, n: Date.now() })}
+          />
+        )}
+      </EditorRail>
 
-      <main className="ed-main">
+      <main className="ed-main" ref={mainRef}>
         <div className="ed-main-inner">
           {loc.info || !activeDoc ? (
             <ProjectInfoView

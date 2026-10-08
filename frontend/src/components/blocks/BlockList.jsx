@@ -23,6 +23,7 @@ import DocListBlock      from './DocListBlock.jsx'
 import ElementBlock, { ElementPreview } from './ElementBlock.jsx'
 import ElementPanel      from './ElementPanel.jsx'
 import { naesteNr, nytElement, indsaetPlads } from '../../lib/elementer.js'
+import { overskriftsnumre } from '../../lib/indhold.js'
 // The text editor (TipTap) is loaded on demand; until then the same text is
 // shown formatted by RichTextStatic, so nothing jumps when it arrives.
 const TextBlock = lazy(() => import('./TextBlock.jsx'))
@@ -693,19 +694,8 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     }
     return m
   }, [blocks])
-  // Overskriftsnumre som i eksporten (pdf_builder._number_headings): en
-  // overskrift, der selv starter med et nummer, tæller ikke med.
-  const headNos = useMemo(() => {
-    const m = new Map(); const c = [0, 0, 0]
-    for (const b of blocks) {
-      if (b.type !== 'heading') continue
-      const lvl = Math.min(3, Math.max(1, b.data?.level ?? 1)), t = (b.data?.text ?? '').trim()
-      if (/^\d+(\.\d+)*\.?\s/.test(t)) continue
-      c[lvl - 1]++; for (let j = lvl; j < 3; j++) c[j] = 0
-      m.set(b.id, c.slice(0, lvl).join('.'))
-    }
-    return m
-  }, [blocks])
+  // Overskriftsnumre som i eksporten -- samme funktion som navigationen.
+  const headNos = useMemo(() => overskriftsnumre(blocks), [blocks])
 
   // Click outside page → deselect. Clicks inside dialogs and menus (rendered
   // outside the page) must not count as "outside".

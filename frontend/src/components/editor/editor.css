@@ -72,6 +72,25 @@
 .ed-doc-row:hover .ed-doc .ui-pill { visibility: hidden; }
 .ed-doc-add:hover { color: var(--brand-ink); border-color: var(--brand); }
 
+/* ── Indholdsfortegnelse (det åbne dokuments afsnit) ──────────────────── */
+.ed-toc { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 4px; }
+.ed-toc-item {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: baseline; gap: 4px;
+  width: 100%; padding: 5px 12px 5px 13px;
+  background: none; border: 0; border-left: 3px solid transparent;
+  text-align: left; font-size: 12.5px; line-height: 1.35; color: var(--ink-2);
+}
+.ed-toc-item:hover { background: var(--sunk); color: var(--ink); }
+.ed-toc-item.is-on { border-left-color: var(--brand); color: var(--ink); font-weight: 600; background: var(--brand-wash); }
+.ed-toc-l1 { font-weight: 600; color: var(--ink); }
+.ed-toc-l3 { padding-left: 25px; font-size: 12px; }
+.ed-toc-nr { font: 500 11px/1.35 var(--font-mono); color: var(--muted); }
+.ed-toc-titel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-toc-huller {
+  min-width: 18px; padding: 1px 5px; border-radius: 9px; text-align: center;
+  font: 600 10px/1.4 var(--font-mono); color: var(--warn); background: var(--warn-wash);
+}
+
 /* ── Main column ───────────────────────────────────────────────────────── */
 .ed-main { overflow-y: auto; min-width: 0; }
 .ed-main-inner { padding: 20px 28px 64px; display: grid; gap: 16px; align-content: start; }
