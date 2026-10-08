@@ -18,6 +18,7 @@ pandas<4
 forallpeople<4
 handcalcs<2
 reportlab<6
+python-docx<2   # Word-eksport (word_builder.py). Manglede her; CI opdagede det.
 pypdfium2<6
 openseespy<4  # 2D/3D FEM solver for frame_fem block
 opsvis<2  # OpenSeesPy visualisation (force diagrams)

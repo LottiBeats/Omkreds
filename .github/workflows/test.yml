@@ -1,6 +1,7 @@
 name: Tests
 
-# Kører alle tests på hver pull request og hver push til en arbejdsgren.
+# Kører alle tests på hver pull request og på master. (Ikke også på hver push
+# til en arbejdsgren: med en pull request åben kørte alt to gange.)
 #
 # Før kørte kun Windows-buildet automatisk. To løser-tests kunne være røde på
 # master, og skabelonen "Generel ramme — 2D FEM" kunne ikke regnes, uden at
@@ -9,7 +10,7 @@ name: Tests
 on:
   pull_request:
   push:
-    branches: ['claude/**']
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
