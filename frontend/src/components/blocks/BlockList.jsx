@@ -674,7 +674,7 @@ function AddZone({ onAdd, templates = [], onAddTemplate, clipboard, onPaste }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock, project, focusRequest, elementer = false }) {
+export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock, project, focusRequest, elementer = false, onAfsnitHjaelp }) {
   const confirm = useConfirm()
   const [selectedId,  setSelectedId]  = useState(null)
   // IDs of selected blocks where the editor is collapsed (preview only, blue border)
@@ -909,6 +909,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   }
 
   h.openTemplateEditor = (id) => onOpenTemplateEditor?.(id)
+  h.afsnitHjaelp = onAfsnitHjaelp ? (id) => onAfsnitHjaelp(id) : null
 
   // ── Drag ──────────────────────────────────────────────────────────────
 
@@ -1179,7 +1180,8 @@ const BlockRow = React.memo(function BlockRow({
             <div onClick={e => e.stopPropagation()}>
               <Suspense fallback={<BlockPreview block={block} project={project} />}>
                 <Comp block={block} onChange={onBlockChange} isSelected={isSelected} figNo={figNo}
-                      headNo={headNo} onEnter={() => h.addTextAfter(block.id)} />
+                      headNo={headNo} onEnter={() => h.addTextAfter(block.id)}
+                      onHjaelp={block.type === 'heading' && h.afsnitHjaelp ? () => h.afsnitHjaelp(block.id) : undefined} />
               </Suspense>
             </div>
           ) : (

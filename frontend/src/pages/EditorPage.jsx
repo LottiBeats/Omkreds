@@ -36,6 +36,9 @@ import { laesImport, anvendImport, beskrivImport } from '../lib/importDokumenter
 import BlockList from '../components/blocks/BlockList.jsx'
 import EditorRail from '../components/editor/EditorRail.jsx'
 import Indholdsfortegnelse from '../components/editor/Indholdsfortegnelse.jsx'
+import AfsnitHjaelper from '../components/editor/AfsnitHjaelper.jsx'
+import { findAfsnit, fingeraftryk } from '../templates/a1Afsnit/index.js'
+import { afsnitsBlokke, overskriftsnumre } from '../lib/indhold.js'
 import EditorTopBar from '../components/editor/EditorTopBar.jsx'
 import DocHeader, { NameDialog } from '../components/editor/DocHeader.jsx'
 import ExportCheckDialog from '../components/editor/ExportCheckDialog.jsx'
@@ -423,6 +426,51 @@ export default function EditorPage() {
     }
   }
 
+  // ── Afsnitshjælper (panel i højre side) ──────────────────────────────────
+  // Hvilken overskrift hjælperen er åben for. Lukkes, når man skifter dokument.
+  const [hjaelp, setHjaelp] = useState(null)       // { id, loc: locKey }
+  const [hjaelpTravl, setHjaelpTravl] = useState(false)
+  const hjaelpOverskrift = hjaelp?.loc === locKey ? currentBlocks.find(b => b.id === hjaelp.id) : null
+  const hjaelpAfsnit = hjaelpOverskrift ? findAfsnit(hjaelpOverskrift) : null
+  const hjaelpRange = hjaelpAfsnit ? afsnitsBlokke(currentBlocks, hjaelpOverskrift.id) : null
+  const hjaelpNuv = hjaelpRange ? currentBlocks.slice(hjaelpRange.fra, hjaelpRange.til) : []
+
+  async function indsaetFraHjaelper(maade, nye, svar, variantKey) {
+    const cur = currentBlocks
+    const r = afsnitsBlokke(cur, hjaelpOverskrift.id)
+    if (!r) return
+    // Samme regel som import: rettes der i et afsnit med indhold, gemmes en
+    // version først, så den gamle tekst kan hentes i Versionshistorik.
+    if (r.til > r.fra) {
+      setHjaelpTravl(true)
+      try {
+        await flushSave(project)
+        await createVersion(projectId, `Før hjælper: ${hjaelpAfsnit.titel}`, 'manual')
+      } catch (err) {
+        toast.fail('Kunne ikke gemme en version først, så intet er ændret. ' + (err?.message ?? ''))
+        return
+      } finally {
+        setHjaelpTravl(false)
+      }
+    }
+    let id = Math.max(Date.now(), ...cur.map(b => (typeof b.id === 'number' ? b.id + 1 : 0)))
+    const blokke = nye.map(b => ({ ...b, id: id++ }))
+    const naeste = maade === 'erstat'
+      ? [...cur.slice(0, r.fra), ...blokke, ...cur.slice(r.til)]
+      : [...cur.slice(0, r.til), ...blokke, ...cur.slice(r.til)]
+    const r2 = afsnitsBlokke(naeste, hjaelpOverskrift.id)
+    const metadata = {
+      ...(project.metadata ?? {}),
+      _afsnit: {
+        ...(project.metadata?._afsnit ?? {}),
+        [hjaelpAfsnit.key]: { variant: variantKey, svar, fingeraftryk: fingeraftryk(naeste.slice(r2.fra, r2.til)) },
+      },
+    }
+    undoRecord(cur)
+    save(withBlocks({ ...project, metadata }, loc, naeste))
+    toast.ok(`${hjaelpAfsnit.titel}: teksten er ${maade === 'erstat' ? 'sat ind' : 'tilføjet'}.`)
+  }
+
   // ── Import af færdige dokumenter fra en fil ───────────────────────────────
   const importInput = useRef(null)
 
@@ -561,7 +609,23 @@ export default function EditorPage() {
                 onCopyBlock={onCopyBlock}
                 focusRequest={focusRequest}
                 elementer={activeDoc === 'A2'}
+                onAfsnitHjaelp={(id) => setHjaelp({ id, loc: locKey })}
               />
+              {hjaelpAfsnit && (
+                <AfsnitHjaelper
+                  key={`${locKey}:${hjaelpOverskrift.id}`}
+                  afsnit={hjaelpAfsnit}
+                  overskrift={(hjaelpOverskrift.data?.text ?? '').replace(/^\d+(?:\.\d+)*\.?\s+/, '')}
+                  nr={(hjaelpOverskrift.data?.text ?? '').match(/^(\d+(?:\.\d+)*)/)?.[1] ?? overskriftsnumre(currentBlocks).get(hjaelpOverskrift.id)}
+                  nuvaerende={hjaelpNuv}
+                  harUnderafsnit={hjaelpNuv.some(b => b.type === 'heading')}
+                  options={project.metadata?._doc_options}
+                  gemt={project.metadata?._afsnit?.[hjaelpAfsnit.key]}
+                  travl={hjaelpTravl}
+                  onIndsaet={indsaetFraHjaelper}
+                  onLuk={() => setHjaelp(null)}
+                />
+              )}
             </>
           )}
         </div>

@@ -21,6 +21,8 @@
  * follow BR18 §§ 494-505.
  */
 
+import robusthed from './a1Afsnit/robusthed.js'
+
 // ── DS/INF 1990:2024 Table 2 ──────────────────────────────────────────────────
 // Guideline limits for consequence class, as structured data so the printed
 // table and the class suggestion cannot drift apart.
@@ -408,7 +410,7 @@ export function makeA1Template(options = {}, metadata = {}) {
   let id = Date.now()
   const B = []
   const push = (type, data) => B.push({ id: id++, type, data })
-  const H = (level, text) => push('heading', { level, text })
+  const H = (level, text, afsnit) => push('heading', afsnit ? { level, text, afsnit } : { level, text })
   const T = (text) => push('text', { text })
   const TBL = (caption, rows, extra = {}) =>
     push('table', { caption, has_header: true, rows, ...extra })
@@ -742,16 +744,10 @@ export function makeA1Template(options = {}, metadata = {}) {
     'funktionskrav til de bærende konstruktioner ud over styrke, stabilitet og anvendelseskravene ' +
     'i afsnit 4.2 og 4.3.')
 
-  H(3, '4.5 Robusthed')
-  T('Konstruktionernes robusthed vurderes iht. DS/EN 1990 og DS/EN 1991-1-7. Minimumskrav for mekaniske forbindelser til sikring mod progressivt kollaps:')
-  TBL('Tabel 4.2 — Minimumskrav til robusthed (punkt- og linjelast)', [
-    ['Etageantal', 'Punktlast [kN]', 'Linjelast [kN/m]'],
-    ['1-2 etager', '10 (20)', '2 (4)'],
-    ['3-5 etager', '20', '4'],
-    ['6-10 etager', '40', '8'],
-    ['11-15 etager', '60', '12'],
-  ])
-  T('Værdier i parentes gælder ved CC2 med mere end 2 etager.')
+  // Afsnit, som hjælperen også kan skrive (templates/a1Afsnit), får deres
+  // nøgle på overskriften og deres tekst fra samme funktion.
+  H(3, '4.5 Robusthed', robusthed.key)
+  for (const b of robusthed.varianter.find(v => v.key === 'standard').skriv(o, robusthed.standardSvar())) push(b.type, b.data)
 
   H(3, '4.6 Levetid')
   T('Bygværket henføres til kategori 4 iht. DS/EN 1990 Tabel 2.1 — almindelige konstruktioner med en vejledende forventet levetid på 50 år.')

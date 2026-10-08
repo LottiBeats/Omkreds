@@ -64,3 +64,17 @@ export function sti(punkter, id) {
   for (let p = efterId.get(id); p; p = efterId.get(p.forælder)) ud.add(p.id)
   return ud
 }
+
+/**
+ * Afsnittets brødtekst: indeks [fra, til) for blokkene under overskriften,
+ * frem til næste overskrift på samme eller højere niveau. Underafsnit hører
+ * med. null, hvis overskriften ikke findes.
+ */
+export function afsnitsBlokke(blocks, overskriftId) {
+  const i = blocks.findIndex(b => b.id === overskriftId)
+  if (i < 0 || blocks[i].type !== 'heading') return null
+  const niveau = blocks[i].data?.level ?? 1
+  let j = i + 1
+  while (j < blocks.length && !(blocks[j].type === 'heading' && (blocks[j].data?.level ?? 1) <= niveau)) j++
+  return { fra: i + 1, til: j }
+}
