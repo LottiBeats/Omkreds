@@ -836,6 +836,24 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     setTimeout(focus, 0)
   }
 
+  // Billede midt i en tekst: afsnittet deles ved markøren. Teksten før
+  // bliver i blokken, billedet kommer lige efter, og resten af teksten får
+  // sin egen blok bagefter. Uden billede (fra paletten) står der et tomt
+  // billedfelt, klar til at få et.
+  h.insertImageInText = (id, before, after, img) => {
+    const cur = blocksRef.current
+    const i = cur.findIndex(x => x.id === id)
+    if (i < 0) return
+    const t = Date.now()
+    const image = { id: t, type: 'image', data: { ...TYPE_MAP.image.default, ...(img || {}) } }
+    const out = []
+    if (before) out.push({ ...cur[i], data: { ...cur[i].data, text: before } })
+    out.push(image)
+    if (after) out.push({ id: t + 1, type: 'text', data: { ...TYPE_MAP.text.default, text: after } })
+    const n = [...cur]; n.splice(i, 1, ...out); onChange(n)
+    setSelectedId(image.id); reveal(image.id)
+  }
+
   h.duplicateBlock = (id) => {
     const cur = blocksRef.current
     const i = cur.findIndex(x => x.id === id)
@@ -1017,7 +1035,16 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
                   key={def.type}
                   className="bl-panel-btn"
                   style={s.panelBtn}
-                  onClick={() => h.addBlock(def.type, blocks.length)}
+                  onClick={() => {
+                    // "Billede" lige efter et klik i en tekst: ved markøren.
+                    const c = h.lastCursor
+                    if (def.type === 'image' && c && Date.now() - c.at < 1500 && blocksRef.current.some(b => b.id === c.id)) {
+                      h.lastCursor = null
+                      const [before, after] = c.split()
+                      return h.insertImageInText(c.id, before, after, null)
+                    }
+                    h.addBlock(def.type, blocks.length)
+                  }}
                   title={`Tilføj ${def.label} nederst i dokumentet`}
                 >
                   <span style={{ ...s.panelIcon, background: def.color ?? '#64748b' }}>{def.icon}</span>
@@ -1189,7 +1216,9 @@ const BlockRow = React.memo(function BlockRow({
             <div onClick={e => e.stopPropagation()}>
               <Suspense fallback={<BlockPreview block={block} project={project} />}>
                 <Comp block={block} onChange={onBlockChange} isSelected={isSelected} figNo={figNo}
-                      headNo={headNo} onEnter={() => h.addTextAfter(block.id)} />
+                      headNo={headNo} onEnter={() => h.addTextAfter(block.id)}
+                      onInsertImage={(before, after, img) => h.insertImageInText(block.id, before, after, img)}
+                      onCursor={split => { h.lastCursor = { id: block.id, split, at: Date.now() } }} />
               </Suspense>
             </div>
           ) : (

@@ -22,6 +22,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { parseText, serializeDoc } from '../../lib/richText.js'
+import { compressImage } from './ImageBlock.jsx'
 import { findPlaceholders } from '../../lib/placeholders.js'
 import './TextBlock.css'
 
@@ -109,8 +110,18 @@ function ToolButton({ on, label, title, onRun, children }) {
   )
 }
 
-export default function TextBlock({ block, onChange }) {
+function imageFile(dt) {
+  for (const f of dt?.files ?? []) if (f.type.startsWith('image/')) return f
+  for (const it of dt?.items ?? []) if (it.kind === 'file' && it.type.startsWith('image/')) return it.getAsFile()
+  return null
+}
+
+export default function TextBlock({ block, onChange, onInsertImage, onCursor }) {
   const text = block.data.text ?? ''
+  // The editor is created once; the handlers below always see the current props.
+  const props = useRef({}); props.current = { onInsertImage, onCursor }
+  const fileRef = useRef(null)
+  const pickPos = useRef(null)
   const lastText = useRef(text)      // what the editor last emitted
   const blockRef = useRef(block)
   blockRef.current = block
@@ -132,6 +143,21 @@ export default function TextBlock({ block, onChange }) {
     content: parseText(text),
     editorProps: {
       attributes: { class: 'rt', 'aria-label': 'Tekst', spellcheck: 'true', lang: 'da' },
+      // Et billede sat ind eller trukket ind i teksten deler afsnittet ved
+      // markøren, og billedet kommer ind imellem -- som i Word.
+      handlePaste: (view, event) => {
+        const f = imageFile(event.clipboardData)
+        if (!f || !props.current.onInsertImage) return false
+        insertImageAt(view.state.selection.from, f)
+        return true
+      },
+      handleDrop: (view, event) => {
+        const f = imageFile(event.dataTransfer)
+        if (!f || !props.current.onInsertImage) return false
+        const at = view.posAtCoords({ left: event.clientX, top: event.clientY })
+        insertImageAt(at?.pos ?? view.state.selection.from, f)
+        return true
+      },
     },
     onUpdate: ({ editor: ed }) => {
       const next = serializeDoc(ed.getJSON())
@@ -142,8 +168,31 @@ export default function TextBlock({ block, onChange }) {
     },
     onSelectionUpdate: () => rerender(n => n + 1),   // keep the toolbar's on/off state current
     onFocus: () => setFocused(true),
-    onBlur: () => setFocused(false),
+    onBlur: ({ editor: ed }) => {
+      setFocused(false)
+      // Remember where the cursor was, so "Billede" in the palette can put
+      // the picture right here instead of at the end of the document.
+      const pos = ed.state.selection.from
+      props.current.onCursor?.(() => splitAt(ed, pos))
+    },
   })
+
+  function splitAt(ed, pos) {
+    const doc = ed.state.doc
+    const p = Math.max(0, Math.min(pos, doc.content.size))
+    return [serializeDoc(doc.cut(0, p).toJSON()).trim(), serializeDoc(doc.cut(p).toJSON()).trim()]
+  }
+
+  async function insertImageAt(pos, file) {
+    const ed = editorRef.current; if (!ed) return
+    const [before, after] = splitAt(ed, pos)
+    const b64 = file ? await compressImage(file) : null
+    props.current.onInsertImage(before, after, b64 && {
+      image_b64: b64,
+      filename: `${file.name && file.name !== 'image.png' ? file.name : 'Indsat billede'} · ${Math.round(b64.length * 0.75 / 1024)} KB`,
+    })
+  }
+  const editorRef = useRef(null); editorRef.current = editor
 
   // Text changed from outside the editor (undo in the document, a template,
   // a restored version): load it, without echoing it back as an edit.
@@ -168,11 +217,22 @@ export default function TextBlock({ block, onChange }) {
                       onRun={() => editor.chain().focus().toggleBulletList().run()}>•</ToolButton>
           <ToolButton on={editor.isActive('orderedList')} label="Nummereret liste" title="Nummereret liste (skriv '1. ' i starten af en linje)"
                       onRun={() => editor.chain().focus().toggleOrderedList().run()}>1.</ToolButton>
-          <span className="rt-hint">Enter: nyt afsnit · Shift+Enter: linjeskift</span>
+          {onInsertImage && <>
+            <span className="rt-sep" />
+            <ToolButton label="Indsæt billede" title="Indsæt billede her, ved markøren (eller Ctrl+V et skærmklip)"
+                        onRun={() => { pickPos.current = editor.state.selection.from; fileRef.current?.click() }}>
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+                <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" /><circle cx="5.5" cy="6.5" r="1.2" /><path d="m2.5 12 3.5-3.5 2.5 2.5 2-2 3 3" />
+              </svg>
+            </ToolButton>
+          </>}
+          <span className="rt-hint">Enter: nyt afsnit · Shift+Enter: linjeskift · Ctrl+V: billede</span>
         </div>
       )}
       {empty && !focused && <div className="rt-empty">Skriv tekst her…</div>}
       <EditorContent editor={editor} />
+      <input ref={fileRef} type="file" accept="image/*" hidden
+        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) insertImageAt(pickPos.current ?? 0, f) }} />
     </div>
   )
 }
