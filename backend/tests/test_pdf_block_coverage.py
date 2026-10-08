@@ -66,7 +66,7 @@ def test_the_deliberate_exclusions_still_exist():
     assert not forældet, f"IKKE_TRYKT nævner bloktyper der ikke findes: {forældet}"
 
 
-@pytest.mark.parametrize("blok", ["roof_dead_load", "snow_load", "wind_load",
+@pytest.mark.parametrize("blok", ["roof_dead_load", "egenlast", "snow_load", "wind_load",
                                   "timber_beam", "timber_column", "steel_column",
                                   "load_combo", "custom_calc"])
 def test_a_block_with_a_result_reaches_the_page(blok):

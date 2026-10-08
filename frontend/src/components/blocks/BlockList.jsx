@@ -13,6 +13,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspens
 import { maxUtilization, utilColor } from '../../lib/utilization.js'
 import { useConfirm } from '../../ui/Dialog.jsx'
 import { hashCalcInputs, hasCalcResult, isStaleResult, staleReason, calcRevision } from '../../lib/calcState.js'
+import { STANDARD_OPBYGNING } from '../../lib/egenlast.js'
 
 // Headings and text are the document itself and render at once. Every other
 // editor is loaded when it is first opened, which keeps the calc modules (and
@@ -48,6 +49,7 @@ const WindLoadBlock = lazy(() => import('./WindLoadBlock.jsx'))
 const FrameLoadsBlock = lazy(() => import('./FrameLoadsBlock.jsx'))
 const SnowLoadBlock = lazy(() => import('./SnowLoadBlock.jsx'))
 const RoofDeadLoadBlock = lazy(() => import('./RoofDeadLoadBlock.jsx'))
+const EgenlastBlock     = lazy(() => import('./EgenlastBlock.jsx'))
 const FoundationBlock = lazy(() => import('./FoundationBlock.jsx'))
 const LoadComboBlock = lazy(() => import('./LoadComboBlock.jsx'))
 const BeamColumnBlock = lazy(() => import('./BeamColumnBlock.jsx'))
@@ -101,19 +103,22 @@ const BLOCK_TYPES = [
                k_y: 1.0, k_z: 1.0, gamma_M0: 1.10, gamma_M1: 1.20,
                ltb_restrained: true, _result: null } },
   { type: 'rc_beam',       label: 'Betonbjælke',       icon: 'RCB', color: '#374151', component: RCBeamBlock,
-    default: { title: 'RC Beam Check', label: 'B1', span_m: 5.0, b_mm: 300, h_mm: 500,
-               d_mm: 450, g_k_kNm: 10.0, q_k_kNm: 6.0, f_ck_MPa: 30, f_yk_MPa: 500,
-               As_prov_mm2: null, gamma_C: 1.5, gamma_S: 1.15, _result: null } },
+    default: { title: 'Betonbjælke', label: 'B1', span_m: 5.0, b_mm: 300, h_mm: 500,
+               c_mm: 30, o_bojle_mm: 8, n_traek: 3, o_traek_mm: 16, d_mm: null,
+               f_ck_MPa: 30, f_yk_MPa: 500, gamma_c: 1.45, gamma_s: 1.20,
+               last: 'linje', g_k_kNm: 10.0, q_k_kNm: 6.0, consequence_class: 'CC2',
+               bojle_s_mm: 200, bojle_snit: 2, _result: null } },
   { type: 'rc_column',     label: 'Betonsøjle',        icon: 'RCC', color: '#374151', component: RCColumnBlock,
-    default: { title: 'RC Column Check', label: 'C1', h_mm: 300, b_mm: 300, c_mm: 40,
+    default: { title: 'Betonsøjle', label: 'C1', h_mm: 300, b_mm: 300, c_mm: 45,
                fck_mpa: 30, fyk_mpa: 500, gamma_c: 1.45, gamma_s: 1.20,
                da_c_mm: 16, n_c: 2, da_t_mm: 16, n_t: 2,
-               Ls_mm: 3500, beta_eff: 1.0,
+               Ls_mm: 3500, beta_eff: 1.0, RH_pct: 50, t0_days: 28, M0Eqp_over_M0Ed: 0.7,
                load_cases: [{ label: 'LC1', NEd_kN: 400, M0Ed_kNm: 20 }], _result: null } },
   { type: 'rc_slab',       label: 'Betondæk',          icon: 'RCS', color: '#374151', component: RCSlabBlock,
-    default: { title: 'RC Slab Check', label: 'D1', span_m: 5.0, h_mm: 200, d_mm: 165,
-               g_k_kNm2: 3.5, q_k_kNm2: 2.5, fck_MPa: 30, fyk_MPa: 500,
-               As_prov_mm2m: null, gamma_C: 1.5, gamma_S: 1.15, cover_mm: 35, _result: null } },
+    default: { title: 'Betondæk', label: 'D1', span_m: 5.0, h_mm: 200, c_mm: 25,
+               o_mm: 10, s_mm: 150, d_mm: null, fck_MPa: 30, fyk_MPa: 500,
+               gamma_C: 1.45, gamma_S: 1.20, last: 'linje', g_k_kNm2: 3.5, q_k_kNm2: 2.5,
+               consequence_class: 'CC2', _result: null } },
   { type: 'timber_beam',   label: 'Træbjælke',         icon: 'TB',  color: '#92400e', component: TimberBeamBlock,
     default: { title: 'Timber Beam Check', label: 'T1', span_m: 4.0, b_mm: 90, h_mm: 220,
                g_k_kNm: 3.0, q_k_kNm: 2.0, timber_grade: 'C24', service_class: 1,
@@ -216,6 +221,11 @@ const BLOCK_TYPES = [
                  { description: 'Dampspærre',                  g_kNm2: 0.01 },
                ],
                b_mm: 45.0, h_mm: 145.0, rho_kgm3: 380.0, _result: null } },
+  // Afløser roof_dead_load i paletten. Den gamle står ovenfor, fordi
+  // eksisterende dokumenter har blokken.
+  { type: 'egenlast',      label: 'Egenlast',          icon: 'G',   color: '#0369a1', component: EgenlastBlock,
+    default: { title: 'Egenlast', label: 'G1', bygningsdel: 'tag', alpha_deg: 30.0,
+               bredde_m: 0.6, lag: STANDARD_OPBYGNING, _result: null, _exports: null } },
   { type: 'foundation',    label: 'Fundament',         icon: 'FND', color: '#57534e', component: FoundationBlock,
     default: { title: 'Foundation Bearing Check', label: 'F1',
                B_m: 1.5, L_m: 2.0, D_m: 0.8,
@@ -225,12 +235,12 @@ const BLOCK_TYPES = [
   { type: 'load_combo',    label: 'Lastkombinationer', icon: 'LC',  color: '#9333ea', component: LoadComboBlock,
     default: { title: 'Load Combinations', label: 'LC1', unit: 'kN/m',
                G_k: 5.0, G_fav: false, loads: [], method: '6.10ab', _result: null } },
-  { type: 'beam_column',   label: 'Bjælkesøjle (N+M)', icon: 'BC',  color: '#1e3a5f', component: BeamColumnBlock,
-    default: { title: 'Beam-Column Check', label: 'BC1', section: 'HEB200', grade: 'S355',
+  { type: 'beam_column',   label: 'Bjælke-søjle (N+M)', icon: 'BC',  color: '#1e3a5f', component: BeamColumnBlock,
+    default: { title: 'Bjælke-søjle', label: 'BC1', section: 'HEB200', grade: 'S355',
                N_Ed_kN: 200, My_Ed_kNm: 50, Mz_Ed_kNm: 0,
                L_y_m: 4.0, L_z_m: 4.0, L_LTB_m: 4.0,
-               k_y: 1.0, k_z: 1.0, C_my: 1.0, C_mz: 1.0, C_mLT: 1.0,
-               ltb_restrained: false, gamma_M0: 1.0, gamma_M1: 1.0, _result: null } },
+               k_y: 1.0, k_z: 1.0, C_my: 1.0, C_mz: 1.0, C_mLT: 1.0, C_1: 1.0,
+               ltb_restrained: false, gamma_M0: 1.10, gamma_M1: 1.20, _result: null } },
   { type: 'bolt_group',    label: 'Boltgruppe',        icon: 'BLT', color: '#1e3a5f', component: BoltConnectionBlock,
     default: { title: 'Connection Check', label: 'BG1', mode: 'bolts',
                n_bolts: 4, bolt_class: '8.8', d_mm: 20, shear_plane: 'thread',
@@ -286,7 +296,11 @@ const PANEL_GROUPS = [
     // Vejen nu: Lastkombinationer -> FEM (Kombi-linjelast). Lasten sidder på
     // modellen, hvor man kan se den, og opdelingen i G og Q følger med, så
     // anvendelsesgrænsetilstanden kan regnes.
-    types: ['roof_dead_load', 'snow_load', 'wind_load', 'load_combo'],
+    //
+    // roof_dead_load er afløst af 'egenlast' (lagopbygning for tag, dæk og
+    // væg, med G_k til lastkombinationerne). Den gamle er taget ud af
+    // panelet, ikke slettet -- samme grund som frame_load_cases.
+    types: ['egenlast', 'snow_load', 'wind_load', 'load_combo'],
   },
   {
     label: 'Konstruktion',
@@ -294,11 +308,16 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Stål  (EC3)',
-    // beam_column er stadig ude: den dumper sin egen referencetest. EN 1993-1-1
-    // lign. 6.61/6.62 giver 0,432 hvor Vayas et al. (Springer 2019, tabel
-    // 4.11) siger 0,460 — 6 % for lavt, altså på den forkerte side. Sæt den
-    // ind igen når tests/test_beam_column.py er grøn.
-    types: ['steel_beam', 'steel_column'],
+    // beam_column regnes nu af stålsøjlens eftervisning (anneks B rettet:
+    // k_zy = 0,6·k_yy i tabel B.1, ingen nedre grænse ved λ̄_z < 0,4) og er
+    // eftervist i tests/test_beam_column.py med en uafhængig håndregning.
+    types: ['steel_beam', 'steel_column', 'beam_column'],
+  },
+  {
+    // Bjælke, søjle og dæk er gennemgået og skrevet om efter DK NA
+    // (2026-09-26). Fundamentet venter på DK NA til EN 1997-1.
+    label: 'Beton  (EC2)',
+    types: ['rc_beam', 'rc_column', 'rc_slab'],
   },
   {
     label: 'Træ  (EC5)',
@@ -347,6 +366,8 @@ const mkBadge = ok => ({
 // Lives in lib/calcState.js so the editor shell can read block state without
 // importing every block editor. Re-exported here for existing imports.
 export { hashCalcInputs, hasCalcResult, isStaleResult, staleReason }
+// Standardværdierne for en ny blok — femapp.jsx opretter en rammeberegning med dem.
+export { TYPE_MAP }
 
 const staleBadgeStyle = {
   fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 2,
@@ -765,8 +786,11 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
       (newD._summary     && newD._summary     !== oldD._summary) ||
       (newD._output_text && newD._output_text !== oldD._output_text)
     if (gotNewResult) {
-      b = { ...b, data: { ...newD,
-        _input_hash: hashCalcInputs(newD),
+      // _run_hash: hashen af de inddata, der faktisk blev regnet på (sat af
+      // blokke, hvor man kan rette imens, der regnes — rammeberegningen).
+      const { _run_hash, ...rest } = newD
+      b = { ...b, data: { ...rest,
+        _input_hash: _run_hash ?? hashCalcInputs(rest),
         _calc_rev:   calcRevision(b.type),
       } }
     } else if (newD._input_hash && !newD._result && !newD._summary && !newD._output_text) {

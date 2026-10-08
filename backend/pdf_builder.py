@@ -786,7 +786,12 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
         ["Største vandrette flytning δ_x",
          f"{_dk(summary['max_ux_mm'])} mm", f"Knude {summary['max_ux_node']}"],
         ["Største lodrette flytning δ_y",
-         f"{_dk(summary['max_uy_mm'])} mm", f"Knude {summary['max_uy_node']}"],
+         f"{_dk(summary['max_uy_mm'])} mm",
+         # Ligger den stoerste nedboejning inde i et fag, er der ingen knude
+         # at pege paa -- "Knude 1" var en understoetning.
+         (f"Element {summary['max_uy_elem']}, x = {_dk(summary.get('max_uy_x_m') or 0)} m"
+          if summary.get('max_uy_elem') is not None
+          else f"Knude {summary['max_uy_node']}")],
         ["Største moment M",
          f"{_dk(summary['max_moment_kNm'])} kNm",
          f"Element {summary['max_moment_ele']}"],
@@ -808,20 +813,27 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
     loads_table = summary.get("loads_table", [])
     if loads_table:
         out.append(S("Påførte laster"))
-        out.append(TBL(
-            ["Type", "Target", "Fx (kN)", "Fy (kN)", "Mz (kNm)", "wy (kN/m)", "wx (kN/m)"],
-            [
+        if "vaerdi" in loads_table[0]:
+            out.append(TBL(
+                ["Type", "Hvor", "Lasttilfælde", "Retning", "Størrelse"],
+                [[l["type"], l["target"], l.get("lasttilfaelde", "—"),
+                  l.get("retning", "—"), l["vaerdi"]] for l in loads_table],
+            ))
+        else:   # gemte resultater fra før
+            out.append(TBL(
+                ["Type", "Target", "Fx (kN)", "Fy (kN)", "Mz (kNm)", "wy (kN/m)", "wx (kN/m)"],
                 [
-                    l["type"], l["target"],
-                    f"{l['Fx_kN']:.2f}"  if l.get("Fx_kN")  is not None else "—",
-                    f"{l['Fy_kN']:.2f}"  if l.get("Fy_kN")  is not None else "—",
-                    f"{l['Mz_kNm']:.2f}" if l.get("Mz_kNm") is not None else "—",
-                    f"{l['wy_kNm']:.2f}" if l.get("wy_kNm") is not None else "—",
-                    f"{l['wx_kNm']:.2f}" if l.get("wx_kNm") is not None else "—",
-                ]
-                for l in loads_table
-            ],
-        ))
+                    [
+                        l["type"], l["target"],
+                        f"{l['Fx_kN']:.2f}"  if l.get("Fx_kN")  is not None else "—",
+                        f"{l['Fy_kN']:.2f}"  if l.get("Fy_kN")  is not None else "—",
+                        f"{l['Mz_kNm']:.2f}" if l.get("Mz_kNm") is not None else "—",
+                        f"{l['wy_kNm']:.2f}" if l.get("wy_kNm") is not None else "—",
+                        f"{l['wx_kNm']:.2f}" if l.get("wx_kNm") is not None else "—",
+                    ]
+                    for l in loads_table
+                ],
+            ))
 
     # ── Element section forces ────────────────────────────────────────────────
     ele_table = summary.get("ele_force_table", [])
@@ -842,9 +854,9 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
              "M_max (kNm)", "x (m)"],
             [
                 [
-                    str(e["id"]), e["type"], f"{e['L_m']:.2f}",
-                    str(e["A_cm2"]),
-                    str(e["Iz_cm4"]) if e["type"] == "beam" else "—",
+                    str(e["id"]), {"beam": "bjælke", "truss": "gitterstang"}.get(e["type"], e["type"]), f"{e['L_m']:.2f}",
+                    _dk(float(e["A_cm2"]), 1),
+                    _dk(float(e["Iz_cm4"]), 0) if e["type"] == "beam" else "—",
                     f"{e['N_i_kN']:.2f}", f"{e['V_i_kN']:.2f}", f"{e['M_i_kNm']:.2f}",
                     f"{e['N_j_kN']:.2f}", f"{e['V_j_kN']:.2f}", f"{e['M_j_kNm']:.2f}",
                     f"{e['M_max_kNm']:.2f}" if e.get("M_max_kNm") is not None else "—",
@@ -944,7 +956,7 @@ _CALC_TYPES = {
     # lydloest i eksporten -- overskriften stod i dokumentet, indholdet ikke --
     # og den ligger i A2-skabelonen for tagkonstruktioner, saa hvert A2 derfra
     # er eksporteret uden sit egenlastafsnit. Se test_pdf_block_coverage.py.
-    "wind_load", "snow_load", "roof_dead_load",
+    "wind_load", "snow_load", "roof_dead_load", "egenlast",
     "frame_loads",
     "foundation",
     "load_combo",

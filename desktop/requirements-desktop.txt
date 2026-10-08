@@ -1,0 +1,18 @@
+# Omkreds FEM (skrivebordsprogrammet) — det backend/desktop_app.py har brug for.
+#
+# Færre pakker end backend/requirements.txt: rammeberegningen bruger
+# fem_direkte (kun numpy), så openseespy, opsvis og PyNite (scipy) er ikke
+# med, og der er intet Clerk-login at verificere på netværket. jose og httpx
+# er med, fordi main.py importerer auth.py.
+fastapi
+uvicorn
+pydantic
+python-jose[cryptography]
+httpx
+python-dotenv
+numpy
+matplotlib
+forallpeople
+reportlab
+python-docx
+pyinstaller

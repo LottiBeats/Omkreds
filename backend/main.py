@@ -1037,6 +1037,12 @@ class SteelColumnInput(BaseModel):
     ltb_restrained: bool = True
     L_LTB_m:    float | None = None
     C_1:        float = 1.0
+    # Anneks B tabel B.3. 1,0 = konstant moment, på den sikre side.
+    C_my:       float = 1.0
+    C_mz:       float = 1.0
+    C_mLT:      float = 1.0
+    # Længde for udbøjning om z, hvis den afviger (fx afstivning på midten).
+    length_z_m: float | None = None
     # Lastkilde: naar N_Ed kommer fra en lastkombinationsblok, foelger dens
     # navn og enhed med, saa enheden kan kontrolleres og kilden staa i
     # dokumentet. Staal har ingen k_mod, saa den dimensionsgivende kombination
@@ -1106,6 +1112,10 @@ def calc_steel_column(data: SteelColumnInput):
             ltb_restrained = data.ltb_restrained,
             L_LTB_m    = data.L_LTB_m,
             C_1        = data.C_1,
+            C_my       = data.C_my,
+            C_mz       = data.C_mz,
+            C_mLT      = data.C_mLT,
+            length_z_m = data.length_z_m,
             I_T_cm4    = vrid[0] if vrid else None,
             I_w_cm6    = vrid[1] if vrid else None,
         )
@@ -1323,45 +1333,50 @@ def calc_steel_beam(data: SteelBeamInput):
 # ── EN 1992-1-1 — RC beam ─────────────────────────────────────────────────────
 
 class RcBeamInput(BaseModel):
-    label:       str   = "B1"
-    span_m:      float = 5.0
-    b_mm:        float = 300.0
-    h_mm:        float = 500.0
-    d_mm:        float = 450.0
-    g_k_kNm:     float = 10.0
-    q_k_kNm:     float = 6.0
-    f_ck_MPa:    float = 30.0
-    f_yk_MPa:    float = 500.0
-    As_prov_mm2: float | None = None
-    gamma_C:     float = 1.45   # DS/EN 1992-1-1 DK NA
-    gamma_S:     float = 1.20
+    label:        str   = "B1"
+    span_m:       float = 5.0
+    b_mm:         float = 300.0
+    h_mm:         float = 500.0
+    c_mm:         float = 30.0     # dæklag til bøjlen
+    o_bojle_mm:   float = 8.0
+    n_traek:      int   = 3
+    o_traek_mm:   float = 16.0
+    d_mm:         float | None = None
+    f_ck_MPa:     float = 30.0
+    f_yk_MPa:     float = 500.0
+    gamma_c:      float = 1.45     # DS/EN 1992-1-1 DK NA
+    gamma_s:      float = 1.20
+    alpha_cc:     float = 1.0
+    last:         str   = "linje"  # "linje" | "kombi" | "direkte"
+    g_k_kNm:      float = 10.0
+    q_k_kNm:      float = 6.0
+    consequence_class: str = "CC2"
+    w_Ed_kNm:     float | None = None
+    kombi_label:  str | None = None
+    M_Ed_kNm:     float | None = None
+    V_Ed_kN:      float | None = None
+    bojle_s_mm:   float = 200.0
+    bojle_snit:   int   = 2
 
 
 @protected.post("/calc/rc-beam", tags=["Calculations"])
 def calc_rc_beam(data: RcBeamInput):
-    """EN 1992-1-1 RC beam bending check."""
+    """Armeret betonbjælke efter DS/EN 1992-1-1 DK NA."""
     try:
-        from concrete import rc_beam_bending
-
-        kwargs: dict = dict(
-            label    = data.label,
-            span     = data.span_m   * m,
-            g_k      = data.g_k_kNm  * kN / m,
-            q_k      = data.q_k_kNm  * kN / m,
-            b        = data.b_mm     * mm,
-            h        = data.h_mm     * mm,
-            d        = data.d_mm     * mm,
-            f_ck     = data.f_ck_MPa * MPa,
-            f_yk     = data.f_yk_MPa * MPa,
-            gamma_C  = data.gamma_C,
-            gamma_S  = data.gamma_S,
+        from concrete import rc_bjaelke
+        return rc_bjaelke(
+            label=data.label, span_m=data.span_m,
+            b_mm=data.b_mm, h_mm=data.h_mm, c_mm=data.c_mm,
+            o_bojle_mm=data.o_bojle_mm, n_traek=data.n_traek,
+            o_traek_mm=data.o_traek_mm, d_mm=data.d_mm,
+            f_ck=data.f_ck_MPa, f_yk=data.f_yk_MPa,
+            gamma_c=data.gamma_c, gamma_s=data.gamma_s, alpha_cc=data.alpha_cc,
+            last=data.last, g_k=data.g_k_kNm, q_k=data.q_k_kNm,
+            consequence_class=data.consequence_class,
+            w_Ed=data.w_Ed_kNm, kombi_label=data.kombi_label,
+            M_Ed=data.M_Ed_kNm, V_Ed=data.V_Ed_kN,
+            bojle_s_mm=data.bojle_s_mm, bojle_snit=data.bojle_snit,
         )
-        if data.As_prov_mm2 is not None:
-            kwargs["As_prov"] = data.As_prov_mm2 * mm**2
-
-        blocks = rc_beam_bending(**kwargs)
-        return blocks
-
     except HTTPException:
         raise
     except Exception as exc:
@@ -1429,6 +1444,9 @@ class TimberBeamInput(BaseModel):
 
     compression_edge_restrained:     bool = True
     torsional_restraint_at_supports: bool = True
+    # Effektiv kiplængde. None: 0,9·L + 2h (tabel 6.1). Bruges kun, når
+    # trykranden ikke er fastholdt.
+    l_ef_m:            float | None = None
     end_distance_mm:   float | None = None   # træets udhæng forbi understøtningen
     support_length_mm: float | None = None   # bearing length at each support → enables ⊥ grain check
 
@@ -1464,6 +1482,7 @@ def calc_timber_beam(data: TimberBeamInput):
             limit_net_fin = data.limit_net_fin,
             compression_edge_restrained     = data.compression_edge_restrained,
             torsional_restraint_at_supports = data.torsional_restraint_at_supports,
+            l_ef = (data.l_ef_m * m) if data.l_ef_m else None,
         )
         if data.support_length_mm is not None:
             kwargs_tb["support_length"] = data.support_length_mm * mm
@@ -1549,6 +1568,8 @@ class TimberColumnInput(BaseModel):
     gamma_M:                 float | None = None   # None: DK NA efter materialet
     effective_length_factor: float = 1.0
     l_ef_ltb_m:              float | None = None
+    # Knaeklaengde om den svage akse, hvis den er en anden (m). None: length_m.
+    length_z_m:              float | None = None
     # Afstivet om den svage akse (fx spær med lægter/krydsfiner): så
     # eftervises udbøjning kun om den stærke akse. Standard er som før: begge.
     weak_axis_restrained:    bool = False
@@ -1601,6 +1622,8 @@ def calc_timber_column(data: TimberColumnInput):
         )
         if data.l_ef_ltb_m is not None:
             kwargs["l_ef_ltb"] = data.l_ef_ltb_m * m
+        if data.length_z_m is not None:
+            kwargs["length_2"] = data.length_z_m * m
         if data.weak_axis_restrained:
             kwargs["check_buckling_axis_2"] = False
 
@@ -2623,6 +2646,9 @@ class GenFrameElemIn(BaseModel):
     material: str | None = None   # "steel" | "timber"
     section:  str | None = None   # "IPE300" or "140x360" (mm)
     grade:    str | None = None   # "S355" / "GL24c" / "C24"
+    # Stangen, elementet er en del af. Figurerne og lasttabellen samler paa
+    # den -- uden den stod en stang delt i fire som fire stænger.
+    member_id: int | None = None
 
 class GenFrameSupportIn(BaseModel):
     node_id: int
@@ -2679,6 +2705,11 @@ class GenFrameLoadIn(BaseModel):
     # faktorerne DERFRA i stedet for at blive dannet her -- se lastmodul-
     # felterne paa GenFrameFemInput.
     lasttilfaelde: int | None = None
+    # En punktlast paa en stang sendes som et smalt afsnit (se femLoads.js
+    # pointToElement). De to felter er dens egentlige stoerrelse og sted, til
+    # tabel og figurer -- regningen bruger dem ikke.
+    punkt_kN:   float | None = None
+    punkt_x:    float | None = None
     # Lasten behoever ikke daekke hele stangen, og den behoever ikke vaere
     # konstant. x1/x2 er meter fra i-enden; mangler de, daekker den det hele.
     # value_end_kNm er intensiteten i den anden ende; mangler den, er lasten
@@ -2715,6 +2746,18 @@ class GenFrameEqualDOFIn(BaseModel):
     r_node: int            # retained node
     c_node: int            # constrained node
     dofs:   list[int] = [1, 2]  # DOFs to tie: 1=ux, 2=uy, 3=rz
+
+class GenFrameEgenKombiIn(BaseModel):
+    """En egen kombination: navn, situation og faktor pr. lasttilfaelde."""
+    navn:      str = ""
+    situation: str = "uls"      # uls | sls_karakteristisk | sls_hyppig | sls_kvasi
+    faktorer:  dict[str, float] = {}
+
+
+class GenFrameEgenvaegtIn(BaseModel):
+    """Stængernes egenvægt som last: i lasttilfælde lc (None: uden tilfælde)."""
+    lc: int | None = None
+
 
 class GenFrameFemInput(BaseModel):
     title:        str                       = "2D Frame FEM"
@@ -2808,6 +2851,12 @@ class GenFrameFemInput(BaseModel):
     # kombinationen koeres. Den vej er den rigtige: en glemt udelukkelse
     # giver en eftervisning for meget, ikke en for lidt.
     combo_fravalg: list[str] = []
+    # Brugerens egne kombinationer (kræver lasttilfælde), og om de automatiske
+    # skal slås fra, så kun de egne regnes.
+    egne_kombinationer: list[GenFrameEgenKombiIn] = []
+    kun_egne:      bool = False
+    # Stængernes egenvægt lægges på automatisk, når den er sat.
+    egenvaegt:     GenFrameEgenvaegtIn | None = None
 
 
 @protected.post("/calc/general-frame-fem/preview", tags=["Calculations"])
@@ -2959,7 +3008,7 @@ def overlay_general_frame_fem(data: GenFrameOverlayInput):
 
 def _kombiner_modellens_laster(loads, load_cases, method,
                                consequence_class, gunstig_egenlast=True,
-                               kmod_varianter=True):
+                               kmod_varianter=True, egne=None, kun_egne=False):
     """
     Modellens kombinationer -- uanset hvilken vej lasterne blev identificeret.
 
@@ -2972,10 +3021,15 @@ def _kombiner_modellens_laster(loads, load_cases, method,
     """
     from frame_load_cases import (kombinationer_af_tilfaelde,
                                   kombinationer_fra_laster)
+    if egne and not load_cases:
+        raise ValueError("Egne kombinationer kræver lasttilfælde: lav "
+                         "lasttilfælde og læg lasterne i dem.")
     if load_cases:
-        return kombinationer_af_tilfaelde(
+        from frame_load_cases import egne_kombinationer
+        auto = [] if (kun_egne and egne) else kombinationer_af_tilfaelde(
             load_cases, loads, method, consequence_class, gunstig_egenlast,
             kmod_varianter=kmod_varianter, anvendelse=True)
+        return auto + egne_kombinationer(load_cases, loads, egne or [])
     return kombinationer_fra_laster(
         loads, method, consequence_class, gunstig_egenlast=gunstig_egenlast)
 
@@ -2984,6 +3038,8 @@ class GenFrameKombiInput(BaseModel):
     """Kun det, kombinationerne dannes af: lasternes virkning og de valg,
     der styrer partialkoefficienterne. Ingen model, ingen loeser."""
     loads:             list[GenFrameLoadIn] = []
+    egne_kombinationer: list[GenFrameEgenKombiIn] = []
+    kun_egne:          bool = False
     load_cases:        list[GenFrameLoadCaseIn] = []
     method:            str = "6.10ab"
     consequence_class: str = "CC2"
@@ -3013,16 +3069,71 @@ def kombinationer_general_frame_fem(data: GenFrameKombiInput):
             data.method or '6.10ab',
             data.consequence_class or 'CC2',
             data.gunstig_egenlast,
-            kmod_varianter=data.kmod_varianter)
+            kmod_varianter=data.kmod_varianter,
+            egne=[k.model_dump() for k in data.egne_kombinationer],
+            kun_egne=data.kun_egne)
         return {"kombinationer": [
             {'name':               c['name'],
              'factor_table':       c['factor_table'],
              'aktive':             c['aktive'],
-             'governing_duration': c['governing_duration']}
+             'governing_duration': c['governing_duration'],
+             'situation':          c.get('situation'),
+             'egen':               bool(c.get('egen'))}
             for c in combos]}
     except Exception as exc:
         raise HTTPException(status_code=422,
                             detail=str(exc) + "\n" + traceback.format_exc())
+
+
+@protected.get("/sections/properties", tags=["Calculations"])
+def section_properties(material: str, section: str, grade: str | None = None):
+    """
+    Maal og tvaersnitskonstanter til tvaersnitsvisningen i modelvinduet.
+
+    Staal: h, b, t_w, t_f, r fra profilkataloget. Trae: b x h. Akse y er den
+    staerke (boejning i rammens plan), z den svage.
+    """
+    from section_resolver import resolve_section, parse_rectangle_mm
+    mat = material.strip().lower()
+    try:
+        props = resolve_section(mat, section, grade)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc).strip('"\''))
+    if props is None:
+        raise HTTPException(status_code=422, detail="Ukendt materiale.")
+    if mat in ('steel', 'stål', 'staal'):
+        from section_catalog import get_steel_profile
+        p = get_steel_profile(section)
+        h, b, tw, tf = p['h_mm'], p['b_mm'], p['tw_mm'], p['tf_mm']
+        hw = max(h - 2 * tf, 0.0)
+        Iz = (2 * tf * b ** 3 / 12 + hw * tw ** 3 / 12) / 1e4       # cm4
+        Iy = float(p['Iy_cm4'])
+        A = float(props['A_cm2'])
+        return {
+            'form': 'I', 'betegnelse': p['designation'], 'grade': grade or 'S355',
+            'h_mm': h, 'b_mm': b, 'tw_mm': tw, 'tf_mm': tf, 'r_mm': p.get('r_mm'),
+            'A_cm2': round(A, 2), 'Iy_cm4': round(Iy, 1), 'Iz_cm4': round(Iz, 1),
+            'Wel_y_cm3': round(Iy / (h / 20.0), 1), 'Wpl_y_cm3': round(float(p['Wply_cm3']), 1),
+            'Wel_z_cm3': round(Iz / (b / 20.0), 1),
+            'i_y_mm': round(math.sqrt(Iy / A) * 10, 1), 'i_z_mm': round(math.sqrt(Iz / A) * 10, 1),
+            'vaegt_kg_m': round(float(p.get('weight_kg_per_m') or A * 0.785), 1),
+            'E_GPa': props['E_GPa'],
+        }
+    b, h = parse_rectangle_mm(section)
+    A = b * h / 100.0
+    Iy = b * h ** 3 / 12 / 1e4
+    Iz = h * b ** 3 / 12 / 1e4
+    from section_resolver import egenvaegt_kg_m
+    vaegt = egenvaegt_kg_m('timber', section, grade)
+    return {
+        'form': 'rekt', 'betegnelse': f"{b:.0f}x{h:.0f}", 'grade': grade or 'C24',
+        'h_mm': h, 'b_mm': b,
+        'A_cm2': round(A, 2), 'Iy_cm4': round(Iy, 1), 'Iz_cm4': round(Iz, 1),
+        'Wel_y_cm3': round(b * h ** 2 / 6 / 1e3, 1), 'Wel_z_cm3': round(h * b ** 2 / 6 / 1e3, 1),
+        'i_y_mm': round(h / math.sqrt(12), 1), 'i_z_mm': round(b / math.sqrt(12), 1),
+        'vaegt_kg_m': round(vaegt, 1) if vaegt else None,
+        'E_GPa': round(float(props['E_GPa']), 2),
+    }
 
 
 @protected.post("/calc/general-frame-fem", tags=["Calculations"])
@@ -3048,6 +3159,18 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         # Derive E/A/I from each element's section reference where it has one,
         # so the analysis and the member check read the same section.
         elements = apply_sections([e.model_dump() for e in data.elements])
+        # Et tværsnit, der ikke kan læses, må ikke regnes med standardværdierne
+        # (E = 210 GPa, IPE-agtigt A og I) — en træstang blev regnet ~19 gange
+        # for stiv, mens skærmen sagde "Regnet". Afvis med stangen og årsagen.
+        _ugyldige = [e for e in elements if e.get('_section_error')]
+        if _ugyldige:
+            from general_frame_fem import ModelError
+            raise ModelError("Tværsnittet kan ikke læses: " + "; ".join(
+                f"stang {e.get('id')} ({e.get('section') or 'intet'}"
+                f"{' ' + e['grade'] if e.get('grade') else ''}): "
+                f"{str(e['_section_error']).strip(chr(34) + chr(39)).rstrip('.')}"
+                for e in _ugyldige[:5]) + (" …" if len(_ugyldige) > 5 else "")
+                + ". Ret tværsnittet i stangtabellen.")
         supports = [s.model_dump() for s in data.supports]
         loads    = [l.model_dump() for l in data.loads]
         # Et charnier med udløsning i alle ender regnes med én færre -- samme
@@ -3056,6 +3179,28 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             elements, supports, loads,
             [e.model_dump() for e in data.equal_dofs])
         combos      = [c.model_dump() for c in data.combinations]
+        # Stangenes egenvaegt, naar den er slaaet til: én lodret linjelast pr.
+        # element med materiale og tvaersnit, i det valgte (permanente)
+        # lasttilfaelde. Den laegges paa her, saa den indgaar i kombinationer,
+        # lastbilleder og lasttabel som enhver anden last.
+        if data.egenvaegt is not None:
+            from section_resolver import egenvaegt_kg_m
+            lc = data.egenvaegt.lc
+            tilf = {t.nr: t for t in data.load_cases}
+            if tilf and (lc not in tilf or tilf[lc].kategori != 'permanent'):
+                raise ModelError("Egenvægten skal ligge i et permanent lasttilfælde. "
+                                 "Vælg det under Indstillinger.")
+            for el in elements:
+                try:
+                    kg = egenvaegt_kg_m(el.get('material'), el.get('section'), el.get('grade'))
+                except Exception:
+                    kg = None
+                if not kg:
+                    continue
+                loads.append({'type': 'udl', 'elem_id': el['id'], 'direction': 'vertical',
+                              'value_kNm': round(kg * 9.81 / 1000.0, 5),
+                              'lc': lc if tilf else None, 'egenvaegt': True})
+
         # Lasterne som de staar paa modellen. De skal gemmes her: naar der
         # kombineres, flyttes de ind i kombinationerne og 'loads' toemmes, og
         # saa er der ikke laengere noget at tegne et lastbillede af.
@@ -3089,7 +3234,9 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 data.method or '6.10ab',
                 data.consequence_class or 'CC2',
                 data.gunstig_egenlast,
-                kmod_varianter=data.kmod_varianter)
+                kmod_varianter=data.kmod_varianter,
+                egne=[k.model_dump() for k in data.egne_kombinationer],
+                kun_egne=data.kun_egne)
             if egne:
                 combos = egne
                 # Lasterne ligger nu inde i kombinationerne. Blev de ogsaa
@@ -3113,16 +3260,18 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                     "Slaa mindst én til, ellers er der ingenting at eftervise.")
             combos = beholdt
 
-        xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
-        ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
-
         # Modellen efterses FOER der tegnes.
         #
         # plot_model laa foerst, og et element, der pegede paa en knude, der
         # ikke fandtes, gav en KeyError med traceback i stedet for
         # validate_models forklaring. Fejlen var den samme; det eneste, der
         # skiftede, var om brugeren kunne laese den.
-        validate_model(nodes, elements, supports, loads or [], equal_dofs)
+        # Lasterne, som de staar paa modellen: naar der kombineres, er 'loads'
+        # allerede toemt, og saa blev ingen last efterset.
+        validate_model(nodes, elements, supports, paasatte_laster, equal_dofs)
+
+        xs = [n['x'] for n in nodes]; ys = [n['y'] for n in nodes]
+        ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
 
         model_fig = plot_model(data.title, nodes, elements, supports,
                                paasatte_laster, ref_size)
@@ -3219,15 +3368,23 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             except Exception:
                 return [], None
 
-            from timber_grades import K_DEF
-            k_def = K_DEF.get(data.service_class, 0.80)
+            # Spaendet maales paa det led, hvor nedboejningen er stoerst -- og
+            # det er ogsaa dets materiale, der afgoer krybningen. Foer fik en
+            # staalramme traeets k_def (0,6) og en w_fin, staal ikke har.
+            _dn = {n['id']: n for n in nodes}
+            _el = next((e for e in elements if e['id'] == (elG or elQ)), None)
+            _mat = (_el or {}).get('material')
+            er_trae = _mat == 'timber' or (
+                _mat is None and float((_el or {}).get('E_GPa', 210.0)) < 30.0)
+            if er_trae:
+                from timber_grades import K_DEF
+                k_def = K_DEF.get(data.service_class, 0.80)
+            else:
+                k_def = 0.0
 
             w_inst = abs(wG) + abs(wQ)
             w_fin  = abs(wG) * (1 + k_def) + abs(wQ) * (1 + p2 * k_def)
 
-            # Spaendet maales paa det led, hvor nedboejningen er stoerst.
-            _dn = {n['id']: n for n in nodes}
-            _el = next((e for e in elements if e['id'] == (elG or elQ)), None)
             L_ref = 0.0
             if _el is not None:
                 _ni, _nj = _dn.get(_el['ni']), _dn.get(_el['nj'])
@@ -3235,7 +3392,11 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                     L_ref = math.hypot(float(_nj['x']) - float(_ni['x']),
                                        float(_nj['y']) - float(_ni['y']))
 
-            b = [S('Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2')]
+            b = [S('Anvendelsesgrænsetilstand — EN 1995-1-1 §7.2' if er_trae
+                   else 'Anvendelsesgrænsetilstand — EN 1990 A1.4')]
+            if not er_trae:
+                b.append(T('Den største nedbøjning ligger i en stålstang. Stål '
+                           'kryber ikke, så k_def = 0 og w_fin = w_inst.'))
             if sls_variabel_navn:
                 b.append(T(
                     'Dimensionsgivende karakteristisk kombination: '
@@ -3247,9 +3408,10 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             b += [
                  T('Lasterne er påsat igen med deres karakteristiske værdier. '
                    'Analysen er lineær, så den permanente og den variable del '
-                   'kan holdes hver for sig — det kræver §2.2.3(5), fordi den '
-                   'permanente del kryber fuldt og den variable kun med sin '
-                   'kvasi-permanente andel.'),
+                   'kan holdes hver for sig'
+                   + (' — det kræver §2.2.3(5), fordi den '
+                      'permanente del kryber fuldt og den variable kun med sin '
+                      'kvasi-permanente andel.' if er_trae else '.')),
                  CALC_ROW('w_inst,G', '= nedbøjning af G_k alene',
                           f'{abs(wG) * 1e3:.2f} mm'.replace('.', ',')),
                  CALC_ROW('w_inst,Q', '= nedbøjning af Q_k alene',
@@ -3328,7 +3490,34 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                                for k, v in (r.get('ele_udl') or {}).items()},
                 'node_disps': {str(k): [float(x) for x in v]
                                for k, v in r['node_disps'].items()},
+                # Boejningen mellem knuderne (lokal y, m) i 17 lige store
+                # skridt. Uden den tegnede deformationsvisningen rette linjer
+                # mellem knuderne, og en bjaelke med ét element pr. fag stod
+                # helt flad.
+                'ele_bue': _boejninger(r),
             }
+
+        def _boejninger(r):
+            import stanglaster as _sl
+            dn = {n['id']: n for n in nodes}
+            ud = {}
+            for el in elements:
+                eid = el['id']
+                pl = r['ele_forces'].get(eid)
+                if pl is None or el.get('type', 'beam') != 'beam':
+                    continue
+                a, b = dn.get(el['ni']), dn.get(el['nj'])
+                if a is None or b is None:
+                    continue
+                L = math.hypot(float(b['x']) - float(a['x']), float(b['y']) - float(a['y']))
+                EI = float(el.get('E_GPa', 210.0)) * 1e6 * float(el.get('Iz_cm4', 5000.0)) * 1e-8
+                sy, sx = (r.get('ele_segs') or {}).get(eid, ([], []))
+                try:
+                    k = _sl.boejningslinje(pl, L, sy, sx, EI, n=96)
+                except Exception:
+                    continue
+                ud[str(eid)] = [round(float(w), 7) for _, w in k[::6]]
+            return ud
 
         # ── Combination mode ──────────────────────────────────────────────────
         if combos:
@@ -3577,6 +3766,26 @@ def calc_general_frame_fem(data: GenFrameFemInput):
         # Lastbillederne foelger med uanset hvilken af de to veje beregningen
         # tog. De hoerer til modellen og ikke til kombinationerne.
         summary['lastfigurer'] = lastfigurer
+        # Lasterne, som de staar paa modellen -- ogsaa naar de er flyttet ind
+        # i kombinationerne, og 'loads' derfor er tom.
+        from general_frame_fem import lasttabel
+        summary['loads_table'] = lasttabel(
+            paasatte_laster, elements, [t.model_dump() for t in data.load_cases])
+        # En meget stor flytning afvises ikke laengere som "mekanisme" --
+        # singulaere matricer fanges af konditionstallet i loeseren. Men den
+        # lineaere teori gaelder ikke, og det skal staa der.
+        _u = max(abs(summary.get('max_ux_mm') or 0), abs(summary.get('max_uy_mm') or 0)) / 1e3
+        if _u > max(ref_size, 1.0) / 10.0:
+            _mm = f"{_u * 1e3:,.0f}".replace(',', '.')
+            _g = f"{_u / max(ref_size, 1e-9):.2f}".replace('.', ',')
+            summary['advarsler'] = [
+                f"Meget stor flytning: {_mm} mm ({_g} gange konstruktionens "
+                f"udstrækning). Beregningen er lineær og gælder kun for små "
+                f"flytninger — tværsnittene er sandsynligvis alt for små, eller "
+                f"der mangler afstivning."]
+        if summary.get('advarsler'):
+            result_blocks = ([T("Advarsel: " + a) for a in summary['advarsler']]
+                             + list(result_blocks))
 
         return {"_figs_b64": figs_b64, "_summary": summary, "_result": result_blocks}
 
@@ -3598,7 +3807,7 @@ class RcColumnInput(BaseModel):
     label:      str   = "C1"
     h_mm:       float = 300.0
     b_mm:       float = 300.0
-    c_mm:       float = 40.0
+    c_mm:       float = 45.0     # kant til armeringens tyngdepunkt
     Ls_mm:      float = 3500.0
     beta_eff:   float = 1.0
     fck_mpa:    float = 30.0
@@ -3609,40 +3818,30 @@ class RcColumnInput(BaseModel):
     n_c:        int   = 2
     da_t_mm:    float = 16.0
     n_t:        int   = 2
+    RH_pct:     float = 50.0
+    t0_days:    float = 28.0
+    M0Eqp_over_M0Ed: float = 0.7
     load_cases: list  = []   # [{"label":"LC1","NEd_kN":400,"M0Ed_kNm":20}, ...]
 
 
 @protected.post("/calc/rc-column", tags=["Calculations"])
 def calc_rc_column(data: RcColumnInput):
-    """EN 1992-1-1 RC column check (bending + axial + slenderness)."""
+    """Armeret betonsøjle efter DS/EN 1992-1-1 DK NA."""
     try:
         from concrete_column import concrete_column_rect
-
-        load_cases_fmt = [
-            {"label": lc.get("label", "LC"), "NEd_kN": lc.get("NEd_kN", 0.0),
-             "M0Ed_kNm": lc.get("M0Ed_kNm", 0.0)}
-            for lc in (data.load_cases or [])
-        ] or None
-
-        blocks = concrete_column_rect(
-            label    = data.label,
-            h_mm     = data.h_mm,
-            b_mm     = data.b_mm,
-            c_mm     = data.c_mm,
-            da_c_mm  = data.da_c_mm,
-            n_c      = data.n_c,
-            da_t_mm  = data.da_t_mm,
-            n_t      = data.n_t,
-            fck_mpa  = data.fck_mpa,
-            fyk_mpa  = data.fyk_mpa,
-            gamma_c  = data.gamma_c,
-            gamma_s  = data.gamma_s,
-            Ls_mm    = data.Ls_mm,
-            beta_eff = data.beta_eff,
-            load_cases = load_cases_fmt,
+        lcs = [{"label": lc.get("label", "LC"), "NEd_kN": float(lc.get("NEd_kN", 0.0)),
+                "M0Ed_kNm": float(lc.get("M0Ed_kNm", 0.0))}
+               for lc in (data.load_cases or [])]
+        return concrete_column_rect(
+            label=data.label, h_mm=data.h_mm, b_mm=data.b_mm, c_mm=data.c_mm,
+            da_c_mm=data.da_c_mm, n_c=data.n_c, da_t_mm=data.da_t_mm, n_t=data.n_t,
+            fck_mpa=data.fck_mpa, fyk_mpa=data.fyk_mpa,
+            gamma_c=data.gamma_c, gamma_s=data.gamma_s,
+            Ls_mm=data.Ls_mm, beta_eff=data.beta_eff,
+            RH=data.RH_pct / 100, t0_days=data.t0_days,
+            M0Eqp_over_M0Ed=data.M0Eqp_over_M0Ed,
+            load_cases=lcs,
         )
-        return blocks
-
     except HTTPException:
         raise
     except Exception as exc:
@@ -3655,39 +3854,30 @@ class RcSlabInput(BaseModel):
     label:         str   = "D1"
     span_m:        float = 5.0
     h_mm:          float = 200.0
-    d_mm:          float = 165.0
-    g_k_kNm2:      float = 3.5
-    q_k_kNm2:      float = 2.5
+    c_mm:          float = 25.0
+    o_mm:          float = 10.0
+    s_mm:          float = 150.0
+    d_mm:          float | None = None
     fck_MPa:       float = 30.0
     fyk_MPa:       float = 500.0
-    As_prov_mm2m:  float | None = None
     gamma_C:       float = 1.45   # DS/EN 1992-1-1 DK NA
     gamma_S:       float = 1.20
-    cover_mm:      float = 35.0
+    last:          str   = "linje"   # "linje" | "kombi" | "direkte"
+    g_k_kNm2:      float = 3.5
+    q_k_kNm2:      float = 2.5
+    consequence_class: str = "CC2"
+    w_Ed_kNm2:     float | None = None
+    kombi_label:   str | None = None
+    M_Ed_kNmm:     float | None = None
+    V_Ed_kNm:      float | None = None
 
 
 @protected.post("/calc/rc-slab", tags=["Calculations"])
 def calc_rc_slab(data: RcSlabInput):
-    """EN 1992-1-1 one-way simply supported RC slab check."""
+    """Enkeltspændt betondæk efter DS/EN 1992-1-1 DK NA."""
     try:
         from rc_slab import rc_slab_oneway
-
-        blocks = rc_slab_oneway(
-            label         = data.label,
-            span_m        = data.span_m,
-            h_mm          = data.h_mm,
-            d_mm          = data.d_mm,
-            g_k_kNm2      = data.g_k_kNm2,
-            q_k_kNm2      = data.q_k_kNm2,
-            fck_MPa       = data.fck_MPa,
-            fyk_MPa       = data.fyk_MPa,
-            As_prov_mm2m  = data.As_prov_mm2m,
-            gamma_C       = data.gamma_C,
-            gamma_S       = data.gamma_S,
-            cover_mm      = data.cover_mm,
-        )
-        return blocks
-
+        return rc_slab_oneway(**data.model_dump())
     except HTTPException:
         raise
     except Exception as exc:
@@ -3982,6 +4172,56 @@ def calc_roof_dead_load(data: RoofDeadLoadInput):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+# ── Egenlast ud fra lagopbygning (EN 1991-1-1) ───────────────────────────────
+# Afløser "Tagets egenlast" i paletten. roof_dead_load bliver stående ovenfor,
+# fordi eksisterende dokumenter har blokken.
+
+class EgenlastLag(BaseModel):
+    beskrivelse: str          = ""
+    type:        str          = "fast"    # "lag" | "ribbe" | "fast"
+    materiale:   str | None   = None
+    t_mm:        float | None = None
+    gamma_kNm3:  float | None = None      # tilsidesætter opslaget
+    b_mm:        float | None = None
+    h_mm:        float | None = None
+    cc_mm:       float | None = None
+    g_kNm2:      float | None = None
+    produkt:     str | None   = None
+
+
+class EgenlastInput(BaseModel):
+    label:       str               = "G1"
+    bygningsdel: str               = "tag"
+    alpha_deg:   float             = 0.0
+    lag:         list[EgenlastLag] = []
+    bredde_m:    float             = 0.0
+
+
+@protected.get("/materials/byggevarer", tags=["Calculations"])
+def list_byggevarer():
+    """Vejledende egenvægt af byggevarer, der ikke står i EN 1991-1-1 bilag A."""
+    from byggevarer import liste
+    return {"byggevarer": liste()}
+
+
+@protected.post("/calc/egenlast", tags=["Calculations"])
+def calc_egenlast(data: EgenlastInput):
+    """Egenlast af tag, dæk eller væg ud fra lagopbygningen → G_k."""
+    try:
+        from egenlast import egenlast
+        blocks, eksport = egenlast(
+            label=data.label, bygningsdel=data.bygningsdel,
+            alpha_deg=data.alpha_deg,
+            lag=[l.model_dump() for l in data.lag],
+            bredde_m=data.bredde_m,
+        )
+        return [{'type': '_exports', 'exports': eksport}] + blocks
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 # ── EN 1997-1 — Foundation bearing ───────────────────────────────────────────
 
 class FoundationInput(BaseModel):
@@ -4096,8 +4336,8 @@ class BeamColumnInput(BaseModel):
     N_Ed_kN:    float = 200.0
     My_Ed_kNm:  float = 50.0
     Mz_Ed_kNm:  float = 0.0
-    # Load source: when combo is used, frontend overrides N_Ed_kN directly
-    combo_label: str | None = None  # label of the source combo block (for display)
+    combo_label: str | None = None
+    combo_unit:  str | None = None
     L_y_m:   float = 4.0
     L_z_m:   float = 4.0
     L_LTB_m: float = 4.0
@@ -4106,46 +4346,32 @@ class BeamColumnInput(BaseModel):
     C_my: float = 1.0
     C_mz: float = 1.0
     C_mLT: float = 1.0
+    C_1:  float = 1.0
     ltb_restrained: bool  = False
-    gamma_M0: float = 1.0
-    gamma_M1: float = 1.0
+    gamma_M0: float = 1.10   # DS/EN 1993-1-1 DK NA
+    gamma_M1: float = 1.20
+
 
 @protected.post("/calc/beam-column", tags=["Calculations"])
 def calc_beam_column(data: BeamColumnInput):
-    """EC3 §6.3.3 Method 2 beam-column interaction check."""
-    try:
-        from steel_beam_column import steel_beam_column_check
-        from section_catalog import load_steel_profiles
+    """
+    Bjælke-søjle, EN 1993-1-1 §6.3.3 og anneks B.
 
-        db  = load_steel_profiles()
-        key = data.section.strip().upper().replace(' ', '')
-        sec = db.get(key)
-        if not sec:
-            raise ValueError(f"Section '{data.section}' not in catalog.")
-
-        h_mm     = sec['h_mm'];  b_mm = sec['b_mm']
-        tw_mm    = sec['tw_mm']; tf_mm = sec['tf_mm']
-        Iy_cm4   = sec['Iy_cm4']
-        Wply_cm3 = sec['Wply_cm3']
-        f_y_MPa  = _GRADE_FY.get(data.grade.strip().upper(), 355.0)
-
-        return steel_beam_column_check(
-            label=data.label, section=data.section, grade=data.grade,
-            h_mm=h_mm, b_mm=b_mm, tw_mm=tw_mm, tf_mm=tf_mm,
-            Iy_cm4=Iy_cm4, Wply_cm3=Wply_cm3,
-            N_Ed_kN=data.N_Ed_kN, My_Ed_kNm=data.My_Ed_kNm, Mz_Ed_kNm=data.Mz_Ed_kNm,
-            L_y_m=data.L_y_m, L_z_m=data.L_z_m, L_LTB_m=data.L_LTB_m,
-            k_y=data.k_y, k_z=data.k_z,
-            C_my=data.C_my, C_mz=data.C_mz, C_mLT=data.C_mLT,
-            ltb_restrained=data.ltb_restrained,
-            f_y_MPa=f_y_MPa, gamma_M0=data.gamma_M0, gamma_M1=data.gamma_M1,
-        )
-    except HTTPException:
-        raise
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+    Regnes af den samme eftervisning som stålsøjlen, så der kun er én udgave
+    af interaktionsfaktorerne at holde rigtig. Før havde steel_beam_column.py
+    sin egen kopi, med egne tværsnitsværdier og γ_M = 1,0 som standard.
+    """
+    return calc_steel_column(SteelColumnInput(
+        label=data.label, section=data.section, grade=data.grade,
+        length_m=data.L_y_m, length_z_m=data.L_z_m,
+        N_Ed_kN=data.N_Ed_kN, M_y_Ed_kNm=data.My_Ed_kNm, M_z_Ed_kNm=data.Mz_Ed_kNm,
+        k_y=data.k_y, k_z=data.k_z,
+        gamma_M0=data.gamma_M0, gamma_M1=data.gamma_M1,
+        ltb_restrained=data.ltb_restrained,
+        L_LTB_m=None if data.ltb_restrained else data.L_LTB_m,
+        C_1=data.C_1, C_my=data.C_my, C_mz=data.C_mz, C_mLT=data.C_mLT,
+        combo_label=data.combo_label, combo_unit=data.combo_unit,
+    ))
 
 
 # ── EC3 §6.5–6.6 Bolt group + fillet weld ────────────────────────────────────

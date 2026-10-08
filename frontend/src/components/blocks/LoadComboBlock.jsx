@@ -9,6 +9,7 @@ import { calcLoadCombo } from '../../api/client.js'
 import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
+import { egenlastKilder, hentEgenlast, enhedFor } from '../../lib/egenlast.js'
 
 const CATEGORIES = [
   { value: 'A', label: 'A — Domestic/residential' },
@@ -30,13 +31,29 @@ const CONSEQUENCE_CLASSES = [
   { value: 'CC3', label: 'CC3  (K_FI = 1.1) — High consequence' },
 ]
 
-export default function LoadComboBlock({ block, onChange }) {
+export default function LoadComboBlock({ block, onChange, blocks = [] }) {
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
+  }
+
+  // G_k kan hentes fra en Egenlast-blok. Værdien kopieres ind i G_k, så den
+  // står i inddata (og i hashen): regnes egenlasten igen, skriver den den nye
+  // værdi her, og resultatet bliver markeret forældet.
+  const kilder   = egenlastKilder(blocks)
+  const kilde    = d.G_kilde ?? null
+  const kildeKey = kilde ? `${kilde.id}:${kilde.felt}` : ''
+  const kildeV   = hentEgenlast(blocks, kilde)
+  const kildeVaek = kilde && blocks.length > 0 && kildeV == null
+  const kildeFlyttet = kilde && kildeV != null && kildeV !== d.G_k
+
+  function vaelgKilde(key) {
+    const k = kilder.find(x => x.key === key)
+    if (!k) { update({ G_kilde: null }); return }
+    update({ G_kilde: { id: k.id, felt: k.felt }, G_k: k.value, unit: enhedFor(k.felt) })
   }
 
   function setLoad(i, field, value) {
@@ -121,10 +138,34 @@ export default function LoadComboBlock({ block, onChange }) {
       </Field>
 
       {/* Permanent load */}
+      {(kilder.length > 0 || kilde) && (
+        <Field label="Egenlast fra" hint="Egenlast-blok i dokumentet" style={{ gridColumn: '1/-1' }}>
+          <select style={s.input} value={kildeKey} onChange={e => vaelgKilde(e.target.value)}>
+            <option value="">— indtast selv —</option>
+            {kilde && !kilder.some(k => k.key === kildeKey) && (
+              <option value={kildeKey}>(blokken er væk eller ikke regnet)</option>
+            )}
+            {kilder.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
+          </select>
+        </Field>
+      )}
       <Field label="G_k — egenlast" hint={d.unit ?? 'kN/m'}>
-        <NumericInput style={s.input} value={d.G_k ?? 5.0}
+        <NumericInput style={{ ...s.input, ...(kilde ? s.hentet : null) }} value={d.G_k ?? 5.0}
+          disabled={!!kilde}
           onChange={v => update({ G_k: v })} />
       </Field>
+      {kildeFlyttet && (
+        <div style={s.advarsel}>
+          Egenlast-blokken giver nu {String(kildeV).replace('.', ',')} {enhedFor(kilde.felt)}.{' '}
+          <button style={s.linkBtn} onClick={() => update({ G_k: kildeV })}>Brug den</button>
+        </div>
+      )}
+      {kildeVaek && (
+        <div style={s.advarsel}>
+          Egenlast-blokken, G_k blev hentet fra, er slettet eller ikke regnet. G_k står
+          som sidst hentet; vælg en anden kilde eller "indtast selv".
+        </div>
+      )}
       <Field label="Gunstig egenlast?"
              hint="γ_G,inf: 1,0 i 6.10a og 0,9 i 6.10b — DK NA tabel A1.2(B+C)">
         <label style={s.checkLabel}>
@@ -211,6 +252,15 @@ const s = {
   input: {
     border: '1px solid #e8e8e8', padding: '6px 8px',
     fontSize: 13, fontFamily: 'inherit', outline: 'none', width: '100%',
+  },
+  hentet: { background: '#f1f5f9', color: '#334155' },
+  advarsel: {
+    gridColumn: '1/-1', fontSize: 12, color: '#92400e', background: '#fffbeb',
+    border: '1px solid #f3d3a4', borderRadius: 4, padding: '6px 8px',
+  },
+  linkBtn: {
+    border: 'none', background: 'none', padding: 0, cursor: 'pointer',
+    color: '#1d4ed8', textDecoration: 'underline', fontSize: 12, fontFamily: 'inherit',
   },
   checkLabel: {
     fontSize: 13, display: 'flex', alignItems: 'center', gap: 6,
