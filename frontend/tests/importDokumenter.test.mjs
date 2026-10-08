@@ -57,3 +57,12 @@ test('manglende og dobbelte id får nye', () => {
   assert.equal(new Set(ids).size, 3)
   assert.equal(ids[0], 5)
 })
+
+test('projektbeskrivelsen i filen bliver projektets beskrivelse', () => {
+  const imp = laesImport(JSON.stringify({ projektbeskrivelse: { etager: 1, fundering: 'pael' },
+    docs: { A1: { blocks: [{ type: 'text', data: { text: 'x' } }] } } }))
+  assert.equal(imp.ok, true)
+  const p = anvendImport({ metadata: { project_name: 'A' }, documents: {} }, imp)
+  assert.deepEqual(p.metadata._doc_options, { etager: 1, fundering: 'pael' })
+  assert.equal(laesImport(JSON.stringify({ projektbeskrivelse: [1], docs: { A1: { blocks: [] } } })).ok, false)
+})
