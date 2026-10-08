@@ -27,23 +27,28 @@ const GREEK = {
   phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Phi: 'Φ', Omega: 'Ω',
 }
 
-export const SYMBOLS = ['·', '²', '³', '√', '≤', '→', '|', 'γ', 'σ', 'τ', 'λ', 'η', 'ψ', 'χ', 'ρ', 'α']
+export const SYMBOLS = ['·', '²', '³', '√', '≤', '→', '|', 'π', '°', 'γ', 'σ', 'τ', 'λ', 'η', 'ψ', 'χ', 'ρ', 'α']
 
 // ── Parsing ────────────────────────────────────────────────────────────────
 
 export function pre(expr) {
   return String(expr)
+    // "1 000 kN" som appen selv skriver tal: mellemrummet er en tusindtalsseparator.
+    .replace(/(\d)[ \u00a0\u202f](?=\d{3}(?!\d))/g, '$1')
     .replace(/(\d),(\d)/g, '$1.$2')
     .replace(/;/g, ',')
     .replace(/[·×]/g, '*').replace(/−/g, '-')
     .replace(/²/g, '^2').replace(/³/g, '^3').replace(/⁴/g, '^4')
     .replace(/≤/g, '<=').replace(/≥/g, '>=')
+    .replace(/π/g, 'pi').replace(/°/g, ' deg')
     .replace(/√\s*\(/g, 'sqrt(')
     .replace(/√\s*([A-Za-zͰ-Ͽ_][\wͰ-Ͽ]*|\d+(?:\.\d+)?)/g, 'sqrt($1)')
     .replace(/\bkNm\b/g, '(kN m)').replace(/\bNmm\b/g, '(N mm)')
 }
 
-const NAME = '[A-Za-z\\u0370-\\u03ff][\\w\\u0370-\\u03ff]*'
+// Bogstaver som mathjs kan bruge i navne: også æ, ø, å og Ø -- men ikke × og ÷.
+const LETTER = 'A-Za-z\\u00c0-\\u00d6\\u00d8-\\u00f6\\u00f8-\\u02af\\u0370-\\u03ff'
+const NAME = `[${LETTER}][\\w${LETTER}]*`
 
 export function classify(raw) {
   const t = String(raw ?? '').trim()
@@ -81,7 +86,7 @@ const PREFERRED = [
 
 export function unitLabel(s) {
   return String(s).replace(/\s*\/\s*/g, '/').replace(/\^2/g, '²').replace(/\^3/g, '³')
-    .replace(/\^4/g, '⁴').replace(/kN m\b/g, 'kNm').replace(/[()]/g, '').replace(/\s+/g, '·')
+    .replace(/\^4/g, '⁴').replace(/kN m\b/g, 'kNm').replace(/\bdeg\b/g, '°').replace(/[()]/g, '').replace(/\s+/g, '·')
 }
 
 function pick(u) {
@@ -177,7 +182,8 @@ function linear(node, scope, subst) {
         return `${base}^(${linear(e, scope, false)})`
       }
       if (node.op === '*') {
-        if (node.implicit && a[1].type === 'SymbolNode' && !(a[1].name in scope)) {
+        // 3 m, 8356 cm⁴: et tal med sin enhed skrives med mellemrum, ikke som et produkt.
+        if (node.implicit && isUnitTerm(a[1]) && !usesVariables(a[1], scope)) {
           return `${linear(a[0], scope, subst)} ${linear(a[1], scope, subst)}`
         }
         return `${linear(a[0], scope, subst)}·${linear(a[1], scope, subst)}`
@@ -196,8 +202,14 @@ function linear(node, scope, subst) {
       return `${linear(node.trueExpr, scope, subst)} hvis ${linear(node.condition, scope, false)}, ellers ${linear(node.falseExpr, scope, subst)}`
     case 'FunctionNode': {
       const nm = node.fn.name ?? String(node.fn)
-      if (nm === 'sqrt') return `√(${linear(unwrap(node.args[0]), scope, subst)})`
-      return `${nm}(${node.args.map(x => linear(x, scope, subst)).join('; ')})`
+      // sin(θ) med θ indsat er sin(30°), ikke sin((30°)): funktionens egne
+      // parenteser er nok om et enkelt indsat tal.
+      const arg = (x) => {
+        const t = linear(unwrap(x), scope, subst)
+        return unwrap(x).type === 'SymbolNode' && /^\(.*\)$/.test(t) ? t.slice(1, -1) : t
+      }
+      if (nm === 'sqrt') return `√(${arg(node.args[0])})`
+      return `${nm}(${node.args.map(arg).join('; ')})`
     }
     default: return node.toString()
   }
@@ -324,12 +336,11 @@ export function evaluate(lines) {
           if (!v.equalBase(target)) throw new Error('Cannot convert')
           v = v.to(pre(c.out))
         }
-        // Et input er en linje uden navne fra linjerne over: et tal med
-        // enhed, også når enheden er sammensat (1,6 kN/m er (1,6 kN)/m).
-        // Regnes der med flere tal (45 mm·(195 mm)²/6), er det en formel.
-        let tal = 0
-        node.traverse(x => { if (x.type === 'ConstantNode') tal++ })
-        const input = !usesVariables(node, scope) && tal <= 1
+        // Et input er et tal med sin enhed og uden navne fra linjerne over,
+        // også når enheden er sammensat (1,6 kN/m er (1,6 kN)/m) eller har en
+        // potens (8356 cm⁴, 3 m²). Regnes der med flere tal (45 mm·(195 mm)²/6),
+        // er det en formel.
+        const input = !usesVariables(node, scope) && isLiteral(node)
         const formula = input ? null : linear(node, scope, false)
         const subst = input ? null : linear(node, scope, true)
         scope[c.name] = v

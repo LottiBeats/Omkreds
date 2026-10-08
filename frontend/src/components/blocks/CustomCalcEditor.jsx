@@ -74,6 +74,30 @@ export default function CustomCalcEditor({ block, onChange }) {
     try { el.setSelectionRange(p, p) } catch {}
   }
 
+  function focusAt(i, pos) {
+    const el = refs.current[i]; if (!el) return
+    el.focus()
+    try { el.setSelectionRange(pos, pos) } catch {}
+  }
+
+  // Indsat tekst med flere linjer (fra Word, en mail, en anden beregning)
+  // bliver til flere linjer. Et input-felt ville ellers fjerne linjeskiftene
+  // og klistre det hele sammen på én linje.
+  function onPaste(e, i) {
+    const t = e.clipboardData?.getData('text/plain') ?? ''
+    if (!/\r|\n/.test(t)) return
+    e.preventDefault()
+    const el = e.currentTarget
+    const a = el.selectionStart ?? el.value.length, z = el.selectionEnd ?? a
+    const dele = t.replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n')
+    const sidste = dele[dele.length - 1]
+    dele[0] = el.value.slice(0, a) + dele[0]
+    dele[dele.length - 1] = dele[dele.length - 1] + el.value.slice(z)
+    const next = lines.slice(); next.splice(i, 1, ...dele)
+    flushSync(() => commit(next))
+    focusAt(i + dele.length - 1, (dele.length === 1 ? a : 0) + sidste.length)
+  }
+
   function setLine(i, v) {
     const next = lines.slice(); next[i] = v; commit(next)
   }
@@ -90,6 +114,18 @@ export default function CustomCalcEditor({ block, onChange }) {
       e.preventDefault()
       const next = lines.slice(); next.splice(i, 1)
       flushSync(() => commit(next)); focusLine(Math.max(0, i - 1), true)
+    } else if (e.key === 'Backspace' && i > 0 && el.selectionStart === 0 && el.selectionEnd === 0) {
+      // Som i en teksteditor: Backspace i starten af en linje fletter den
+      // sammen med linjen over, og markøren står ved sammenføjningen.
+      e.preventDefault()
+      const prev = lines[i - 1], next = lines.slice()
+      next.splice(i - 1, 2, prev + el.value)
+      flushSync(() => commit(next)); focusAt(i - 1, prev.length)
+    } else if (e.key === 'Delete' && i < lines.length - 1 &&
+               el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+      e.preventDefault()
+      const next = lines.slice(); next.splice(i, 2, el.value + lines[i + 1])
+      flushSync(() => commit(next)); focusAt(i, el.value.length)
     } else if (e.key === 'ArrowUp' && i > 0) { e.preventDefault(); focusLine(i - 1, true) }
     else if (e.key === 'ArrowDown' && i < lines.length - 1) { e.preventDefault(); focusLine(i + 1, true) }
   }
@@ -150,7 +186,8 @@ export default function CustomCalcEditor({ block, onChange }) {
                 <span className="no">{i + 1}</span>
                 <input ref={el => { refs.current[i] = el }} value={raw} spellCheck={false} autoComplete="off"
                   aria-label={`Linje ${i + 1}`}
-                  onFocus={() => setFocusIdx(i)} onChange={e => setLine(i, e.target.value)} onKeyDown={e => onKey(e, i)} />
+                  onFocus={() => setFocusIdx(i)} onChange={e => setLine(i, e.target.value)} onKeyDown={e => onKey(e, i)}
+                  onPaste={e => onPaste(e, i)} />
                 <span className={`chip ${cls}`} title={txt}>{txt}</span>
               </div>
             )
