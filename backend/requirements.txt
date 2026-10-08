@@ -1,7 +1,10 @@
 # Web framework
-fastapi
+# Loft over hovedversionen: serverens "pip install -r" opgraderer ikke det,
+# der allerede er installeret, men en ny server eller et nyt venv fik før den
+# nyeste version af alt -- også en ny hovedversion, ingen havde prøvet.
+fastapi<1
 uvicorn[standard]
-pydantic
+pydantic<3
 
 # Authentication (Clerk JWT verification)
 python-jose[cryptography]   # RS256 JWT decoding
@@ -9,15 +12,15 @@ httpx                       # fetch Clerk's public JWKS keys
 python-dotenv               # load .env file in local development
 
 # Structural calculation libraries (same as the Streamlit deploy app)
-numpy
-matplotlib
-pandas
-forallpeople
-handcalcs
-reportlab
-pypdfium2
-openseespy      # 2D/3D FEM solver for frame_fem block
-opsvis          # OpenSeesPy visualisation (force diagrams)
+numpy<3
+matplotlib<4
+pandas<4
+forallpeople<4
+handcalcs<2
+reportlab<6
+pypdfium2<6
+openseespy<4  # 2D/3D FEM solver for frame_fem block
+opsvis<2  # OpenSeesPy visualisation (force diagrams)
 
 # PyNite — samme rammeberegning som openseespy, i ren Python.
 #
@@ -32,5 +35,5 @@ opsvis          # OpenSeesPy visualisation (force diagrams)
 # sammenligne dem. Uden den her linje springer sammenligningen over overalt.
 #
 # Traekker scipy ind (~115 MB).
-PyNiteFEA
+PyNiteFEA<4
 
