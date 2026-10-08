@@ -3,10 +3,10 @@
  *
  *   Hjælp · 4.5 Robusthed                                   ×
  *   Fra projektbeskrivelsen   CC2 · 2 etager · træ
- *   Spørgsmål                 Er der nøgleelementer? (Nej) (Ja)
  *   Tekster                   ◉ CC2 — vurdering …   Anbefalet
  *                             ○ Simpel konstruktion …
- *                             [preview af den valgte]
+ *   Spørgsmål                 Er der nøgleelementer? (Nej) (Ja)   ← til den valgte tekst
+ *   Sådan bliver teksten      [forhåndsvisning]
  *   [Erstat afsnittet]  [Indsæt under]
  *
  * Det, projektbeskrivelsen ved (CC, etager, materialer), rettes ikke her:
@@ -36,11 +36,12 @@ function Forhaandsvisning({ blokke }) {
 }
 
 export default function AfsnitHjaelper({ afsnit, overskrift, nr, nuvaerende, harUnderafsnit, options, gemt, travl, onIndsaet, onLuk }) {
-  const [svar, setSvar] = useState(() => ({ ...afsnit.standardSvar(), ...(gemt?.svar ?? {}) }))
+  const [svar, setSvar] = useState(() => ({ ...afsnit.standardSvar(kontekst(options)), ...(gemt?.svar ?? {}) }))
   const ktx = useMemo(() => kontekst(svar.cc ? { ...(options ?? {}), ccValgt: Number(svar.cc) } : options), [options, svar.cc])
   const varianter = useMemo(() => varianterFor(afsnit, ktx), [afsnit, ktx])
   const [valgt, setValgt] = useState(() => gemt?.variant ?? varianter[0].key)
   const variant = varianter.find(v => v.key === valgt) ?? varianter[0]
+  const synligeSpoergsmaal = afsnit.spoergsmaal.filter(q => !q.hvis || q.hvis(svar, ktx, variant.key))
   const blokke = useMemo(() => variant.skriv(ktx, svar), [variant, ktx, svar])
 
   const rettet = gemt && gemt.fingeraftryk !== fingeraftryk(nuvaerende)
@@ -78,10 +79,24 @@ export default function AfsnitHjaelper({ afsnit, overskrift, nr, nuvaerende, har
         )}
       </section>
 
-      {afsnit.spoergsmaal.some(q => !q.hvis || q.hvis(svar, ktx)) && (
+      <section className="ah-sek">
+        <h3>Tekster</h3>
+        <div className="ah-varianter" role="radiogroup">
+          {varianter.map(v => (
+            <button key={v.key} type="button" role="radio" aria-checked={v.key === variant.key}
+                    className={'ah-variant' + (v.key === variant.key ? ' on' : '')} onClick={() => setValgt(v.key)}>
+              <span className="ah-dot" aria-hidden="true" />
+              <span>{v.titel}</span>
+              {v.anbefalet && <StatusPill tone="ok">Anbefalet</StatusPill>}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {synligeSpoergsmaal.length > 0 && (
         <section className="ah-sek">
           <h3>Spørgsmål</h3>
-          {afsnit.spoergsmaal.filter(q => !q.hvis || q.hvis(svar, ktx)).map(q => (
+          {synligeSpoergsmaal.map(q => (
             <label key={q.key} className="ah-felt">
               <span>{q.label}</span>
               {q.type === 'tekst' ? (
@@ -105,17 +120,7 @@ export default function AfsnitHjaelper({ afsnit, overskrift, nr, nuvaerende, har
       )}
 
       <section className="ah-sek">
-        <h3>Tekster</h3>
-        <div className="ah-varianter" role="radiogroup">
-          {varianter.map(v => (
-            <button key={v.key} type="button" role="radio" aria-checked={v.key === variant.key}
-                    className={'ah-variant' + (v.key === variant.key ? ' on' : '')} onClick={() => setValgt(v.key)}>
-              <span className="ah-dot" aria-hidden="true" />
-              <span>{v.titel}</span>
-              {v.anbefalet && <StatusPill tone="ok">Anbefalet</StatusPill>}
-            </button>
-          ))}
-        </div>
+        <h3>Sådan bliver teksten</h3>
         <Forhaandsvisning blokke={blokke} />
       </section>
 

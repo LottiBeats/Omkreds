@@ -9,9 +9,12 @@
  * ældre sager på titlen uden nummer ("4.5 Robusthed" → "robusthed").
  */
 import robusthed from './robusthed.js'
+import vandret from './vandretLastfoering.js'
+import geoteknik from './geoteknik.js'
+import udfoerelse from './udfoerelse.js'
 import { DEFAULT_OPTIONS, suggestCC, baerendeSystem } from '../a1.js'
 
-export const AFSNIT = [robusthed]
+export const AFSNIT = [geoteknik, vandret, robusthed, udfoerelse]
 
 const efterNoegle = new Map(AFSNIT.map(a => [a.key, a]))
 const efterTitel  = new Map(AFSNIT.map(a => [a.titel.toLowerCase(), a]))
@@ -36,8 +39,22 @@ export function kontekst(options) {
               materialer: { ...DEFAULT_OPTIONS.materialer, ...(options?.materialer ?? {}) },
               stabilisering: { ...DEFAULT_OPTIONS.stabilisering, ...(options?.stabilisering ?? {}) } }
   const { cc } = suggestCC(o)
-  const { dele, stab } = baerendeSystem(o)
-  return { ...o, cc: o.ccValgt ?? cc, dele, stab, kendt }
+  return { ...o, ...baerendeSystem(o), cc: o.ccValgt ?? cc, kendt }
+}
+
+/** Den variant, der passer til sagen — ellers den første. */
+export function anbefaletVariant(afsnit, ktx) {
+  return afsnit.varianter.find(v => v.passer(ktx)) ?? afsnit.varianter[0]
+}
+
+/**
+ * Afsnittets blokke (uden id'er) til et nyt A1. Har sagen allerede svar og
+ * en valgt tekst fra hjælperen (metadata._afsnit), bruges de, så et A1, der
+ * skrives forfra, ikke glemmer, hvad man har valgt.
+ */
+export function skrivAfsnit(afsnit, ktx, gemt) {
+  const variant = (gemt && afsnit.varianter.find(v => v.key === gemt.variant)) || anbefaletVariant(afsnit, ktx)
+  return variant.skriv(ktx, { ...afsnit.standardSvar(ktx), ...(gemt?.svar ?? {}) })
 }
 
 /** Varianterne med den anbefalede først. */

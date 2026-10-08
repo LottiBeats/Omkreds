@@ -10,13 +10,12 @@
  *   (9) ekstra sikkerhed på nøgleelementer: γM × 1,2.
  *
  * Hver variant skriver afsnittets blokke ud fra projektbeskrivelsen (o) og
- * svarene i hjælperen (svar). makeA1Template bruger 'standard', så et nyt A1
- * ser ud som før; hjælperen foreslår den variant, der passer til sagen.
+ * svarene i hjælperen (svar). Et nyt A1 får den variant, der passer til
+ * sagen; hjælperen kan vælge en anden.
  */
 import { ogListe } from '../a1.js'
 
 const T = (text) => ({ type: 'text', data: { text } })
-const TBL = (caption, rows) => ({ type: 'table', data: { caption, has_header: true, rows } })
 
 const DK_NA = 'DS/EN 1990 DK NA, anneks E1'
 
@@ -51,11 +50,13 @@ export default {
 
   spoergsmaal: [
     { key: 'noegle', label: 'Er der nøgleelementer?', type: 'valg',
-      valg: [{ key: 'nej', label: 'Nej' }, { key: 'ja', label: 'Ja' }] },
+      valg: [{ key: 'nej', label: 'Nej' }, { key: 'ja', label: 'Ja' }],
+      hvis: (svar, o, v) => v === 'cc2' || v === 'cc3' },
     { key: 'noegleHvilke', label: 'Hvilke nøgleelementer?', type: 'tekst',
-      hvis: (svar) => svar.noegle === 'ja', pladsholder: 'fx stålsøjle i akse B/3, limtræsdrager over stue' },
+      hvis: (svar, o, v) => (v === 'cc2' || v === 'cc3') && svar.noegle === 'ja',
+      pladsholder: 'fx stålsøjle i akse B/3, limtræsdrager over stue' },
     { key: 'metode', label: 'Hvordan sikres robustheden?', type: 'valg', valg: METODER,
-      hvis: (svar, o) => o.cc === 3 || svar.noegle === 'ja' },
+      hvis: (svar, o, v) => v === 'cc3' || (v === 'cc2' && svar.noegle === 'ja') },
   ],
 
   standardSvar: () => ({ noegle: 'nej', noegleHvilke: '', metode: 'bortfald' }),
@@ -64,9 +65,14 @@ export default {
     {
       key: 'simpel',
       titel: 'Simpel konstruktion — taget uden betydning for stabiliteten',
-      passer: (o) => o.cc === 1 && o.simpel,
-      skriv: () => [
-        T('Konstruktionen er simpel, og tagkonstruktionen har ingen indflydelse på den øvrige bygnings ' +
+      // Et simpelt hus i én til to etager. Enfamiliehuse er CC2 efter
+      // DS/INF 1990, og så skal vurderingen stå der (DK NA E1 (4)).
+      passer: (o) => o.simpel && o.cc <= 2 && o.etager <= 2,
+      skriv: (o) => [
+        T((o.cc === 2
+          ? `Bygningen henføres til konsekvensklasse CC2, og robustheden vurderes iht. ${DK_NA} (4).\n\n`
+          : '') +
+          'Konstruktionen er simpel, og tagkonstruktionen har ingen indflydelse på den øvrige bygnings ' +
           'statiske virkemåde. Et progressivt kollaps vurderes derfor ikke at kunne opstå.'),
       ],
     },
@@ -127,22 +133,6 @@ export default {
       titel: 'Ombygning — robustheden påvirkes ikke',
       passer: (o) => o.konstruktionstype === 'Ombygning',
       skriv: () => [T('Bygværkets robusthed påvirkes ikke af ombygningen.')],
-    },
-    {
-      key: 'standard',
-      titel: 'Appens hidtidige standardtekst (med tabel)',
-      passer: () => false,
-      skriv: () => [
-        T('Konstruktionernes robusthed vurderes iht. DS/EN 1990 og DS/EN 1991-1-7. Minimumskrav for mekaniske forbindelser til sikring mod progressivt kollaps:'),
-        TBL('Tabel 4.2 — Minimumskrav til robusthed (punkt- og linjelast)', [
-          ['Etageantal', 'Punktlast [kN]', 'Linjelast [kN/m]'],
-          ['1-2 etager', '10 (20)', '2 (4)'],
-          ['3-5 etager', '20', '4'],
-          ['6-10 etager', '40', '8'],
-          ['11-15 etager', '60', '12'],
-        ]),
-        T('Værdier i parentes gælder ved CC2 med mere end 2 etager.'),
-      ],
     },
   ],
 }
