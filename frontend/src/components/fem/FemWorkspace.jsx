@@ -507,7 +507,10 @@ export default function FemWorkspace({
   function onWheel(e) {
     const [sx, sy] = eventPoint(e)
     const [wx, wy] = toW(sx, sy)
-    const k = Math.exp(-e.deltaY * 0.0015)
+    // Firefox reports wheel steps in lines (deltaMode 1, deltaY ≈ 3) rather than
+    // pixels (≈ 100), which made each notch zoom by a fraction of a percent
+    const unit = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? size.h : 1
+    const k = Math.exp(-e.deltaY * unit * 0.0015)
     const scale = Math.max(4, Math.min(800, view.scale * k))
     // keep the point under the cursor fixed
     setView({ scale, cx: wx - (sx - size.w / 2) / scale, cy: wy + (sy - size.h / 2) / scale })

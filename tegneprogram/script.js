@@ -9380,11 +9380,14 @@ canvasWrap.addEventListener("wheel", (event) => {
     return;
   }
   event.preventDefault();
+  /* Firefox reports wheel steps in lines (deltaMode 1, deltaY ~3) where Chrome
+     reports pixels (~100 per notch); scale lines to match so one notch moves the
+     same amount in both. */
+  const unit = event.deltaMode === 1 ? 33 : event.deltaMode === 2 ? svgClientSize().height : 1;
   if (event.ctrlKey || event.metaKey) {
-    zoomByFactor(Math.exp(-event.deltaY * 0.0022), { x: event.clientX, y: event.clientY });
+    zoomByFactor(Math.exp(-event.deltaY * unit * 0.0022), { x: event.clientX, y: event.clientY });
     return;
   }
-  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? svgClientSize().height : 1;
   if (event.shiftKey) panByScreen(-event.deltaY * unit, 0);
   else panByScreen(-event.deltaX * unit, -event.deltaY * unit);
 }, { passive: false });
