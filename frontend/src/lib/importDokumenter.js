@@ -6,6 +6,7 @@
  *
  *   {
  *     "metadata": { "matrikel": "15ie", ... },          valgfri, kun tekst
+ *     "projektbeskrivelse": { "etager": 1, ... },       valgfri: A1's beskrivelse
  *     "docs": {
  *       "A1": { "title": "Konstruktionsgrundlag", "blocks": [ ... ] },
  *       "B2": { "blocks": [ ... ] }
@@ -16,6 +17,10 @@
  * (A2.2 osv.) røres ikke, og dokumenter, der ikke står i filen, røres heller
  * ikke. Filen læses her og kontrolleres helt, før noget bliver ændret: en fil
  * med én fejl ændrer ingenting.
+ *
+ * "projektbeskrivelse" er det samme som beskrivelsen under Projektbeskrivelse
+ * (metadata._doc_options): konsekvensklasse, materialer, fundering osv. Med den
+ * ved A1-hjælperen og "skriv A1 forfra", hvad det er for en sag.
  */
 import { DOC_TITLES } from '../templates/docs.js'
 
@@ -58,7 +63,12 @@ export function laesImport(tekst) {
       metadata[k] = v
     }
   }
-  return { ok: true, metadata, docs }
+  let beskrivelse = null
+  if (fil.projektbeskrivelse !== undefined) {
+    if (!erObjekt(fil.projektbeskrivelse)) return { ok: false, fejl: '"projektbeskrivelse" skal være et objekt.' }
+    beskrivelse = fil.projektbeskrivelse
+  }
+  return { ok: true, metadata, docs, beskrivelse }
 }
 
 /**
@@ -80,7 +90,9 @@ export function anvendImport(project, imp, nu = Date.now()) {
     const eksisterende = documents[docId] ?? { title: DOC_TITLES[docId], subdocs: [] }
     documents[docId] = { ...eksisterende, ...(d.title ? { title: d.title } : {}), blocks }
   }
-  return { ...project, metadata: { ...(project.metadata ?? {}), ...imp.metadata }, documents }
+  const metadata = { ...(project.metadata ?? {}), ...imp.metadata }
+  if (imp.beskrivelse) metadata._doc_options = imp.beskrivelse
+  return { ...project, metadata, documents }
 }
 
 /** "A1 (231 blokke), B2 (36 blokke)" til bekræftelsen. */

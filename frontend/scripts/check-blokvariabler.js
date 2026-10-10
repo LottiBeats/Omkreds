@@ -48,7 +48,8 @@ for (const fil of fs.readdirSync(BLOKKE).filter(f => f.endsWith('.jsx')).sort())
   const src = fs.readFileSync(path.join(BLOKKE, fil), 'utf8')
 
   const manglende = NAVNE.filter(navn => {
-    const brugt = new RegExp(`\\b${navn}\\b`).test(src)
+    // `x.source` er en egenskab, ikke variablen source.
+    const brugt = new RegExp(`(?<![.\\w$])${navn}\\b`).test(src)
     if (!brugt) return false
     // Erklæret som const/let/var, som funktionsparameter, eller destructureret.
     const erklaeret = new RegExp(

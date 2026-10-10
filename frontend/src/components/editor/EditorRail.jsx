@@ -9,6 +9,9 @@
  * Sub-documents sit under their parent. Adding one is a hover action on the
  * parent row and an item in the document's own menu, instead of a permanent
  * "+ Tilføj underdokument" link under all eight documents.
+ *
+ * Under dokumenterne står det åbne dokuments afsnit (children), så man kan
+ * hoppe rundt i et langt A1 uden at rulle det hele igennem.
  */
 import React, { useEffect, useState } from 'react'
 import { DOC_PHASES, DOC_SHORT } from '../../templates/docs.js'
@@ -31,7 +34,7 @@ function subStatus(doc, i) {
   return null
 }
 
-export default function EditorRail({ project, active, onGo, onAddSubdoc }) {
+export default function EditorRail({ project, active, onGo, onAddSubdoc, children }) {
   const docs = project.documents ?? {}
   const [laterOpen, setLaterOpen] = useState(readOpen)
 
@@ -130,6 +133,9 @@ export default function EditorRail({ project, active, onGo, onAddSubdoc }) {
           </div>
         )
       })}
+
+      {/* Det åbne dokuments afsnit (Indholdsfortegnelse), når der er et. */}
+      {children}
     </nav>
   )
 }

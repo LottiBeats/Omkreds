@@ -21,6 +21,12 @@
  * follow BR18 §§ 494-505.
  */
 
+import { skrivAfsnit } from './a1Afsnit/index.js'
+import robusthed from './a1Afsnit/robusthed.js'
+import vandret from './a1Afsnit/vandretLastfoering.js'
+import geoteknik from './a1Afsnit/geoteknik.js'
+import udfoerelse from './a1Afsnit/udfoerelse.js'
+
 // ── DS/INF 1990:2024 Table 2 ──────────────────────────────────────────────────
 // Guideline limits for consequence class, as structured data so the printed
 // table and the class suggestion cannot drift apart.
@@ -408,10 +414,18 @@ export function makeA1Template(options = {}, metadata = {}) {
   let id = Date.now()
   const B = []
   const push = (type, data) => B.push({ id: id++, type, data })
-  const H = (level, text) => push('heading', { level, text })
+  const H = (level, text, afsnit) => push('heading', afsnit ? { level, text, afsnit } : { level, text })
   const T = (text) => push('text', { text })
   const TBL = (caption, rows, extra = {}) =>
     push('table', { caption, has_header: true, rows, ...extra })
+  // Afsnit, som hjælperen også kan skrive (templates/a1Afsnit): overskriften
+  // får afsnittets nøgle, og teksten kommer fra samme definition -- med de
+  // svar, der er valgt i hjælperen, hvis sagen har dem.
+  const ktx = { ...o, cc, mat, fund, stab, harTag, harDaek, dele, kendt: true }
+  const AFSNIT = (level, text, afsnit) => {
+    H(level, text, afsnit.key)
+    for (const b of skrivAfsnit(afsnit, ktx, m._afsnit?.[afsnit.key])) push(b.type, b.data)
+  }
 
   H(1, 'A1 Konstruktionsgrundlag')
 
@@ -606,7 +620,9 @@ export function makeA1Template(options = {}, metadata = {}) {
     `  Pålidelighedsklasse:         ${rc}\n` +
     `  K_FI-faktor (STR/GEO):       ${kfi}   (se Tabel 2.2a for CC-afhængighed)\n` +
     '  K_FI-faktor (EQU/geoteknik): 1,0    (gælder uafhængigt af CC iht. DK NA:2024)\n' +
-    `  Geoteknisk kategori:         GK${Math.min(cc, 3)}\n` +
+    // Geoteknisk kategori følger ikke CC (DS/EN 1997-1 DK NA, K.3); GK2 med
+    // mindre der er valgt andet i hjælperen til 3.2.
+    `  Geoteknisk kategori:         GK${m._afsnit?.['a1.geoteknik']?.svar?.gk ?? '2'}\n` +
     `  Brandklasse:                 ${o.brandklasse || 'fastlægges af brandrådgiveren, se afsnit 4.7'}\n` +
     `  Anvendelseskategori:         ${o.anvendelseskategori || 'fastlægges af brandrådgiveren, se afsnit 4.7'}`
   )
@@ -644,22 +660,7 @@ export function makeA1Template(options = {}, metadata = {}) {
     : 'Der er ikke kendskab til særlige forhold ved grunden. Overfladevand bortledes fra ' +
       'fundamenterne.')
 
-  H(3, '3.2 Geotekniske forhold')
-  T(o.geoteknisk
-    ? `Geoteknisk kategori: GK${Math.min(cc, 3)} (DS/EN 1997-1)\n\n` +
-      'Funderingsforhold (fra den geotekniske rapport, se afsnit 2.5):\n' +
-      '  Bæredygtig jordbundsydelse: σ = … kN/m²\n' +
-      '  Fundamentskote (underkant): +… m DVR90 (ca. … m under terræn)\n' +
-      '  Frostfri dybde: 0,9 m (DK NA til DS/EN 1997-1)\n' +
-      '  Grundvandskote: +… m DVR90\n\n' +
-      'Jordparametre (karakteristiske værdier):\n' +
-      '  Friktionsvinkel: φ_k = … °\n' +
-      '  Kohæsion: c_k = … kPa\n' +
-      '  Effektiv rumvægt: γ_k = … kN/m³'
-    : `Der foreligger ikke en geoteknisk rapport for projektet. Der funderes på ${fund.tekst}, ` +
-      'ført til frostfri dybde (mindst 0,9 m under terræn) på intakt, bæredygtig jord. ' +
-      'Forudsætningen kontrolleres ved besigtigelse af udgravningen inden støbning; afviger ' +
-      'jordbundsforholdene, kontaktes den statiske rådgiver.')
+  AFSNIT(3, '3.2 Geotekniske forhold', geoteknik)
 
   H(3, '3.3 Klima- og miljøtekniske forhold')
   T({
@@ -702,14 +703,7 @@ export function makeA1Template(options = {}, metadata = {}) {
     `Væggene og søjlerne fører lasterne ned til ${fund.bestemt}, som overfører dem til undergrunden.`
   )
 
-  H(3, '4.1.2 Vandret lastføring')
-  T(
-    `Vindlasten optages af facaderne og føres via ${harTag ? 'tagfladen' : harDaek ? 'dækkene' : 'væggene'}` +
-    `${harTag || harDaek ? ', der virker som skive,' : ''} til bygningens stabiliserende system: ` +
-    `${stab.length ? ogListe(stab.map(x => x.tekst)) : '[stabiliserende system]'}. ` +
-    'Systemet stabiliserer bygningen i begge hovedretninger og fører de vandrette kræfter til ' +
-    'fundamenterne, hvor de optages ved friktion og jordtryk.'
-  )
+  AFSNIT(3, '4.1.2 Vandret lastføring', vandret)
 
   H(3, '4.2 Anvendelseskrav')
   T(
@@ -742,16 +736,7 @@ export function makeA1Template(options = {}, metadata = {}) {
     'funktionskrav til de bærende konstruktioner ud over styrke, stabilitet og anvendelseskravene ' +
     'i afsnit 4.2 og 4.3.')
 
-  H(3, '4.5 Robusthed')
-  T('Konstruktionernes robusthed vurderes iht. DS/EN 1990 og DS/EN 1991-1-7. Minimumskrav for mekaniske forbindelser til sikring mod progressivt kollaps:')
-  TBL('Tabel 4.2 — Minimumskrav til robusthed (punkt- og linjelast)', [
-    ['Etageantal', 'Punktlast [kN]', 'Linjelast [kN/m]'],
-    ['1-2 etager', '10 (20)', '2 (4)'],
-    ['3-5 etager', '20', '4'],
-    ['6-10 etager', '40', '8'],
-    ['11-15 etager', '60', '12'],
-  ])
-  T('Værdier i parentes gælder ved CC2 med mere end 2 etager.')
+  AFSNIT(3, '4.5 Robusthed', robusthed)
 
   H(3, '4.6 Levetid')
   T('Bygværket henføres til kategori 4 iht. DS/EN 1990 Tabel 2.1 — almindelige konstruktioner med en vejledende forventet levetid på 50 år.')
@@ -820,24 +805,7 @@ export function makeA1Template(options = {}, metadata = {}) {
     if (brandnoter.length) T('Eftervisning pr. materiale:\n\n' + brandnoter.join('\n\n'))
   }
 
-  H(3, '4.8 Udførelse')
-  T(
-    'Alle mål og koter er vejledende og skal kontrolleres på stedet inden udførelse.\n\n' +
-    'Eventuel midlertidig afstivning hører til den arbejdsudførende i fuld udstrækning, ' +
-    'inkl. evt. udarbejdelse af midlertidigt afstivningsprojekt.\n\n' +
-    'Der regnes med god byggeskik og faglært arbejde på byggepladsen. Det anbefales, at der ' +
-    'udføres tilsyn og kvalitetssikring i alle byggeriets faser.' +
-    [
-      mat.trae && '\n\nTræ: Konstruktionstræ indbygges med et fugtindhold på højst 18 % og beskyttes ' +
-        'mod nedbør i byggeperioden. Samlinger udføres med de beslag og forbindelsesmidler, der er ' +
-        'angivet på tegningerne, og med de angivne kant- og endeafstande.',
-      mat.staal && `\n\nStål: Stålkonstruktioner udføres i udførelsesklasse EXC${Math.min(cc, 3)} iht. DS/EN 1090-2.`,
-      mat.beton && '\n\nBeton: Betonarbejder udføres iht. DS/EN 13670. Afforskalling sker først, ' +
-        'når betonen har opnået tilstrækkelig styrke.',
-      mat.murvaerk && '\n\nMurværk: Murværk udføres iht. DS/EN 1996-2, og bærende vægge afstives ' +
-        'midlertidigt, indtil dæk og tag er monteret.',
-    ].filter(Boolean).join('')
-  )
+  AFSNIT(3, '4.8 Udførelse', udfoerelse)
 
   H(3, '4.9 Drift og vedligehold')
   T(['De bærende konstruktioner kræver ikke særlig drift ud over almindeligt vedligehold.',

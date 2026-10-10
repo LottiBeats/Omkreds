@@ -212,10 +212,24 @@ def _add_calc_row_table(doc: Document, rows: list):
         run0.font.name = 'Consolas'
 
         # ── col 1: formula ──
+        # Med brøk eller rod tegnes formlen som i PDF'en (formler.py);
+        # ellers, eller hvis det mislykkes, står den som tekst.
         p1 = cells[1].paragraphs[0]
-        run1 = p1.add_run(row_data.get('formula', ''))
-        run1.font.size = Pt(9)
-        run1.font.name = 'Consolas'
+        formel = row_data.get('formula', '')
+        tegnet = None
+        try:
+            from formler import tegn
+            tegnet = tegn(formel.lstrip('= ').strip(), size_pt=9)
+        except Exception:
+            tegnet = None
+        if tegnet and tegnet[1] <= Cm(9.0).pt:
+            path, w, _h = tegnet
+            p1.add_run(u'= ' if formel.strip().startswith('=') else u'').font.size = Pt(9)
+            p1.add_run().add_picture(path, width=Pt(w))
+        else:
+            run1 = p1.add_run(formel)
+            run1.font.size = Pt(9)
+            run1.font.name = 'Consolas'
 
         # ── col 2: result (right-aligned, bold) ──
         p2 = cells[2].paragraphs[0]
@@ -442,7 +456,7 @@ _CALC_TYPES = {
     "timber_beam", "timber_column",
     "masonry_wall",
     "custom_calc",
-    "wind_load", "snow_load",
+    "wind_load", "snow_load", "roof_dead_load", "egenlast",
     "frame_loads",
     "foundation",
     "load_combo",

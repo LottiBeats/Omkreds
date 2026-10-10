@@ -182,3 +182,40 @@ CHECK_TYPE_FOR_MATERIAL = {
     'træ':   'timber_beam',
     'beton': 'rc_beam',
 }
+
+
+# rho_mean [kg/m3] efter EN 338 tabel 1 og EN 14080 tabel 5. Egenlast regnes
+# med middeldensiteten (EN 1991-1-1 pkt. 4.1).
+RHO_MEAN_TRAE = {
+    'C14': 350, 'C16': 370, 'C18': 380, 'C20': 390, 'C22': 410, 'C24': 420,
+    'C27': 450, 'C30': 460, 'C35': 480, 'C40': 500,
+    'GL20H': 370, 'GL22H': 410, 'GL24H': 420, 'GL26H': 440, 'GL28H': 460,
+    'GL30H': 480, 'GL32H': 490,
+    'GL20C': 390, 'GL22C': 390, 'GL24C': 400, 'GL26C': 410, 'GL28C': 420,
+    'GL30C': 430, 'GL32C': 440,
+}
+
+
+def egenvaegt_kg_m(material: str | None, section: str | None,
+                   grade: str | None = None) -> float | None:
+    """
+    Stangens masse pr. meter, eller None naar den ikke kan kendes (egne tal).
+
+    Staal: profilkatalogets masse, ellers A * 7850. Trae: b * h * rho_mean.
+    """
+    if not material or not section:
+        return None
+    mat = material.strip().lower()
+    if mat in ('steel', 'stål', 'staal'):
+        p = get_steel_profile(section)
+        w = p.get('weight_kg_per_m') or 0.0
+        if w > 0:
+            return float(w)
+        return resolve_steel(section, grade)['A_cm2'] * 1e-4 * STEEL_DENSITY_KG_M3
+    if mat in ('timber', 'træ', 'trae', 'wood'):
+        dims = parse_rectangle_mm(section)
+        if dims is None:
+            return None
+        rho = RHO_MEAN_TRAE.get(str(grade or 'C24').strip().upper().replace(' ', ''), 420)
+        return dims[0] * dims[1] * 1e-6 * rho
+    return None

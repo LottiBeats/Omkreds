@@ -25,7 +25,15 @@
 //                          heading "Deformeret form". A stored result carries
 //                          those figures with it, so it has to be re-run.
 const CALC_REVISION = {
-  general_frame_fem: 4,
+  // 5 — 2026-09-28: stængernes bjælkeeftervisning med kipning efter
+  // afstivningen (før: stål uden kipning, træ med fastholdt trykrand); ψ₀ og
+  // ψ₂ for nyttelast efter kategorien (før fast 0,7 / 0,2); lasttabellen i
+  // rapporten med værdierne (før 0,00).
+  // 6 — 2026-09-28: med lasttilfælde blev dellaster og trapezlaster regnet
+  // som konstante over hele stangen med startværdien.
+  // 7 — 2026-09-29: træsøjler i rammen eftervises om den stærke akse med
+  // L_cr og om den svage med afstivningens længde (før den største om begge).
+  general_frame_fem: 7,
   // 2: den lukkede form regnede 1,35·g + 1,5·q med den varighed brugeren
   // valgte. 1,35 findes ikke i DK NA, og én fast kombination kan ikke være
   // dimensionsgivende for både et let og et tungt tag — k_mod afgør hvilken
@@ -40,8 +48,14 @@ const CALC_REVISION = {
   // tabel 6.5's kurver i den modificerede metode; udrundingsradius i
   // klassifikationen; klasse 3 med W_el; bjælken med 6.10a/b og K_FI og
   // lastens angrebshøjde i M_cr.
-  steel_beam: 2,
-  steel_column: 2,
+  // 3 — 2026-09-27: 18 profiler i stålkataloget havde W_el,y som W_pl,y
+  // (HEB200: 515 i stedet for 642,5 cm³); anneks B: k_zy = 0,6·k_yy i
+  // tabel B.1 og ingen nedre grænse ved λ̄_z < 0,4.
+  steel_beam: 3,
+  steel_column: 3,
+  // 2 — 2026-09-27: regnes af stålsøjlens eftervisning med DK NA-γ og
+  // katalogets rettede W_pl,y.
+  beam_column: 2,
   // 3: med snitkræfter fra en rammeberegning blev det største moment brugt med
   // varigheden fra netop den kombination -- ikke kombinationen med størst
   // M/k_mod, som FEM-kørslen allerede havde fundet (timber-indhyldningen).
@@ -53,6 +67,17 @@ const CALC_REVISION = {
   // et udefineret h eller L blev stille til timer og liter. Gemte rækker kan
   // vaere regnet saadan og skal regnes igen, foer de kan komme i en rapport.
   custom_calc: 2,
+  // 2 — 2026-09-26: skrevet om efter DK NA. α_cc = 1,0 (var 0,85), 6.10a/b
+  // med K_FI i stedet for 1,35/1,5, bøjningsbæreevne af den faktiske armering,
+  // V_Rd,c, bøjler og nedbøjning ved l/d.
+  rc_beam: 2,
+  // 2 — 2026-09-26: nominel stivhed med K_s = 1 og K_c = k₁·k₂/(1+φ_ef) (før
+  // K_c = 0,3/(1+0,5φ_ef) sammen med K_s = 1, som gav en for stiv søjle);
+  // N_Ed ≥ N_B fanges; N–M-kurven drejer om C ved x > h; §9.5.2.
+  rc_column: 2,
+  // 2 — 2026-09-26: 6.10a/b med K_FI (var 1,35/1,5); (7.16b) og (7.17) rettet;
+  // V_Rd,c og største stangafstand tilføjet; armering som Ø/s.
+  rc_slab: 2,
 }
 
 export function calcRevision(type) {

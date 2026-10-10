@@ -83,6 +83,51 @@ def _rz_stiffness_ends(el):
     return rel not in ('start', 'both'), rel not in ('end', 'both')
 
 
+def fasthold_frie_rotationer(nodes, elements, supports, equal_dofs=None):
+    """
+    Understoetningerne med rotationen fastholdt i de knuder, der ingen
+    rotationsstivhed har (kun gitterstaenger / dobbelt-udloeste bjaelker).
+
+    Rotationen dér er ubestemt og uden betydning: den indgaar ikke i nogen
+    stangs stivhed, og en fastholdelse tager intet moment, fordi der intet
+    moment er. Det er sadan FEM-Design og RFEM regner et gitter. Returnerer
+    (supports, auto) -- auto er de knuder, der fik fastholdelsen.
+    """
+    has_rz = {n['id']: False for n in nodes}
+    connected = set()
+    for el in elements:
+        connected.add(el['ni']); connected.add(el['nj'])
+        si, sj = _rz_stiffness_ends(el)
+        if si and el['ni'] in has_rz: has_rz[el['ni']] = True
+        if sj and el['nj'] in has_rz: has_rz[el['nj']] = True
+    rz_fixed = {s['node_id'] for s in supports if s.get('rz')}
+    for eq in (equal_dofs or []):
+        if 3 in {int(d) for d in eq.get('dofs', [1, 2])}:
+            r, c = eq['r_node'], eq['c_node']
+            if has_rz.get(r) or has_rz.get(c) or r in rz_fixed or c in rz_fixed:
+                has_rz[r] = has_rz[c] = True
+    auto = {nid for nid, ok in has_rz.items()
+            if not ok and nid not in rz_fixed and nid in connected}
+    if not auto:
+        return supports, set()
+    ud = []
+    for s in supports:
+        ud.append({**s, 'rz': True} if s['node_id'] in auto else s)
+    har = {s['node_id'] for s in supports}
+    ud += [{'node_id': nid, 'ux': False, 'uy': False, 'rz': True}
+           for nid in sorted(auto - har)]
+    return ud, auto
+
+
+def _uden_auto_reaktioner(res, auto):
+    """Den automatiske rotationsfastholdelse er ikke en understoetning."""
+    for nid in auto:
+        r = res['node_reactions'].get(nid)
+        if r is not None:
+            r[2] = 0.0
+    return res
+
+
 def saml_charnierer(elements, supports=(), loads=(), equal_dofs=()):
     """
     Et charnier, hvor ALLE bjælkeender i knuden er udløst, regnet som RFEM gør.
@@ -284,6 +329,27 @@ def validate_model(nodes, elements, supports, loads=None, equal_dofs=None):
         elif ld.get('type') == 'udl':
             if ld.get('elem_id') not in elem_ids:
                 errors.append(f'Der er en linjelast på element {ld.get("elem_id")}, som ikke findes.')
+                continue
+            # En dellast med Fra >= Til blev stille til nul, og en Til ud over
+            # stangen blev stille klippet af. Begge er en tastefejl, der skal
+            # siges.
+            x1, x2 = ld.get('x1'), ld.get('x2')
+            if x1 is None and x2 is None:
+                continue
+            el = next(e for e in elements if e['id'] == ld['elem_id'])
+            a, b = dict_nodes.get(el['ni']), dict_nodes.get(el['nj'])
+            if a is None or b is None:
+                continue
+            L = math.hypot(float(b['x']) - float(a['x']), float(b['y']) - float(a['y']))
+            f = float(x1 or 0.0)
+            t = float(x2) if x2 is not None else L
+            dk = lambda v: f'{v:.2f}'.replace('.', ',')
+            if f < -1e-6 or t > L + 1e-6:
+                errors.append(f'Linjelasten på element {el["id"]} går fra x = {dk(f)} til '
+                              f'{dk(t)} m, men elementet er {dk(L)} m langt.')
+            elif t - f <= 1e-9:
+                errors.append(f'Linjelasten på element {el["id"]} går fra x = {dk(f)} til '
+                              f'{dk(t)} m. "Fra" skal være mindre end "Til".')
 
     # ── Floating nodes ────────────────────────────────────────────────────────
     connected = set()
@@ -317,13 +383,24 @@ def validate_model(nodes, elements, supports, loads=None, equal_dofs=None):
                 has_rz[r] = has_rz[c] = True
     loose = sorted(nid for nid, ok in has_rz.items()
                    if not ok and nid not in rz_fixed and nid in connected)
+    # En knude, hvor kun gitterstaenger eller dobbelt-udloeste bjaelker moedes,
+    # har ingen rotationsstivhed. Den var en fejl, og et rent gitter kunne
+    # derfor slet ikke regnes. Rotationen er uden betydning dér -- intet i
+    # knuden kan optage et moment -- saa loeserne fastholder den selv
+    # (fasthold_frie_rotationer). Kun et moment PAA en saadan knude er stadig
+    # en fejl: der er ikke noget, der kan tage det.
     if loose:
-        errors.append(
-            ('Knude ' if len(loose) == 1 else 'Knuderne ') +
-            ', '.join(str(i) for i in loose) +
-            ' har ingen rotationsstivhed: der er kun truss-elementer eller bjælker med '
-            'momentudløsning i begge ender. Fasthold rotationen (rz) i knuden, eller '
-            'lad mindst ét element optage moment der.')
+        momenter = sorted({int(ld['node_id']) for ld in (loads or [])
+                           if ld.get('type') == 'nodal'
+                           and abs(float(ld.get('Mz_kNm') or 0)) > 1e-12
+                           and int(ld['node_id']) in set(loose)})
+        if momenter:
+            errors.append(
+                ('Knude ' if len(momenter) == 1 else 'Knuderne ') +
+                ', '.join(str(i) for i in momenter) +
+                ' har et påsat moment, men kun gitterstænger eller bjælker med '
+                'charnier i knuden, så intet kan optage det. Fjern momentet, '
+                'eller lad en stang være stift forbundet til knuden.')
 
     # ── Rigid-body stability ──────────────────────────────────────────────────
     rank = _rigid_body_rank(supports, dict_nodes, equal_dofs)
@@ -348,8 +425,14 @@ def check_results(nodes, node_disps, ele_forces, ref_size):
     magnitude is not a deflection the theory can describe — it is a
     near-singular stiffness matrix that happened to factor.
 
-    The limit is span/10, roughly twenty times any serviceability limit, so a
-    genuinely flexible structure still gets its answer.
+    Displacements beyond span/10 are no longer refused: fem_direkte checks the
+    condition number before it solves, so a near-singular matrix is caught
+    there. A large displacement that gets this far is a structure that is far
+    too weak -- the user must see η ≫ 1, not be told the model is unstable.
+    It is returned as a warning. Only a displacement of more than a hundred
+    times the structure's size is still refused as numerical nonsense.
+
+    Returns a list of warnings (Danish text).
     """
     for nid, d in node_disps.items():
         if not all(math.isfinite(v) for v in d):
@@ -362,19 +445,29 @@ def check_results(nodes, node_disps, ele_forces, ref_size):
                 f'Beregningen gav en ugyldig snitkraft i element {eid}. '
                 f'Stivhedsmatricen er singulær — modellen er underfastholdt.')
 
-    limit = max(ref_size, 1.0) / 10.0
+    size = max(ref_size, 1.0)
     worst_nid, worst = None, 0.0
     for nid, d in node_disps.items():
         u = math.hypot(d[0], d[1])
         if u > worst:
             worst_nid, worst = nid, u
-    if worst > limit:
-        mm = f'{worst * 1e3:,.0f}'.replace(',', '.')   # Danish thousands separator
+    mm = f'{worst * 1e3:,.0f}'.replace(',', '.')   # Danish thousands separator
+    if worst > 100.0 * size:
         raise ModelError(
             f'Beregningen gav en flytning på {mm} mm i knude {worst_nid} '
-            f'({worst / max(ref_size, 1e-9):.1f} gange konstruktionens udstrækning). '
+            f'({worst / max(ref_size, 1e-9):.0f} gange konstruktionens udstrækning). '
             f'Det er ikke en flytning — det er en næsten singulær stivhedsmatrix. '
             f'Kontrollér understøtninger, elementforbindelser og tværsnitsdata.')
+    if worst > size / 10.0:
+        gange = f'{worst / max(ref_size, 1e-9):.2f}'.replace('.', ',')
+        return [
+            f'Meget stor flytning: {mm} mm i knude {worst_nid} '
+            f'({gange} gange konstruktionens udstrækning). '
+            f'Beregningen er lineær og gælder kun for små flytninger — '
+            f'tværsnittene er sandsynligvis alt for små, eller der mangler '
+            f'afstivning. Kontrollér tværsnit, understøtninger og charnierer.'
+        ]
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -773,7 +866,7 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
     return _loes(nodes, elements, supports, loads, equal_dofs)
 
 
-def solve_opensees(nodes, elements, supports, loads, equal_dofs=None):
+def _solve_opensees_raw(nodes, elements, supports, loads, equal_dofs=None):
     """
     Build and solve a 2D linear elastic frame/truss model.
 
@@ -888,6 +981,21 @@ def solve_opensees(nodes, elements, supports, loads, equal_dofs=None):
                          float(ld.get('Fy_kN',  0.0)),
                          float(ld.get('Mz_kNm', 0.0)))
             elif ld['type'] == 'udl':
+                # OpenSees' eleLoad -beamUniform kan kun laegge en konstant last
+                # over HELE stangen. En dellast eller en varierende last kan den
+                # ikke faa at vide om, og det er den tavse slags: lasten ville
+                # blive lagt ud over hele laengden med startvaerdien, og
+                # resultatet ville komme ud groent og forkert. Derfor siger den
+                # fra her i stedet. fem_direkte og fem_pynite kan begge dele.
+                _slut = ld.get('value_end_kNm')
+                _varierer = (_slut is not None
+                             and abs(float(_slut) - float(ld.get('value_kNm', 0.0))) > 1e-12)
+                if ld.get('x1') is not None or ld.get('x2') is not None or _varierer:
+                    raise ModelError(
+                        f'Lasten paa element {ld["elem_id"]} daekker kun en del af '
+                        f'stangen eller varierer langs den. Den loeser kan '
+                        f'OMKREDS_FEM_LOESER=opensees ikke regne — vaelg '
+                        f"'direkte' (standard) eller 'pynite'.")
                 direction = ld.get('direction')
                 if direction is not None:
                     # New-style load: project from global direction to local element axes
@@ -1159,6 +1267,13 @@ def _indhyl(elements, resultater):
     return envelope, timber_envelope
 
 
+def solve_opensees(nodes, elements, supports, loads, equal_dofs=None):
+    """Som _solve_opensees_raw, med rotationen fastholdt i rene gitterknuder."""
+    validate_model(nodes, elements, supports, loads, equal_dofs)
+    sup, auto = fasthold_frie_rotationer(nodes, elements, supports, equal_dofs)
+    return _uden_auto_reaktioner(_solve_opensees_raw(nodes, elements, sup, loads, equal_dofs), auto)
+
+
 def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
                        make_figs=False, ref_size=1.0, diagram_scale=1.0):
     """
@@ -1193,6 +1308,17 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
     for combo in combinations:
         resolved = []
         for ld in combo.get('loads', []):
+            # Laster i modellens eget format (type = 'udl' / 'nodal') gaar
+            # uaendret til solve(), der selv haandterer retning, x1/x2 og
+            # value_end_kNm. Foer blev de ogsaa sendt gennem _project_load,
+            # der kun kender én fuld, konstant intensitet: med lasttilfaelde
+            # blev en dellast og en trapezlast regnet som konstant over hele
+            # stangen med startvaerdien.
+            if ld.get('type') in ('udl', 'nodal'):
+                if ld['type'] == 'udl' and not any(e['id'] == ld.get('elem_id') for e in elements):
+                    continue
+                resolved.append(ld)
+                continue
             proj = _project_load(ld, elements, dict_nodes)
             if proj is not None:
                 resolved.append(proj)
@@ -1208,6 +1334,7 @@ def solve_combinations(nodes, elements, supports, combinations, equal_dofs=None,
             'ele_extremes':       result.get('ele_extremes', {}),
             'ele_udl':            result.get('ele_udl', {}),
             'ele_segs':           result.get('ele_segs', {}),
+            'advarsler':          result.get('advarsler', []),
         }
         if make_figs:
             entry['figs'] = make_figures(
@@ -1265,7 +1392,9 @@ def udl_arrow_direction(ld, ca, sa):
 
     if is_combo:
         mag = 1.0          # magnitude unknown until the combination is run
-    elif direction in ('vertical', 'projected', 'horizontal'):
+    elif direction in ('vertical', 'projected', 'horizontal', 'perpendicular'):
+        # 'perpendicular' stod ikke med: den blev laest som wy (= 0) og aldrig
+        # tegnet i rapportens modelfigur.
         mag = float(ld.get('value_kNm', 0) or 0)
     else:
         mag = float(ld.get('wy_kNm', 0) or 0)
@@ -1344,7 +1473,7 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
         ax.plot([xi, xj], [yi, yj], color=col, lw=lw, ls=ls,
                 solid_capstyle='round', zorder=3)
 
-        key = el.get('member_id', ('e', el['id']))
+        key = el['member_id'] if el.get('member_id') is not None else ('e', el['id'])
         entry = member_labels.setdefault(key, {'ids': [], 'mids': []})
         entry['ids'].append(el['id'])
         entry['mids'].append(((xi+xj)/2, (yi+yj)/2, -sa, ca))
@@ -1451,8 +1580,11 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
 
     # ── Applied loads ──────────────────────────────────────────────────────────
     udl_by_elem = {}
+    punkter = []
     for ld in loads:
-        if ld.get('type') in ('udl', 'combo_udl'):
+        if ld.get('punkt_kN') is not None:
+            punkter.append(ld)
+        elif ld.get('type') in ('udl', 'combo_udl'):
             udl_by_elem[ld.get('elem_id')] = ld
 
     arr = sz * 1.5   # arrow length
@@ -1489,7 +1621,7 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
 
         lbl = 'w_Ed [komb.]' if is_combo else \
               f'{abs(mag):.2f}'.rstrip('0').rstrip('.').replace('.', ',') + ' kN/m'
-        key = (el.get('member_id', ('e', eid)), lbl, round(ax_, 3), round(ay_, 3))
+        key = (el['member_id'] if el.get('member_id') is not None else ('e', eid), lbl, round(ax_, 3), round(ay_, 3))
         label_groups.setdefault(key, []).append(((xi+xj)/2, (yi+yj)/2))
 
     # One label per member. A span split into four elements carries the same
@@ -1518,6 +1650,25 @@ def plot_model(title, nodes, elements, supports, loads, ref_size):
                 f'{F:.1f} kN', fontsize=7.5, color=C_LOAD,
                 ha='center', va='center',
                 bbox=dict(fc='white', ec='none', pad=1), zorder=9)
+
+    # Punktlaster paa stangene: én pil, hvor de sidder.
+    for ld in punkter:
+        el = next((e for e in elements if e['id'] == ld.get('elem_id')), None)
+        if not el: continue
+        xi, yi, xj, yj, L, ca, sa = elem_geom(el)
+        P = float(ld['punkt_kN'])
+        act = udl_arrow_direction({**ld, 'value_kNm': P}, ca, sa)
+        if act is None or L <= 0: continue
+        t = min(max(float(ld.get('punkt_x') or 0.0) / L, 0.0), 1.0)
+        px, py = xi + t * (xj - xi), yi + t * (yj - yi)
+        ax_, ay_ = act
+        ax.annotate('', xy=(px, py), xytext=(px - ax_ * arr * 1.6, py - ay_ * arr * 1.6),
+                    arrowprops=dict(arrowstyle='->', color=C_LOAD, lw=1.8, mutation_scale=13), zorder=8)
+        # Etiketten ved siden af pilens hale, saa den ikke ligger oven i en
+        # linjelasts etiket, der staar midt over stangen.
+        ax.text(px - ax_ * arr * 1.6 + abs(ay_) * arr * 0.25, py - ay_ * arr * 1.6 + abs(ax_) * arr * 0.25,
+                f'{abs(P):.1f} kN'.replace('.', ','), fontsize=7.5, color=C_LOAD,
+                ha='left', va='center', bbox=dict(fc='white', ec='none', pad=1), zorder=9)
 
     # ── Styling ───────────────────────────────────────────────────────────────
     # Samme afslutning som snitkraftkurverne. Den statiske model er figur 1 i
@@ -1734,6 +1885,109 @@ def summarise(nodes, elements, node_disps, node_reactions, ele_forces, supports,
         'ele_force_table': ele_force_table,
         'loads_table':     loads_table,
     }
+
+
+
+_RETNING_TEKST = {
+    'vertical':      'lodret',
+    'projected':     'lodret, pr. vandret m',
+    'horizontal':    'vandret',
+    'perpendicular': 'vinkelret på stangen',
+}
+
+
+def _tal(v, d=2):
+    return f"{float(v):.{d}f}".replace('.', ',')
+
+
+def lasttabel(loads, elements, load_cases=None):
+    """
+    De paasatte laster, som de staar paa modellen, til rapportens tabel.
+
+    Tabellen laeste foer kun wy/wx, men laster fra tegningen har en retning og
+    en vaerdi -- saa stod alle linjelaster som 0,00 i rapporten. En last, der
+    er delt ud paa en stangs elementer, samles igen til én linje pr. stang,
+    naar den er ens paa dem alle.
+    """
+    navn = {int(t['nr']): (t.get('navn') or f"LT{t['nr']}")
+            for t in (load_cases or []) if t.get('nr') is not None}
+    el_by_id = {e['id']: e for e in elements}
+
+    def tilfaelde(ld):
+        lc = ld.get('lc')
+        if lc is None:
+            return '—'
+        return navn.get(int(lc), f"LT{lc}")
+
+    rows = []
+    grupper = {}   # (member, lc, retning, vaerdi) -> row, for fulde konstante laster
+    for ld in loads:
+        t = ld.get('type')
+        if t == 'nodal':
+            dele = []
+            for k, enh, lbl in (('Fx_kN', 'kN', 'F_x'), ('Fy_kN', 'kN', 'F_y'),
+                                ('Mz_kNm', 'kNm', 'M')):
+                v = float(ld.get(k) or 0.0)
+                if abs(v) > 1e-12:
+                    dele.append(f"{lbl} = {_tal(v)} {enh}")
+            rows.append({'type': 'Knudelast', 'target': f"Knude {ld.get('node_id')}",
+                         'lasttilfaelde': tilfaelde(ld), 'retning': '—',
+                         'vaerdi': ', '.join(dele) or '0'})
+            continue
+        if t not in ('udl', 'combo_udl'):
+            continue
+        eid = ld.get('elem_id')
+        el = el_by_id.get(eid, {})
+        if ld.get('direction') is not None:
+            retning = _RETNING_TEKST.get(ld['direction'], ld['direction'])
+            w1 = float(ld.get('value_kNm') or 0.0)
+            w2 = ld.get('value_end_kNm')
+        else:
+            # Gammel form: lokale komposanter.
+            wy, wx = float(ld.get('wy_kNm') or 0.0), float(ld.get('wx_kNm') or 0.0)
+            retning = 'lokal y' if abs(wx) < 1e-12 else 'lokal y / x'
+            w1, w2 = wy, None
+            if abs(wx) > 1e-12:
+                rows.append({'type': 'Linjelast', 'target': f"Element {eid}",
+                             'lasttilfaelde': tilfaelde(ld), 'retning': retning,
+                             'vaerdi': f"w_y = {_tal(wy)}, w_x = {_tal(wx)} kN/m"})
+                continue
+        if ld.get('punkt_kN') is not None:
+            rows.append({'type': 'Punktlast',
+                         'target': f"Element {eid}" + (f" (stang {el.get('member_id')})" if el.get('member_id') is not None else ''),
+                         'lasttilfaelde': tilfaelde(ld), 'retning': retning,
+                         'vaerdi': f"P = {_tal(ld['punkt_kN'])} kN, x = {_tal(ld.get('punkt_x') or 0)} m"})
+            continue
+        delvis = ld.get('x1') is not None or ld.get('x2') is not None
+        if w2 is not None and abs(float(w2) - w1) > 1e-9:
+            vaerdi = f"{_tal(w1)} → {_tal(w2)} kN/m"
+        else:
+            vaerdi = f"{_tal(w1)} kN/m"
+        if delvis:
+            x1 = float(ld.get('x1') or 0.0)
+            x2 = ld.get('x2')
+            vaerdi += f", x = {_tal(x1)}–{_tal(x2) if x2 is not None else 'ende'} m"
+        mid = el.get('member_id')
+        if ld.get('egenvaegt'):
+            retning = 'lodret (egenvægt)'
+        if mid is not None and not delvis and '→' not in vaerdi:
+            key = (mid, ld.get('lc'), retning, vaerdi)
+            if key in grupper:
+                grupper[key]['_elementer'].append(eid)
+                continue
+            row = {'type': 'Linjelast', 'target': f"Stang {mid}",
+                   'lasttilfaelde': tilfaelde(ld), 'retning': retning,
+                   'vaerdi': vaerdi, '_elementer': [eid]}
+            grupper[key] = row
+            rows.append(row)
+            continue
+        rows.append({'type': 'Linjelast',
+                     'target': f"Element {eid}" + (f" (stang {mid})" if mid is not None else ''),
+                     'lasttilfaelde': tilfaelde(ld), 'retning': retning,
+                     'vaerdi': vaerdi})
+    for r in rows:
+        r.pop('_elementer', None)
+    return rows
 
 
 def nedboejning_langs_stang(el, pl, segs, dict_nodes, node_disps):

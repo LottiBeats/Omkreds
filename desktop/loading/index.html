@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <title>Omkreds FEM</title>
+  <style>
+    html, body { height: 100%; margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: #f6f6f4; color: #1f2937; }
+    body { display: grid; place-content: center; text-align: center; gap: 12px; }
+    h1 { font-size: 22px; margin: 0; }
+    #status { font-size: 13px; color: #6b7280; }
+    .bar { width: 220px; height: 3px; background: #e5e7eb; border-radius: 2px; overflow: hidden; margin: 6px auto 0; }
+    .bar::after { content: ""; display: block; width: 40%; height: 100%; background: #c2410c; animation: glid 1.2s ease-in-out infinite; }
+    @keyframes glid { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+  </style>
+</head>
+<body>
+  <h1>Omkreds FEM</h1>
+  <div id="status">Starter beregningsdelen…</div>
+  <div class="bar"></div>
+</body>
+</html>

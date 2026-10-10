@@ -1,0 +1,64 @@
+name: Tests
+
+# Kører alle tests på hver pull request og på master. (Ikke også på hver push
+# til en arbejdsgren: med en pull request åben kørte alt to gange.)
+#
+# Før kørte kun Windows-buildet automatisk. To løser-tests kunne være røde på
+# master, og skabelonen "Generel ramme — 2D FEM" kunne ikke regnes, uden at
+# noget sagde det. Grønt her er ikke en garanti, men rødt er altid en grund
+# til ikke at merge.
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04          # samme Ubuntu som serveren
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'   # Ubuntu 24.04's python3, som serverens venv bruger
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Frontend — installér
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend — tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Frontend — kontroller (klasser, projekttyper, skabeloner, blokvariabler)
+        working-directory: frontend
+        run: npm run check
+
+      - name: Frontend — byg (web og skrivebordsprogram)
+        working-directory: frontend
+        run: |
+          npm run build
+          OMKREDS_DESKTOP=1 npx vite build --outDir dist-desktop
+
+      - name: Backend — installér
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Backend — tests
+        working-directory: backend
+        run: python -m pytest -q -p no:cacheprovider

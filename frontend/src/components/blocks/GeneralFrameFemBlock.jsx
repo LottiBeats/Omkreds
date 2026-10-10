@@ -11,8 +11,8 @@
  *   - 3 matplotlib figures: deformed shape, bending moment, shear
  *   - Summary: max displacements, max moment, reactions
  */
-import React, { useEffect, useState } from 'react'
-import { expandLoads } from '../fem/femLoads.js'
+import React, { useEffect, useRef, useState } from 'react'
+import { expandLoads, loadSpan } from '../fem/femLoads.js'
 import { calcGeneralFrameFem, previewGeneralFrameFem,
          redrawGeneralFrameFemDiagrams,
          overlayGeneralFrameFemDiagrams,
@@ -26,7 +26,7 @@ import NumericInput from './NumericInput.jsx'
 import ModelSketch from './ModelSketch.jsx'
 import FemWorkspace from '../fem/FemWorkspace.jsx'
 import { createPortal } from 'react-dom'
-import { isStaleResult } from '../../lib/calcState.js'
+import { isStaleResult, hashCalcInputs } from '../../lib/calcState.js'
 
 /**
  * Handlingskategorierne. Kategorien bærer ψ og lastvarigheden — derfor står
@@ -167,7 +167,21 @@ function isAxialOnly(member) {
  * block calls — so the number on the row and the number in the report cannot
  * come from two different calculations.
  */
-async function beamCheck(member, actions, settings) {
+/**
+ * Brugerens egen knæklængde for et led, som i FEM-Design og RFEM:
+ * { mode: 'auto' | 'beta' | 'length', value }. 'beta' er β·L (L = leddets
+ * længde), 'length' er en fast længde i m. Uden en gyldig værdi gælder den
+ * automatiske.
+ */
+export function knaekLaengde(spec, L, auto) {
+  if (!spec || !spec.mode || spec.mode === 'auto') return auto
+  const v = Number(String(spec.value ?? '').replace(',', '.'))
+  if (!(v > 0)) return auto
+  return spec.mode === 'beta' ? v * L : v
+}
+const harEgen = (spec) => !!spec && spec.mode && spec.mode !== 'auto' && Number(String(spec.value ?? '').replace(',', '.')) > 0
+
+async function beamCheck(member, actions, settings, ltb = {}) {
   const first = member.els[0] ?? {}
   const common = {
     label:   `M${member.id}`,
@@ -175,6 +189,13 @@ async function beamCheck(member, actions, settings) {
     M_Ed_kNm_direct: actions.M_max_kNm ?? 0,
     V_Ed_kN_direct:  actions.V_max_kN  ?? 0,
   }
+  // Kipning følger leddets afstivning ud af planen, som søjleeftervisningen
+  // gør. Før blev stålbjælken eftervist helt uden kipning og træbjælken med
+  // fastholdt trykrand, uanset hvad der var valgt: en 8 m uafstivet IPE300
+  // med M = 200 kNm gav η = 0,99 i stedet for ca. 3.
+  const bracing = ltb.bracing ?? defaultBracing(first.material)
+  const egenLT = harEgen(ltb.lt)
+  const L_LT = knaekLaengde(ltb.lt, member.L, bracing === 'nodes' ? (ltb.maxElem ?? member.L) : member.L)
   if (first.material === 'timber') {
     const dims = timberDims(first.section)
     if (!dims) return { skipped: 'tværsnit kan ikke læses' }
@@ -183,11 +204,18 @@ async function beamCheck(member, actions, settings) {
       timber_grade:  first.grade ?? 'C24',
       service_class: settings.service_class,
       load_duration: actions.M_duration ?? settings.load_duration,
+      compression_edge_restrained: bracing === 'continuous' && !egenLT,
+      l_ef_m: bracing === 'continuous' && !egenLT ? null : Number(L_LT.toFixed(3)),
     })
-    return { eta: maxUtilization(blocks) }
+    // Beregningen gemmes med, så den kan vises, når leddet vælges i
+    // modelvinduet (som "detaljerede resultater" i FEM-Design).
+    return { eta: maxUtilization(blocks), blocksBeam: blocks }
   }
-  const blocks = await calcSteelBeam({ ...common, section: first.section, grade: first.grade ?? 'S355' })
-  return { eta: maxUtilization(blocks) }
+  const blocks = await calcSteelBeam({
+    ...common, section: first.section, grade: first.grade ?? 'S355',
+    ltb_restrained: false, ltb_length_m: Number(L_LT.toFixed(3)),
+  })
+  return { eta: maxUtilization(blocks), blocksBeam: blocks }
 }
 
 function timberDims(section) {
@@ -247,7 +275,11 @@ async function checkMember(member, actions, settings, ctx = {}) {
   const axial = isAxialOnly(member)
   if (axial && !ctx.states?.length) return { skipped: 'aksialt led — eftervises særskilt', axial: true }
 
-  const beam = axial ? { eta: 0 } : await beamCheck(member, actions, settings)
+  const bracingLtb = ctx.bracing ?? defaultBracing(first.material)
+  const maxElemLtb = ctx.lengthOf ? Math.max(...member.els.map(e => ctx.lengthOf(e))) : member.L
+  const kn = ctx.knaek ?? {}
+  const beam = axial ? { eta: 0 } : await beamCheck(member, actions, settings,
+    { bracing: bracingLtb, maxElem: maxElemLtb, lt: kn.lt })
   if (beam.skipped || !ctx.states?.length) return beam
 
   const per = forcesPerCombination(member, ctx.states, ctx.lengthOf)
@@ -277,12 +309,17 @@ async function checkMember(member, actions, settings, ctx = {}) {
   // Buckling lengths: in plane from the analysis, out of plane from the restraint.
   const bl = ctx.bucklingLengths ?? {}
   const sway = ctx.sway
-  const Lcr = Math.max(0, ...member.els.map(e => {
+  const LcrAuto = Math.max(0, ...member.els.map(e => {
     const r = bl[String(e.id)] ?? bl[e.id]
     return r ? (sway ? r.L_cr_sw_m : r.L_cr_ns_m) ?? 0 : 0
   })) || member.L
   const maxElem = Math.max(...member.els.map(e => ctx.lengthOf(e)))
   const bracing = ctx.bracing ?? defaultBracing(first.material)
+  // Brugerens knæklængder går forud for analysens og afstivningens.
+  const Lcr = knaekLaengde(kn.y, member.L, LcrAuto)
+  const egenZ = harEgen(kn.z)
+  const Lz = knaekLaengde(kn.z, member.L, bracing === 'nodes' ? maxElem : member.L)
+  const Llt = knaekLaengde(kn.lt, member.L, bracing === 'nodes' ? maxElem : member.L)
 
   let best = null
   for (const p of picks) {
@@ -290,30 +327,33 @@ async function checkMember(member, actions, settings, ctx = {}) {
     if (timber) {
       const dims = timberDims(first.section)
       if (!dims) return beam
-      const Lout = bracing === 'nodes' ? maxElem : member.L
+      // Om den stærke akse (i planen) med L_cr, om den svage med afstivningens
+      // eller brugerens længde. Før blev den største af dem brugt om begge.
+      const fastholdt = bracing === 'continuous' && !egenZ
+      const ltbFast = bracing === 'continuous' && !harEgen(kn.lt)
       blocks = await calcTimberColumn({
         label: `M${member.id}`,
-        length_m: Number((bracing === 'continuous' ? Lcr : Math.max(Lcr, Lout)).toFixed(3)),
+        length_m: Number(Lcr.toFixed(3)),
+        length_z_m: fastholdt ? null : Number(Lz.toFixed(3)),
         N_Ed_kN: Number(p.Nc.toFixed(3)), M_Ed_kNm: Number(p.M.toFixed(3)),
         b_mm: dims.b, h_mm: dims.h,
         timber_grade: first.grade ?? 'C24',
         service_class: settings.service_class,
         load_duration: p.duration ?? settings.load_duration,
-        weak_axis_restrained: bracing === 'continuous',
-        l_ef_ltb_m: bracing === 'continuous' ? null : Number(Lout.toFixed(3)),
+        weak_axis_restrained: fastholdt,
+        l_ef_ltb_m: ltbFast ? null : Number(Llt.toFixed(3)),
       })
     } else {
-      const Lz = bracing === 'nodes' ? maxElem : member.L
       blocks = await calcSteelColumn({
         label: `M${member.id}`, section: first.section, grade: first.grade ?? 'S355',
         length_m: Number(member.L.toFixed(3)),
         N_Ed_kN: Number(p.Nc.toFixed(3)), M_y_Ed_kNm: Number(p.M.toFixed(3)),
         k_y: Number((Lcr / member.L).toFixed(4)), k_z: Number((Lz / member.L).toFixed(4)),
-        ltb_restrained: false, L_LTB_m: Number(Lz.toFixed(3)),
+        ltb_restrained: false, L_LTB_m: Number(Llt.toFixed(3)),
       })
     }
     const eta = maxUtilization(blocks)
-    if (eta != null && (!best || eta > best.eta)) best = { eta, combo: p.name, N: p.Nc, M: p.M, duration: p.duration }
+    if (eta != null && (!best || eta > best.eta)) best = { eta, combo: p.name, N: p.Nc, M: p.M, duration: p.duration, blocks }
   }
   if (!best) return { ...beam, mode: 'beam' }
   return {
@@ -321,8 +361,9 @@ async function checkMember(member, actions, settings, ctx = {}) {
     mode: 'column',
     etaBeam: axial ? null : beam.eta, etaColumn: best.eta, axial,
     combo: best.combo, N_Ed_kN: best.N, M_Ed_kNm: best.M, duration: best.duration,
-    L_cr_m: Number(Lcr.toFixed(3)), bracing,
+    L_cr_m: Number(Lcr.toFixed(3)), L_cr_z_m: Number(Lz.toFixed(3)), L_LT_m: Number(Llt.toFixed(3)), bracing,
     tension: NtMax >= AXIAL_NOTE_KN ? NtMax : null,
+    blocksBeam: axial ? null : beam.blocksBeam, blocksColumn: best.blocks,
   }
 }
 
@@ -1346,6 +1387,11 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
       {open && (
         <div style={s.resultBody}>
 
+          {(summary.advarsler ?? []).map((a, i) => (
+            <div key={i} style={{ padding: '6px 10px', marginBottom: 8, background: '#fffbeb', color: '#92400e',
+                                  border: '1px solid #fde68a', borderRadius: 4, fontSize: 12 }}>⚠ {a}</div>
+          ))}
+
           {/* Tab bar */}
           <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
             {TABS.map(t => (
@@ -1714,17 +1760,24 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
 
           {/* ── Loads ── */}
           {tab === 'Laster' && (
-            <Tbl
-              headers={['Type', 'Target', 'Fx (kN)', 'Fy (kN)', 'Mz (kNm)', 'wy (kN/m)', 'wx (kN/m)']}
-              rows={(summary.loads_table ?? []).map(l => [
-                l.type, l.target,
-                l.Fx_kN  != null ? l.Fx_kN.toFixed(2)  : '—',
-                l.Fy_kN  != null ? l.Fy_kN.toFixed(2)  : '—',
-                l.Mz_kNm != null ? l.Mz_kNm.toFixed(2) : '—',
-                l.wy_kNm != null ? l.wy_kNm.toFixed(2) : '—',
-                l.wx_kNm != null ? l.wx_kNm.toFixed(2) : '—',
-              ])}
-            />
+            (summary.loads_table ?? [])[0]?.vaerdi != null ? (
+              <Tbl
+                headers={['Type', 'Hvor', 'Lasttilfælde', 'Retning', 'Størrelse']}
+                rows={summary.loads_table.map(l => [l.type, l.target, l.lasttilfaelde, l.retning, l.vaerdi])}
+              />
+            ) : (
+              <Tbl
+                headers={['Type', 'Target', 'Fx (kN)', 'Fy (kN)', 'Mz (kNm)', 'wy (kN/m)', 'wx (kN/m)']}
+                rows={(summary.loads_table ?? []).map(l => [
+                  l.type, l.target,
+                  l.Fx_kN  != null ? l.Fx_kN.toFixed(2)  : '—',
+                  l.Fy_kN  != null ? l.Fy_kN.toFixed(2)  : '—',
+                  l.Mz_kNm != null ? l.Mz_kNm.toFixed(2) : '—',
+                  l.wy_kNm != null ? l.wy_kNm.toFixed(2) : '—',
+                  l.wx_kNm != null ? l.wx_kNm.toFixed(2) : '—',
+                ])}
+              />
+            )
           )}
 
           {/* ── Reactions ── */}
@@ -1745,7 +1798,7 @@ function ResultPanel({ figs, summary, onAddBlock, onAddBlocks, blockId, title,
 
 // ── Main block ────────────────────────────────────────────────────────────────
 
-export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onAddBlock, onAddBlocks }) {
+export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onAddBlock, onAddBlocks, standalone = null }) {
   const d = block.data
   const [running, setRunning] = useState(false)
   const [error,   setError]   = useState(null)
@@ -1820,6 +1873,16 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
   function update(changes) {
     onChange({ ...block, data: { ...d, ...changes } })
+  }
+
+  // Et resultat kommer ind flere sekunder efter, der blev trykket Regn. Det
+  // skal flettes ind i blokken, som den ser ud NU — ellers slettes alt, der
+  // blev rettet imens (en knude tilføjet under kørslen forsvandt igen).
+  const seneste = useRef(block)
+  seneste.current = block
+  function opdaterSeneste(changes) {
+    const b = seneste.current
+    onChange({ ...b, data: { ...b.data, ...changes } })
   }
 
   async function handlePreview() {
@@ -1945,7 +2008,8 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
   // ikke en ny tabel, hver gang der tastes et tal.
   const kombiNoegle = JSON.stringify([
     loads.map(l => [l.virkning ?? '', l.variant ?? '', l.lc ?? '']),
-    tilfaelde.map(t => [t.nr, t.navn, t.kategori, t.gruppe ?? '']),
+    tilfaelde.map(t => [t.nr, t.navn, t.kategori, t.gruppe ?? '', t.nyttelastkategori ?? '']),
+    d.egne_kombinationer ?? [], !!d.kun_egne,
     d.consequence_class ?? 'CC2',
     d.method ?? '6.10ab',
     d.gunstig_egenlast !== false,
@@ -1964,6 +2028,8 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           consequence_class: d.consequence_class ?? 'CC2',
           gunstig_egenlast:  d.gunstig_egenlast !== false,
           kmod_varianter:    harTrae,
+          egne_kombinationer: d.egne_kombinationer ?? [],
+          kun_egne:          !!d.kun_egne,
         })
         if (!afbrudt) { setKombiTabel(r.kombinationer ?? []); setKombiFejl(null) }
       } catch (e) {
@@ -1998,7 +2064,26 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
 
   async function handleRun() {
     setRunning(true); setError(null)
+    // Hashen af de inddata, der regnes på. Resultatet stemples med den (og
+    // ikke med blokkens inddata, når svaret kommer), så en ændring under
+    // kørslen markerer resultatet som forældet i stedet for at skjule det.
+    const koertHash = hashCalcInputs(d)
     try {
+      // En dellast med Fra >= Til blev stille til ingenting, når den blev delt
+      // ud på stangens elementer, og en Til ud over stangen blev klippet af.
+      const dk = (v) => Number(v).toFixed(2).replace('.', ',')
+      const fejl = []
+      for (const ld of loads) {
+        if (ld.type !== 'udl' || (ld.x1 == null && (ld.x2 == null || ld.x2 === ''))) continue
+        const L = loadSpan(ld, elements, nodes)
+        if (!(L > 0)) continue
+        const f = Number(ld.x1 ?? 0), t = ld.x2 != null && ld.x2 !== '' ? Number(ld.x2) : L
+        const hvor = (ld.target ?? 'elem') === 'member' ? `stang ${ld.member_id}` : `element ${ld.elem_id}`
+        if (f < -1e-6 || t > L + 1e-6) fejl.push(`Linjelasten på ${hvor} går fra x = ${dk(f)} til ${dk(t)} m, men ${hvor} er ${dk(L)} m lang.`)
+        else if (t - f <= 1e-9) fejl.push(`Linjelasten på ${hvor} går fra x = ${dk(f)} til ${dk(t)} m. "Fra" skal være mindre end "Til".`)
+      }
+      if (fejl.length) throw new Error('Modellen kan ikke regnes:\n· ' + fejl.join('\n· '))
+
       let resolvedLoads = []
       let combinations  = []
       // Erklæret HER og ikke inde i else-grenen. Den bruges i kaldet nedenfor,
@@ -2035,6 +2120,8 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
             const w  = cb?.data?._exports?.E_d_uls ?? 0
             return [{ type: 'udl', elem_id: ld.elem_id ?? 1, wy_kNm: w, wx_kNm: 0 }]
           }
+          // Punktlast på en stang → et smalt afsnit på elementet under den.
+          if (ld.type === 'point') return expandLoads([ld], elements, nodes)
           if (ld.type === 'udl' && ld.target === 'member' && ld.member_id != null) {
             // Member load → the elements under it. Fra/til are measured
             // along the whole member, so a load on the first e/10 of a rafter
@@ -2090,9 +2177,13 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         equal_dofs:   equalDofs,
         diagram_scale: d.diagram_scale ?? 1,
         consequence_class: d.consequence_class ?? 'CC2',
+        method:       d.method ?? '6.10ab',
         // Fravalgte kombinationer sendes med ved navn. De står i dokumentet,
         // så en eftervisning, hvor en kombination er udeladt, siger det selv.
         combo_fravalg: fravalg,
+        egne_kombinationer: d.egne_kombinationer ?? [],
+        kun_egne:      !!d.kun_egne,
+        egenvaegt:     d.egenvaegt ?? null,
         // Egenlasten som gunstig. Slået til, hvis feltet aldrig er rørt —
         // derfor !== false og ikke ?? true: et gammelt dokument uden feltet
         // skal have de gunstige kombinationer med, ikke undvære dem.
@@ -2234,13 +2325,13 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           checks[m.id] = await checkMember(m, memberActions[m.id] ?? {}, {
             service_class: d.service_class ?? 1,
             load_duration: d.load_duration ?? 'medium',
-          }, { ...ctxBase, bracing: (d.member_bracing ?? {})[m.id] })
+          }, { ...ctxBase, bracing: (d.member_bracing ?? {})[m.id], knaek: (d.member_knaek ?? {})[m.id] })
         } catch (err) {
           checks[m.id] = { error: err.message }
         }
       }))
 
-      update({
+      opdaterSeneste({
         _figs_b64:        res._figs_b64,
         _summary:         res._summary,
         _result:          res._result,
@@ -2248,12 +2339,13 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         _member_checks:   checks,
         _alpha_cr:        res._summary?.alpha_cr ?? null,
         _buckling_lengths:res._summary?.buckling_lengths   ?? {},
+        _run_hash:        koertHash,
       })
     } catch (err) {
       setError(err.message)
       // Drop the previous run's results. Leaving them on screen next to an
       // error message is how a rejected model ends up quoted in a report.
-      update({
+      opdaterSeneste({
         _figs_b64: null, _summary: null, _result: null,
         _exports: null, _member_checks: null,
         _alpha_cr: null, _buckling_lengths: {},
@@ -2261,6 +2353,29 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
     } finally {
       setRunning(false)
     }
+  }
+
+  // Det selvstændige program (femapp.jsx) viser kun modelvinduet, fyldt ud
+  // over hele skærmen, med programmets egne knapper (Ny, Åbn, Gem, PDF) i
+  // stedet for "Tilbage til dokumentet".
+  if (standalone) {
+    return (
+      <FemWorkspace
+        title={d.title ?? 'Rammeberegning'}
+        data={d}
+        onModelChange={(model) => update(model)}
+        onRun={handleRun}
+        running={running}
+        error={error}
+        stale={isStaleResult(block)}
+        hasResult={!!(d._result || d._summary)}
+        memberChecks={memberChecks}
+        reactions={d._summary?.reactions}
+        summary={d._summary}
+        kombinationer={{ tabel: kombiTabel, fejl: kombiFejl, fravalg, toggle: toggleKombi }}
+        actions={standalone.actions}
+      />
+    )
   }
 
   return (
@@ -2294,6 +2409,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
           memberChecks={memberChecks}
           reactions={d._summary?.reactions}
           summary={d._summary}
+          kombinationer={{ tabel: kombiTabel, fejl: kombiFejl, fravalg, toggle: toggleKombi }}
         />,
         document.body)}
 

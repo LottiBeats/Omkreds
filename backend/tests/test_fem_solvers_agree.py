@@ -3,9 +3,10 @@ test_fem_solvers_agree.py — loeserne skal svare det samme.
 
 Der er tre af dem nu:
 
-    opensees   general_frame_fem.solve  -- den, produktionen bruger
+    direkte    fem_direkte.solve        -- den, produktionen bruger
     pynite     fem_pynite.solve         -- ren Python, 3D bag en oversaettelse
-    direkte    fem_direkte.solve        -- stivhedsmatricerne regnet her
+    opensees   general_frame_fem.solve_opensees -- kun naaelig gennem
+               OMKREDS_FEM_LOESER, og kan ikke en dellast
 
 De parametriserede tests i test_general_frame_fem.py holder hver loeser op mod
 en lukket form. Det fanger, om et svar er rigtigt, men ikke om loeserne er enige
@@ -38,6 +39,12 @@ _LOESERE['direkte'] = fem_direkte.solve
 
 _NAVNE = sorted(_LOESERE)
 _PAR = [(a, b) for i, a in enumerate(_NAVNE) for b in _NAVNE[i + 1:]]
+
+# Loeserne kan ikke det samme. OpenSees' eleLoad -beamUniform lagger en konstant
+# last over HELE stangen -- den kan ikke faa x1/x2 eller to intensiteter at vide.
+# Det staar her, fordi det er en egenskab ved loeseren og ikke ved den enkelte
+# test, og fordi den tilfaeldige sammenligning skal kunne spoerge om det.
+_KAN_DELLAST = {'pynite', 'direkte'}
 
 if not _PAR:
     _PAR = [pytest.param(
@@ -368,3 +375,43 @@ def test_alpha_cr_giver_samme_svar(par, monkeypatch):
 
     assert not afvig, ('%s og %s er uenige (%s / %s):\n  %s'
                        % (na, nb, na, nb, '\n  '.join(afvig)))
+
+
+@pytest.mark.skipif('opensees' not in _LOESERE,
+                    reason='openseespy kan ikke importeres i dette miljoe')
+def test_opensees_siger_fra_paa_en_dellast():
+    """
+    Den maa ikke regne videre paa en last, den ikke kan se hele.
+
+    Uden spaerren ville -beamUniform laegge dellasten ud over hele stangen med
+    startvaerdien: et svar, der er forkert, men ser ud som ethvert andet svar.
+    Det er den slags, ingen opdager, fordi der ikke er noget at opdage -- alle
+    tal er endelige og alle checks groenne.
+
+    OMKREDS_FEM_LOESER=opensees er den vej tilbage, der findes uden en ny
+    udrulning. Skal den kunne bruges en formiddag, hvor noget andet braender,
+    skal den sige hvad den ikke kan.
+    """
+    nodes = [{'id': 1, 'x': 0.0, 'y': 0.0}, {'id': 2, 'x': 5.0, 'y': 0.0}]
+    elements = [{'id': 1, 'ni': 1, 'nj': 2, 'type': 'beam', 'release': 'none',
+                 'E_GPa': 11.0, 'A_cm2': 65.3, 'Iz_cm4': 5160.0}]
+    supports = [{'node_id': 1, 'ux': True, 'uy': True, 'rz': False},
+                {'node_id': 2, 'ux': False, 'uy': True, 'rz': False}]
+    fuld = {'type': 'udl', 'elem_id': 1, 'direction': 'vertical',
+            'value_kNm': 4.0}
+
+    # Den fulde last er uaendret -- spaerren maa ikke ramme det almindelige
+    # tilfaelde.
+    gf.solve_opensees(nodes, elements, supports, [dict(fuld)])
+
+    for navn, ekstra in (('dellast',   {'x1': 1.0, 'x2': 3.0}),
+                         ('kun x2',    {'x2': 3.0}),
+                         ('trapezlast', {'value_end_kNm': 9.0})):
+        with pytest.raises(gf.ModelError) as ex:
+            gf.solve_opensees(nodes, elements, supports,
+                              [dict(fuld, **ekstra)])
+        assert 'opensees' in str(ex.value).lower(), navn
+
+    # En slutvaerdi, der er den samme som startvaerdien, ER en konstant last.
+    gf.solve_opensees(nodes, elements, supports,
+                      [dict(fuld, value_end_kNm=4.0)])

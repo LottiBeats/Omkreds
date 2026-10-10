@@ -23,12 +23,37 @@ import pytest
 import general_frame_fem as gf
 from general_frame_fem import ModelError
 
-from test_fem_solvers_agree import _LOESERE, _NAVNE, _afvig_i_resultat
+from test_fem_solvers_agree import (_LOESERE, _NAVNE, _KAN_DELLAST,
+                                    _afvig_i_resultat)
 
 _PAR = [(a, b) for i, a in enumerate(_NAVNE) for b in _NAVNE[i + 1:]]
 
 ANTAL_MODELLER = 150
 MINDST_SAMMENLIGNET = 40      # ellers siger testen ingenting
+
+
+def _uden_dellaster(loads):
+    """
+    De samme laster, men hver enkelt laid ud over hele stangen og konstant.
+
+    Bruges kun for de par, hvor den ene loeser ikke kan en dellast. Alternativet
+    var at springe modellen over, men saa ville OpenSees-parrene sammenligne
+    omkring ni af de 150 rammer: sandsynligheden for, at INGEN af en models
+    laster er en dellast eller en trapezlast, er lille. Geometrien,
+    understoetningerne, momentudloesningerne og gitterstaengerne er det, de par
+    er her for at proeve af, og de overlever at lasten goeres fuld.
+
+    Dellasterne selv bliver stadig sammenlignet -- af direkte mod pynite, som
+    begge kan dem.
+    """
+    ude = []
+    for ld in loads:
+        ld = dict(ld)
+        ld.pop('x1', None)
+        ld.pop('x2', None)
+        ld.pop('value_end_kNm', None)
+        ude.append(ld)
+    return ude
 
 
 def _tilfaeldig_ramme(rng):
@@ -153,8 +178,36 @@ def test_tilfaeldige_rammer(na, nb):
     sammenlignet = 0
     sprunget = 0
     afvist = 0
+    fuldgjort = 0
     for n in range(ANTAL_MODELLER):
         nodes, elements, supports, loads = _tilfaeldig_ramme(rng)
+
+        # Traekningen sker FOER lasterne eventuelt goeres fulde, saa alle par
+        # faar de samme 150 rammer ud af det samme froe. Goer man det omvendt,
+        # driver rng'en fra hinanden mellem parrene, og en uenighed i model 87
+        # peger paa hver sin model alt efter hvem der er med.
+        if not ({na, nb} <= _KAN_DELLAST):
+            fulde = _uden_dellaster(loads)
+            if fulde != loads:
+                fuldgjort += 1
+            loads = fulde
+
+        # Naesten-singulaere modeller sorteres fra af 'direkte', OGSAA naar
+        # den ikke er med i parret. Konditionsspaerren findes kun der, og uden
+        # den her ville opensees og pynite regne videre paa en mekanisme og
+        # vaere uenige om stoej: model 4 gav rz = -0,00336 mod 1,3e-18. Det
+        # siger intet om loeserne. Den er samtidig den rigtige maalestok, for
+        # 'direkte' er den, produktionen bruger -- en model, den afviser, kan
+        # ingen bruger komme igennem med.
+        if 'direkte' not in (na, nb):
+            try:
+                _LOESERE['direkte'](nodes, elements, supports, loads)
+            except ModelError:
+                sprunget += 1
+                continue
+            except Exception:
+                sprunget += 1
+                continue
 
         try:
             ra = a(nodes, elements, supports, loads)
@@ -189,6 +242,11 @@ def test_tilfaeldige_rammer(na, nb):
             'Modellen kan genskabes med Random(20260907) og %d traekninger.\n'
             '  %s' % (na, nb, n, na, nb, n, '\n  '.join(afvig[:12])))
         sammenlignet += 1
+
+    if fuldgjort:
+        print('\n%s/%s: %d af %d modeller fik deres dellaster gjort fulde '
+              '(en af de to loesere kan dem ikke).'
+              % (na, nb, fuldgjort, ANTAL_MODELLER))
 
     assert sammenlignet >= MINDST_SAMMENLIGNET, (
         'kun %d af %d modeller kunne regnes (%d sprunget over). Testen '
