@@ -1,20 +1,27 @@
 /**
  * udfoerelse.js — A1 afsnit 4.8 Udførelse.
  *
- * Grundteksten og afsnittene pr. materiale er de samme som altid. Hjælperen
- * lader en vælge, hvem der står for midlertidig afstivning, og hvordan
- * tilsynet er tænkt, og har en variant til ombygning, hvor det vigtigste er
- * understøtning af det eksisterende under udførelsen.
+ * Skrevet efter, hvordan offentlige A1'ere beskriver udførelsen:
+ *   - konstruktionerne er dimensioneret for den færdige tilstand, og
+ *     stabilitet og påvirkninger i byggeperioden er entreprenørens ansvar
+ *     (PlusBolig-orangeriet, Naturstyrelsens shelters)
+ *   - systemprodukter udføres efter leverandørens anvisninger
+ *   - ved ombygning: midlertidig understøtning med jokker og soldater efter
+ *     en afstivningstegning, før bærende dele fjernes (Nemingeniør), og
+ *     kontrol af det eksisterende, når det blotlægges (DTU/BUILD: "Mindre
+ *     indgreb i eksisterende konstruktioner", 2025)
+ * og med udførelsesklasser og kontrol efter DS/INF 1140 og DS/EN 1990 DK NA,
+ * anneks B5 (egenkontrol altid; uafhængig kontrol efter kontrolplanen).
  */
 const T = (text) => ({ type: 'text', data: { text } })
 
 const AFSTIVNING = [
-  { key: 'entreprenoer', label: 'Entreprenøren (midlertidigt afstivningsprojekt)' },
-  { key: 'raadgiver',    label: 'Den statiske rådgiver angiver montagerækkefølge' },
+  { key: 'entreprenoer', label: 'Entreprenøren har ansvaret i byggeperioden' },
+  { key: 'raadgiver',    label: 'Montagerækkefølge og afstivning fremgår af tegningerne' },
 ]
 const TILSYN = [
-  { key: 'anbefales', label: 'Tilsyn anbefales' },
-  { key: 'kontrolplan', label: 'Tilsyn efter kontrolplanen (B2)' },
+  { key: 'anbefales',   label: 'Egenkontrol; tilsyn anbefales' },
+  { key: 'kontrolplan', label: 'Uafhængig kontrol efter kontrolplanen (B2)' },
 ]
 
 function materialer(o) {
@@ -32,18 +39,20 @@ function materialer(o) {
 
 function afstivning(svar) {
   return svar.afstivning === 'raadgiver'
-    ? 'Montagerækkefølge og midlertidig afstivning fremgår af tegningerne. Afvigelser aftales med ' +
-      'den statiske rådgiver, inden de udføres.'
-    : 'Eventuel midlertidig afstivning hører til den arbejdsudførende i fuld udstrækning, ' +
-      'inkl. evt. udarbejdelse af midlertidigt afstivningsprojekt.'
+    ? 'Montagerækkefølge og midlertidig afstivning fremgår af tegningerne. Afvigelser aftales med den ' +
+      'statiske rådgiver, inden de udføres.'
+    : 'Med mindre andet er angivet, er konstruktionerne dimensioneret for den virkemåde, de har i den færdige ' +
+      'konstruktion. Den udførende er ansvarlig for konstruktionernes stabilitet og ydeevne i byggeperioden og ' +
+      'under transport, herunder midlertidig afstivning og eventuelt afstivningsprojekt. Udførelsesrækkefølgen ' +
+      'vælges af den udførende.'
 }
 
 function tilsyn(svar) {
   return svar.tilsyn === 'kontrolplan'
-    ? 'Der føres statisk tilsyn med udførelsen efter kontrolplanen (B2), og resultatet dokumenteres i ' +
-      'kontrolrapporten (B3).'
-    : 'Der regnes med god byggeskik og faglært arbejde på byggepladsen. Det anbefales, at der ' +
-      'udføres tilsyn og kvalitetssikring i alle byggeriets faser.'
+    ? 'Udførelsen kontrolleres efter kontrolplanen (B2) og DS 1140: den udførende udfører og dokumenterer ' +
+      'egenkontrol, og den uafhængige kontrol udføres og dokumenteres i kontrolrapporten (B3).'
+    : 'Den udførende udfører og dokumenterer egenkontrol (DS/EN 1990 DK NA, anneks B5). Der regnes med god ' +
+      'byggeskik og faglært arbejde, og det anbefales, at der føres tilsyn i alle byggeriets faser.'
 }
 
 export default {
@@ -51,19 +60,22 @@ export default {
   titel: 'Udførelse',
 
   spoergsmaal: [
-    { key: 'afstivning', label: 'Midlertidig afstivning', type: 'valg', valg: AFSTIVNING },
-    { key: 'tilsyn', label: 'Tilsyn', type: 'valg', valg: TILSYN },
+    { key: 'afstivning', label: 'Stabilitet i byggeperioden', type: 'valg', valg: AFSTIVNING },
+    { key: 'tilsyn', label: 'Kontrol af udførelsen', type: 'valg', valg: TILSYN },
+    { key: 'tegning', label: 'Tegning med afstivningsprincip', type: 'tekst', pladsholder: 'fx K-103',
+      hvis: (svar, o, v) => v === 'ombygning' },
   ],
 
-  standardSvar: () => ({ afstivning: 'entreprenoer', tilsyn: 'anbefales' }),
+  standardSvar: () => ({ afstivning: 'entreprenoer', tilsyn: 'anbefales', tegning: '' }),
 
   varianter: [
     {
       key: 'nybyggeri',
-      titel: 'Nybyggeri — generelt og pr. materiale',
+      titel: 'Nybyggeri — ansvar, kontrol og pr. materiale',
       passer: (o) => o.konstruktionstype !== 'Ombygning',
       skriv: (o, svar) => [T(
-        'Alle mål og koter er vejledende og skal kontrolleres på stedet inden udførelse.\n\n' +
+        'Bygværket udføres efter tegninger og beskrivelser. Alle mål og koter kontrolleres på stedet inden ' +
+        'udførelse, og systemprodukter (spær, elementer, beslag) monteres efter leverandørens anvisninger.\n\n' +
         afstivning(svar) + '\n\n' + tilsyn(svar) + materialer(o)
       )],
     },
@@ -71,15 +83,20 @@ export default {
       key: 'ombygning',
       titel: 'Ombygning — understøtning af det eksisterende',
       passer: (o) => o.konstruktionstype === 'Ombygning',
-      skriv: (o, svar) => [T(
-        'Alle mål og koter er vejledende og skal kontrolleres på stedet inden udførelse. De eksisterende ' +
-        'konstruktioners udformning kontrolleres, når de blotlægges; afviger de fra forudsætningerne, ' +
-        'kontaktes den statiske rådgiver, inden arbejdet fortsætter.\n\n' +
-        'Inden bærende dele fjernes eller gennembrydes, understøttes de overliggende konstruktioner ' +
-        'midlertidigt, og understøtningen bevares, til de nye konstruktioner er fuldt virksomme. ' +
-        'Nye bjælker og overliggere kiles op mod det eksisterende, så lasten overføres uden sætninger.\n\n' +
-        afstivning(svar) + '\n\n' + tilsyn(svar) + materialer(o)
-      )],
+      skriv: (o, svar) => {
+        const tg = (svar.tegning ?? '').trim() || '[tegning]'
+        return [T(
+          'Alle mål og koter kontrolleres på stedet inden udførelse. De eksisterende konstruktioners ' +
+          'udformning og tilstand kontrolleres, når de blotlægges; afviger de fra forudsætningerne, kontaktes ' +
+          'den statiske rådgiver, inden arbejdet fortsætter.\n\n' +
+          'Inden bærende dele fjernes eller gennembrydes, understøttes de overliggende konstruktioner ' +
+          `midlertidigt efter afstivningsprincippet på tegning ${tg}, fx med jokker og soldater på begge sider ` +
+          'af væggen. Understøtningen bevares, til de nye konstruktioner er fuldt virksomme. Nye bjælker ' +
+          'lægges af på en udstøbt eller udmuret vederlagspude, og der kiles op mod det eksisterende, så ' +
+          'lasten overføres uden sætninger.\n\n' +
+          afstivning(svar) + '\n\n' + tilsyn(svar) + materialer(o)
+        )]
+      },
     },
   ],
 }

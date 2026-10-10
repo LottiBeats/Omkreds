@@ -81,7 +81,8 @@ test('A1 skrevet forfra bruger hjælperens valg fra metadata._afsnit', () => {
 
 test('vandret lastføring: hal med rammer og træhus med skiver', () => {
   const hal = makeA1Template({ stabilisering: { skiver: false, rammer: true, kryds: true }, materialer: { staal: true, trae: false } }, {})
-  assert.match(afsnitTekst(hal, 'a1.vandret'), /momentstive rammer/)
+  assert.match(afsnitTekst(hal, 'a1.vandret'), /stabile i eget plan på grund af rammevirkningen/)
+  assert.match(afsnitTekst(hal, 'a1.vandret'), /glidning, væltning og løft/)
   const hus = makeA1Template({}, {})
   assert.match(afsnitTekst(hus, 'a1.vandret'), /virker som skive ved pladebeklædning/)
 })
@@ -98,3 +99,32 @@ test('geoteknik og udførelse følger beskrivelsen', async () => {
 })
 
 function anbefaletKey(afsnit, ktx) { return varianterFor(afsnit, ktx)[0].key }
+
+// ── 2026-10-10: efter gennemgang af offentlige A1'ere og DK NA ─────────────
+test('geoteknisk kategori følger ikke CC: GK2 som standard, også i CC1 (DK NA K.3)', () => {
+  const cc1 = makeA1Template({ anvendelseNr: 10, etager: 1, spaendvidde: 7.5, hoejdeOver: 6 }, {})
+  const t = tekst(cc1)
+  assert.match(t, /Geoteknisk kategori:\s+GK2/)
+  assert.match(afsnitTekst(cc1, 'a1.geoteknik'), /geoteknisk kategori 2 .*γs = 1,0/)
+  const valgt = makeA1Template({}, { _afsnit: { 'a1.geoteknik': { variant: 'ingen', svar: { gk: '1' } } } })
+  assert.match(tekst(valgt), /Geoteknisk kategori:\s+GK1/)
+  assert.match(afsnitTekst(valgt, 'a1.geoteknik'), /γs = 1,25/)
+})
+
+test('frostfri dybde 0,9 m, eller 1,2 m for uopvarmede konstruktioner (DK NA K.1 (4))', async () => {
+  const geo = (await import('../src/templates/a1Afsnit/geoteknik.js')).default
+  const ktx = kontekst({ geoteknisk: false })
+  const v = geo.varianter.find(x => x.key === 'ingen')
+  assert.match(tekst(v.skriv(ktx, { ...geo.standardSvar(ktx) })), /0,9 m under terræn/)
+  assert.match(tekst(v.skriv(ktx, { ...geo.standardSvar(ktx), opvarmet: 'nej' })), /1,2 m under terræn/)
+})
+
+test('pælefundering og trækonstruktion med diagonaler får hver deres tekst', async () => {
+  const geo = (await import('../src/templates/a1Afsnit/geoteknik.js')).default
+  const vandret = (await import('../src/templates/a1Afsnit/vandretLastfoering.js')).default
+  assert.equal(anbefaletKey(geo, kontekst({ fundering: 'pael' })), 'dyb')
+  const ktx = kontekst({ materialer: { trae: true }, stabilisering: { skiver: false, kryds: true } })
+  assert.equal(anbefaletKey(vandret, ktx), 'skraastolper')
+  const t = tekst(vandret.varianter.find(x => x.key === 'skraastolper').skriv(ktx, vandret.standardSvar(ktx)))
+  assert.match(t, /tryk og træk/)
+})

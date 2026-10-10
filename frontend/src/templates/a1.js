@@ -620,7 +620,9 @@ export function makeA1Template(options = {}, metadata = {}) {
     `  Pålidelighedsklasse:         ${rc}\n` +
     `  K_FI-faktor (STR/GEO):       ${kfi}   (se Tabel 2.2a for CC-afhængighed)\n` +
     '  K_FI-faktor (EQU/geoteknik): 1,0    (gælder uafhængigt af CC iht. DK NA:2024)\n' +
-    `  Geoteknisk kategori:         GK${Math.min(cc, 3)}\n` +
+    // Geoteknisk kategori følger ikke CC (DS/EN 1997-1 DK NA, K.3); GK2 med
+    // mindre der er valgt andet i hjælperen til 3.2.
+    `  Geoteknisk kategori:         GK${m._afsnit?.['a1.geoteknik']?.svar?.gk ?? '2'}\n` +
     `  Brandklasse:                 ${o.brandklasse || 'fastlægges af brandrådgiveren, se afsnit 4.7'}\n` +
     `  Anvendelseskategori:         ${o.anvendelseskategori || 'fastlægges af brandrådgiveren, se afsnit 4.7'}`
   )
