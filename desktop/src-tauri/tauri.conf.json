@@ -25,7 +25,11 @@
     ],
     "windows": {
       "webviewInstallMode": { "type": "embedBootstrapper" },
-      "nsis": { "installMode": "currentUser", "languages": ["Danish", "English"] }
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["Danish", "English"],
+        "installerHooks": "./windows/hooks.nsh"
+      }
     }
   }
 }

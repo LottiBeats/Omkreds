@@ -99,11 +99,49 @@ def _ledig_port() -> int:
         return s.getsockname()[1]
 
 
+def _lever(pid: int) -> bool:
+    if sys.platform == "win32":
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        kode = ctypes.c_ulong()
+        ok = k32.GetExitCodeProcess(h, ctypes.byref(kode))
+        k32.CloseHandle(h)
+        return bool(ok) and kode.value == 259     # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    return True
+
+
+def _stop_med_skallen(pid: int):
+    """Stop, når skallen er væk. Går skallen ned (eller lukkes fra
+    Jobliste), får den ikke stoppet beregningsdelen selv; så kørte den videre
+    og holdt filerne låst, og den næste installation fejlede."""
+    import threading
+    import time
+
+    def vagt():
+        while _lever(pid):
+            time.sleep(2)
+        os._exit(0)
+
+    threading.Thread(target=vagt, daemon=True).start()
+
+
 def run():
     p = argparse.ArgumentParser(description="Omkreds FEM")
     p.add_argument("--port", type=int, default=0)
     p.add_argument("--no-browser", action="store_true")
+    p.add_argument("--parent-pid", type=int, default=0)
     args = p.parse_args()
+    if args.parent_pid:
+        _stop_med_skallen(args.parent_pid)
 
     import uvicorn
     port = args.port or _ledig_port()

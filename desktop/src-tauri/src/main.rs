@@ -4,7 +4,8 @@
 //! PyInstaller og lagt ind som resource (`backend/`). Ved start:
 //!
 //!   1. find en ledig port på 127.0.0.1
-//!   2. start backend/omkreds-backend.exe --port N --no-browser, uden konsolvindue
+//!   2. start backend/omkreds-backend.exe --port N --no-browser --parent-pid P,
+//!      uden konsolvindue
 //!   3. vis startsiden, og skift til http://127.0.0.1:N/fem.html, når den svarer
 //!
 //! Når programmet lukker, stoppes backend igen.
@@ -41,7 +42,8 @@ fn main() {
                 .join(if cfg!(windows) { "omkreds-backend.exe" } else { "omkreds-backend" });
 
             let mut cmd = Command::new(&exe);
-            cmd.args(["--port", &port.to_string(), "--no-browser"]);
+            // --parent-pid: beregningsdelen stopper selv, hvis skallen går ned.
+            cmd.args(["--port", &port.to_string(), "--no-browser", "--parent-pid", &std::process::id().to_string()]);
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;
