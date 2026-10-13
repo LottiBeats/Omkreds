@@ -297,3 +297,76 @@ export function uforbundne(m) {
   }
   return ud
 }
+
+/**
+ * Skæringspunkterne mellem en linje gennem p1 og p2 og stængerne:
+ * [{ x, y, s }] sorteret efter s, positionen langs linjen (0 i p1, 1 i p2).
+ * Med `uendelig` (standard) regnes linjen ud over p1 og p2 -- en vandret linje
+ * i en højde skal skære hele modellen, ikke kun det stykke, der blev tegnet.
+ * Stænger, der ligger på selve linjen, giver ingen skæring. Et punkt, flere
+ * stænger mødes i (en knude), tælles én gang.
+ */
+export function skaeringer(m, p1, p2, { uendelig = true } = {}) {
+  const ux = p2.x - p1.x, uy = p2.y - p1.y
+  if (Math.hypot(ux, uy) < EPS) return []
+  const byId = Object.fromEntries(m.nodes.map(n => [n.id, n]))
+  const ud = []
+  for (const el of m.elements) {
+    const a = byId[el.ni], b = byId[el.nj]
+    if (!a || !b) continue
+    const vx = b.x - a.x, vy = b.y - a.y
+    const d = ux * vy - uy * vx
+    if (Math.abs(d) < EPS) continue                       // parallel eller på linjen
+    const wx = a.x - p1.x, wy = a.y - p1.y
+    const s = (wx * vy - wy * vx) / d                     // langs linjen
+    const t = (wx * uy - wy * ux) / d                     // langs stangen
+    if (t < -EPS || t > 1 + EPS) continue
+    if (!uendelig && (s < -EPS || s > 1 + EPS)) continue
+    const x = round(p1.x + s * ux), y = round(p1.y + s * uy)
+    if (!ud.some(p => Math.hypot(p.x - x, p.y - y) < 1e-4)) ud.push({ x, y, s })
+  }
+  return ud.sort((a, b) => a.s - b.s)
+}
+
+/**
+ * Knuder, hvor linjen gennem p1 og p2 skærer stængerne: stænger deles i
+ * skæringspunkterne, og et punkt, der allerede er en knude, genbruges.
+ * Med `stang` tegnes der også en stang langs linjen fra første til sidste
+ * skæring, delt i knuderne (fx et hanebånd i en bestemt højde), med `props`
+ * som tværsnit og materiale.
+ * Returnerer { model, nodeIds, nye } -- nye er antallet af nye knuder.
+ */
+export function skaerLinje(m, p1, p2, { uendelig = true, stang = false, props = {} } = {}) {
+  const punkter = skaeringer(m, p1, p2, { uendelig })
+  let model = m
+  const nodeIds = []
+  let nye = 0
+  for (const p of punkter) {
+    const foer = model.nodes.length
+    const hit = nodeAt(model, p.x, p.y)
+    if (hit) { nodeIds.push(hit.id); continue }
+    // Den stang, punktet ligger på i den model, vi er nået til (en tidligere
+    // deling kan have givet den et nyt id).
+    const el = model.elements.find(e => {
+      const pr = projectOnElement(model, e, p.x, p.y)
+      return pr && pr.dist < 1e-4 && pr.t > EPS && pr.t < 1 - EPS
+    })
+    const r = el ? splitElement(model, el.id, p.x, p.y) : { ...addNode(model, p.x, p.y), nodeId: null }
+    model = r.model
+    nodeIds.push(r.nodeId ?? r.id)
+    if (model.nodes.length > foer) nye++
+  }
+  if (stang && nodeIds.length >= 2) {
+    // Én stang (ét member_id) langs hele linjen, delt i elementer i knuderne,
+    // så dimensioneringen ser ét hanebånd og ikke fem småstykker.
+    const member_id = nextId(model.elements, 'member_id')
+    for (let i = 1; i < nodeIds.length; i++) {
+      const foer = model.elements.length
+      const r = addElement(model, nodeIds[i - 1], nodeIds[i], props)
+      model = r.model
+      // Kun en ny stang får det fælles member_id; findes stangen allerede, røres den ikke.
+      if (model.elements.length > foer) model = { ...model, elements: model.elements.map(e => (e.id === r.id ? { ...e, member_id } : e)) }
+    }
+  }
+  return { model, nodeIds, nye }
+}

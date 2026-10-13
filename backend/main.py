@@ -3495,7 +3495,23 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 # mellem knuderne, og en bjaelke med ét element pr. fag stod
                 # helt flad.
                 'ele_bue': _boejninger(r),
+                # Reaktionerne i understøtningerne for netop den her
+                # kombination. Før kom kun den dimensionerende med, og den
+                # stod kun ved udnyttelsen -- en fundamentsberegning skal
+                # bruge dem alle.
+                'reactions': _reaktioner(r),
             }
+
+        def _reaktioner(r):
+            nr = r.get('node_reactions') or {}
+            ud = {}
+            for s_ in supports:
+                R = nr.get(s_['node_id'])
+                if R is None:
+                    continue
+                ud[str(s_['node_id'])] = [round(float(R[0]), 3), round(float(R[1]), 3),
+                                          round(float(R[2]), 3)]
+            return ud
 
         def _boejninger(r):
             import stanglaster as _sl
@@ -3517,6 +3533,26 @@ def calc_general_frame_fem(data: GenFrameFemInput):
                 except Exception:
                     continue
                 ud[str(eid)] = [round(float(w), 7) for _, w in k[::6]]
+            return ud
+
+        def _reaktioner_pr_tilfaelde():
+            ud = []
+            for t in data.load_cases:
+                i_t = [l for l in paasatte_laster if l.get('lc') == t.nr]
+                if not i_t:
+                    continue
+                navn = f"LC{t.nr} {(t.navn or '').strip() or 'Lasttilfaelde'}"
+                try:
+                    _, _, res_t, _ = solve_combinations(
+                        nodes, elements, supports, [{'name': navn, 'loads': i_t}],
+                        equal_dofs, make_figs=False, ref_size=ref_size)
+                except Exception:
+                    # Et tilfælde, der ikke kan regnes alene (fx en mekanisme
+                    # uden den last, der holder den), skal ikke vælte
+                    # beregningen af kombinationerne.
+                    continue
+                ud.append({'nr': t.nr, 'navn': navn, 'kategori': t.kategori,
+                           'reactions': _reaktioner(res_t[0])})
             return ud
 
         # ── Combination mode ──────────────────────────────────────────────────
@@ -3629,6 +3665,11 @@ def calc_general_frame_fem(data: GenFrameFemInput):
             summary['nedboejning_pr_situation'] = nedb
             summary['combinations']      = [r['name'] for r in all_results]
             summary['combo_figs']        = combo_figs   # [{name, figs:[defo,M,V,N], state}]
+            # Reaktioner pr. lasttilfælde, karakteristisk (faktor 1,0): hvert
+            # tilfælde regnes for sig. Det er de tal, en fundaments- eller
+            # leverandørberegning starter fra, og de findes ikke i nogen
+            # kombination.
+            summary['reaktioner_tilfaelde'] = _reaktioner_pr_tilfaelde()
             # [M, V, N] med alle kombinationer lagt oven paa hinanden. Tom ved
             # én kombination.
             summary['overlay_figs']      = overlay_figs

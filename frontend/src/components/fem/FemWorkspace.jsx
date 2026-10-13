@@ -15,6 +15,7 @@
  *   Understøtning (U) click a node to cycle fast charnier → rulle → indspændt → vandret rulle → ingen
  *   Charnier (C)      click a node for a hinge there, or near a member end for that end only
  *   Last (L)          click a member for a line load, a node for a point load, in the active load case
+ *   Snitlinje (K)     click two points: nodes where the line crosses members (Shift: vandret/lodret)
  * Also: Delete removes the selection, F fits the view, wheel zooms, middle
  * mouse or space+drag pans, Ctrl+Z undoes (the document's own undo).
  */
@@ -26,10 +27,12 @@ import {
   pick, addNode, addElement, splitElement, projectOnElement, toggleRelease,
   toggleNodeHinge, hasNodeHinge, cycleSupport, setSupport, supportType, SUPPORT_TYPES,
   deleteSelection, updateNode, updateElements, elementLength, bounds, round, mergeNodes, uforbundne,
+  skaeringer, skaerLinje,
 } from './femModel.js'
 import { GENERATORS } from './femGenerators.js'
 import { expandLoads, loadSpan, isPartial, flipElements, memberChain } from './femLoads.js'
 import { resultStates, sampleElement, envelopeSamples, isUls, SITUATION_LABEL } from './femDiagrams.js'
+import { reaktionsRaekker, reaktionsEkstremer, reaktionerSomTsv } from './femReaktioner.js'
 import './fem.css'
 
 // ── Vocabulary ────────────────────────────────────────────────────────────────
@@ -41,6 +44,7 @@ const TOOLS = [
   { key: 'support', label: 'Understøtning', kbd: 'U' },
   { key: 'hinge',   label: 'Charnier',     kbd: 'C' },
   { key: 'load',    label: 'Last',         kbd: 'L' },
+  { key: 'cut',     label: 'Snitlinje',    kbd: 'K' },
 ]
 
 const TOOL_HINT = {
@@ -50,6 +54,7 @@ const TOOL_HINT = {
   support: 'Klik på en knude: fast charnier → rulle → indspændt → vandret rulle → ingen',
   hinge:   'Klik på en knude for charnier dér · klik tæt på en stangende for kun den ende',
   load:    'Klik på en stang for linjelast, på en knude for punktlast — i det aktive lasttilfælde',
+  cut:     'Klik to punkter: der laves knuder, hvor linjen skærer stængerne · Shift låser vandret/lodret',
 }
 
 const MATERIALS = [
@@ -479,9 +484,15 @@ export default function FemWorkspace({
   const [tool, setTool] = useState('select')
   const [sel, setSel] = useState([])                   // [{ kind: 'node'|'elem'|'load', id }]
   const [chainFrom, setChainFrom] = useState(null)     // node id while drawing members
+  const [cutFrom, setCutFrom] = useState(null)         // første punkt af en snitlinje
+  const [cutStang, setCutStang] = useState(false)      // tegn også en stang langs snitlinjen
+  const [cutExact, setCutExact] = useState({ retning: 'vandret', vaerdi: 3 })
+  const [shiftDown, setShiftDown] = useState(false)
   const [hover, setHover] = useState(null)             // { x, y, sx, sy } snapped world point
   const [snap, setSnap] = useState(0.1)
   const [tab, setTab] = useState('nodes')
+  const [reakKnude, setReakKnude] = useState('alle')    // reaktionstabellen: én knude eller alle
+  const [reakVis, setReakVis] = useState('alle')        // 'alle' | 'tilfaelde' | 'kombinationer'
   const [genOpen, setGenOpen] = useState(false)
   const [showIds, setShowIds] = useState(true)
   const [showSec, setShowSec] = useState(false)
@@ -594,6 +605,23 @@ export default function FemWorkspace({
     return addNode(mm, pt.x, pt.y)
   }
 
+  // ── Snitlinje ───────────────────────────────────────────────────────────
+  // Med Shift låses linjen vandret eller lodret, efter hvad der er nærmest.
+  function laastPunkt(a, b, laas) {
+    if (!laas) return b
+    return Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) ? { x: b.x, y: a.y } : { x: a.x, y: b.y }
+  }
+  function udfoerSnit(p1, p2) {
+    if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 1e-6) return
+    const r = skaerLinje(model, p1, p2, {
+      stang: cutStang,
+      props: { material: section.material, section: section.section, grade: section.grade },
+    })
+    if (r.model !== model) commit(r.model)
+    setSel(r.nodeIds.map(id => ({ kind: 'node', id })))
+    setTab('nodes')
+  }
+
   // ── Pointer ─────────────────────────────────────────────────────────────
   function onPointerDown(e) {
     const [sx, sy] = eventPoint(e)
@@ -640,6 +668,13 @@ export default function FemWorkspace({
       commit(added.model)
       setSel(added.id != null ? [{ kind: 'elem', id: added.id }] : [])
       setChainFrom(r.id)
+      return
+    }
+
+    if (tool === 'cut') {
+      if (!cutFrom) { setCutFrom({ x: pt.x, y: pt.y }); return }
+      udfoerSnit(cutFrom, laastPunkt(cutFrom, pt, e.shiftKey))
+      setCutFrom(null)
       return
     }
 
@@ -769,9 +804,10 @@ export default function FemWorkspace({
       const t = e.target
       if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return
       if (e.key === ' ') { setSpaceDown(e.type === 'keydown'); if (e.type === 'keydown') e.preventDefault(); return }
+      if (e.key === 'Shift') { setShiftDown(e.type === 'keydown'); return }
       if (e.type !== 'keydown' || e.ctrlKey || e.metaKey || e.altKey) return
       const k = e.key.toLowerCase()
-      if (k === 'escape') { if (chainFrom != null) setChainFrom(null); else if (sel.length) setSel([]); else setTool('select') }
+      if (k === 'escape') { if (cutFrom) setCutFrom(null); else if (chainFrom != null) setChainFrom(null); else if (sel.length) setSel([]); else setTool('select') }
       else if (k === 'delete' || k === 'backspace') {
         if (sel.length) { e.preventDefault(); commit(deleteSelection(model, sel)); setSel([]) }
       }
@@ -779,13 +815,13 @@ export default function FemWorkspace({
       else if (k === 'f5') { e.preventDefault(); onRun() }
       else {
         const tl = TOOLS.find(x => x.kbd.toLowerCase() === k)
-        if (tl) { setTool(tl.key); setChainFrom(null) }
+        if (tl) { setTool(tl.key); setChainFrom(null); setCutFrom(null) }
       }
     }
     window.addEventListener('keydown', onKey)
     window.addEventListener('keyup', onKey)
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey) }
-  }, [chainFrom, sel, model, commit, fit, onRun])
+  }, [chainFrom, cutFrom, sel, model, commit, fit, onRun])
 
   // ── Load cases ──────────────────────────────────────────────────────────
   function addLoadCase() {
@@ -1061,7 +1097,11 @@ export default function FemWorkspace({
       const n = nodesById[s.node_id]; if (!n) continue
       const [x, y] = toS(n.x, n.y)
       out.push(<SupportGlyph key={`s${s.node_id}`} x={x} y={y} type={supportType(s)} />)
-      const R = showResults ? reactions?.[String(s.node_id)] : null
+      // I udnyttelsesvisningen den dimensionerende reaktion; i M/V/N/u
+      // reaktionen for den kombination, der er valgt at se.
+      const Rs = diagramView && curIdx !== 'env' ? states[curIdx]?.state?.reactions?.[String(s.node_id)] : null
+      const Rd = showResults ? reactions?.[String(s.node_id)] : null
+      const R = Rs ? { Fx_kN: Rs[0], Fy_kN: Rs[1], Mz_kNm: Rs[2] } : Rd
       if (R) {
         out.push(<text key={`r${s.node_id}`} x={x} y={y + 40} fontSize="11" textAnchor="middle" fill="#0f766e" fontFamily="var(--font-mono)">
           {`V ${fmt(R.Fy_kN, 1)}${Math.abs(R.Fx_kN) > 0.005 ? ` · H ${fmt(R.Fx_kN, 1)}` : ''}${Math.abs(R.Mz_kNm) > 0.005 ? ` · M ${fmt(R.Mz_kNm, 1)}` : ''}`}
@@ -1239,8 +1279,25 @@ export default function FemWorkspace({
         out.push(<text key="rbl" x={(ax + hx) / 2 + 8} y={(ay + hy) / 2 - 8} fontSize="11" fill="var(--brand-ink)" fontFamily="var(--font-mono)">{fmt(L)} m</text>)
       }
     }
-    if (tool === 'node' || tool === 'member') {
+    if (tool === 'node' || tool === 'member' || tool === 'cut') {
       out.push(<circle key="hv" cx={hx} cy={hy} r={hover.node ? 7 : 4} fill="none" stroke="var(--brand)" strokeWidth="1.5" />)
+    }
+    if (tool === 'cut' && cutFrom) {
+      // Linjen tegnes over hele modellen, for den skærer hele modellen, og
+      // skæringerne markeres, før der klikkes.
+      const p2 = laastPunkt(cutFrom, { x: hover.x, y: hover.y }, shiftDown)
+      const dx = p2.x - cutFrom.x, dy = p2.y - cutFrom.y, L = Math.hypot(dx, dy)
+      if (L > 1e-6) {
+        const k = 1e3 / L
+        const [ax, ay] = toS(cutFrom.x - dx * k, cutFrom.y - dy * k), [bx, by] = toS(cutFrom.x + dx * k, cutFrom.y + dy * k)
+        out.push(<line key="cut" x1={ax} y1={ay} x2={bx} y2={by} stroke="var(--brand)" strokeWidth="1.2" strokeDasharray="6 4" />)
+        for (const [i, q] of skaeringer(m, cutFrom, p2).entries()) {
+          const [qx, qy] = toS(q.x, q.y)
+          out.push(<rect key={`cx${i}`} x={qx - 5} y={qy - 5} width="10" height="10" fill="none" stroke="var(--brand)" strokeWidth="1.6" />)
+        }
+      }
+      const [cx, cy] = toS(cutFrom.x, cutFrom.y)
+      out.push(<circle key="cf" cx={cx} cy={cy} r="4" fill="var(--brand)" />)
     }
     return out
   }
@@ -1248,6 +1305,7 @@ export default function FemWorkspace({
   // ── Render: panels ──────────────────────────────────────────────────────
   const counts = {
     nodes: m.nodes.length, elements: m.elements.length, supports: m.supports.length, loads: m.loads.length,
+    reactions: m.supports.length,
   }
   const rated = showResults ? Object.entries(memberChecks).filter(([, c]) => c && typeof c.eta === 'number') : []
 
@@ -1564,6 +1622,35 @@ export default function FemWorkspace({
       <>
         <div className="fem-ph"><small>Værktøj</small><b>{TOOLS.find(t => t.key === tool)?.label}</b></div>
         <div className="fem-ps"><p>{TOOL_HINT[tool]}</p></div>
+        {tool === 'cut' && (
+          <div className="fem-ps">
+            <div className="t">Præcis linje</div>
+            <F label="Retning">
+              <select value={cutExact.retning} onChange={e => setCutExact(c => ({ ...c, retning: e.target.value }))}>
+                <option value="vandret">Vandret, i højden y</option>
+                <option value="lodret">Lodret, ved x</option>
+              </select>
+            </F>
+            <F label={cutExact.retning === 'vandret' ? 'y [m]' : 'x [m]'}>
+              <Num value={cutExact.vaerdi} onCommit={v => setCutExact(c => ({ ...c, vaerdi: v }))} />
+            </F>
+            {(() => {
+              const v = Number(cutExact.vaerdi)
+              const [p1, p2] = cutExact.retning === 'vandret' ? [{ x: 0, y: v }, { x: 1, y: v }] : [{ x: v, y: 0 }, { x: v, y: 1 }]
+              const n = Number.isFinite(v) ? skaeringer(m, p1, p2).length : 0
+              return (
+                <Button size="sm" disabled={!n} onClick={() => udfoerSnit(p1, p2)}>
+                  {n ? `Lav knuder i ${n} skæring${n === 1 ? '' : 'er'}` : 'Linjen skærer ingen stænger'}
+                </Button>
+              )
+            })()}
+            <label className="fem-check" style={{ marginTop: 8 }}>
+              <input type="checkbox" checked={cutStang} onChange={e => setCutStang(e.target.checked)} />
+              Tegn også en stang langs linjen mellem skæringerne (fx hanebånd)
+            </label>
+            {cutStang && <SectionFields value={section} onChange={(k, v) => (k === 'material' ? setMaterial(v, 'default') : setSection(s => ({ ...s, [k]: v })))} />}
+          </div>
+        )}
         {tool === 'member' && (
           <div className="fem-ps">
             <div className="t">Nye stænger får</div>
@@ -1616,7 +1703,66 @@ export default function FemWorkspace({
   // ── Tables ──────────────────────────────────────────────────────────────
   const nodeIds = new Set(m.nodes.map(n => n.id))
 
+  // Reaktionerne for hvert lasttilfælde (karakteristisk) og hver kombination,
+  // med største og mindste værdi pr. understøtning over brudkombinationerne.
+  function renderReaktioner() {
+    if (!resultsOk) return <div className="fem-tbl-empty">Kør beregningen for at se reaktionerne.</div>
+    const alle = reaktionsRaekker(summary)
+    if (!alle.length) return <div className="fem-tbl-empty">Beregningen har ingen reaktioner gemt. Kør den igen.</div>
+    const knuder = [...new Set(alle.map(r => r.knude))].sort((a, b) => a - b)
+    const valgtKnude = selNode && knuder.includes(selNode.id) ? selNode.id : (reakKnude === 'alle' ? null : Number(reakKnude))
+    const raekker = alle.filter(r => (valgtKnude == null || r.knude === valgtKnude)
+      && (reakVis === 'alle' || (reakVis === 'tilfaelde') === r.gruppe.startsWith('Lasttilfælde')))
+    const eks = reaktionsEkstremer(summary)
+    const f2 = (v) => fmt(v, 2)
+    let forrige = null
+    return (
+      <div className="fem-reak">
+        <div className="fem-reak-bar">
+          <label>Knude <select value={valgtKnude ?? 'alle'} onChange={e => { setReakKnude(e.target.value); setSel([]) }}>
+            <option value="alle">Alle understøtninger</option>
+            {knuder.map(k => <option key={k} value={k}>{k}</option>)}
+          </select></label>
+          <label>Vis <select value={reakVis} onChange={e => setReakVis(e.target.value)}>
+            <option value="alle">Lasttilfælde og kombinationer</option>
+            <option value="tilfaelde">Kun lasttilfælde (karakteristisk)</option>
+            <option value="kombinationer">Kun kombinationer</option>
+          </select></label>
+          <span className="fem-sp" />
+          <button className="add" onClick={() => { try { navigator.clipboard.writeText(reaktionerSomTsv(raekker)) } catch { /* ingen udklipsholder */ } }}
+            title="Kopiér tabellen, så den kan sættes ind i Excel">Kopiér til Excel</button>
+        </div>
+        {Object.keys(eks).length > 0 && reakVis !== 'tilfaelde' && (
+          <table className="fem-reak-eks"><thead><tr><th>Knude</th><th>Brud, største/mindste</th><th>R_x [kN]</th><th>R_y [kN]</th><th>M [kNm]</th></tr></thead><tbody>
+            {knuder.filter(k => eks[k] && (valgtKnude == null || k === valgtKnude)).flatMap(k => ['max', 'min'].map(side => (
+              <tr key={`${k}${side}`}>
+                <td className="id">{side === 'max' ? k : ''}</td>
+                <td>{side === 'max' ? 'største' : 'mindste'}</td>
+                {eks[k].map((e, i) => <td key={i} className="num" title={side === 'max' ? e.maxNavn : e.minNavn}>{f2(e[side])}</td>)}
+              </tr>
+            )))}
+          </tbody></table>
+        )}
+        <table><thead><tr><th>Tilfælde / kombination</th><th>Knude</th><th>R_x [kN]</th><th>R_y [kN]</th><th>M [kNm]</th></tr></thead><tbody>
+          {raekker.flatMap((r, i) => {
+            const ud = []
+            if (r.gruppe !== forrige) { forrige = r.gruppe; ud.push(<tr key={`g${i}`} className="grp"><td colSpan={5}>{r.gruppe}</td></tr>) }
+            ud.push(
+              <tr key={i} className={selNode?.id === r.knude ? 'sel' : ''}>
+                <td>{r.navn}</td>
+                <td className="id" onClick={() => setSel([{ kind: 'node', id: r.knude }])}>{r.knude}</td>
+                {r.R.map((v, j) => <td key={j} className="num">{f2(v)}</td>)}
+              </tr>)
+            return ud
+          })}
+        </tbody></table>
+        <p className="fem-note">Globale akser: R_x positiv mod højre, R_y positiv opad, M positiv mod uret. Lasttilfældene er regnet hver for sig med faktor 1,0.</p>
+      </div>
+    )
+  }
+
   function renderTable() {
+    if (tab === 'reactions') return renderReaktioner()
     if (tab === 'nodes') {
       if (!m.nodes.length) return <div className="fem-tbl-empty">Ingen knuder endnu. Brug Knude- eller Stang-værktøjet, eller generér et system.</div>
       return (
@@ -1742,7 +1888,7 @@ export default function FemWorkspace({
 
       <div className="fem-tools" role="toolbar" aria-label="Værktøjer">
         {TOOLS.map(t => (
-          <button key={t.key} className={'fem-tool' + (tool === t.key ? ' on' : '')} onClick={() => { setTool(t.key); setChainFrom(null) }} title={TOOL_HINT[t.key]}>
+          <button key={t.key} className={'fem-tool' + (tool === t.key ? ' on' : '')} onClick={() => { setTool(t.key); setChainFrom(null); setCutFrom(null) }} title={TOOL_HINT[t.key]}>
             {t.label} <kbd>{t.kbd}</kbd>
           </button>
         ))}
@@ -1902,7 +2048,7 @@ export default function FemWorkspace({
 
       <div className={`fem-canvas t-${tool}${drag?.kind === 'pan' ? ' panning' : ''}`} ref={wrapRef}>
         <svg ref={svgRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-             onPointerLeave={() => { setHover(null) }} onWheel={onWheel} onContextMenu={e => { e.preventDefault(); setChainFrom(null) }}>
+             onPointerLeave={() => { setHover(null) }} onWheel={onWheel} onContextMenu={e => { e.preventDefault(); setChainFrom(null); setCutFrom(null) }}>
           <defs>
             <marker id="fem-akse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0,0 L10,5 L0,10 z" fill="context-stroke" />
@@ -1978,7 +2124,8 @@ export default function FemWorkspace({
 
       <div className="fem-tables">
         <div className="fem-tabs" role="tablist">
-          {[['nodes', 'Knuder'], ['elements', 'Stænger'], ['loads', 'Laster']].map(([k, l]) => (
+          {[['nodes', 'Knuder'], ['elements', 'Stænger'], ['loads', 'Laster'],
+            ...(resultsOk ? [['reactions', 'Reaktioner']] : [])].map(([k, l]) => (
             <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l} <span className="fem-status">{counts[k]}</span></button>
           ))}
           <span className="fem-sp" />
