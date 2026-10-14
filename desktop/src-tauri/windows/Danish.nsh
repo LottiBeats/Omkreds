@@ -1,4 +1,4 @@
-﻿; Danske tekster til installationsprogrammet.
+; Danske tekster til installationsprogrammet.
 ; Tauri har ingen dansk oversættelse af sine egne tekster (opdatering,
 ; afinstallation, WebView2), så de stod tomme -- fx to knapper uden tekst,
 ; når en ældre version skulle afinstalleres før opdateringen.
