@@ -1,6 +1,6 @@
 [package]
 name = "omkreds-fem"
-version = "0.1.0"
+version = "0.2.0"
 description = "Omkreds FEM — rammeberegning på computeren"
 edition = "2021"
 
