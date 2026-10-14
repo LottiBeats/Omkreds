@@ -179,3 +179,7 @@
 .fem-reak td.num { text-align: right; font-family: var(--font-mono); }
 .fem-reak tr.grp td { background: var(--sunk); font-weight: 600; font-size: 11.5px; color: var(--ink-2); }
 .fem-reak-eks { margin-bottom: 4px; }
+
+/* Side om side med rapporten (femapp.jsx): fylder sin rude, ikke skærmen. */
+.fem-ws.fem-ws-indlejret { position: absolute; z-index: auto; }
+.fem-ws.fem-ws-indlejret { grid-template-columns: 200px minmax(0, 1fr) 260px; }

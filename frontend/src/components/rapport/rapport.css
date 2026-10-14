@@ -73,3 +73,8 @@
   border: 1px dashed var(--line-2, #d6cfc8); border-radius: 6px; padding: 10px 12px;
   font-size: 12.5px; color: var(--muted, #78716c);
 }
+
+/* Side om side med FEM: smallere margener, så siden kan være i ruden. */
+.rp-smal { padding: 16px 12px 100px; }
+.rp-smal .rp-side { padding: 36px 40px 32px 60px; min-height: 0; }
+.rp-smal .rp-greb { left: -48px; }

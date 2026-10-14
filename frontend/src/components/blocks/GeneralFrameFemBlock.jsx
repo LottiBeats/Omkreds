@@ -2374,6 +2374,7 @@ export default function GeneralFrameFemBlock({ block, onChange, blocks = [], onA
         summary={d._summary}
         kombinationer={{ tabel: kombiTabel, fejl: kombiFejl, fravalg, toggle: toggleKombi }}
         actions={standalone.actions}
+        indlejret={!!standalone.indlejret}
       />
     )
   }

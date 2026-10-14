@@ -36,6 +36,7 @@ function IndsaetLinje({ onVaelg, altid = false }) {
 }
 
 function FemKort({ blok, onVisFem, onSkift }) {
+  // Side om side står modellen allerede til venstre; så ingen knap.
   const d = blok.data ?? {}
   const harModel = femHarModel(blok)
   const status = !harModel ? 'Ingen model endnu'
@@ -54,7 +55,7 @@ function FemKort({ blok, onVisFem, onSkift }) {
             <span className={ok ? 'rp-ok' : 'rp-adv'}>{status}</span>
           </div>
         </div>
-        <button type="button" className="rp-knap" onClick={onVisFem}>Åbn i FEM</button>
+        {onVisFem && <button type="button" className="rp-knap" onClick={onVisFem}>Åbn i FEM</button>}
       </div>
       {harModel && (
         <label className="rp-fem-med">
@@ -66,7 +67,7 @@ function FemKort({ blok, onVisFem, onSkift }) {
   )
 }
 
-export default function RapportView({ blocks, onChange, onVisFem }) {
+export default function RapportView({ blocks, onChange, onVisFem, smal = false }) {
   const [valgt, setValgt] = useState(null)
   const numre = useMemo(() => overskriftsnumre(blocks), [blocks])
   const refs = useRef({})
@@ -92,7 +93,7 @@ export default function RapportView({ blocks, onChange, onVisFem }) {
   const tom = !blocks.some(b => !erFem(b))
 
   return (
-    <div className="rp">
+    <div className={'rp' + (smal ? ' rp-smal' : '')}>
       <div className="rp-side">
         {tom && (
           <div className="rp-tom">

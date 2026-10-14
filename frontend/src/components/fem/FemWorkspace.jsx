@@ -477,6 +477,7 @@ export default function FemWorkspace({
   title, data, onModelChange, onClose, onRun, running, error, stale,
   memberChecks, reactions, hasResult, summary, kombinationer,
   actions = null,   // ekstra knapper i topbjælken (det selvstændige program)
+  indlejret = false, // fylder sin forælder i stedet for hele skærmen (side om side med rapporten)
 }) {
   const model = useMemo(() => pick(data), [data])
   const commit = useCallback((m) => onModelChange(m), [onModelChange])
@@ -803,6 +804,8 @@ export default function FemWorkspace({
     function onKey(e) {
       const t = e.target
       if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return
+      // Tekst, der skrives andre steder (rapporten side om side), er ikke til modellen.
+      if (t && (t.isContentEditable || t.closest?.('[data-fem-ignorer-taster]'))) return
       if (e.key === ' ') { setSpaceDown(e.type === 'keydown'); if (e.type === 'keydown') e.preventDefault(); return }
       if (e.key === 'Shift') { setShiftDown(e.type === 'keydown'); return }
       if (e.type !== 'keydown' || e.ctrlKey || e.metaKey || e.altKey) return
@@ -1874,7 +1877,8 @@ export default function FemWorkspace({
   const empty = m.nodes.length === 0
 
   return (
-    <div className="fem-ws" role="dialog" aria-modal="true" aria-label={`Model: ${title}`}>
+    <div className={'fem-ws' + (indlejret ? ' fem-ws-indlejret' : '')} role={indlejret ? 'region' : 'dialog'}
+         aria-modal={indlejret ? undefined : true} aria-label={`Model: ${title}`}>
       <header className="fem-bar">
         {actions}
         <h1>{title}</h1>

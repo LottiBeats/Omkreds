@@ -8,9 +8,10 @@
  * (backend/desktop_app.py). Filen har samme form som et dokument (en liste af
  * blokke), så den senere kan importeres i et projekt på omkreds.dk.
  *
- * To visninger: FEM (modelvinduet) og Rapport (components/rapport): en side
+ * Tre visninger: FEM (modelvinduet), Rapport (components/rapport: en side
  * med overskrifter, simpel tekst og egne beregninger, hvor rammeberegningen
- * står som et kort. PDF'en er rapporten i den rækkefølge.
+ * står som et kort) og de to side om side med en skillelinje, man kan trække
+ * i. PDF'en er rapporten i den rækkefølge.
  *
  * Kører i skrivebordsprogrammet (Tauri) og, under udvikling, i en almindelig
  * browser mod `python backend/desktop_app.py` eller Vite + en lokal backend.
@@ -30,6 +31,16 @@ import { hashCalcInputs, calcRevision, isStaleResult, hasCalcResult } from './li
 import useBlockUndo from './hooks/useBlockUndo.js'
 import RapportView from './components/rapport/RapportView.jsx'
 import { pdfBlokke, femIRapport } from './lib/rapport.js'
+
+const VISNINGER = [['fem', 'FEM'], ['begge', 'Side om side'], ['rapport', 'Rapport']]
+
+// Visning og delingen side om side huskes til næste gang, programmet åbnes.
+function husket(noegle, standard) {
+  try { return JSON.parse(localStorage.getItem(noegle)) ?? standard } catch { return standard }
+}
+function husk(noegle, v) {
+  try { localStorage.setItem(noegle, JSON.stringify(v)) } catch { /* privat vindue o.l. */ }
+}
 
 const TOM_META = { project_name: '', project_ref: '', engineer: '', checker: '', client: '' }
 
@@ -55,7 +66,32 @@ function FemApp() {
   const [besked, setBesked] = useState(null)
   const [travl, setTravl] = useState(false)
   const [visSag, setVisSag] = useState(false)
-  const [visning, setVisning] = useState('fem')
+  const [visning, setVisningRaa] = useState(() => {
+    const v = husket('omkreds.visning', 'fem')
+    return VISNINGER.some(([k]) => k === v) ? v : 'fem'
+  })
+  const setVisning = (v) => { setVisningRaa(v); husk('omkreds.visning', v) }
+  // FEM-rudens andel af bredden side om side.
+  const [deling, setDeling] = useState(() => Math.min(0.8, Math.max(0.3, Number(husket('omkreds.deling', 0.58)) || 0.58)))
+  const delRef = useRef(null)
+
+  const traek = (e) => {
+    e.preventDefault()
+    const boks = delRef.current?.getBoundingClientRect()
+    if (!boks) return
+    let sidst = deling
+    const flyt = (ev) => {
+      sidst = Math.min(0.8, Math.max(0.3, (ev.clientX - boks.left) / boks.width))
+      setDeling(sidst)
+    }
+    const slip = () => {
+      window.removeEventListener('pointermove', flyt); window.removeEventListener('pointerup', slip)
+      document.body.style.cursor = ''; document.body.style.userSelect = ''
+      husk('omkreds.deling', sidst)
+    }
+    document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', flyt); window.addEventListener('pointerup', slip)
+  }
   // Editoren husker valgt blok m.m.; en ny eller åbnet model skal starte forfra.
   const [noegle, setNoegle] = useState(0)
 
@@ -237,7 +273,7 @@ function FemApp() {
     <div style={s.knapper}>
       <span style={s.brand}>Omkreds</span>
       <div style={s.visninger} role="tablist" aria-label="Visning">
-        {[['fem', 'FEM'], ['rapport', 'Rapport']].map(([k, l]) => (
+        {VISNINGER.map(([k, l]) => (
           <button key={k} type="button" role="tab" aria-selected={visning === k}
                   style={{ ...s.visKnap, ...(visning === k ? s.visKnapPaa : null) }}
                   onClick={() => setVisning(k)}>{l}</button>
@@ -262,6 +298,26 @@ function FemApp() {
       {visning === 'fem' && blok && (
         <GeneralFrameFemBlock key={noegle} block={blok} onChange={onBlok} blocks={blocks}
           standalone={{ actions: knapper }} />
+      )}
+      {visning === 'begge' && (
+        <div style={s.rapport}>
+         <div style={s.rapportTop}>{knapper}</div>
+         <div style={s.begge} ref={delRef}>
+          <div style={{ ...s.rude, flexBasis: `${deling * 100}%` }}>
+            {blok && (
+              <GeneralFrameFemBlock key={noegle} block={blok} onChange={onBlok} blocks={blocks}
+                standalone={{ actions: null, indlejret: true }} />
+            )}
+          </div>
+          <div style={s.deler} onPointerDown={traek} onDoubleClick={() => { setDeling(0.58); husk('omkreds.deling', 0.58) }}
+               role="separator" aria-orientation="vertical" title="Træk for at ændre bredden (dobbeltklik: standard)" />
+          {/* tabIndex: et klik i rapporten flytter fokus hertil, så modellens
+              taster (Delete, værktøjer) ikke rammer en markering i FEM. */}
+          <div style={{ ...s.rude, flex: 1 }} tabIndex={-1} data-fem-ignorer-taster="">
+            <RapportView key={noegle} blocks={blocks} onChange={onRapport} smal />
+          </div>
+         </div>
+        </div>
       )}
       {visning === 'rapport' && (
         <div style={s.rapport}>
@@ -304,6 +360,9 @@ const s = {
   rapport: { position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' },
   rapportTop: { display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--line, #e4dfda)', background: 'var(--surface, #fff)' },
   rapportKrop: { position: 'relative', flex: 1, minHeight: 0 },
+  begge: { position: 'relative', flex: 1, minHeight: 0, display: 'flex' },
+  rude: { position: 'relative', minWidth: 0, height: '100%', outline: 'none', flexShrink: 0 },
+  deler: { width: 6, cursor: 'col-resize', background: 'var(--line, #e4dfda)', flexShrink: 0, zIndex: 1 },
   fil: {
     fontSize: 12, color: 'var(--muted, #666)', whiteSpace: 'nowrap', overflow: 'hidden',
     textOverflow: 'ellipsis', maxWidth: 200, marginLeft: 4,
