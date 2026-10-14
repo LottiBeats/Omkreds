@@ -78,3 +78,37 @@
 .rp-smal { padding: 16px 12px 100px; }
 .rp-smal .rp-side { padding: 36px 40px 32px 60px; min-height: 0; }
 .rp-smal .rp-greb { left: -48px; }
+
+/* Egenvægt og Sne (RapportModuler.jsx). */
+.rm { border: 1px solid var(--line, #e4dfda); border-radius: 6px; padding: 12px 14px; display: grid; gap: 10px; }
+.rm-top { display: flex; align-items: center; gap: 10px; }
+.rm-ikon { font-size: 11px; font-weight: 700; color: #fff; border-radius: 4px; padding: 3px 7px; }
+.rm-ikon-g { background: #57534e; }
+.rm-ikon-s { background: #0369a1; }
+.rm-titel { flex: 1; border: 0; font-size: 15px; font-weight: 600; background: transparent; outline: none; font-family: inherit; color: var(--ink, #1c1917); }
+.rm input, .rm select {
+  border: 1px solid var(--line, #e4dfda); border-radius: 4px; padding: 4px 7px; font-size: 13px;
+  font-family: inherit; background: var(--surface, #fff); color: var(--ink, #1c1917); min-width: 0;
+}
+.rm input.num { text-align: right; font-variant-numeric: tabular-nums; }
+.rm-tabel { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rm-tabel th { text-align: left; font-size: 11px; font-weight: 600; color: var(--muted, #78716c); padding: 0 6px 4px; border-bottom: 1px solid var(--line, #e4dfda); }
+.rm-tabel td { padding: 3px 6px; }
+.rm-tabel td:first-child input { width: 100%; }
+.rm-tabel td input.num { width: 84px; }
+.rm-tabel .num { text-align: right; }
+.rm-res { font-variant-numeric: tabular-nums; color: var(--ink-2, #44403c); }
+.rm-tabel tfoot td { border-top: 1px solid var(--line-2, #d6cfc8); padding-top: 6px; }
+.rm-sumtxt { color: var(--muted, #78716c); font-size: 12px; }
+.rm-sum { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rm-x { border: 0; background: none; color: var(--faint, #a8a29e); cursor: pointer; font-size: 12px; }
+.rm-x:hover { color: #b91c1c; }
+.rm-plus { border: 1px dashed var(--line-2, #d6cfc8); border-radius: 4px; background: none; padding: 3px 10px; font-size: 12px; cursor: pointer; color: var(--muted, #78716c); }
+.rm-plus:hover { color: var(--ink, #1c1917); border-color: var(--ink-2, #44403c); }
+.rm-felter { display: flex; flex-wrap: wrap; gap: 12px; }
+.rm-felter label { display: grid; align-content: start; gap: 3px; font-size: 11.5px; color: var(--muted, #78716c); }
+.rm-felter input.num { width: 90px; }
+.rm-felter input[readonly] { background: var(--bg, #f6f4f2); color: var(--muted, #78716c); }
+.rm-linje { font-size: 13px; color: var(--ink-2, #44403c); }
+.rm-sep { margin: 0 10px; color: var(--faint, #a8a29e); }
+.rm-adv { font-size: 12px; color: #b45309; }

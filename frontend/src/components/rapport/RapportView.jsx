@@ -16,9 +16,10 @@ import React, { useMemo, useRef, useState } from 'react'
 import HeadingBlock from '../blocks/HeadingBlock.jsx'
 import TextBlock from '../blocks/TextBlock.jsx'
 import CustomCalcBlock from '../blocks/CustomCalcBlock.jsx'
+import { EgenvaegtModul, SneModul } from './RapportModuler.jsx'
 import { overskriftsnumre } from '../../lib/indhold.js'
 import { hasCalcResult, isStaleResult } from '../../lib/calcState.js'
-import { RAPPORT_TYPER, nyBlok, indsaet, flyt, fjern, erFem, femHarModel, femIRapport } from '../../lib/rapport.js'
+import { RAPPORT_TYPER, REDIGERBARE, nyBlok, indsaet, flyt, fjern, erFem, femHarModel, femIRapport } from '../../lib/rapport.js'
 import './rapport.css'
 
 function IndsaetLinje({ onVaelg, altid = false }) {
@@ -132,11 +133,13 @@ export default function RapportView({ blocks, onChange, onVisFem, smal = false }
               )}
               {b.type === 'text' && <TextBlock block={b} onChange={opdater} />}
               {b.type === 'custom_calc' && <CustomCalcBlock block={b} onChange={opdater} />}
+              {b.type === 'rapport_egenvaegt' && <EgenvaegtModul block={b} onChange={opdater} />}
+              {b.type === 'rapport_sne' && <SneModul block={b} onChange={opdater} />}
               {erFem(b) && (
                 <FemKort blok={b} onVisFem={onVisFem}
                          onSkift={(med) => onChange(blocks.map(x => (x.id === b.id ? { ...x, iRapport: med } : x)), true)} />
               )}
-              {!['heading', 'text', 'custom_calc'].includes(b.type) && !erFem(b) && (
+              {!REDIGERBARE.includes(b.type) && !erFem(b) && (
                 <div className="rp-anden">Blok fra omkreds.dk ({b.type}) — kommer med i PDF'en, redigeres på omkreds.dk.</div>
               )}
             </div>

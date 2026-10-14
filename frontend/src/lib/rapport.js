@@ -10,13 +10,21 @@
  * Funktionerne her er rene (ingen React), så de kan testes for sig.
  */
 
-// Det, man kan sætte ind i rapporten. Bevidst kort: simpel tekst og egen
-// beregning. Resten af omkreds.dk's blokke hører til projekterne.
+import { EGENVAEGT_STANDARD, egenvaegtRapport, SNE_STANDARD, sneRapport } from './rapportModuler.js'
+
+// Det, man kan sætte ind i rapporten. Bevidst kort: simpel tekst, egen
+// beregning og to små lastberegninger. Resten af omkreds.dk's blokke hører
+// til projekterne.
 export const RAPPORT_TYPER = [
   { type: 'heading', label: 'Overskrift' },
   { type: 'text', label: 'Tekst' },
   { type: 'custom_calc', label: 'Egen beregning' },
+  { type: 'rapport_egenvaegt', label: 'Egenvægt' },
+  { type: 'rapport_sne', label: 'Sne' },
 ]
+
+// Typerne, Rapport-visningen selv kan redigere.
+export const REDIGERBARE = RAPPORT_TYPER.map(t => t.type)
 
 const STANDARD = {
   heading: () => ({ level: 1, text: '' }),
@@ -26,6 +34,10 @@ const STANDARD = {
     lines: ['# Forudsætninger', 'L = 4,0 m | spændvidde',
             'q_d = 5,0 kN/m | regningsmæssig linjelast', 'M_Ed = q_d·L²/8 → kNm'],
   }),
+  // Med rapportrækkerne fra start, så PDF'en har dem, også hvis modulet
+  // aldrig røres.
+  rapport_egenvaegt: () => { const d = EGENVAEGT_STANDARD(); return { ...d, _result: egenvaegtRapport(d) } },
+  rapport_sne: () => { const d = SNE_STANDARD(); return { ...d, _result: sneRapport(d) } },
 }
 
 let _seq = 0
@@ -74,7 +86,7 @@ export function pdfBlokke(blocks) {
   const tom = !ud.some(b => (erFem(b)
     || (b.type === 'heading' && (b.data?.text ?? '').trim())
     || (b.type === 'text' && (b.data?.text ?? '').trim())
-    || (b.type === 'custom_calc' && (b.data?._result?.length ?? 0) > 0)
-    || !['heading', 'text', 'custom_calc'].includes(b.type)))
+    || (['custom_calc', 'rapport_egenvaegt', 'rapport_sne'].includes(b.type) && (b.data?._result?.length ?? 0) > 0)
+    || !REDIGERBARE.includes(b.type)))
   return { blocks: ud, tom }
 }

@@ -25,9 +25,35 @@ def test_pdf_af_model_uden_projekt(client):
     doc = pdfium.PdfDocument(r.content)
     tekst = "\n".join(p.get_textpage().get_text_range() for p in doc)
     assert "Testhal" in tekst and "MARKOER" in tekst
+    # Blankt papir: ingen A2-forside, indholdsfortegnelse eller tegningshoved.
+    assert len(doc) == 1
+    assert "Statiske beregninger" not in tekst and "Indholdsfortegnelse" not in tekst
+    assert "Kontrolleret af" not in tekst
+    assert "1 Rammeberegning" in tekst or "1  Rammeberegning" in tekst
 
 
 def test_lokal_bruger_uden_login():
     import desktop_app
     from auth import get_current_user
     assert desktop_app.main.app.dependency_overrides[get_current_user]()["id"] == "lokal"
+
+
+def test_pdf_med_egenvaegt_og_sne(client):
+    """Rapportens små moduler kommer med i PDF'en (pdf_builder._CALC_TYPES)."""
+    import desktop_app  # noqa: F401
+    r = client.post("/desktop/pdf", json={"blocks": [
+        {"type": "rapport_egenvaegt", "data": {"title": "Egenvægt tag", "_result": [
+            {"type": "section", "content": "Egenvægt tag"},
+            {"type": "table", "headers": ["Lag", "t [mm]", "γ [kN/m³]", "g [kN/m²]"],
+             "rows": [["Gipsplade", "13", "9,0", "0,117"], ["Sum", "", "", "0,12"]]},
+            {"type": "calc_row", "name": "g_k", "formula": "Σ t · γ", "result": "0,12 kN/m²", "label": "Karakteristisk egenlast"},
+        ]}},
+        {"type": "rapport_sne", "data": {"title": "Snelast", "_result": [
+            {"type": "section", "content": "Snelast"},
+            {"type": "calc_row", "name": "s", "formula": "μ_1 · C_e · C_t · s_k", "result": "0,80 kN/m²", "label": "Snelast på taget"},
+        ]}},
+    ]})
+    assert r.status_code == 200, r.text
+    import pypdfium2 as pdfium
+    tekst = "\n".join(p.get_textpage().get_text_range() for p in pdfium.PdfDocument(r.content))
+    assert "Gipsplade" in tekst and "0,80 kN/m" in tekst and "EGENVÆGT TAG" in tekst.upper()

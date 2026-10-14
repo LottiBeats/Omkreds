@@ -963,6 +963,8 @@ _CALC_TYPES = {
     "bolt_group", "fillet_weld",
     "plate_girder",
     "saved_calc",
+    # Egenvægt og Sne i skrivebordsprogrammets rapport (lib/rapportModuler.js).
+    "rapport_egenvaegt", "rapport_sne",
 }
 
 
@@ -1490,6 +1492,63 @@ def build_pdf(project: dict, blocks: list, doc_id: str = "") -> bytes:
 
     finally:
         # Always clean up temp files
+        for path in tmp_files:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+
+
+# ── Simpel rapport (skrivebordsprogrammet) ────────────────────────────────────
+
+def build_pdf_simpel(blocks: list, titel: str = "") -> bytes:
+    """
+    Rapporten fra skrivebordsprogrammet på blankt papir: ingen forside,
+    ingen sagsoplysninger, ingen indholdsfortegnelse og intet tegningshoved
+    -- kun indholdet, med overskriftsnumre og sidetal nederst.
+
+    Blokkene tegnes af de samme funktioner som i build_pdf, så en beregning
+    ser ens ud i begge.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate
+    from calc_core import build_story, make_styles
+
+    tmp_files: list[str] = []
+    numbered = nummerer_figurer(_number_headings(list(blocks)))
+    try:
+        indhold = []
+        for block in numbered:
+            try:
+                indhold.extend(_convert_block(block, tmp_files))
+            except Exception as exc:
+                indhold.append(N(f"Fejl i blokken '{block.get('type')}': {exc}"))
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            out_path = tmp.name
+        tmp_files.append(out_path)
+
+        W, H = A4
+
+        def sidefod(canv, doc):
+            canv.saveState()
+            canv.setFont("Plex", 8)
+            canv.setFillColor(rl_colors.HexColor("#78716c"))
+            if titel:
+                canv.drawString(20 * mm, 10 * mm, titel)
+            canv.drawRightString(W - 20 * mm, 10 * mm, f"Side {doc.page}")
+            canv.restoreState()
+
+        doc = SimpleDocTemplate(
+            out_path, pagesize=A4,
+            leftMargin=20 * mm, rightMargin=20 * mm, topMargin=20 * mm, bottomMargin=20 * mm,
+            title=titel or "Rapport",
+        )
+        doc.build(build_story(indhold, make_styles()), onFirstPage=sidefod, onLaterPages=sidefod)
+
+        with open(out_path, "rb") as f:
+            return f.read()
+    finally:
         for path in tmp_files:
             try:
                 os.unlink(path)
