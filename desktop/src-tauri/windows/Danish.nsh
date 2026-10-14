@@ -1,0 +1,32 @@
+﻿; Danske tekster til installationsprogrammet.
+; Tauri har ingen dansk oversættelse af sine egne tekster (opdatering,
+; afinstallation, WebView2), så de stod tomme -- fx to knapper uden tekst,
+; når en ældre version skulle afinstalleres før opdateringen.
+; Nøglerne er de samme som i Tauris English.nsh.
+LangString addOrReinstall ${LANG_DANISH} "Tilføj/geninstallér komponenter"
+LangString alreadyInstalled ${LANG_DANISH} "Allerede installeret"
+LangString alreadyInstalledLong ${LANG_DANISH} "${PRODUCTNAME} ${VERSION} er allerede installeret. Vælg, hvad du vil gøre, og klik på Næste for at fortsætte."
+LangString appRunning ${LANG_DANISH} "${PRODUCTNAME} kører! Luk programmet først, og prøv igen."
+LangString appRunningOkKill ${LANG_DANISH} "${PRODUCTNAME} kører!$\nKlik på OK for at lukke det"
+LangString chooseMaintenanceOption ${LANG_DANISH} "Vælg, hvad du vil gøre."
+LangString choowHowToInstall ${LANG_DANISH} "Vælg, hvordan ${PRODUCTNAME} skal installeres."
+LangString createDesktop ${LANG_DANISH} "Opret genvej på skrivebordet"
+LangString dontUninstall ${LANG_DANISH} "Afinstallér ikke"
+LangString dontUninstallDowngrade ${LANG_DANISH} "Afinstallér ikke (en ældre version kan ikke installeres uden at afinstallere først)"
+LangString failedToKillApp ${LANG_DANISH} "${PRODUCTNAME} kunne ikke lukkes. Luk programmet først, og prøv igen"
+LangString installingWebview2 ${LANG_DANISH} "Installerer WebView2..."
+LangString newerVersionInstalled ${LANG_DANISH} "En nyere version af ${PRODUCTNAME} er allerede installeret. Det anbefales ikke at installere en ældre version. Vil du alligevel, så afinstallér den nuværende version først. Vælg, hvad du vil gøre, og klik på Næste for at fortsætte."
+LangString older ${LANG_DANISH} "ældre"
+LangString olderOrUnknownVersionInstalled ${LANG_DANISH} "En $R4 version af ${PRODUCTNAME} er installeret. Den afinstalleres, før den nye installeres; dine modeller og filer bliver liggende. Klik på Næste for at fortsætte."
+LangString silentDowngrades ${LANG_DANISH} "En ældre version kan ikke installeres uden brugerflade. Brug det almindelige installationsprogram.$\n"
+LangString unableToUninstall ${LANG_DANISH} "Kunne ikke afinstallere!"
+LangString uninstallApp ${LANG_DANISH} "Afinstallér ${PRODUCTNAME}"
+LangString uninstallBeforeInstalling ${LANG_DANISH} "Afinstallér den gamle version først (anbefalet)"
+LangString unknown ${LANG_DANISH} "ukendt"
+LangString webview2AbortError ${LANG_DANISH} "WebView2 kunne ikke installeres! Programmet kan ikke køre uden. Prøv at starte installationen igen."
+LangString webview2DownloadError ${LANG_DANISH} "Fejl: WebView2 kunne ikke hentes - $0"
+LangString webview2DownloadSuccess ${LANG_DANISH} "WebView2 er hentet"
+LangString webview2Downloading ${LANG_DANISH} "Henter WebView2..."
+LangString webview2InstallError ${LANG_DANISH} "Fejl: WebView2 kunne ikke installeres (kode $1)"
+LangString webview2InstallSuccess ${LANG_DANISH} "WebView2 er installeret"
+LangString deleteAppData ${LANG_DANISH} "Slet programmets data"

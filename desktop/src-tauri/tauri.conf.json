@@ -28,7 +28,8 @@
       "nsis": {
         "installMode": "currentUser",
         "languages": ["Danish", "English"],
-        "installerHooks": "./windows/hooks.nsh"
+        "installerHooks": "./windows/hooks.nsh",
+        "customLanguageFiles": { "Danish": "./windows/Danish.nsh" }
       }
     }
   }
