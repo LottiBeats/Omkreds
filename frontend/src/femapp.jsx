@@ -8,6 +8,10 @@
  * (backend/desktop_app.py). Filen har samme form som et dokument (en liste af
  * blokke), så den senere kan importeres i et projekt på omkreds.dk.
  *
+ * To visninger: FEM (modelvinduet) og Rapport (components/rapport): en side
+ * med overskrifter, simpel tekst og egne beregninger, hvor rammeberegningen
+ * står som et kort. PDF'en er rapporten i den rækkefølge.
+ *
  * Kører i skrivebordsprogrammet (Tauri) og, under udvikling, i en almindelig
  * browser mod `python backend/desktop_app.py` eller Vite + en lokal backend.
  */
@@ -24,6 +28,8 @@ import { lavModel, gem, aabn, gemPdf, gemTekst } from './lib/femFile.js'
 import { resultaterSomCsv } from './lib/femCsv.js'
 import { hashCalcInputs, calcRevision, isStaleResult, hasCalcResult } from './lib/calcState.js'
 import useBlockUndo from './hooks/useBlockUndo.js'
+import RapportView from './components/rapport/RapportView.jsx'
+import { pdfBlokke, femIRapport } from './lib/rapport.js'
 
 const TOM_META = { project_name: '', project_ref: '', engineer: '', checker: '', client: '' }
 
@@ -49,6 +55,7 @@ function FemApp() {
   const [besked, setBesked] = useState(null)
   const [travl, setTravl] = useState(false)
   const [visSag, setVisSag] = useState(false)
+  const [visning, setVisning] = useState('fem')
   // Editoren husker valgt blok m.m.; en ny eller åbnet model skal starte forfra.
   const [noegle, setNoegle] = useState(0)
 
@@ -65,7 +72,7 @@ function FemApp() {
   const onMeta = (k, v) => { setMeta(m => ({ ...m, [k]: v })); setAendret(true) }
 
   const forkastOk = () =>
-    !state.current.aendret || window.confirm('Modellen er ændret og ikke gemt. Fortsæt alligevel?')
+    !state.current.aendret || window.confirm('Filen er ændret og ikke gemt. Fortsæt alligevel?')
 
   const forslag = () => {
     const { meta, fil } = state.current
@@ -120,13 +127,17 @@ function FemApp() {
   }
 
   const lavPdf = async () => {
-    const { meta, blocks } = state.current
+    const { meta, blocks: alle } = state.current
+    // PDF'en er rapporten. Rammeberegningen er med, når den har en model og
+    // ikke er valgt fra i Rapport-visningen.
+    const { blocks, tom } = pdfBlokke(alle)
+    if (tom) { vis('Der er ikke noget at lave PDF af endnu: tegn en model i FEM eller skriv i Rapport.', true); return }
     // En PDF er en dokumentation af et bestemt regnet resultat. Er modellen
     // ændret siden, eller er den ikke regnet, ville rapporten vise tal for en
     // anden konstruktion end den, der står på skærmen — uden at sige det.
-    const fem = blocks.find(b => b.type === 'general_frame_fem')
-    if (fem && !hasCalcResult(fem)) { vis('Regn modellen (F5), før der laves en PDF.', true); return }
-    if (fem && isStaleResult(fem)) { vis('Modellen er ændret siden sidste beregning — regn igen (F5), før der laves en PDF.', true); return }
+    const fem = alle.find(b => b.type === 'general_frame_fem')
+    if (femIRapport(fem) && !hasCalcResult(fem)) { vis('Regn modellen (F5), før der laves en PDF — eller fravælg den i Rapport.', true); return }
+    if (femIRapport(fem) && isStaleResult(fem)) { vis('Modellen er ændret siden sidste beregning — regn igen (F5), før der laves en PDF.', true); return }
     setTravl(true)
     try {
       const blob = await desktopPdf(meta, blocks)
@@ -167,13 +178,13 @@ function FemApp() {
     w.onCloseRequested(async (e) => {
       if (!state.current.aendret) return
       e.preventDefault()
-      if (window.confirm('Modellen er ændret og ikke gemt. Luk alligevel?')) await w.destroy()
+      if (window.confirm('Filen er ændret og ikke gemt. Luk alligevel?')) await w.destroy()
     }).then(f => { fjern = f })
     return () => { if (fjern) fjern() }
   }, [])
 
   useEffect(() => {
-    document.title = `${aendret ? '• ' : ''}${fil.navn ?? 'Ny model'} — Omkreds FEM`
+    document.title = `${aendret ? '• ' : ''}${fil.navn ?? 'Ny fil'} — Omkreds`
   }, [fil.navn, aendret])
 
   // En fil uden rammeberegning (fx et dokument fra omkreds.dk) får en.
@@ -204,6 +215,15 @@ function FemApp() {
     setAendret(true)
   }, [undoRecord])
 
+  // Rapport-visningen. Flyt, indsæt og slet kan fortrydes med Ctrl+Z; det,
+  // man skriver, fortrydes i feltet selv.
+  const onRapport = useCallback((nyeBs, struktur) => {
+    if (struktur) undoRecord(state.current.blocks)
+    state.current.blocks = nyeBs
+    setBlocks(nyeBs)
+    setAendret(true)
+  }, [undoRecord])
+
   const fortryd = useCallback((frem) => {
     const cur = state.current.blocks
     const til = frem ? redoStep(cur) : undoStep(cur)
@@ -215,7 +235,14 @@ function FemApp() {
 
   const knapper = (
     <div style={s.knapper}>
-      <span style={s.brand}>Omkreds FEM</span>
+      <span style={s.brand}>Omkreds</span>
+      <div style={s.visninger} role="tablist" aria-label="Visning">
+        {[['fem', 'FEM'], ['rapport', 'Rapport']].map(([k, l]) => (
+          <button key={k} type="button" role="tab" aria-selected={visning === k}
+                  style={{ ...s.visKnap, ...(visning === k ? s.visKnapPaa : null) }}
+                  onClick={() => setVisning(k)}>{l}</button>
+        ))}
+      </div>
       <Button size="sm" onClick={ny} title="Ny model (Ctrl+Alt+N)">Ny</Button>
       <Button size="sm" onClick={aabnFil} title="Åbn (Ctrl+O)">Åbn…</Button>
       <Button size="sm" onClick={() => gemFil(false)} title="Gem (Ctrl+S)">Gem</Button>
@@ -230,9 +257,19 @@ function FemApp() {
 
   return (
     <>
-      {blok && (
+      {/* Modelvinduet er kun monteret i FEM-visningen: dets tastatur (Delete,
+          værktøjstaster) må ikke ramme en markering, mens man skriver rapport. */}
+      {visning === 'fem' && blok && (
         <GeneralFrameFemBlock key={noegle} block={blok} onChange={onBlok} blocks={blocks}
           standalone={{ actions: knapper }} />
+      )}
+      {visning === 'rapport' && (
+        <div style={s.rapport}>
+          <div style={s.rapportTop}>{knapper}</div>
+          <div style={s.rapportKrop}>
+            <RapportView key={noegle} blocks={blocks} onChange={onRapport} onVisFem={() => setVisning('fem')} />
+          </div>
+        </div>
       )}
 
       {visSag && (
@@ -261,6 +298,12 @@ function FemApp() {
 const s = {
   knapper: { display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 },
   brand: { fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', marginRight: 4 },
+  visninger: { display: 'inline-flex', border: '1px solid var(--line-2, #d6cfc8)', borderRadius: 6, overflow: 'hidden', marginRight: 6 },
+  visKnap: { border: 0, background: 'var(--surface, #fff)', padding: '4px 12px', fontSize: 12.5, cursor: 'pointer', color: 'var(--ink-2, #44403c)' },
+  visKnapPaa: { background: 'var(--ink, #1c1917)', color: '#fff', fontWeight: 600 },
+  rapport: { position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' },
+  rapportTop: { display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--line, #e4dfda)', background: 'var(--surface, #fff)' },
+  rapportKrop: { position: 'relative', flex: 1, minHeight: 0 },
   fil: {
     fontSize: 12, color: 'var(--muted, #666)', whiteSpace: 'nowrap', overflow: 'hidden',
     textOverflow: 'ellipsis', maxWidth: 200, marginLeft: 4,
