@@ -44,6 +44,8 @@
   text-overflow: ellipsis; cursor: cell; color: #111; position: relative; user-select: none;
 }
 .rk-gitter td.rk-tal { text-align: right; font-variant-numeric: tabular-nums; }
+/* Indtastede tal (inddata) i blåt, formler i sort — som i Excel-arkene */
+.rk-gitter td.rk-tal:not(.rk-f) { color: #1d4ed8; }
 .rk-gitter td.rk-fejl { color: #b91c1c; text-align: center; }
 .rk-gitter td.rk-fed { font-weight: 700; }
 .rk-gitter td.rk-mark { background: #e6f2ea; }
@@ -128,13 +130,21 @@
 .av-omr.av-ugyldig { border-color: #dc2626; }
 .av-titel { flex: 1; min-width: 160px; }
 .av-aabn { border: 1px solid #217346 !important; color: #fff; background: #217346 !important; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
-.av-caption { font-size: 12px; color: #555; font-style: italic; }
-.av-tabel { border-collapse: collapse; font-size: 12px; table-layout: fixed; width: 100%; cursor: zoom-in; }
-.av-tabel td { border: 1px solid #e2e2e2; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.av-tabel td.av-tal { text-align: right; font-variant-numeric: tabular-nums; }
+.av-caption { font-size: 12px; color: #555; font-style: italic; margin-bottom: 3px; }
+/* Som et ingeniør-Excel-ark: ramme om tabellen, ingen gitter, streg under
+   overskriften, Σ med streg over, sektioner understreget, inddata i blåt. */
+.av-tabel { border-collapse: collapse; font-size: 12px; table-layout: fixed; width: 100%; cursor: zoom-in;
+  border: 1.5px solid #1f2937; color: #111; }
+.av-tabel td { padding: 3px 7px; border-bottom: 1px solid #ececec; vertical-align: top; overflow-wrap: break-word; hyphens: auto; line-height: 1.35; }
+.av-tabel td.av-tal { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; }
+.av-bred td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.av-tabel td.av-input { color: #1d4ed8; }
 .av-tabel td.av-fed { font-weight: 700; }
 .av-tabel td.av-fejl { color: #b91c1c; text-align: center; }
-.av-tabel tr.av-hoved td { background: #f7f7f5; font-weight: 600; border-bottom: 1px solid #b9b9b9; }
+.av-tabel tr.av-hoved td { font-weight: 600; border-bottom: 1.5px solid #1f2937; vertical-align: bottom; white-space: normal; }
+.av-tabel tr.av-sektion td { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; padding-top: 8px; border-bottom: 0; }
+.av-tabel tr.av-sum td { border-top: 1.2px solid #1f2937; border-bottom: 0; font-weight: 700; }
+.av-tabel tr.av-tom td { padding: 0; height: 7px; border-bottom: 0; }
 .av-tom { font-size: 12.5px; color: var(--muted, #78716c); padding: 10px; border: 1px dashed var(--line, #e4dfda); border-radius: 4px; }
 .rkb-gitter td.rkb-harnavn::after {
   content: ''; position: absolute; left: 0; top: 0; border-style: solid; border-width: 6px 6px 0 0;

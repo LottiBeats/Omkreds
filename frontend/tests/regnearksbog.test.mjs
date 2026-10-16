@@ -118,3 +118,16 @@ test('import af en bog: ark ved navn, erstatter ved samme navn og bevarer id', (
   assert.equal(laesImport(JSON.stringify({ docs: {}, bog: { ark: [{ navn: 'x', celler: [['1']] }, { navn: 'X', celler: [] }] } })).ok, false)
   assert.equal(laesImport(JSON.stringify({ docs: {}, bog: { ark: [{ navn: 'x', celler: [['1']] }] } })).ok, true)
 })
+
+test('rækkernes rolle som i et ingeniør-Excel-ark (hoved, sektion, sum, tom) og inddata', async () => {
+  const { raekkeTyper, celleArt } = await import('../src/lib/regnearksbog.js')
+  assert.deepEqual(['=A1', '1,5', 'Lag', '', ' '].map(celleArt), ['f', 'i', 't', '', ''])
+  const r = [['Lag', 'G'], ['TAG — pr. m²', ''], ['Tegl', '0,5'], ['Σ tag', '0,5'], ['', ''], ['RESULTATER', 'Værdi'], ['Noter', ''], ['NOTE', '']]
+  const fed = [[], [true], [], [], [], [true, true], [], []]
+  const art = r.map(x => x.map(celleArt))
+  assert.deepEqual(raekkeTyper(r, fed, art, true), ['hoved', 'sektion', '', 'sum', 'tom', 'hoved', '', 'sektion'])
+  const b = medArk({ ark: [] }, [ark('a', 'A', [['Lag', 'G'], ['Tegl', '0,5'], ['Σ', '=B2']])])
+  const u = udsnit(b.ark[0], '')
+  assert.deepEqual(u.art, [['t', 't'], ['t', 'i'], ['t', 'f']])
+  assert.deepEqual(u.typer, ['hoved', '', 'sum'])
+})

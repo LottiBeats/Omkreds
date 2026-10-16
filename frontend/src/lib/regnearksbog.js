@@ -18,7 +18,7 @@
  */
 import {
   regnBog, vistArk, ledigtNavn, omdoebHenvisninger, arkIFormel, laesAdresse, adresse, erRegneark,
-  gyldigtCellenavn, erFejl, formatVaerdi, kolNavn, omdoebNavnIFormel,
+  gyldigtCellenavn, erFejl, formatVaerdi, kolNavn, omdoebNavnIFormel, laesTal,
 } from './regneark.js'
 
 export const erArkVisning = (b) => b?.type === 'ark_visning'
@@ -164,7 +164,47 @@ export function udsnit(ark, omraadeTekst) {
   }
   const bredder = []
   for (let k = o.k0; k <= o.k1; k++) bredder.push(ark.bredder?.[k] ?? (k === 0 ? 150 : 92))
-  return { raekker, fed, bredder, overskrift: o.r0 === 0 && ark.overskrift !== false, ...o }
+  const art = []
+  for (let r = o.r0; r <= o.r1; r++) {
+    const a = []
+    for (let k = o.k0; k <= o.k1; k++) a.push(celleArt(ark.celler?.[r]?.[k]))
+    art.push(a)
+  }
+  const overskrift = o.r0 === 0 && ark.overskrift !== false
+  return { raekker, fed, bredder, overskrift, art, typer: raekkeTyper(raekker, fed, art, overskrift), ...o }
+}
+
+/** Cellens art til visningen: 'f' formel, 'i' indtastet tal (inddata), 't' tekst, '' tom. */
+export function celleArt(raw) {
+  const t = String(raw ?? '').trim()
+  if (!t) return ''
+  if (t.startsWith('=') && t.length > 1) return 'f'
+  return laesTal(t) !== null ? 'i' : 't'
+}
+
+/**
+ * Rækkernes rolle i et ark, som en ingeniør sætter en Excel-tabel op (samme
+ * regler i backend/pdf_builder.py, _regneark_raekketyper):
+ *   hoved    første række, når den er overskrift — og en fed tekstrække med
+ *            flere celler lige efter en tom række (fx "RESULTATER | Værdi | Enhed")
+ *   sektion  én fed (eller VERSAL) tekst i første kolonne, resten tomt
+ *   sum      rækken begynder med Σ
+ *   tom      ingen tekst
+ *   ''       en almindelig række
+ */
+export function raekkeTyper(raekker, fed, art, overskrift) {
+  return raekker.map((r, i) => {
+    const fyldte = r.map((c, k) => (String(c ?? '').trim() ? k : -1)).filter(k => k >= 0)
+    if (i === 0 && overskrift) return 'hoved'
+    if (!fyldte.length) return 'tom'
+    const forste = String(r[fyldte[0]]).trim()
+    if (fyldte[0] <= 1 && forste.startsWith('Σ')) return 'sum'
+    const alleFede = fyldte.every(k => fed[i]?.[k])
+    if (fyldte.length === 1 && fyldte[0] === 0 && art[i]?.[0] === 't' && (fed[i]?.[0] || (forste.length > 3 && forste === forste.toUpperCase() && /[A-ZÆØÅ]/.test(forste)))) return 'sektion'
+    const efterTom = i > 0 && !raekker[i - 1].some(c => String(c ?? '').trim())
+    if (fyldte.length > 1 && alleFede && efterTom && fyldte.every(k => art[i]?.[k] === 't')) return 'hoved'
+    return ''
+  })
 }
 
 // ── Fra regneark-blokke til bogen ───────────────────────────────────────────
