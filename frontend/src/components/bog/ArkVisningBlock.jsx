@@ -20,7 +20,9 @@ export function ArkTabel({ ark, omraade, titel, onAabn }) {
   return (
     <div>
       {(titel || ark.titel) && <div className="av-caption">{titel || ark.titel}</div>}
-      <table className="av-tabel" onDoubleClick={onAabn} title={onAabn ? 'Dobbeltklik for at åbne arket' : undefined}>
+      {/* Brede ark (fx lastnedføringen) ruller vandret i stedet for at klemme tallene. */}
+      <div className="av-rul">
+      <table className="av-tabel" style={{ minWidth: Math.round(total * 0.85) }} onDoubleClick={onAabn} title={onAabn ? 'Dobbeltklik for at åbne arket' : undefined}>
         <colgroup>{u.bredder.map((b, i) => <col key={i} style={{ width: `${(100 * b / total).toFixed(2)}%` }} />)}</colgroup>
         <tbody>
           {u.raekker.map((r, i) => (
@@ -34,6 +36,7 @@ export function ArkTabel({ ark, omraade, titel, onAabn }) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }

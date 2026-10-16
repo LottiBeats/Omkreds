@@ -99,7 +99,7 @@ async function request(method, path, body = null) {
 
   // Binary endpoints (PDF, ZIP) return a Blob, not JSON
   const ct = response.headers.get('Content-Type') ?? ''
-  if (ct.includes('application/pdf') || ct.includes('application/zip')) {
+  if (ct.includes('application/pdf') || ct.includes('application/zip') || ct.includes('spreadsheetml')) {
     return response.blob()
   }
 
@@ -422,6 +422,14 @@ export const fetchMaterialDensities = async () => {
  * PDF af en FEM-model i det selvstændige program (backend/desktop_app.py).
  * Ingen projekt eller database — blokkene sendes med.
  */
+/** Regnearksbogen som .xlsx (Blob), formlerne på Excels form. */
+export const bogTilXlsx = (bog) =>
+  request('POST', '/regneark/xlsx', { ark: bog.ark ?? [], navne: bog.navne ?? {} })
+
+/** En .xlsx-fil (base64) som ark til bogen: { ark, navne, advarsler }. */
+export const bogFraXlsx = (data) =>
+  request('POST', '/regneark/fra-xlsx', { data })
+
 export const desktopPdf = (metadata, blocks, bog = { ark: [] }) =>
   request('POST', '/desktop/pdf', { metadata, blocks, doc_id: 'A2', bog })
 

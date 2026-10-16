@@ -4257,6 +4257,30 @@ def list_byggevarer():
     return {"byggevarer": liste()}
 
 
+@protected.post("/regneark/xlsx", tags=["Regneark"])
+def regneark_til_xlsx(bog: dict = Body(...)):
+    """Regnearksbogen ({ ark, navne }) som en .xlsx-fil, formlerne på Excels form."""
+    from regneark_xlsx import bog_til_xlsx
+    try:
+        data = bog_til_xlsx(bog)
+    except Exception as exc:   # noqa: BLE001
+        raise HTTPException(status_code=422, detail=f"Regnearket kunne ikke gemmes som Excel: {exc}")
+    return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="regneark.xlsx"'})
+
+
+@protected.post("/regneark/fra-xlsx", tags=["Regneark"])
+def regneark_fra_xlsx(body: dict = Body(...)):
+    """En .xlsx-fil (base64 i "data") som ark til regnearksbogen: { ark, navne, advarsler }."""
+    import base64
+    from regneark_xlsx import xlsx_til_bog
+    try:
+        data = base64.b64decode(str(body.get("data", "")).split(",")[-1], validate=False)
+        return xlsx_til_bog(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @protected.post("/calc/egenlast", tags=["Calculations"])
 def calc_egenlast(data: EgenlastInput):
     """Egenlast af tag, dæk eller væg ud fra lagopbygningen → G_k."""

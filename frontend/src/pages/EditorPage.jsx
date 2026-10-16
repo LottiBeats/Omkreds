@@ -32,7 +32,7 @@ import { DOC_IDS, DOC_TITLES } from '../templates/docs.js'
 import { DOC_TEMPLATES } from '../templates/docTemplates.js'
 import { PROJECT_TYPES, makeProjectDocuments, optionsFor } from '../templates/projectTypes.js'
 import { laesImport, anvendImport, beskrivImport } from '../lib/importDokumenter.js'
-import { bogAf, medArk, nytArk, visningerAf, flytRegnearkTilBog, harGamleRegneark } from '../lib/regnearksbog.js'
+import { bogAf, medArk, nytArk, visningerAf, flytRegnearkTilBog, harGamleRegneark, indsaetSkabelon, tilpasBlokke } from '../lib/regnearksbog.js'
 import { BogKontekst } from '../components/bog/BogKontekst.js'
 import { anvendKoblinger, koblingerTil } from '../lib/koblinger.js'
 
@@ -421,6 +421,18 @@ export default function EditorPage() {
     }
     // Some templates are generated from a description of the project — ask first.
     if (tpl.needsOptions) { setPendingTemplate(tpl); return }
+    if (tpl.bog) {
+      // Skabelonens ark lægges i regnearksbogen; visninger og koblinger peger på dem.
+      const p = live.current.project
+      const { bog: nyBog, idFor, navnFor } = indsaetSkabelon(bogAf(p), tpl.bog())
+      const blocks = tilpasBlokke(tpl.make(), idFor, navnFor)
+      undoRecord(live.current.currentBlocks)
+      const ny = anvendKoblinger({ ...withBlocks(p, live.current.loc, blocks), bog: nyBog })
+      live.current = { ...live.current, project: ny }
+      save(ny)
+      toast.ok(`${idFor.size} ark er lagt i regnearksbogen (knappen "Regneark" øverst).`)
+      return
+    }
     updateBlocks(tpl.make())
   }
 
@@ -618,6 +630,7 @@ export default function EditorPage() {
             startCelle={bogAaben.celle}
             visninger={visningerFor}
             koblinger={koblingerFor}
+            filnavn={`${fileBase()}_regneark`}
             onLuk={() => setBogAaben(null)}
           />
         </Suspense>

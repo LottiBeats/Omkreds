@@ -18,7 +18,7 @@
  */
 import {
   regnBog, vistArk, ledigtNavn, omdoebHenvisninger, arkIFormel, laesAdresse, adresse, erRegneark,
-  gyldigtCellenavn, erFejl, formatVaerdi, kolNavn,
+  gyldigtCellenavn, erFejl, formatVaerdi, kolNavn, omdoebNavnIFormel,
 } from './regneark.js'
 
 export const erArkVisning = (b) => b?.type === 'ark_visning'
@@ -309,4 +309,66 @@ export function udgange(bog) {
       vaerdi: fejl ? null : v, tekst: fejl ? '' : formatVaerdi(v, dec), fejl,
     }
   }).sort((x, y) => x.navn.localeCompare(y.navn, 'da'))
+}
+
+// ── Skabeloner med flere ark (lib/bogSkabeloner.js) ─────────────────────────
+
+/**
+ * Sæt en skabelon ind i bogen. skabelon = { ark: [{ navn, celler, … }],
+ * navne: { n: { ark: arknavn, celle, enhed } } }. Et arknavn eller et
+ * cellenavn, der allerede er brugt, får et nyt (Laster → Laster (2), q_p →
+ * q_p_2), og skabelonens formler skrives om med. Returnerer { bog, idFor:
+ * Map(arknavn i skabelonen → id), navnFor: Map(navn i skabelonen → navn i bogen) }.
+ */
+export function indsaetSkabelon(bog, skabelon) {
+  const brugteArk = bog.ark.map(a => a.navn)
+  const arkNavn = new Map()
+  // Et navn, der er brugt, får (2), (3) … — "Stabilitet V1 (2)", ikke "Stabilitet V2".
+  const ledigt = (navn) => {
+    const sm = new Set(brugteArk.map(n => n.toLowerCase()))
+    if (!sm.has(navn.toLowerCase())) return navn
+    for (let i = 2; ; i++) { const n = `${navn} (${i})`; if (!sm.has(n.toLowerCase())) return n }
+  }
+  for (const a of skabelon.ark ?? []) {
+    const ny = ledigt(a.navn)
+    brugteArk.push(ny)
+    arkNavn.set(a.navn, ny)
+  }
+  const brugteNavne = new Set(Object.keys(bog.navne ?? {}).map(n => n.toLowerCase()))
+  const navnFor = new Map()
+  for (const n of Object.keys(skabelon.navne ?? {})) {
+    let ny = n
+    for (let i = 2; brugteNavne.has(ny.toLowerCase()); i++) ny = `${n}_${i}`
+    brugteNavne.add(ny.toLowerCase())
+    navnFor.set(n, ny)
+  }
+  const idFor = new Map()
+  const nye = (skabelon.ark ?? []).map(a => {
+    let celler = (a.celler ?? [['']]).map(r => r.map(c => String(c ?? '')))
+    for (const [gl, ny] of arkNavn) if (gl !== ny) celler = celler.map(r => r.map(c => omdoebHenvisninger(c, gl, ny)))
+    for (const [gl, ny] of navnFor) if (gl !== ny) celler = celler.map(r => r.map(c => omdoebNavnIFormel(c, gl, ny)))
+    const id = nyArkId()
+    idFor.set(a.navn, id)
+    return { titel: '', overskrift: true, bredder: [], dec: {}, fed: {}, ...structuredClone(a), id, navn: arkNavn.get(a.navn), celler, _vist: [] }
+  })
+  const navne = { ...(bog.navne ?? {}) }
+  for (const [n, x] of Object.entries(skabelon.navne ?? {})) {
+    const id = idFor.get(x.ark)
+    if (id) navne[navnFor.get(n)] = { ark: id, celle: x.celle, enhed: x.enhed ?? '' }
+  }
+  return { bog: medArk({ ...bog, navne }, [...bog.ark, ...nye]), idFor, navnFor }
+}
+
+/** Skabelonens blokke tilpasset bogen: visninger peger på arkenes id, koblinger og [navn] på de nye navne. */
+export function tilpasBlokke(blocks, idFor, navnFor) {
+  const nytNavn = (n) => navnFor.get(n) ?? n
+  return (blocks ?? []).map(b => {
+    let data = b.data ?? {}
+    if (b.type === 'ark_visning' && idFor.has(data.ark)) data = { ...data, ark: idFor.get(data.ark) }
+    if (data._links) data = { ...data, _links: Object.fromEntries(Object.entries(data._links).map(([s, n]) => [s, nytNavn(n)])) }
+    if (b.type === 'custom_calc' && Array.isArray(data.lines)) {
+      data = { ...data, lines: data.lines.map(l => String(l).replace(/\[\s*([A-Za-zÆØÅæøå_][\wÆØÅæøå]*)\s*\]/g, (h, n) => `[${nytNavn(n)}]`)) }
+    }
+    return data === b.data ? b : { ...b, data }
+  })
 }

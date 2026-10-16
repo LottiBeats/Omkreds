@@ -14,6 +14,9 @@
  * "Spor" viser, hvad den aktive celle bygger på, og hvor den bruges — til
  * kontrollen. Fejl i bogen tælles i bunden; et klik går til den næste.
  *
+ * "Excel" henter bogen som .xlsx (formlerne virker i Excel) og læser en
+ * .xlsx-fil ind som nye ark ved siden af de andre (backend/regneark_xlsx.py).
+ *
  * "Navngiv" giver den aktive celle et navn (en udgang, fx w_kip_V4). Navnet
  * kan bruges i formler (=w_kip_V4*2), i navnefeltet og i beregningsblokkene:
  * "=" i et talfelt eller [w_kip_V4] i Egen beregning (lib/koblinger.js).
@@ -26,9 +29,11 @@ import {
 } from '../../lib/regneark.js'
 import {
   medArk, medEtArk, nytArk, omdoebArk, sletArk, dupliker, flytArk, arkDerBruger,
-  navneOpslag, navngiv, fjernNavn, navneFor, flytNavne, udgange,
+  navneOpslag, navngiv, fjernNavn, navneFor, flytNavne, udgange, indsaetSkabelon,
 } from '../../lib/regnearksbog.js'
 import { SKABELONER } from '../../lib/regnearkSkabeloner.js'
+import { BOG_SKABELONER } from '../../lib/bogSkabeloner.js'
+import { bogTilXlsx, bogFraXlsx } from '../../api/client.js'
 import '../blocks/Regneark.css'
 
 const STD_BREDDE = 92
@@ -53,7 +58,19 @@ function laesGaaTil(tekst) {
   return { ark, r0: a.r, k0: a.k, r1: b.r, k1: b.k }
 }
 
-export default function RegnearksBog({ bog, onBog, startArk = null, startCelle = null, onLuk, visninger = () => [], koblinger = () => [] }) {
+/** Standard: hent filen i browseren. Skrivebordsprogrammet giver sin egen gem-dialog. */
+function hentFil(blob, navn) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = navn
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export default function RegnearksBog({
+  bog, onBog, startArk = null, startCelle = null, onLuk, visninger = () => [], koblinger = () => [],
+  gemFil = hentFil, filnavn = 'Regneark',
+}) {
   const [aktivId, setAktivId] = useState(() => startArk ?? bog.ark[0]?.id ?? null)
   const ark = bog.ark.find(a => a.id === aktivId) ?? bog.ark[0] ?? null
   const d = ark ?? { celler: [['']], dec: {}, fed: {} }
@@ -113,6 +130,40 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
   const [visNavne, setVisNavne] = useState(false)
   const [navngiver, setNavngiver] = useState(null)   // { navn, enhed, fejl, celle }
   const [celleMenu, setCelleMenu] = useState(null)   // { x, y }
+  const [excelTravl, setExcelTravl] = useState(false)
+  const excelInput = useRef(null)
+
+  async function hentExcel() {
+    setExcelTravl(true)
+    try {
+      await gemFil(await bogTilXlsx(bog), `${filnavn}.xlsx`)
+    } catch (e) {
+      setBesked(`Excel-filen kunne ikke laves: ${e.message}`)
+    } finally { setExcelTravl(false) }
+  }
+  async function laesExcel(e) {
+    const fil = e.target.files?.[0]
+    e.target.value = ''
+    if (!fil) return
+    setExcelTravl(true)
+    try {
+      const data = await new Promise((ok, fejl) => {
+        const r = new FileReader()
+        r.onload = () => ok(String(r.result))
+        r.onerror = () => fejl(new Error('Filen kunne ikke læses.'))
+        r.readAsDataURL(fil)
+      })
+      const svar = await bogFraXlsx(data)
+      if (!svar.ark?.length) { setBesked('Filen har ingen ark.'); return }
+      const { bog: ny, idFor } = indsaetSkabelon(bog, { ark: svar.ark, navne: svar.navne })
+      aendr(ny)
+      setAktivId([...idFor.values()][0] ?? aktivId)
+      const n = svar.ark.length
+      setBesked({ ok: !svar.advarsler?.length, tekst: `${n} ark fra ${fil.name} er lagt i bogen.` + (svar.advarsler?.length ? ' ' + svar.advarsler.join(' ') : '') })
+    } catch (err) {
+      setBesked(`Excel-filen kunne ikke læses: ${err.message}`)
+    } finally { setExcelTravl(false) }
+  }
   const [besked, setBesked] = useState(null)
   const rodRef = useRef(null)
   const inputRef = useRef(null)
@@ -315,6 +366,14 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
     if (red && !red.tekst.startsWith('=')) gemRed()
     setAktivId(id)
     setMenu(null)
+  }
+  function nyeFraBogskabelon(key) {
+    const s = BOG_SKABELONER.find(x => x.key === key)
+    if (!s) return
+    const { bog: ny, idFor } = indsaetSkabelon(bog, s.bog())
+    aendr(ny)
+    setAktivId([...idFor.values()][0] ?? aktivId)
+    setBesked(null)
   }
   function nyFane(skabelon) {
     const s = SKABELONER.find(x => x.key === skabelon)
@@ -543,6 +602,11 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
           </>
         )}
         <span className="rkb-fyld" />
+        <button type="button" className="rkb-luk" disabled={excelTravl || !bog.ark.length} onClick={hentExcel}
+                title="Hent hele bogen som Excel-fil (.xlsx) — formler, navne og formater kommer med">Hent som Excel</button>
+        <button type="button" className="rkb-luk" disabled={excelTravl} onClick={() => excelInput.current?.click()}
+                title="Læs arkene fra en Excel-fil ind i bogen (ved siden af de ark, der er)">Importér Excel…</button>
+        <input ref={excelInput} type="file" hidden accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={laesExcel} />
         <span className="rkb-brug" title="Hvor arket vises i rapporten">
           {ark && (vis.length ? `Vises i rapporten: ${[...new Set(vis.map(v => v.sted))].join(', ')}` : 'Vises ikke i rapporten')}
         </span>
@@ -607,7 +671,7 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
       {red && !rederHer && (
         <div className="rkb-peg">Du skriver en formel i {redArk?.navn}!{adresse(red.r, red.k)} — klik på en celle for at henvise til den. Enter gemmer, Esc fortryder.</div>
       )}
-      {besked && <div className="rkb-besked" onClick={() => setBesked(null)}>{besked}</div>}
+      {besked && <div className={'rkb-besked' + (besked.ok ? ' rkb-besked-ok' : '')} onClick={() => setBesked(null)}>{besked.tekst ?? besked}</div>}
       {navngiver && (
         <div className="rkb-navngiv" onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setNavngiver(null) } }}>
           <span>Navn på {d.navn}!{navngiver.celle}:</span>
@@ -747,9 +811,17 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
           </div>
         ))}
         <button type="button" className="rkb-ny" title="Nyt ark" onClick={() => nyFane()}>+</button>
-        <select className="rkb-nyskab" value="" title="Nyt ark fra skabelon" onChange={e => { if (e.target.value) nyFane(e.target.value) }}>
+        <select className="rkb-nyskab" value="" title="Nyt ark fra skabelon" onChange={e => {
+          const v = e.target.value
+          if (v.startsWith('bog:')) nyeFraBogskabelon(v.slice(4)); else if (v) nyFane(v)
+        }}>
           <option value="">Nyt fra skabelon…</option>
-          {SKABELONER.map(s => <option key={s.key} value={s.key}>{s.titel}</option>)}
+          <optgroup label="Ét ark">
+            {SKABELONER.map(s => <option key={s.key} value={s.key}>{s.titel}</option>)}
+          </optgroup>
+          <optgroup label="Flere ark, der hænger sammen">
+            {BOG_SKABELONER.map(s => <option key={s.key} value={`bog:${s.key}`} title={s.beskrivelse}>{s.titel}</option>)}
+          </optgroup>
         </select>
         <span className="rkb-fyld" />
         {omdoeber?.fejl && <span className="rkb-fejltekst">{omdoeber.fejl}</span>}

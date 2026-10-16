@@ -202,6 +202,40 @@ const FUNK = {
     return erFejl(i) ? i : i + 1
   },
   HVIS_FEJL: (v, alt) => (erFejl(v) ? alt : v),
+  // SAND() og FALSK() — sådan gemmer Excel og LibreOffice ofte SAND/FALSK
+  SAND: () => true,
+  FALSK: () => false,
+  // Summer pr. ID: =SUMHVIS(Elementer!A2:A40;"J1.D503";Elementer!L2:L40)
+  SUMHVIS: (omr, kriterie, sumOmr) => {
+    const o = tabel(omr).flat(), s = sumOmr === undefined ? o : tabel(sumOmr).flat()
+    if (erFejl(kriterie)) return kriterie
+    let sum = 0
+    for (let i = 0; i < o.length; i++) {
+      if (!opfylder(o[i], kriterie)) continue
+      const v = s[i]
+      if (erFejl(v)) return v
+      if (typeof v === 'number') sum += v
+    }
+    return sum
+  },
+  ANTAL_HVIS: (omr, kriterie) => {
+    if (erFejl(kriterie)) return kriterie
+    return tabel(omr).flat().filter(v => opfylder(v, kriterie)).length
+  },
+}
+
+/** Opfylder v kriteriet? "TRa" (lig med), ">5", "<=0", "<>x" som i Excel. */
+function opfylder(v, kriterie) {
+  const m = typeof kriterie === 'string' ? /^(<=|>=|<>|<|>|=)(.*)$/.exec(kriterie.trim()) : null
+  if (!m) return v !== '' && ens(v, kriterie)
+  const [, op, raa] = m
+  const tal_ = laesTal(raa)
+  if (tal_ === null || (op === '=' || op === '<>') && typeof v !== 'number') {
+    const lig = ens(v, raa)
+    return op === '<>' ? !lig : op === '=' ? lig : false
+  }
+  if (typeof v !== 'number') return op === '<>'
+  return { '<': v < tal_, '>': v > tal_, '<=': v <= tal_, '>=': v >= tal_, '=': v === tal_, '<>': v !== tal_ }[op]
 }
 
 const sandt = (v) => (typeof v === 'boolean' ? v : tilTal(v) !== 0)
@@ -241,9 +275,9 @@ const ALIAS = {
   MAX: 'MAKS', AVERAGE: 'MIDDEL', COUNT: 'ANTAL', SUMPRODUCT: 'SUMPRODUKT', IF: 'HVIS', AND: 'OG',
   OR: 'ELLER', NOT: 'IKKE', ROUND: 'AFRUND', ROUNDUP: 'RUND_OP', ROUNDDOWN: 'RUND_NED', SQRT: 'KVROD',
   POWER: 'POTENS', EXP: 'EKSP', ASIN: 'ARCSIN', ACOS: 'ARCCOS', ATAN: 'ARCTAN', RADIANS: 'RADIANER',
-  DEGREES: 'GRADER', 'AFRUND.OP': 'RUND_OP', 'AFRUND.NED': 'RUND_NED',
+  DEGREES: 'GRADER', 'AFRUND.OP': 'RUND_OP', 'AFRUND.NED': 'RUND_NED', 'RUND.OP': 'RUND_OP', 'RUND.NED': 'RUND_NED',
   VLOOKUP: 'LOPSLAG', HLOOKUP: 'VOPSLAG', XLOOKUP: 'XOPSLAG', INDEX: 'INDEKS', MATCH: 'SAMMENLIGN',
-  'HVIS.FEJL': 'HVIS_FEJL', IFERROR: 'HVIS_FEJL',
+  'HVIS.FEJL': 'HVIS_FEJL', IFERROR: 'HVIS_FEJL', TRUE: 'SAND', FALSE: 'FALSK', SUMIF: 'SUMHVIS', 'ANTAL.HVIS': 'ANTAL_HVIS', COUNTIF: 'ANTAL_HVIS',
 }
 export const FUNKTIONER = Object.keys(FUNK)
 
@@ -260,7 +294,7 @@ export function oversaet(formel) {
   const refs = []
   const dele = String(formel).split(/("(?:[^"]|"")*")/)
   const ud = dele.map((del, i) => {
-    if (i % 2 === 1) return del.replace(/""/g, '\\"')                   // tekst
+    if (i % 2 === 1) return `"${del.slice(1, -1).replace(/""/g, '\\"')}"`   // tekst ("" inde i teksten er ét ")
     let s = del.replace(REF, (hel, _a, arkQ, arkU, fra, til, pos, str) => {
       // Ikke en del af et navn (fx LOG10) og ikke et funktionskald.
       const foer = str[pos - 1]
@@ -618,4 +652,12 @@ export function gyldigtCellenavn(navn) {
   const N = n.toUpperCase()
   if (FUNK[N] || ALIAS[N] || ['SAND', 'FALSK', 'PI', 'TRUE', 'FALSE'].includes(N)) return false
   return true
+}
+
+/** Formlen med navnet (en navngiven celle) `gammel` skrevet om til `ny`. */
+export function omdoebNavnIFormel(raw, gammel, ny) {
+  if (typeof raw !== 'string' || !raw.trim().startsWith('=')) return raw
+  const esc = String(gammel).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`(^|[^\\wÆØÅæøå!'.])(${esc})(?![\\wÆØÅæøå(!])`, 'gi')
+  return raw.split(/("(?:[^"]|"")*")/).map((del, i) => (i % 2 === 1 ? del : del.replace(re, (h, foer) => `${foer}${ny}`))).join('')
 }
