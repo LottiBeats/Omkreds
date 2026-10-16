@@ -5,9 +5,11 @@
  * Shift+Tab. Nummeret (1, 1.1, 1.1.1) vises som det kommer til at stå i PDF
  * og Word; det regnes i BlockList med samme regel som eksporten
  * (pdf_builder._number_headings). Enter giver et tekstafsnit lige under.
+ * Et afsnit, som hjælperen kan skrive (templates/a1Afsnit), får en Hjælp-knap.
  */
 import React from 'react'
 import './HeadingBlock.css'
+import { findAfsnit } from '../../templates/a1Afsnit/index.js'
 
 const LEVELS = [
   { v: 1, label: 'Overskrift 1' },
@@ -15,8 +17,10 @@ const LEVELS = [
   { v: 3, label: 'Overskrift 3' },
 ]
 
-export default function HeadingBlock({ block, onChange, isSelected, headNo, onEnter }) {
+export default function HeadingBlock({ block, onChange, isSelected, headNo, onEnter, onHjaelp }) {
   const { level = 1, text = '' } = block.data
+  // Afsnit, som hjælperen kan skrive (fx Robusthed), får en knap ved overskriften.
+  const hjaelp = onHjaelp && findAfsnit(block)
 
   function update(changes) {
     onChange({ ...block, data: { ...block.data, ...changes } })
@@ -57,6 +61,12 @@ export default function HeadingBlock({ block, onChange, isSelected, headNo, onEn
           placeholder={`Overskrift ${level}`}
           aria-label={`Overskrift ${level}`}
         />
+        {hjaelp && (
+          <button type="button" className="hdb-hjaelp" title={`Hjælp til at skrive ${hjaelp.titel.toLowerCase()}`}
+                  onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onHjaelp() }}>
+            Hjælp
+          </button>
+        )}
       </div>
     </div>
   )

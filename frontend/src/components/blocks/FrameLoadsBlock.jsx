@@ -17,6 +17,7 @@ import CalcBlockShell from '../CalcBlockShell.jsx'
 import Field from './Field.jsx'
 import NumericInput from './NumericInput.jsx'
 import { ROLES, detectRoles, memberLines, applyFrameLoads } from '../fem/femRoles.js'
+import { egenlastKilder, hentEgenlast } from '../../lib/egenlast.js'
 
 const PLACERING = [
   { value: 'naeste',  label: 'Første mellemramme (x = s)' },
@@ -68,6 +69,11 @@ export default function FrameLoadsBlock({ block, onChange, blocks = [], onUpdate
     afvigelser.push(`vindblokken er regnet for α = ${Math.round(vindAlpha)}°, rammens tag har ${Math.round(tagHaeld)}°`)
   if (wx?.h_m != null && top > wx.h_m + 0.05)
     afvigelser.push(`vindblokken bruger h = ${String(wx.h_m).replace('.', ',')} m, rammen er ${String(Math.round(top * 100) / 100).replace('.', ',')} m høj`)
+
+  // Egenlast af taget kan hentes fra en Egenlast-blok (pr. m² tagflade).
+  const gKilder = egenlastKilder(blocks, { kunTag: true, felt: 'flade' })
+  const gKilde  = d.g_tag_kilde ?? null
+  const gV      = gKilde ? hentEgenlast(blocks, { id: gKilde.id, felt: 'flade' }) : null
 
   const brugSne  = d.med_sne ?? true
   const brugVind = d.med_vind ?? true
@@ -141,9 +147,31 @@ export default function FrameLoadsBlock({ block, onChange, blocks = [], onUpdate
           <NumericInput style={s.input} value={d.x_m ?? s_m} onChange={v => update({ x_m: v })} />
         </Field>
       )}
+      {(gKilder.length > 0 || gKilde) && (
+        <Field label="Egenlast af tag fra" hint="pr. m² tagflade" style={{ gridColumn: '1/-1' }}>
+          <select style={s.input} value={gKilde ? `${gKilde.id}:flade` : ''}
+            onChange={e => {
+              const k = gKilder.find(x => x.key === e.target.value)
+              update(k ? { g_tag_kilde: { id: k.id }, g_tag_kNm2: k.value } : { g_tag_kilde: null })
+            }}>
+            <option value="">— indtast selv —</option>
+            {gKilde && !gKilder.some(k => k.id === gKilde.id) && (
+              <option value={`${gKilde.id}:flade`}>(blokken er væk eller ikke regnet)</option>
+            )}
+            {gKilder.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
+          </select>
+        </Field>
+      )}
       <Field label="Egenlast af tag (kN/m²)" hint="0 = ikke med">
-        <NumericInput style={s.input} value={d.g_tag_kNm2 ?? 0} onChange={v => update({ g_tag_kNm2: v })} />
+        <NumericInput style={s.input} value={d.g_tag_kNm2 ?? 0} disabled={!!gKilde}
+          onChange={v => update({ g_tag_kNm2: v })} />
       </Field>
+      {gKilde && gV != null && gV !== d.g_tag_kNm2 && (
+        <div style={{ ...s.staleBox, gridColumn: '1/-1', padding: 8 }}>
+          Egenlast-blokken giver nu {String(gV).replace('.', ',')} kN/m².{' '}
+          <button style={s.linkBtn} onClick={() => update({ g_tag_kNm2: gV })}>Brug den</button>
+        </div>
+      )}
 
       <div style={s.section}>
         <label style={s.check}>
@@ -218,6 +246,7 @@ const s = {
   check: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', color: '#333' },
   warn: { color: 'var(--warn, #b45309)' },
   muted: { color: '#777' },
+  linkBtn: { border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: '#1d4ed8', textDecoration: 'underline', fontSize: 12, fontFamily: 'inherit' },
   tbl: { borderCollapse: 'collapse', width: '100%', fontSize: 12.5 },
   th: { textAlign: 'left', fontSize: 10.5, color: '#777', fontWeight: 600, padding: '4px 6px', borderBottom: '1px solid #eee' },
   td: { padding: '3px 6px', borderBottom: '1px solid #f3f3f3' },

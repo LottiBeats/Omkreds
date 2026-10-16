@@ -57,3 +57,26 @@ test('manglende og dobbelte id får nye', () => {
   assert.equal(new Set(ids).size, 3)
   assert.equal(ids[0], 5)
 })
+
+test('projektbeskrivelsen i filen bliver projektets beskrivelse', () => {
+  const imp = laesImport(JSON.stringify({ projektbeskrivelse: { etager: 1, fundering: 'pael' },
+    docs: { A1: { blocks: [{ type: 'text', data: { text: 'x' } }] } } }))
+  assert.equal(imp.ok, true)
+  const p = anvendImport({ metadata: { project_name: 'A' }, documents: {} }, imp)
+  assert.deepEqual(p.metadata._doc_options, { etager: 1, fundering: 'pael' })
+  assert.equal(laesImport(JSON.stringify({ projektbeskrivelse: [1], docs: { A1: { blocks: [] } } })).ok, false)
+})
+
+test('underdokumenter: A2.1 Laster importeres som underdokument', async () => {
+  const { laesImport, anvendImport, beskrivImport } = await import('../src/lib/importDokumenter.js')
+  const imp = laesImport(JSON.stringify({ docs: { A2: { subdocs: [
+    { name: 'Laster', blocks: [{ type: 'heading', data: { text: 'Laster' } }] },
+  ] } } }))
+  assert.equal(imp.ok, true)
+  assert.equal(beskrivImport(imp), 'A2.1 Laster (1 blokke)')
+  const p = anvendImport({ documents: { A2: { title: 'Statiske beregninger', blocks: [{ id: 1, type: 'text', data: {} }], subdocs: [] } } }, imp, 100)
+  assert.equal(p.documents.A2.blocks.length, 1, 'dokumentets egne blokke røres ikke')
+  assert.equal(p.documents.A2.subdocs[0].name, 'Laster')
+  assert.equal(p.documents.A2.subdocs[0].blocks[0].id, 100)
+  assert.equal(laesImport(JSON.stringify({ docs: { A2: { subdocs: [{ blocks: [] }] } } })).ok, false)
+})

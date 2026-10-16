@@ -1,0 +1,4 @@
+# Kun til tests (CI og lokalt), ikke på serveren: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest
+pymupdf        # test_figurer læser den genererede PDF

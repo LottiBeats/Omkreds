@@ -261,7 +261,9 @@ function makeGeneralFrameFemTemplate() {
           { node_id: 4, ux: true, uy: true, rz: true },
         ],
         loads: [
-          { type: 'udl',   elem_ids: [2], wy_kNm: 20, wx_kNm: 0 },
+          // Samme form som en ny linjelast i blokken. Den gamle form (elem_ids,
+          // wy_kNm) blev sendt uden element, og skabelonen kunne ikke regnes.
+          { type: 'udl',   target: 'elem', elem_id: 2, direction: 'vertical', value_kNm: 20 },
           { type: 'nodal', node_id: 2, Fx_kN: 10, Fy_kN: 0, Mz_kNm: 0 },
         ],
         _figs_b64: null, _summary: null, _result: null,

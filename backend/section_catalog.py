@@ -93,8 +93,8 @@ def get_steel_profile(designation: str, csv_path: str | None = None):
     db = load_steel_profiles(csv_path)
     if key not in db:
         raise KeyError(
-            f"Profile '{designation}' not found in steel profile catalogue. "
-            "Add it to steel_profiles.csv or pass the section dimensions explicitly."
+            f"stålprofilet {designation} findes ikke i profilkataloget "
+            "(fx IPE300, HEA200, HEB240)"
         )
     return db[key]
 

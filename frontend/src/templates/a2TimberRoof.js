@@ -88,21 +88,26 @@ export function makeTimberRoofTemplate() {
 
     // ── Dead load ─────────────────────────────────────────────────────────
     { id: ids.hDead, type: 'heading', data: { level: 3, text: '1.1 Egenlast (G)' } },
-    { id: ids.deadBlock, type: 'roof_dead_load', data: {
-      title:     'Egenlast — tagopbygning + spær',
-      label:     'G1',
-      alpha_deg: 33.69,
-      a_m:       1.0,
-      layers: [
-        { description: 'Tegltagsten (monier)',        g_kNm2: 0.55 },
-        { description: 'Lægte + kontralägte (38 mm)', g_kNm2: 0.04 },
-        { description: 'Undertag (vindspærrepap)',     g_kNm2: 0.03 },
-        { description: 'Krydsfinérsarking 12 mm',     g_kNm2: 0.07 },
-        { description: 'Isolering 200 mm (glasuld)',   g_kNm2: 0.04 },
-        { description: 'Dampspærre',                  g_kNm2: 0.01 },
+    // Egenlast-blokken (lagopbygning) i stedet for roof_dead_load. Lagene og
+    // spæret giver samme g_k som før: (0,74 + 0,045·0,145·3,73/1,0)/cos α ·
+    // 1,0 = 0,92 kN/m pr. spær, vandret projektion.
+    { id: ids.deadBlock, type: 'egenlast', data: {
+      title:       'Egenlast — tagopbygning + spær',
+      label:       'G1',
+      bygningsdel: 'tag',
+      alpha_deg:   33.69,
+      bredde_m:    1.0,
+      lag: [
+        { type: 'fast',  beskrivelse: 'Tegltagsten',                  g_kNm2: 0.55 },
+        { type: 'fast',  beskrivelse: 'Lægte + kontralægte (38 mm)',  g_kNm2: 0.04 },
+        { type: 'fast',  beskrivelse: 'Undertag',                     g_kNm2: 0.03 },
+        { type: 'fast',  beskrivelse: 'Krydsfinérsarking 12 mm',      g_kNm2: 0.07 },
+        { type: 'fast',  beskrivelse: 'Isolering 200 mm (glasuld)',   g_kNm2: 0.04 },
+        { type: 'fast',  beskrivelse: 'Dampspærre',                   g_kNm2: 0.01 },
+        { type: 'ribbe', beskrivelse: 'Spær 45×145 c/c 1000',         materiale: 'C24',
+          gamma_kNm3: 3.73, b_mm: 45, h_mm: 145, cc_mm: 1000 },
       ],
-      b_mm: 45, h_mm: 145, rho_kgm3: 380,
-      _result: null,
+      _result: null, _exports: null,
     }},
 
     // ── Snow load ─────────────────────────────────────────────────────────

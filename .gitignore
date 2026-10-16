@@ -13,6 +13,7 @@ frontend/.env.local
 # and the deploy stopped halfway. The server builds its own; nothing needs the
 # committed copy.
 frontend/dist/
+frontend/dist-desktop/
 
 # Database
 *.db

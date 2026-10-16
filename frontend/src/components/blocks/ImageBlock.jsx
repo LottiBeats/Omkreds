@@ -174,7 +174,7 @@ export default function ImageBlock({ block, onChange, isSelected, figNo }) {
         {numbered && <span className="imgb-fig">Figur {figNo ?? ''}</span>}
         <input type="text" value={d.caption ?? ''} onChange={e => update({ caption: e.target.value })}
           placeholder="Skriv en billedtekst…" aria-label="Billedtekst"
-          style={{ width: `${Math.max(14, (d.caption ?? '').length + 2)}ch` }} />
+          style={{ width: `${Math.max(22, (d.caption ?? '').length + 2)}ch` }} />
       </div>
 
       {isSelected && <div className="imgb-bar" role="toolbar" aria-label="Billede">

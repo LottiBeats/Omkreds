@@ -786,7 +786,12 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
         ["Største vandrette flytning δ_x",
          f"{_dk(summary['max_ux_mm'])} mm", f"Knude {summary['max_ux_node']}"],
         ["Største lodrette flytning δ_y",
-         f"{_dk(summary['max_uy_mm'])} mm", f"Knude {summary['max_uy_node']}"],
+         f"{_dk(summary['max_uy_mm'])} mm",
+         # Ligger den stoerste nedboejning inde i et fag, er der ingen knude
+         # at pege paa -- "Knude 1" var en understoetning.
+         (f"Element {summary['max_uy_elem']}, x = {_dk(summary.get('max_uy_x_m') or 0)} m"
+          if summary.get('max_uy_elem') is not None
+          else f"Knude {summary['max_uy_node']}")],
         ["Største moment M",
          f"{_dk(summary['max_moment_kNm'])} kNm",
          f"Element {summary['max_moment_ele']}"],
@@ -808,20 +813,27 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
     loads_table = summary.get("loads_table", [])
     if loads_table:
         out.append(S("Påførte laster"))
-        out.append(TBL(
-            ["Type", "Target", "Fx (kN)", "Fy (kN)", "Mz (kNm)", "wy (kN/m)", "wx (kN/m)"],
-            [
+        if "vaerdi" in loads_table[0]:
+            out.append(TBL(
+                ["Type", "Hvor", "Lasttilfælde", "Retning", "Størrelse"],
+                [[l["type"], l["target"], l.get("lasttilfaelde", "—"),
+                  l.get("retning", "—"), l["vaerdi"]] for l in loads_table],
+            ))
+        else:   # gemte resultater fra før
+            out.append(TBL(
+                ["Type", "Target", "Fx (kN)", "Fy (kN)", "Mz (kNm)", "wy (kN/m)", "wx (kN/m)"],
                 [
-                    l["type"], l["target"],
-                    f"{l['Fx_kN']:.2f}"  if l.get("Fx_kN")  is not None else "—",
-                    f"{l['Fy_kN']:.2f}"  if l.get("Fy_kN")  is not None else "—",
-                    f"{l['Mz_kNm']:.2f}" if l.get("Mz_kNm") is not None else "—",
-                    f"{l['wy_kNm']:.2f}" if l.get("wy_kNm") is not None else "—",
-                    f"{l['wx_kNm']:.2f}" if l.get("wx_kNm") is not None else "—",
-                ]
-                for l in loads_table
-            ],
-        ))
+                    [
+                        l["type"], l["target"],
+                        f"{l['Fx_kN']:.2f}"  if l.get("Fx_kN")  is not None else "—",
+                        f"{l['Fy_kN']:.2f}"  if l.get("Fy_kN")  is not None else "—",
+                        f"{l['Mz_kNm']:.2f}" if l.get("Mz_kNm") is not None else "—",
+                        f"{l['wy_kNm']:.2f}" if l.get("wy_kNm") is not None else "—",
+                        f"{l['wx_kNm']:.2f}" if l.get("wx_kNm") is not None else "—",
+                    ]
+                    for l in loads_table
+                ],
+            ))
 
     # ── Element section forces ────────────────────────────────────────────────
     ele_table = summary.get("ele_force_table", [])
@@ -842,9 +854,9 @@ def _general_frame_fem_block(block: dict, tmp_files: list) -> list:
              "M_max (kNm)", "x (m)"],
             [
                 [
-                    str(e["id"]), e["type"], f"{e['L_m']:.2f}",
-                    str(e["A_cm2"]),
-                    str(e["Iz_cm4"]) if e["type"] == "beam" else "—",
+                    str(e["id"]), {"beam": "bjælke", "truss": "gitterstang"}.get(e["type"], e["type"]), f"{e['L_m']:.2f}",
+                    _dk(float(e["A_cm2"]), 1),
+                    _dk(float(e["Iz_cm4"]), 0) if e["type"] == "beam" else "—",
                     f"{e['N_i_kN']:.2f}", f"{e['V_i_kN']:.2f}", f"{e['M_i_kNm']:.2f}",
                     f"{e['N_j_kN']:.2f}", f"{e['V_j_kN']:.2f}", f"{e['M_j_kNm']:.2f}",
                     f"{e['M_max_kNm']:.2f}" if e.get("M_max_kNm") is not None else "—",
@@ -944,13 +956,15 @@ _CALC_TYPES = {
     # lydloest i eksporten -- overskriften stod i dokumentet, indholdet ikke --
     # og den ligger i A2-skabelonen for tagkonstruktioner, saa hvert A2 derfra
     # er eksporteret uden sit egenlastafsnit. Se test_pdf_block_coverage.py.
-    "wind_load", "snow_load", "roof_dead_load",
+    "wind_load", "snow_load", "roof_dead_load", "egenlast",
     "frame_loads",
     "foundation",
     "load_combo",
     "bolt_group", "fillet_weld",
     "plate_girder",
     "saved_calc",
+    # Egenvægt og Sne i skrivebordsprogrammets rapport (lib/rapportModuler.js).
+    "rapport_egenvaegt", "rapport_sne",
 }
 
 
@@ -1378,6 +1392,10 @@ def _number_headings(blocks: list) -> list:
             text  = block["data"].get("text", "")
             idx   = level - 1  # 0, 1, or 2
 
+            # Et nyt underdokument (A2.1, A2.2 …) nummererer forfra.
+            if block["data"].get("nulstil_numre"):
+                counters = [0, 0, 0]
+
             if (block["data"].get("nummereret") is False
                     or _ALREADY_NUMBERED.match(text.strip())):
                 result.append(block)
@@ -1478,6 +1496,63 @@ def build_pdf(project: dict, blocks: list, doc_id: str = "") -> bytes:
 
     finally:
         # Always clean up temp files
+        for path in tmp_files:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+
+
+# ── Simpel rapport (skrivebordsprogrammet) ────────────────────────────────────
+
+def build_pdf_simpel(blocks: list, titel: str = "") -> bytes:
+    """
+    Rapporten fra skrivebordsprogrammet på blankt papir: ingen forside,
+    ingen sagsoplysninger, ingen indholdsfortegnelse og intet tegningshoved
+    -- kun indholdet, med overskriftsnumre og sidetal nederst.
+
+    Blokkene tegnes af de samme funktioner som i build_pdf, så en beregning
+    ser ens ud i begge.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate
+    from calc_core import build_story, make_styles
+
+    tmp_files: list[str] = []
+    numbered = nummerer_figurer(_number_headings(list(blocks)))
+    try:
+        indhold = []
+        for block in numbered:
+            try:
+                indhold.extend(_convert_block(block, tmp_files))
+            except Exception as exc:
+                indhold.append(N(f"Fejl i blokken '{block.get('type')}': {exc}"))
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            out_path = tmp.name
+        tmp_files.append(out_path)
+
+        W, H = A4
+
+        def sidefod(canv, doc):
+            canv.saveState()
+            canv.setFont("Plex", 8)
+            canv.setFillColor(rl_colors.HexColor("#78716c"))
+            if titel:
+                canv.drawString(20 * mm, 10 * mm, titel)
+            canv.drawRightString(W - 20 * mm, 10 * mm, f"Side {doc.page}")
+            canv.restoreState()
+
+        doc = SimpleDocTemplate(
+            out_path, pagesize=A4,
+            leftMargin=20 * mm, rightMargin=20 * mm, topMargin=20 * mm, bottomMargin=20 * mm,
+            title=titel or "Rapport",
+        )
+        doc.build(build_story(indhold, make_styles()), onFirstPage=sidefod, onLaterPages=sidefod)
+
+        with open(out_path, "rb") as f:
+            return f.read()
+    finally:
         for path in tmp_files:
             try:
                 os.unlink(path)

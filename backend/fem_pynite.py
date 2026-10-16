@@ -230,7 +230,7 @@ def _lokale_endekraefter(mem, L, wy, wx, segs=None):
 # Loeseren
 # ---------------------------------------------------------------------------
 
-def solve(nodes, elements, supports, loads, equal_dofs=None):
+def _solve_raw(nodes, elements, supports, loads, equal_dofs=None):
     """
     Byg og loes en plan, lineaer elastisk ramme med PyNite.
 
@@ -437,3 +437,12 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         'ele_udl':        ele_udl,
         'ele_segs':       ele_segs,
     }
+
+
+def solve(nodes, elements, supports, loads, equal_dofs=None):
+    """Som _solve_raw, med rotationen fastholdt i rene gitterknuder."""
+    from general_frame_fem import (fasthold_frie_rotationer, _uden_auto_reaktioner,
+                                   validate_model as _vm)
+    _vm(nodes, elements, supports, loads, equal_dofs)
+    sup, auto = fasthold_frie_rotationer(nodes, elements, supports, equal_dofs)
+    return _uden_auto_reaktioner(_solve_raw(nodes, elements, sup, loads, equal_dofs), auto)

@@ -226,6 +226,10 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
     Samme parametre og samme returvaerdi som general_frame_fem.solve().
     """
     validate_model(nodes, elements, supports, loads, equal_dofs)
+    # Knuder uden rotationsstivhed (rene gitterknuder) faar rotationen
+    # fastholdt -- se general_frame_fem.fasthold_frie_rotationer.
+    from general_frame_fem import fasthold_frie_rotationer
+    supports, _auto_rz = fasthold_frie_rotationer(nodes, elements, supports, equal_dofs)
 
     dn = {int(node['id']): node for node in nodes}
     kort, n_dof, kanonisk = _frihedsgradskort(nodes, equal_dofs)
@@ -384,7 +388,7 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
         node_reactions[nid] = [
             R[i0] if bundet[i0] else 0.0,
             R[i1] if bundet[i1] else 0.0,
-            R[i2] if bundet[i2] else 0.0,
+            R[i2] if bundet[i2] and nid not in _auto_rz else 0.0,
         ]
 
     # ── Snitkraefter ──────────────────────────────────────────────────────────
@@ -408,9 +412,10 @@ def solve(nodes, elements, supports, loads, equal_dofs=None):
     xs = [float(node['x']) for node in nodes]
     ys = [float(node['y']) for node in nodes]
     ref_size = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
-    check_results(nodes, node_disps, ele_forces, ref_size)
+    advarsler = check_results(nodes, node_disps, ele_forces, ref_size)
 
     return {
+        'advarsler':      advarsler,
         'node_disps':     node_disps,
         'node_reactions': node_reactions,
         'ele_forces':     ele_forces,

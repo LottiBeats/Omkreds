@@ -10,6 +10,16 @@ import react from '@vitejs/plugin-react'
  */
 export default defineConfig({
   plugins: [react()],
+  // fem.html er det selvstændige FEM-program (backend/desktop_app.py og
+  // desktop/). Den bygges kun med OMKREDS_DESKTOP=1: på omkreds.dk ville den
+  // hverken have login eller sit PDF-endpoint.
+  build: {
+    rollupOptions: {
+      input: process.env.OMKREDS_DESKTOP
+        ? { fem: 'fem.html' }
+        : { main: 'index.html' },
+    },
+  },
   server: {
     proxy: {
       // Forward /api/* to the FastAPI backend

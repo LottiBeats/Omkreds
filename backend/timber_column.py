@@ -84,6 +84,9 @@ def timber_column_bending_and_axial(
     material_type="solid_timber",
     effective_length_factor=1.0,
     l_ef_ltb=None,
+    # Knaeklaengde om den svage akse, naar den er en anden end om den staerke
+    # (fx afstivet i knuderne ud af planen). None: samme som om akse 1.
+    length_2=None,
     check_buckling_axis_1=True,
     check_buckling_axis_2=True,
     check_ltb=True,
@@ -318,11 +321,12 @@ def timber_column_bending_and_axial(
     if check_buckling_axis_2:
         blocks.append(S("Søjlevirkning om akse 2 (svag) — EN 1995-1-1 pkt. 6.3.2"))
 
-        l_eff_2      = effective_length_factor * length
+        l_eff_2      = effective_length_factor * (length_2 if length_2 is not None else length)
         lambda_2     = l_eff_2 / i_2
         lambda_rel_2 = (float(lambda_2) / pi) * float((f_c0k / E_0_05) ** 0.5)
         blocks.extend([
-            CALC_ROW("l_eff,2",   "= μ·L",                   _u(l_eff_2, m, "m")),
+            CALC_ROW("l_eff,2",   "= μ·L_2" if length_2 is not None else "= μ·L",
+                     _u(l_eff_2, m, "m")),
             CALC_ROW("λ_2",       "= l_eff,2 / i_2",         f"{float(lambda_2):.2f}"),
             CALC_ROW("λ_rel,2",   "= (λ_2/π)·√(f_c,0,k/E)", f"{lambda_rel_2:.3f}"),
         ])
@@ -509,7 +513,7 @@ def timber_column_bending_and_axial(
         ])
 
         # Soejlevirkning om den svage akse med det reducerede tvaersnit.
-        lam_2_fi     = (effective_length_factor * length) / i_2_fi
+        lam_2_fi     = (effective_length_factor * (length_2 if length_2 is not None else length)) / i_2_fi
         lam_rel_2_fi = (float(lam_2_fi) / pi) * float((f_c0k / E_0_05) ** 0.5)
         if lam_rel_2_fi <= 0.3:
             k_c2_fi = 1.0

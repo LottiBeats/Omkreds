@@ -4,6 +4,9 @@
  * Two modes:
  *   Blank project   — default, same as before
  *   From template   — pass { templateId, templateName } props to pre-select a template
+ *   Fra fil         — en importfil (.json, se lib/importDokumenter.js) med
+ *                     dokumenter, projektoplysninger og projektbeskrivelse.
+ *                     Projektet oprettes tomt, og filen lægges ind bagefter.
  *
  * Props:
  *   onCreated       — function(newProject) called after successful creation
@@ -12,7 +15,8 @@
  *   templateName    — (optional) display name for the template
  */
 import React, { useState, useEffect, useRef } from 'react'
-import { createProject, createProjectFromTemplate } from '../api/client.js'
+import { createProject, createProjectFromTemplate, getProject, saveProject } from '../api/client.js'
+import { laesImport, anvendImport, beskrivImport } from '../lib/importDokumenter.js'
 
 const BRAND = '#d94a2b'
 
@@ -23,6 +27,7 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
   const visibility = 'personal'
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
+  const [fil,        setFil]        = useState(null)   // { navn, imp }
 
   const isFromTemplate = Boolean(templateId)
 
@@ -41,6 +46,18 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
     return () => window.removeEventListener('keydown', handleKey)
   }, [onCancel])
 
+  async function vaelgFil(e) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    const imp = laesImport(await f.text())
+    if (!imp.ok) { setError('Filen kan ikke bruges: ' + imp.fejl); setFil(null); return }
+    setError(null)
+    setFil({ navn: f.name, imp })
+    if (!name.trim() && imp.metadata.project_name) setName(imp.metadata.project_name)
+    if (!ref.trim() && imp.metadata.project_ref) setRef(imp.metadata.project_ref)
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (!name.trim()) return
@@ -53,6 +70,14 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
         project = await createProjectFromTemplate(templateId, name.trim(), ref.trim(), visibility)
       } else {
         project = await createProject(name.trim(), ref.trim(), visibility)
+      }
+      if (fil) {
+        // Navn og reference fra formularen vinder over filens.
+        const tom = await getProject(project.id)
+        const imp = { ...fil.imp, metadata: { ...fil.imp.metadata, project_name: name.trim(), project_ref: ref.trim() } }
+        const fyldt = anvendImport(tom, imp)
+        await saveProject(fyldt)
+        project = fyldt
       }
       onCreated(project)
     } catch (err) {
@@ -116,6 +141,21 @@ export default function CreateProjectModal({ onCreated, onCancel, templateId = n
                 style={styles.input}
               />
             </div>
+
+            {!isFromTemplate && (
+              <div style={styles.field}>
+                <label style={styles.label}>
+                  Fra fil
+                  <span style={styles.optional}> — valgfri, .json med dokumenter og projektbeskrivelse</span>
+                </label>
+                <input type="file" accept=".json,application/json" onChange={vaelgFil} style={{ fontSize: 13 }} />
+                {fil && (
+                  <span style={{ fontSize: 12.5, color: '#57534e' }}>
+                    {fil.navn}: {beskrivImport(fil.imp)}{fil.imp.beskrivelse ? ' · projektbeskrivelse' : ''}
+                  </span>
+                )}
+              </div>
+            )}
 
             <p style={{ margin: 0, fontSize: 12.5, color: '#78716c' }}>
               Projektet er privat: kun du kan se og åbne det.

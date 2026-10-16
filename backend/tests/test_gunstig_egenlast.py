@@ -51,10 +51,16 @@ def test_den_gunstige_bruger_0_90_paa_egenlasten():
 
 def test_den_gunstige_er_bar_for_k_fi():
     """1,2·K_FI i den ugunstige række, et bart 0,90 i den gunstige."""
-    for kk in ('CC1', 'CC2', 'CC3'):
+    for kk in ('CC2', 'CC3'):
         g = _gunstige(kombinationer_fra_laster(LASTER_SUG,
                                                consequence_class=kk))[0]
         assert g['factor_table']['G'] == pytest.approx(0.90), kk
+    # I CC1 er den ugunstige 1,0·0,9 = 0,90 -- tvillingen ville vaere en kopi
+    # og regnes ikke to gange. Den almindelige 6.10b daekker den.
+    cc1 = kombinationer_fra_laster(LASTER_SUG, consequence_class='CC1')
+    assert not _gunstige(cc1)
+    b = next(c for c in cc1 if c['name'].startswith('6.10b ('))
+    assert b['factor_table']['G'] == pytest.approx(0.90)
 
 
 def test_de_variable_er_uaendrede_i_tvillingen():

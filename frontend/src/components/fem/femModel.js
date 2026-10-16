@@ -222,3 +222,151 @@ export function bounds(m) {
   const xs = m.nodes.map(n => n.x), ys = m.nodes.map(n => n.y)
   return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
 }
+
+/**
+ * Smelt knude `fra` sammen med knude `til`: alt, der pegede på `fra`, peger
+ * nu på `til`. En knude trukket oven i en anden gav før to knuder i det samme
+ * punkt, der ikke var forbundet, og ingen advarsel — konstruktionen var delt
+ * i to uden at nogen kunne se det. Stænger mellem de to (længde nul) fjernes
+ * med deres laster; understøtninger lægges sammen (den stiveste pr. retning).
+ */
+export function mergeNodes(m, fra, til) {
+  if (fra === til) return m
+  const swap = (id) => (id === fra ? til : id)
+  const elements0 = m.elements.map(e => ({ ...e, ni: swap(e.ni), nj: swap(e.nj) }))
+  const nul = new Set(elements0.filter(e => e.ni === e.nj).map(e => e.id))
+  const elements = elements0.filter(e => !nul.has(e.id))
+  const members = new Set(elements.map(e => e.member_id))
+  const loads = m.loads
+    .map(l => (l.type === 'nodal' && l.node_id === fra ? { ...l, node_id: til } : l))
+    .filter(l => {
+      if (l.type === 'nodal') return true
+      if ((l.target ?? 'elem') === 'member') return members.has(l.member_id)
+      return !nul.has(l.elem_id)
+    })
+  const sFra = m.supports.find(s => s.node_id === fra)
+  const sTil = m.supports.find(s => s.node_id === til)
+  let supports = m.supports.filter(s => s.node_id !== fra && s.node_id !== til)
+  if (sFra || sTil) {
+    supports = [...supports, {
+      ...(sTil ?? sFra), node_id: til,
+      ux: !!(sFra?.ux || sTil?.ux), uy: !!(sFra?.uy || sTil?.uy), rz: !!(sFra?.rz || sTil?.rz),
+    }]
+  }
+  const equal_dofs = (m.equal_dofs ?? [])
+    .map(q => ({ ...q, r_node: swap(q.r_node), c_node: swap(q.c_node) }))
+    .filter(q => q.r_node !== q.c_node)
+  return { ...m, nodes: m.nodes.filter(n => n.id !== fra), elements, loads, supports, equal_dofs }
+}
+
+/**
+ * Steder, hvor tegningen ser forbundet ud, men modellen ikke er det:
+ * to stænger, der krydser uden en fælles knude, og en knude, der ligger på en
+ * stang uden at være en af dens ender. Begge regnes som adskilte, og intet i
+ * resultatet siger det. Returnerer korte tekster til en advarsel.
+ */
+export function uforbundne(m) {
+  const nb = Object.fromEntries(m.nodes.map(n => [n.id, n]))
+  const seg = m.elements.map(e => ({ e, a: nb[e.ni], b: nb[e.nj] })).filter(s => s.a && s.b)
+  const ud = []
+  const tol = 1e-6
+  // Knude på en stang
+  for (const s of seg) {
+    const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y, L2 = dx * dx + dy * dy
+    if (L2 < tol) continue
+    for (const n of m.nodes) {
+      if (n.id === s.e.ni || n.id === s.e.nj) continue
+      const t = ((n.x - s.a.x) * dx + (n.y - s.a.y) * dy) / L2
+      if (t <= 1e-6 || t >= 1 - 1e-6) continue
+      const px = s.a.x + t * dx, py = s.a.y + t * dy
+      if (Math.hypot(n.x - px, n.y - py) < 1e-4) ud.push(`Knude ${n.id} ligger på stang ${s.e.id} uden at være forbundet med den`)
+    }
+  }
+  // Krydsende stænger
+  for (let i = 0; i < seg.length; i++) {
+    for (let j = i + 1; j < seg.length; j++) {
+      const p = seg[i], q = seg[j]
+      if ([p.e.ni, p.e.nj].some(x => x === q.e.ni || x === q.e.nj)) continue
+      const r = { x: p.b.x - p.a.x, y: p.b.y - p.a.y }, sv = { x: q.b.x - q.a.x, y: q.b.y - q.a.y }
+      const den = r.x * sv.y - r.y * sv.x
+      if (Math.abs(den) < 1e-12) continue
+      const qp = { x: q.a.x - p.a.x, y: q.a.y - p.a.y }
+      const t = (qp.x * sv.y - qp.y * sv.x) / den, u = (qp.x * r.y - qp.y * r.x) / den
+      if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6) ud.push(`Stang ${p.e.id} og ${q.e.id} krydser uden en fælles knude`)
+    }
+  }
+  return ud
+}
+
+/**
+ * Skæringspunkterne mellem en linje gennem p1 og p2 og stængerne:
+ * [{ x, y, s }] sorteret efter s, positionen langs linjen (0 i p1, 1 i p2).
+ * Med `uendelig` (standard) regnes linjen ud over p1 og p2 -- en vandret linje
+ * i en højde skal skære hele modellen, ikke kun det stykke, der blev tegnet.
+ * Stænger, der ligger på selve linjen, giver ingen skæring. Et punkt, flere
+ * stænger mødes i (en knude), tælles én gang.
+ */
+export function skaeringer(m, p1, p2, { uendelig = true } = {}) {
+  const ux = p2.x - p1.x, uy = p2.y - p1.y
+  if (Math.hypot(ux, uy) < EPS) return []
+  const byId = Object.fromEntries(m.nodes.map(n => [n.id, n]))
+  const ud = []
+  for (const el of m.elements) {
+    const a = byId[el.ni], b = byId[el.nj]
+    if (!a || !b) continue
+    const vx = b.x - a.x, vy = b.y - a.y
+    const d = ux * vy - uy * vx
+    if (Math.abs(d) < EPS) continue                       // parallel eller på linjen
+    const wx = a.x - p1.x, wy = a.y - p1.y
+    const s = (wx * vy - wy * vx) / d                     // langs linjen
+    const t = (wx * uy - wy * ux) / d                     // langs stangen
+    if (t < -EPS || t > 1 + EPS) continue
+    if (!uendelig && (s < -EPS || s > 1 + EPS)) continue
+    const x = round(p1.x + s * ux), y = round(p1.y + s * uy)
+    if (!ud.some(p => Math.hypot(p.x - x, p.y - y) < 1e-4)) ud.push({ x, y, s })
+  }
+  return ud.sort((a, b) => a.s - b.s)
+}
+
+/**
+ * Knuder, hvor linjen gennem p1 og p2 skærer stængerne: stænger deles i
+ * skæringspunkterne, og et punkt, der allerede er en knude, genbruges.
+ * Med `stang` tegnes der også en stang langs linjen fra første til sidste
+ * skæring, delt i knuderne (fx et hanebånd i en bestemt højde), med `props`
+ * som tværsnit og materiale.
+ * Returnerer { model, nodeIds, nye } -- nye er antallet af nye knuder.
+ */
+export function skaerLinje(m, p1, p2, { uendelig = true, stang = false, props = {} } = {}) {
+  const punkter = skaeringer(m, p1, p2, { uendelig })
+  let model = m
+  const nodeIds = []
+  let nye = 0
+  for (const p of punkter) {
+    const foer = model.nodes.length
+    const hit = nodeAt(model, p.x, p.y)
+    if (hit) { nodeIds.push(hit.id); continue }
+    // Den stang, punktet ligger på i den model, vi er nået til (en tidligere
+    // deling kan have givet den et nyt id).
+    const el = model.elements.find(e => {
+      const pr = projectOnElement(model, e, p.x, p.y)
+      return pr && pr.dist < 1e-4 && pr.t > EPS && pr.t < 1 - EPS
+    })
+    const r = el ? splitElement(model, el.id, p.x, p.y) : { ...addNode(model, p.x, p.y), nodeId: null }
+    model = r.model
+    nodeIds.push(r.nodeId ?? r.id)
+    if (model.nodes.length > foer) nye++
+  }
+  if (stang && nodeIds.length >= 2) {
+    // Én stang (ét member_id) langs hele linjen, delt i elementer i knuderne,
+    // så dimensioneringen ser ét hanebånd og ikke fem småstykker.
+    const member_id = nextId(model.elements, 'member_id')
+    for (let i = 1; i < nodeIds.length; i++) {
+      const foer = model.elements.length
+      const r = addElement(model, nodeIds[i - 1], nodeIds[i], props)
+      model = r.model
+      // Kun en ny stang får det fælles member_id; findes stangen allerede, røres den ikke.
+      if (model.elements.length > foer) model = { ...model, elements: model.elements.map(e => (e.id === r.id ? { ...e, member_id } : e)) }
+    }
+  }
+  return { model, nodeIds, nye }
+}

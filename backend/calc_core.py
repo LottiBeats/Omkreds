@@ -517,8 +517,8 @@ def dk_decimaler(s) -> str:
         foran = s[max(0, mo.start() - 12):mo.start()]
         if _HENVISNING_RE.search(foran):
             return mo.group(0)
-        # "(6.11)" -- en ligningshenvisning i parentes, ikke et tal.
-        if foran.endswith('(') and s[mo.end():mo.end() + 1] == ')':
+        # "(6.11)" og "(9.5N)" -- en ligningshenvisning i parentes, ikke et tal.
+        if foran.endswith('(') and re.match(r'[A-Z]?\)', s[mo.end():mo.end() + 2]):
             return mo.group(0)
         return f'{mo.group(1)},{mo.group(2)}'
 
@@ -543,6 +543,31 @@ def _para_fmt(s):
     s = str(s).replace("&", "&amp;")
     s = _fmt(s)
     return s.replace("\n", "<br/>")
+
+
+def _formel_celle(formula, style, max_w):
+    """
+    Formelkolonnen: med brøk eller rod tegnes formlen (formler.py), ellers
+    tekst som hidtil. Kan den ikke tegnes, eller bliver den for bred til
+    kolonnen, står teksten — formlen må aldrig forsvinde.
+    """
+    try:
+        from formler import tegn
+        r = tegn(formula, size_pt=style.fontSize, color=style.textColor.hexval().replace("0x", "#"))
+    except Exception:
+        r = None
+    if r:
+        path, w, h = r
+        if w > max_w:
+            skala = max_w / w
+            if skala < 0.75:
+                return Paragraph(_fmt(formula), style)
+            w, h = w * skala, h * skala
+        from reportlab.platypus import Image as RLImage
+        img = RLImage(path, width=w, height=h)
+        img.hAlign = "LEFT"
+        return img
+    return Paragraph(_fmt(formula), style)
 
 
 def _render_hc_block(b, styles):
@@ -959,7 +984,7 @@ def build_story(all_blocks, styles):
             if formula:
                 cells  = [Paragraph(_fmt(name),    styles["hc_var"]),
                           Paragraph("=",            styles["hc_eq"]),
-                          Paragraph(_fmt(formula),  styles["hc_sym"]),
+                          _formel_celle(formula, styles["hc_sym"], 70*mm - 7),
                           Paragraph("=",            styles["hc_eq"]),
                           Paragraph(_fmt(result),   styles["hc_res"])]
                 widths = [36*mm, 4*mm, 70*mm, 4*mm, 36*mm]

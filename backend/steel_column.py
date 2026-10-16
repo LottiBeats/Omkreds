@@ -121,18 +121,20 @@ def _k_factors(lam_y, lam_z, n_y, n_z, C_my, C_mz, C_mLT, susceptible):
     k_yz = 0.6 * k_zz   # same for both tables
 
     if not susceptible:
-        # Table B.1 — not susceptible (fully restrained against lateral buckling)
-        k_zy = 0.8 * k_yy
+        # Table B.1 — ikke følsom for vridning. Klasse 1 og 2: k_zy = 0,6·k_yy
+        # (0,8·k_yy er værdien for klasse 3 og 4).
+        k_zy = 0.6 * k_yy
     else:
-        # Table B.2 — susceptible (unrestrained I/H sections)
+        # Table B.2 — følsom for vridning (ikke-fastholdte I/H-profiler)
         CmLT_s = max(C_mLT, 0.26)    # prevent division by near-zero
         k_zy_full = 1.0 - 0.1 * lam_z / (CmLT_s - 0.25) * n_z
         k_zy_min  = 1.0 - 0.1        / (CmLT_s - 0.25) * n_z
         if lam_z < 0.4:
+            # Kun en øvre grænse her; den nedre grænse hører til formlen
+            # for λ̄_z ≥ 0,4.
             k_zy = min(0.6 + lam_z, k_zy_full)
         else:
-            k_zy = k_zy_full
-        k_zy = max(k_zy, k_zy_min)
+            k_zy = max(k_zy_full, k_zy_min)
 
     return k_yy, k_yz, k_zy, k_zz
 
@@ -172,6 +174,7 @@ def steel_column_check(
     gamma_M1: float = 1.20,
     k_y: float = 1.0,         # effective-length factor y-y
     k_z: float = 1.0,         # effective-length factor z-z
+    length_z_m: float = None, # længde for udbøjning om z, hvis den er en anden
 ):
     """Returns a list of calc_core blocks for the column / beam-column check."""
     chk = CheckContext()
@@ -191,7 +194,7 @@ def steel_column_check(
     iz = math.sqrt(Iz / A)       # mm
 
     L_cr_y = k_y * L
-    L_cr_z = k_z * L
+    L_cr_z = k_z * (length_z_m * 1_000.0 if length_z_m else L)
     L_LTB  = (L_LTB_m * 1_000.0) if L_LTB_m is not None else L_cr_z
 
     lambda_1 = math.pi * math.sqrt(E / fy)
@@ -370,7 +373,7 @@ def steel_column_check(
     blocks += [
         CALC_ROW("λ₁",     "= π·√(E/f_y)",                               f"{lambda_1:.2f}"),
         CALC_ROW("L_cr,y", f"= k_y·L = {k_y:.2f} × {length_m:.2f} m",   f"{L_cr_y/1000:.3f} m"),
-        CALC_ROW("L_cr,z", f"= k_z·L = {k_z:.2f} × {length_m:.2f} m",   f"{L_cr_z/1000:.3f} m"),
+        CALC_ROW("L_cr,z", f"= k_z·L_z = {k_z:.2f} × {(length_z_m or length_m):.2f} m",   f"{L_cr_z/1000:.3f} m"),
         CALC_ROW("λ̄_y",   "= (L_cr,y / i_y) / λ₁",                      f"{lam_y:.3f}"),
         CALC_ROW("λ̄_z",   "= (L_cr,z / i_z) / λ₁",                      f"{lam_z:.3f}"),
     ]
@@ -483,8 +486,10 @@ def steel_column_check(
                  f"{k_yy:.3f}"],
                 ["k_yz", "= 0.6·k_zz",  f"{k_yz:.3f}"],
                 ["k_zy",
-                 ("0.8·k_yy" if not susceptible
-                  else "1 − 0,1·λ̄_z/(C_mLT − 0,25)·n_z  (tabel B.2)"),
+                 ("0,6·k_yy  (tabel B.1, klasse 1 og 2)" if not susceptible
+                  else ("0,6 + λ̄_z ≤ 1 − 0,1·λ̄_z/(C_mLT − 0,25)·n_z  (tabel B.2)"
+                        if lam_z < 0.4 else
+                        "1 − 0,1·λ̄_z/(C_mLT − 0,25)·n_z ≥ 1 − 0,1/(C_mLT − 0,25)·n_z  (tabel B.2)")),
                  f"{k_zy:.3f}"],
                 ["k_zz",
                  "C_mz·(1+(2·min(λ̄_z,1)−0.6)·n_z) ≤ C_mz·(1+1.4·n_z)",
@@ -496,7 +501,9 @@ def steel_column_check(
         m_y = M_y_Ed_kNm / M_pl_y_Rd if M_pl_y_Rd > 0 else 0.0
         m_z = ((M_z_Ed_kNm / M_pl_z_Rd) if M_pl_z_Rd and M_pl_z_Rd > 0 else 0.0)
         if M_pl_z_Rd is None and abs(M_z_Ed_kNm) > 1e-9:
-            blocks.append(N("W_pl,z kendes ikke, så M_z,Ed er ikke med i lign. 6.62."))
+            # Et moment må aldrig falde ud af eftervisningen i stilhed.
+            raise ValueError("W_pl,z kendes ikke, så M_z,Ed kan ikke eftervises. "
+                             "Angiv kropstykkelsen t_w.")
 
         util_eq1 = n_y + k_yy * m_y / chi_LT + k_yz * m_z
         util_eq2 = n_z + k_zy * m_y / chi_LT + k_zz * m_z

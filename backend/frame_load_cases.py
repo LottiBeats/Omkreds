@@ -344,6 +344,30 @@ def _psi(tilfaelde):
     return _PSI_NATUR.get(tilfaelde['kategori'], (0.7, 0.7, 0.7))
 
 
+def _led(faktor, navn):
+    """Et led i et kombinationsnavn: den samlede faktor med dansk komma.
+
+    Navnet viste før γ og ψ hver for sig ("0.3·1,5·Sne") og uden K_FI, så
+    der stod "1,5·Nyttelast" i CC3, hvor der regnes med 1,65 -- og med
+    punktum og komma i det samme navn. Nu står der, hvad der regnes med.
+    """
+    return f"{faktor:.2f}".replace('.', ',') + '·' + navn
+
+
+def _psi0_medvirkende(ledende, t):
+    """
+    ψ₀ for et medvirkende tilfaelde, naar ledende er det ledende.
+
+    Nyttelasten faar sin kategoris ψ₀ (A: 0,5, E: 0,8 ...) -- foer brugte
+    brudgraensen fast 0,7, mens anvendelsesgraensen brugte kategorien, saa det
+    samme tilfaelde blev regnet med to forskellige ψ₀. Sne under ledende vind
+    er stadig 0 efter DK NA tabel A1.1.
+    """
+    if ledende['kategori'] == 'wind' and t['kategori'] == 'snow':
+        return 0.0
+    return _psi(t)[0]
+
+
 def _tilfaelde_fra_virkning(loads):
     """
     Den gamle vej oversat til tilfaelde.
@@ -475,7 +499,7 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
 
     # 6.10a — kun de permanente
     g_a = _GAMMA_G_A * kfi
-    _saml(f'6.10a: {g_a:.2f}G', g_a, {})
+    _saml('6.10a: ' + _led(g_a, 'G'), g_a, {})
 
     # 6.10b — for hvert udvalg, hvert aktivt tilfaelde som ledende
     g_b = _GAMMA_G_B * kfi
@@ -486,14 +510,14 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
             for t in valg:
                 if t['nr'] == ledende['nr']:
                     faktorer[t['nr']] = _GAMMA_Q * kfi
-                    dele.append(f"1,5·{t['navn']}")
+                    dele.append(_led(_GAMMA_Q * kfi, t['navn']))
                 else:
-                    psi = _companion_psi0(ledende['kategori'], t['kategori'])
+                    psi = _psi0_medvirkende(ledende, t)
                     faktorer[t['nr']] = round(_GAMMA_Q * psi * kfi, 5)
                     if psi > 0:
-                        dele.append(f"{psi:.1f}·1,5·{t['navn']}")
+                        dele.append(_led(_GAMMA_Q * psi * kfi, t['navn']))
             navn = (f"6.10b ({ledende['navn']} leder): "
-                    f'{g_b:.2f}G + ' + ' + '.join(dele))
+                    + _led(g_b, 'G') + ' + ' + ' + '.join(dele))
             _saml(navn, g_b, faktorer)
 
             # Den samme kombination med egenlasten som gunstig.
@@ -512,9 +536,11 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
             #
             # Uden permanente tilfaelde ville tvillingen vaere en noejagtig
             # kopi -- der er ingen G at saette en anden faktor paa.
-            if gunstig_egenlast and permanente:
+            # I CC1 er 1,0·K_FI = 0,90 -- det samme som den gunstige, og så
+            # er tvillingen en kopi, der blev regnet og vist to gange.
+            if gunstig_egenlast and permanente and abs(g_b - _GAMMA_G_INF_B) > 1e-9:
                 navn_g = (f"6.10b gunstig G ({ledende['navn']} leder): "
-                          f'{_GAMMA_G_INF_B:.2f}G + ' + ' + '.join(dele))
+                          + _led(_GAMMA_G_INF_B, 'G') + ' + ' + ' + '.join(dele))
                 _saml(navn_g, _GAMMA_G_INF_B, dict(faktorer))
 
             # k_mod-varianter (EN 1995-1-1 §3.1.3).
@@ -558,13 +584,7 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                             continue
                         skaaret[nr] = f
                         if abs(f) > 1e-10:
-                            if nr == ledende['nr']:
-                                beholdt_dele.append(f"1,5\u00b7{pr_nr[nr]['navn']}")
-                            else:
-                                psi = _companion_psi0(ledende['kategori'],
-                                                      pr_nr[nr]['kategori'])
-                                beholdt_dele.append(
-                                    f"{psi:.1f}\u00b71,5\u00b7{pr_nr[nr]['navn']}")
+                            beholdt_dele.append(_led(f, pr_nr[nr]['navn']))
 
                     # Den resulterende varighed: den korteste af dem, der er
                     # tilbage.
@@ -578,13 +598,13 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                     maerkat = _VARIGHED_DK.get(ny_varighed, ny_varighed)
 
                     navn_k = (f"6.10b ({ledende['navn']} leder, k_mod "
-                              f"{maerkat}): {g_b:.2f}G + "
+                              f"{maerkat}): " + _led(g_b, 'G') + ' + '
                               + ' + '.join(beholdt_dele))
                     _saml(navn_k, g_b, skaaret)
-                    if gunstig_egenlast and permanente:
+                    if gunstig_egenlast and permanente and abs(g_b - _GAMMA_G_INF_B) > 1e-9:
                         navn_kg = (f"6.10b gunstig G ({ledende['navn']} leder, "
                                    f"k_mod {maerkat}): "
-                                   f"{_GAMMA_G_INF_B:.2f}G + "
+                                   + _led(_GAMMA_G_INF_B, 'G') + ' + '
                                    + ' + '.join(beholdt_dele))
                         _saml(navn_kg, _GAMMA_G_INF_B, dict(skaaret))
 
@@ -601,23 +621,82 @@ def kombinationer_af_tilfaelde(load_cases, loads, method='6.10ab',
                 for t in valg:
                     if t['nr'] == ledende['nr']:
                         faktorer[t['nr']] = 1.0
-                        dele.append(f"{t['navn']}")
+                        dele.append(_led(1.0, t['navn']))
                     else:
                         psi0 = _psi(t)[0]
                         faktorer[t['nr']] = psi0
                         if psi0 > 0:
-                            dele.append(f"{psi0:.1f}·{t['navn']}")
-                _saml(f"SLS kar. ({ledende['navn']} leder): 1,0G + " + ' + '.join(dele),
+                            dele.append(_led(psi0, t['navn']))
+                _saml(f"SLS kar. ({ledende['navn']} leder): " + _led(1.0, 'G') + ' + ' + ' + '.join(dele),
                       1.0, faktorer, situation='sls_karakteristisk')
             faktorer = {t['nr']: _psi(t)[2] for t in valg}
-            dele = [f"{f:.1f}·{pr_nr[nr]['navn']}" for nr, f in faktorer.items() if f > 0]
-            _saml('SLS kvasi: 1,0G' + (' + ' + ' + '.join(dele) if dele else ''),
+            dele = [_led(f, pr_nr[nr]['navn']) for nr, f in faktorer.items() if f > 0]
+            _saml('SLS kvasi: ' + _led(1.0, 'G') + (' + ' + ' + '.join(dele) if dele else ''),
                   1.0, faktorer, situation='sls_kvasi')
 
     return combos
 
 
 # ── Kombinationerne fra lastmodulet, paasat modellen ─────────────────────────
+_EGNE_SITUATIONER = {'uls': None, 'sls_karakteristisk': 'sls_karakteristisk',
+                     'sls_hyppig': 'sls_hyppig', 'sls_kvasi': 'sls_kvasi'}
+
+
+def egne_kombinationer(load_cases, loads, egne):
+    """
+    Brugerens egne kombinationer, som i FEM-Design og RFEM: et navn, en
+    dimensioneringssituation og en faktor pr. lasttilfaelde.
+
+    egne: [{navn, situation ('uls' | 'sls_karakteristisk' | 'sls_hyppig' |
+    'sls_kvasi'), faktorer: {lasttilfaeldets nr: faktor}}]. Faktoren er den
+    samlede (fx 1,5 eller 0,5·1,5 = 0,75) -- der laegges intet til.
+
+    Lastvarigheden er den korteste blandt de variable tilfaelde med en faktor
+    forskellig fra nul, som i de automatiske kombinationer.
+    """
+    tilfaelde = _normaliser_tilfaelde(load_cases)
+    pr_nr = {t['nr']: t for t in tilfaelde}
+    pr_tilfaelde = {}
+    for ld in loads:
+        if ld.get('lc') in pr_nr:
+            pr_tilfaelde.setdefault(ld['lc'], []).append(ld)
+    ud = []
+    for i, k in enumerate(egne or []):
+        navn = (k.get('navn') or '').strip() or f'Kombination {i + 1}'
+        sit = k.get('situation') or 'uls'
+        if sit not in _EGNE_SITUATIONER:
+            raise ValueError(f'Ukendt situation "{sit}" i kombinationen "{navn}".')
+        laster, tabel, aktive, varigheder = [], {}, [], []
+        for nr, f in (k.get('faktorer') or {}).items():
+            try:
+                nr, f = int(nr), float(f)
+            except (TypeError, ValueError):
+                continue
+            t = pr_nr.get(nr)
+            if t is None or abs(f) < 1e-12:
+                continue
+            tabel[t['navn']] = round(f, 4)
+            laster += [_scale_load(l, f) for l in pr_tilfaelde.get(nr, [])]
+            if t['kategori'] != 'permanent':
+                aktive.append(t['navn'])
+                varigheder.append(_TYPE_DURATION.get(t['kategori'], 'medium'))
+        if not tabel:
+            raise ValueError(f'Kombinationen "{navn}" har ingen faktorer.')
+        governing = (max(varigheder, key=lambda d: _DURATION_RANK.get(d, 0))
+                     if varigheder else 'permanent')
+        kombi = {'name': f'Egen: {navn}', 'loads': laster, 'factor_table': tabel,
+                 'governing_duration': governing, 'aktive': aktive, 'egen': True}
+        if _EGNE_SITUATIONER[sit]:
+            kombi['situation'] = _EGNE_SITUATIONER[sit]
+        ud.append(kombi)
+    navne = [k['name'] for k in ud]
+    dobbelt = {n for n in navne if navne.count(n) > 1}
+    if dobbelt:
+        raise ValueError('To egne kombinationer hedder det samme: '
+                         + ', '.join(sorted(dobbelt)) + '.')
+    return ud
+
+
 def kombinationer_fra_lastmodul(loads, kombinationer, lasttilfaelde,
                                 situationer=None):
     """
@@ -762,7 +841,7 @@ def sls_saet(load_cases, loads):
                 if t['nr'] == ledende['nr']:
                     f = 1.0
                 else:
-                    f = _companion_psi0(ledende['kategori'], t['kategori'])
+                    f = _psi0_medvirkende(ledende, t)
                 if abs(f) <= 1e-10:
                     continue
                 ud += [_scale_load(l, f)
@@ -774,5 +853,5 @@ def sls_saet(load_cases, loads):
                 continue
             set_navne.add(navn)
             saet.append({'navn': navn, 'laster': ud,
-                         'psi_2': _PSI2.get(ledende['kategori'], 0.0)})
+                         'psi_2': _psi(ledende)[2]})
     return G, saet

@@ -23,12 +23,14 @@ import { HashRouter, Routes, Route, Link, useNavigate } from 'react-router-dom'
 import './index.css'
 import { AppProviders } from './App.jsx'
 import EditorPage from './pages/EditorPage.jsx'
+import CreateProjectModal from './components/CreateProjectModal.jsx'
 import { getProjects, createProject } from './api/client.js'
 import { Button } from './ui/index.js'
 
 function DevList() {
   const [projects, setProjects] = useState(null)
   const [err, setErr] = useState(null)
+  const [opret, setOpret] = useState(false)
   const navigate = useNavigate()
   useEffect(() => { getProjects().then(setProjects).catch(e => setErr(e.message)) }, [])
   return (
@@ -39,6 +41,8 @@ function DevList() {
         const p = await createProject('Nyt testprojekt', 'DEV-001', 'team')
         navigate(`/projects/${p.id}`)
       }}>Nyt projekt</Button>
+      <Button onClick={() => setOpret(true)}>Nyt projekt… (dialogen fra forsiden)</Button>
+      {opret && <CreateProjectModal onCreated={p => navigate(`/projects/${p.id}`)} onCancel={() => setOpret(false)} />}
       {(projects ?? []).map(p => (
         <Link key={p.id} to={`/projects/${p.id}`} style={{ padding: 10, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 6 }}>
           {p.metadata?.project_name} <span className="mono" style={{ color: 'var(--muted)' }}>{p.metadata?.project_ref}</span>

@@ -1,12 +1,18 @@
 """
-concrete_column.py — RC column  (EN 1992-1-1)
+concrete_column.py — armeret betonsøjle, rektangulært tværsnit (DS/EN 1992-1-1 DK NA)
 
-Rectangular cross-section with reinforcement on two sides (compression + tension).
-Second-order effects: simplified stiffness method (cl. 5.8.7.3).
-N–M interaction curve: rectangular stress block (cl. 3.1.7).
-Creep coefficient: EN 1992-1-1 Annex B.
+Armering i to sider (tryk og træk), bøjning om én akse. Eftervises:
 
-All inputs use plain SI multiples (mm, kN, MPa).
+  §3.1.7/§6.1  N–M-kurve med rektangulær spændingsblok
+  §5.2         geometrisk imperfektion, e_i = l₀/400
+  §6.1(4)      mindste excentricitet e₀ = max(h/30; 20 mm)
+  §5.8.3.1     slankhedsgrænse λ_lim
+  §5.8.7       2. ordens effekter ved nominel stivhed (5.8.7.2) og
+               momentforøgelse (5.8.7.3) med β = 1
+  §9.5.2       minimums- og maksimumsarmering, mindste stangdiameter
+  Anneks B     krybetal
+
+Søjlen antages at indgå i et afstivet system. Enheder mm, kN og MPa.
 """
 
 from math import pi, sqrt
@@ -57,51 +63,45 @@ def _creep_phi0(fck, RH, t0_days, h_mm, b_mm):
     return phi_RH * beta_fcm * beta_t0
 
 
-def _nm_curve(fcd, fyd, b, h, a, As_c, As_t, n_pts=150):
+def _nm_curve(fcd, fyd, b, h, a, As_c, As_t):
     """
-    N–M interaction envelope for a rectangular section.
-    Units: mm, MPa  →  output in kN, kNm.
+    N–M-kurven for et rektangulært tværsnit, EN 1992-1-1 §3.1.7 og §6.1.
+
+    Tøjningsfordelingen drejer om ε_cu3 i trykranden, så længe x ≤ h, og om
+    punktet C i dybden h·(1 − ε_c3/ε_cu3) med ε_c3, når hele tværsnittet er
+    trykket (figur 6.1). Rent tryk giver dermed ε_c3 = 1,75 ‰ i hele
+    tværsnittet og σ_s = E_s·ε_c3, ikke f_yd.
+
+    Enheder mm og MPa ind, kN og kNm ud. Tryk er positivt; M er positiv
+    med tryk på den side, hvor A_s,c sidder.
     """
     Es      = 200_000.0
     eps_cu3 = 0.0035
-    lam     = 0.8
-    eta     = 1.0
-
-    d_c = a
-    d_t = h - a
+    eps_c3  = 0.00175
+    y_C     = h * (1 - eps_c3 / eps_cu3)
+    d_c, d_t = a, h - a
 
     x_vals = np.unique(np.concatenate([
-        np.linspace(0.01 * d_t, 0.99 * d_t, 70),
-        np.linspace(d_t,        5.0 * h,    80),
+        np.linspace(0.01 * d_t, h, 120),
+        h * np.logspace(0.0, 4.0, 80),
     ]))
 
-    N_list, M_list = [], []
+    N_list = [-(fyd * (As_c + As_t)) * 1e-3]
+    M_list = [(-fyd * As_c * (0.5 * h - d_c) - fyd * As_t * (0.5 * h - d_t)) * 1e-3]
     for x in x_vals:
-        s    = min(lam * x, h)
-        Fc   = eta * fcd * b * s * 1e-3
+        if x <= h:
+            eps = lambda y: eps_cu3 * (x - y) / x
+        else:
+            eps = lambda y: eps_c3 * (x - y) / (x - y_C)
+        s = min(0.8 * x, h)
+        Fc = fcd * b * s * 1e-3
         z_Fc = 0.5 * h - 0.5 * s
-
-        eps_sc = eps_cu3 * (x - d_c) / x
-        eps_st = eps_cu3 * (x - d_t) / x
-
-        sig_sc = max(-fyd, min(fyd, Es * eps_sc))
-        sig_st = max(-fyd, min(fyd, Es * eps_st))
-
+        sig_sc = max(-fyd, min(fyd, Es * eps(d_c)))
+        sig_st = max(-fyd, min(fyd, Es * eps(d_t)))
         Fsc = sig_sc * As_c * 1e-3
         Fst = sig_st * As_t * 1e-3
-
-        z_sc = 0.5 * h - d_c
-        z_st = 0.5 * h - d_t
-
         N_list.append(Fc + Fsc + Fst)
-        M_list.append((Fc * z_Fc + Fsc * z_sc + Fst * z_st) * 1e-3)
-
-    N_list.insert(0, -(fyd * (As_c + As_t)) * 1e-3)
-    M_list.insert(0, 0.0)
-
-    N_list.append((eta * fcd * b * h + fyd * (As_c + As_t)) * 1e-3)
-    M_list.append(0.0)
-
+        M_list.append((Fc * z_Fc + Fsc * (0.5 * h - d_c) + Fst * (0.5 * h - d_t)) * 1e-3)
     return np.array(N_list), np.array(M_list)
 
 
@@ -126,7 +126,7 @@ def _nm_plot(N_curve, M_curve, load_pts, h_mm, tmp_dir):
     Nc_s = Nc[idx]
     Mc_s = Mc[idx]
 
-    ax.plot(np.abs(Mc_s), Nc_s, color='#595F61', lw=1.8, label='N–M envelope')
+    ax.plot(np.abs(Mc_s), Nc_s, color='#595F61', lw=1.8, label='N–M-kurve')
     ax.axhline(0, color='#aaa', lw=0.5, ls='--')
     ax.axvline(0, color='#aaa', lw=0.5, ls='--')
 
@@ -142,11 +142,11 @@ def _nm_plot(N_curve, M_curve, load_pts, h_mm, tmp_dir):
         mk   = 'o' if ok else 'x'
         ms   = 8 if ok else 10
         ax.scatter([abs(MEd)], [NEd], color=col, marker=mk, s=ms**2, zorder=5,
-                   label=f'{lbl}  ({abs(MEd):.1f} kNm, {NEd:.0f} kN)')
+                   label=f'{lbl}  ({abs(MEd):.1f} kNm, {NEd:.0f} kN)'.replace('.', ','))
 
     ax.set_xlabel('M  [kNm]', fontsize=10)
     ax.set_ylabel('N  [kN]',  fontsize=10)
-    ax.set_title(f'N–M interaction  (h = {h_mm:.0f} mm)', fontsize=11)
+    ax.set_title(f'N–M-interaktion  (h = {h_mm:.0f} mm)', fontsize=11)
     ax.legend(fontsize=8, loc='upper right')
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -211,18 +211,18 @@ def _section_plot_column(h_mm, b_mm, c_mm, da_c_mm, n_c, da_t_mm, n_t, tmp_dir):
     arr_c = dict(arrowprops=dict(arrowstyle='<->', color='#aaaaaa', lw=0.9,
                                  mutation_scale=8))
     ax.annotate('', xy=(c_mm, h_mm * 0.5), xytext=(0, h_mm * 0.5), **arr_c)
-    ax.text(c_mm / 2, h_mm * 0.5 + my * 0.12, f'c={c_mm:.0f}',
+    ax.text(c_mm / 2, h_mm * 0.5 + my * 0.12, f'a={c_mm:.0f}',
             ha='center', va='bottom', fontsize=7, color='#888888')
 
     # Bar labels
     ax.text(b_mm/2, h_mm + my*0.12,
-            f'{n_c}Ø{da_c_mm:.0f}  (compression)',
+            f'{n_c}Ø{da_c_mm:.0f}  (tryk)',
             ha='center', va='bottom', fontsize=8, color='#333333')
     ax.text(b_mm/2, -my*0.08,
-            f'{n_t}Ø{da_t_mm:.0f}  (tension)',
+            f'{n_t}Ø{da_t_mm:.0f}  (træk)',
             ha='center', va='top', fontsize=8, color='#333333')
 
-    ax.set_title('Cross-section', fontsize=10, pad=6)
+    ax.set_title('Tværsnit', fontsize=10, pad=6)
     plt.tight_layout()
     out_path = Path(tmp_dir) / 'section_col.png'
     fig.savefig(str(out_path), dpi=130, bbox_inches='tight')
@@ -231,298 +231,204 @@ def _section_plot_column(h_mm, b_mm, c_mm, da_c_mm, n_c, da_t_mm, n_t, tmp_dir):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PUBLIC FUNCTION
+# EFTERVISNING
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _dk(v, d=2):
+    return f"{v:.{d}f}".replace(".", ",")
+
+
+def _gem_figur(data: bytes, navn: str) -> str:
+    out = Path(tempfile.gettempdir()) / f"{navn}_{hashlib.md5(data).hexdigest()[:12]}.png"
+    if not out.exists():
+        out.write_bytes(data)
+    return str(out)
+
+
 def concrete_column_rect(
-    label,
-    h_mm=300.0,
-    b_mm=360.0,
-    c_mm=53.0,
-    da_c_mm=16.0,
-    n_c=2,
-    da_t_mm=16.0,
-    n_t=3,
-    fck_mpa=35.0,
-    fyk_mpa=550.0,
-    gamma_c=1.45,           # DS/EN 1992-1-1 DK NA
-    gamma_s=1.20,
-    alpha_cc=1.0,
-    gamma_cE=1.2,
-    Ls_mm=4000.0,
-    beta_eff=1.0,
-    RH=0.55,
-    t0_days=28.0,
-    M0Eqp_over_M0Ed=0.9,
+    label="C1",
+    h_mm=300.0, b_mm=300.0,
+    c_mm=45.0,              # a: afstand fra kant til armeringens tyngdepunkt
+    da_c_mm=16.0, n_c=2,
+    da_t_mm=16.0, n_t=2,
+    fck_mpa=30.0, fyk_mpa=500.0,
+    gamma_c=1.45, gamma_s=1.20, alpha_cc=1.0, gamma_cE=1.2,
+    Ls_mm=3500.0, beta_eff=1.0,
+    RH=0.50, t0_days=28.0,
+    M0Eqp_over_M0Ed=0.7,
     load_cases=None,
-    figure_path=None,
-    figure_caption="",
+    **_ignored,
 ):
-    if load_cases is None:
-        load_cases = []
+    load_cases = load_cases or []
+    if fck_mpa > 50:
+        raise ValueError("Modulet dækker betonklasser til og med C50/60.")
+    if not load_cases:
+        raise ValueError("Angiv mindst ét lasttilfælde med N_Ed og M₀_Ed.")
+    if not 0 < 2 * c_mm < h_mm:
+        raise ValueError("Armeringens afstand a skal være mindre end h/2.")
 
-    cc     = CheckContext()
-    blocks = []
-
-    # ── Header ───────────────────────────────────────────────────────────────
-    blocks.append(MH(
-        f"RC column — {h_mm:.0f}×{b_mm:.0f} mm",
-        f"{label}  |  EN 1992-1-1",
+    cc = CheckContext()
+    h, b, a = h_mm, b_mm, c_mm
+    blocks = [MH(
+        f"{label} — Betonsøjle {h:.0f}×{b:.0f}  (EN 1992-1-1)",
+        f"C{fck_mpa:.0f} · B{fyk_mpa:.0f} · L = {_dk(Ls_mm / 1000)} m · "
+        f"{n_c} Ø{da_c_mm:.0f} + {n_t} Ø{da_t_mm:.0f}",
         material="concrete",
-    ))
+    )]
 
-    # ── Input table ──────────────────────────────────────────────────────────
-    blocks.append(S("Design parameters"))
-    blocks.append(T(
-        f"Rectangular reinforced concrete column, {h_mm:.0f}×{b_mm:.0f} mm.  "
-        f"Concrete C{fck_mpa:.0f}, reinforcement f_yk = {fyk_mpa:.0f} MPa.  "
-        f"Column length L_s = {Ls_mm:.0f} mm, effective-length factor β = {beta_eff}.  "
-        f"Bending about the axis parallel to b = {b_mm:.0f} mm."
-    ))
-    blocks.extend([
-        CALC_ROW("h",             "section height (bending direction)",  f"{h_mm:.0f} mm"),
-        CALC_ROW("b",             "section width",                        f"{b_mm:.0f} mm"),
-        CALC_ROW("c",             "cover to rebar centroid",              f"{c_mm:.0f} mm"),
-        CALC_ROW("n_c × Ø_c",    "compression rebars",                   f"{n_c} × Ø{da_c_mm:.0f} mm"),
-        CALC_ROW("n_t × Ø_t",    "tension rebars",                       f"{n_t} × Ø{da_t_mm:.0f} mm"),
-        CALC_ROW("f_ck",          "char. cylinder strength",              f"{fck_mpa:.0f} MPa"),
-        CALC_ROW("f_yk",          "char. yield strength",                 f"{fyk_mpa:.0f} MPa"),
-        CALC_ROW("γ_c",           "partial factor — concrete",            str(gamma_c)),
-        CALC_ROW("γ_s",           "partial factor — steel",               str(gamma_s)),
-        CALC_ROW("α_cc",          "long-term strength factor",            str(alpha_cc)),
-        CALC_ROW("L_s",           "column length",                        f"{Ls_mm:.0f} mm"),
-        CALC_ROW("β",             "effective-length factor",              str(beta_eff)),
-        CALC_ROW("RH",            "relative humidity",                    f"{RH*100:.0f} %"),
-        CALC_ROW("t₀",            "age at loading",                       f"{t0_days:.0f} days"),
-        CALC_ROW("M₀_Eqp/M₀_Ed", "quasi-permanent moment ratio",         str(M0Eqp_over_M0Ed)),
-    ])
+    # ── Materialer ───────────────────────────────────────────────────────────
+    fcd = alpha_cc * fck_mpa / gamma_c
+    fyd = fyk_mpa / gamma_s
+    Ecm = _ecm_mpa(fck_mpa)
+    Ecd = Ecm / gamma_cE
+    Es = 200_000.0
+    blocks.append(S("Materialer — DK NA"))
+    blocks += [
+        CALC_ROW("f_cd", f"= α_cc·f_ck/γ_c = {_dk(alpha_cc)}·{fck_mpa:.0f}/{_dk(gamma_c)}", f"{_dk(fcd)} MPa"),
+        CALC_ROW("f_yd", f"= f_yk/γ_s = {fyk_mpa:.0f}/{_dk(gamma_s)}", f"{_dk(fyd, 1)} MPa"),
+        CALC_ROW("E_cm", "= 22000·(f_cm/10)^0,3  tabel 3.1", f"{Ecm:.0f} MPa"),
+        CALC_ROW("E_cd", "= E_cm/γ_cE  (5.20)", f"{Ecd:.0f} MPa"),
+    ]
 
-    # ── Cross-section diagram ─────────────────────────────────────────────────
-    with tempfile.TemporaryDirectory() as _sec_tmp:
-        _sec_img = _section_plot_column(h_mm, b_mm, c_mm, da_c_mm, n_c, da_t_mm, n_t, _sec_tmp)
-        with open(_sec_img, 'rb') as _f:
-            _sec_bytes = _f.read()
-    _sec_hash = hashlib.md5(_sec_bytes).hexdigest()[:12]
-    _sec_out   = Path(tempfile.gettempdir()) / f'section_col_{_sec_hash}.png'
-    if not _sec_out.exists():
-        _sec_out.write_bytes(_sec_bytes)
-    blocks.append(FIG(str(_sec_out), 'Reinforced concrete column cross-section.', width_mm=85))
+    # ── Tværsnit ─────────────────────────────────────────────────────────────
+    Ac = h * b
+    As_c = n_c * pi / 4 * da_c_mm ** 2
+    As_t = n_t * pi / 4 * da_t_mm ** 2
+    As = As_c + As_t
+    d = h - a
+    blocks.append(S("Tværsnit"))
+    blocks += [
+        CALC_ROW("h × b", "h i bøjningsretningen", f"{h:.0f} × {b:.0f} mm"),
+        CALC_ROW("a", "kant til armeringens tyngdepunkt", f"{a:.0f} mm"),
+        CALC_ROW("A_s,c", f"= {n_c}·π·{da_c_mm:.0f}²/4", f"{As_c:.0f} mm²"),
+        CALC_ROW("A_s,t", f"= {n_t}·π·{da_t_mm:.0f}²/4", f"{As_t:.0f} mm²"),
+        CALC_ROW("ρ", "= A_s/A_c", f"{_dk(As / Ac * 100)} %"),
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        img = _section_plot_column(h, b, a, da_c_mm, n_c, da_t_mm, n_t, tmp)
+        data = Path(img).read_bytes()
+    blocks.append(FIG(_gem_figur(data, "rc_soejle_snit"), "Tværsnit af søjlen.", width_mm=75))
 
-    # ── Material properties ───────────────────────────────────────────────────
-    blocks.append(S("Material properties  — EN 1992-1-1 cl. 3.1"))
+    # ── Armering §9.5.2 ──────────────────────────────────────────────────────
+    N_max = max(float(lc["NEd_kN"]) for lc in load_cases)
+    As_min = max(0.10 * max(N_max, 0) * 1000 / fyd, 0.002 * Ac)
+    As_max = 0.04 * Ac
+    blocks.append(S("Armeringsmængde — §9.5.2"))
+    blocks += [
+        CALC_ROW("A_s,min", "= max(0,10·N_Ed/f_yd; 0,002·A_c)", f"{As_min:.0f} mm²"),
+        CALC_ROW("A_s,max", "= 0,04·A_c", f"{As_max:.0f} mm²"),
+        cc.check("A_s ≥ A_s,min", As_min / As, 1.0),
+        cc.check("A_s ≤ A_s,max", As / As_max, 1.0),
+        cc.check_bool("Længdestænger Ø ≥ 8 mm", min(da_c_mm, da_t_mm) >= 8,
+                      "OK", "for tynde stænger"),
+    ]
 
-    fcd = alpha_cc * fck_mpa / gamma_c    # MPa
-    fyd = fyk_mpa  / gamma_s              # MPa
-    fcm = fck_mpa  + 8.0                  # MPa
-    Ecm = _ecm_mpa(fck_mpa)              # MPa
-    Ecd = Ecm / gamma_cE                  # MPa
-    Es  = 200_000.0                       # MPa (steel)
-
-    blocks.extend([
-        CALC_ROW("f_cd",  "= α_cc·f_ck / γ_c",     f"{fcd:.2f} MPa"),
-        CALC_ROW("f_yd",  "= f_yk / γ_s",           f"{fyd:.2f} MPa"),
-        CALC_ROW("f_cm",  "= f_ck + 8",             f"{fcm:.1f} MPa"),
-        CALC_ROW("E_cm",  "= 22000·(f_cm/10)^0.3",  f"{Ecm:.0f} MPa"),
-        CALC_ROW("E_cd",  "= E_cm / γ_cE",          f"{Ecd:.0f} MPa"),
-    ])
-
-    # ── Cross-section ──────────────────────────────────────────────────────
-    blocks.append(S("Cross-section properties"))
-
-    h    = h_mm
-    b    = b_mm
-    a    = c_mm
-    d    = h - a
-    Ac   = h * b
-    As_c = n_c * pi / 4.0 * da_c_mm ** 2
-    As_t = n_t * pi / 4.0 * da_t_mm ** 2
-    As   = As_c + As_t
-
-    blocks.extend([
-        CALC_ROW("A_c",   "= h·b",              f"{Ac:.0f} mm²"),
-        CALC_ROW("A_s,c", "= n_c·π/4·Ø_c²",    f"{As_c:.1f} mm²"),
-        CALC_ROW("A_s,t", "= n_t·π/4·Ø_t²",    f"{As_t:.1f} mm²"),
-        CALC_ROW("A_s",   "= A_s,c + A_s,t",    f"{As:.1f} mm²"),
-        CALC_ROW("d",     "= h − c",            f"{d:.1f} mm"),
-        CALC_ROW("ρ",     "= A_s / A_c",        f"{As/Ac*100:.2f} %"),
-    ])
-
-    # ── Creep coefficient ──────────────────────────────────────────────────
-    blocks.append(S("Creep coefficient  — EN 1992-1-1 Annex B"))
-
-    phi0   = _creep_phi0(fck_mpa, RH, t0_days, h, b)
+    # ── Krybning, anneks B ───────────────────────────────────────────────────
+    phi0 = _creep_phi0(fck_mpa, RH, t0_days, h, b)
     phi_ef = phi0 * M0Eqp_over_M0Ed
-    h0     = 2.0 * Ac / (2.0 * (h + b))
+    blocks.append(S("Krybning — anneks B og §5.8.4"))
+    blocks += [
+        CALC_ROW("h₀", "= 2·A_c/u", f"{_dk(2 * Ac / (2 * (h + b)), 0)} mm"),
+        CALC_ROW("φ(∞,t₀)", f"RH = {RH * 100:.0f} %, t₀ = {t0_days:.0f} døgn", _dk(phi0, 2)),
+        CALC_ROW("φ_ef", "= φ(∞,t₀)·M₀Eqp/M₀Ed  (5.19)", _dk(phi_ef, 2)),
+    ]
 
-    blocks.extend([
-        CALC_ROW("h₀",   "= 2·A_c / u  (notional thickness)",  f"{h0:.1f} mm"),
-        CALC_ROW("φ₀",   "= φ_RH·β(f_cm)·β(t₀)  (Annex B)",   f"{phi0:.3f}"),
-        CALC_ROW("φ_ef", "= φ₀ · M₀_Eqp/M₀_Ed",               f"{phi_ef:.3f}"),
-    ])
-
-    # ── Slenderness ────────────────────────────────────────────────────────
-    blocks.append(S("Slenderness  — EN 1992-1-1 cl. 5.8.3"))
-
-    blocks.append(N(
-        f"Effective-length factor β = {beta_eff:.2f} — input by engineer. "
-        "For a braced column pinned at both ends β = 1.0; fixed–fixed β ≈ 0.5. "
-        "For sway frames the effective length exceeds the physical length — verify "
-        "β independently from frame analysis. This module assumes a braced (non-sway) frame."
-    ))
-
-    Ic    = b * h ** 3 / 12.0
-    Is    = (As_c + As_t) * (h/2 - a) ** 2
+    # ── Slankhed ─────────────────────────────────────────────────────────────
+    Ic = b * h ** 3 / 12
+    Is = As_c * (h / 2 - a) ** 2 + As_t * (h / 2 - a) ** 2
     i_rad = sqrt(Ic / Ac)
-    l0    = beta_eff * Ls_mm
-    lam   = l0 / i_rad
-
-    blocks.extend([
-        CALC_ROW("I_c",  "= b·h³/12",     f"{Ic:.3e} mm⁴"),
-        CALC_ROW("i",    "= √(I_c/A_c)",  f"{i_rad:.1f} mm"),
-        CALC_ROW("l₀",   "= β·L_s",       f"{l0:.0f} mm"),
-        CALC_ROW("λ",    "= l₀ / i",      f"{lam:.2f}"),
-    ])
-
-    # ── Effective stiffness and Ncr ──────────────────────────────────────
-    blocks.append(S("Effective stiffness and elastic critical force  — cl. 5.8.7.3"))
-
-    Kc     = 0.3 / (1.0 + 0.5 * phi_ef)
-    EI_eff = (Kc * Ecd * Ic + 1.0 * Es * Is) * 1e-9   # kNm²
-    Ncr    = pi ** 2 * EI_eff / (l0 * 1e-3) ** 2       # kN
-
-    blocks.extend([
-        CALC_ROW("I_s",    "= (A_s,c + A_s,t)·(h/2 − c)²",  f"{Is:.3e} mm⁴"),
-        CALC_ROW("K_c",    "= 0.3 / (1 + 0.5·φ_ef)",        f"{Kc:.4f}"),
-        CALC_ROW("EI_eff", "= K_c·E_cd·I_c + E_s·I_s",      f"{EI_eff:.1f} kNm²"),
-        CALC_ROW("N_cr",   "= π²·EI_eff / l₀²",             f"{Ncr:.1f} kN"),
-    ])
-
-    # ── N–M interaction curve ─────────────────────────────────────────────
-    blocks.append(S("N–M interaction curve  — EN 1992-1-1 cl. 3.1.7 / 6.1"))
-    blocks.append(T(
-        "Computed from the simplified rectangular stress block (λ = 0.8, η = 1.0 for "
-        f"f_ck ≤ 50 MPa). Compression reinforcement A_s,c = {As_c:.0f} mm² at "
-        f"cover c = {a:.0f} mm; tension reinforcement A_s,t = {As_t:.0f} mm² at "
-        f"d = {d:.0f} mm.  Limiting concrete strain ε_cu3 = 0.0035."
-    ))
-
-    N_curve, M_curve = _nm_curve(fcd, fyd, b, h, a, As_c, As_t)
-
-    N_pt = -(fyd * (As_c + As_t)) * 1e-3
-    N_pc = (fcd * b * h + fyd * (As_c + As_t)) * 1e-3
-    M_max = float(np.max(M_curve))
-    N_at_Mmax = float(N_curve[np.argmax(M_curve)])
-
-    blocks.append(TBL(
-        ["Point", "N  [kN]", "M  [kNm]"],
-        [
-            ["Pure tension",        f"{N_pt:.1f}",   "0"],
-            ["Max moment",          f"{N_at_Mmax:.1f}", f"{M_max:.1f}"],
-            ["Pure compression",    f"{N_pc:.1f}",   "0"],
-        ],
-    ))
-
-    # ── Load case checks ──────────────────────────────────────────────────
-    blocks.append(S("Load case checks  — second-order effects  cl. 5.8"))
-
+    l0 = beta_eff * Ls_mm
+    lam = l0 / i_rad
     omega = As * fyd / (Ac * fcd)
-    e0_min = max(h / 30.0, 20.0)
-    ei    = l0 / 400.0
+    e_i = l0 / 400
+    e_0 = max(h / 30, 20.0)
+    A_ = 1 / (1 + 0.2 * phi_ef)
+    B_ = sqrt(1 + 2 * omega)
+    C_ = 0.7
+    blocks.append(S("Slankhed og imperfektion — §5.8.3 og §5.2"))
+    blocks += [
+        CALC_ROW("l₀", f"= β·L = {_dk(beta_eff)}·{Ls_mm:.0f}", f"{l0:.0f} mm"),
+        CALC_ROW("i", "= √(I_c/A_c)", f"{_dk(i_rad, 1)} mm"),
+        CALC_ROW("λ", "= l₀/i", _dk(lam, 1)),
+        CALC_ROW("ω", "= A_s·f_yd/(A_c·f_cd)", _dk(omega, 3)),
+        CALC_ROW("A · B · C", "= 1/(1+0,2·φ_ef) · √(1+2ω) · 0,7", f"{_dk(A_, 3)} · {_dk(B_, 3)} · 0,7"),
+        CALC_ROW("e_i", "= l₀/400  (5.2(9))", f"{_dk(e_i, 1)} mm"),
+        CALC_ROW("e₀", "= max(h/30; 20 mm)  (6.1(4))", f"{_dk(e_0, 1)} mm"),
+    ]
+    blocks.append(N(
+        f"β = {_dk(beta_eff)} er angivet af den projekterende. Søjlen regnes som en del "
+        "af et afstivet system; for en udkraget eller ikke-afstivet søjle skal "
+        "l₀ bestemmes ud fra rammens stabilitet. C = 0,7 svarer til ukendt "
+        "momentforhold r_m (5.8.3.1(1))."))
 
-    blocks.extend([
-        CALC_ROW("ω",      "= A_s·f_yd / (A_c·f_cd)",          f"{omega:.3f}"),
-        CALC_ROW("e₀_min", "= max(h/30, 20 mm)",                f"{e0_min:.1f} mm"),
-        CALC_ROW("eᵢ",     "= l₀ / 400  (imperfection)",        f"{ei:.1f} mm"),
-    ])
+    # ── N–M-kurve ────────────────────────────────────────────────────────────
+    N_curve, M_curve = _nm_curve(fcd, fyd, b, h, a, As_c, As_t)
+    k1 = sqrt(fck_mpa / 20)
 
-    plot_pts  = []
-    chk_rows  = []
-
+    blocks.append(S("Lasttilfælde — 1. og 2. orden, §5.8.7"))
+    rows, pts = [], []
     for lc in load_cases:
-        lc_label  = lc.get("label", "LC")
-        NEd_kN    = float(lc["NEd_kN"])
-        M0Ed_kNm  = float(lc["M0Ed_kNm"])
-
-        n_rel = NEd_kN / (Ac * fcd * 1e-3)
-        n_rel = max(n_rel, 0.01)
-        A_cr  = 1.0 / (1.0 + 0.2 * phi_ef)
-        B_cr  = sqrt(1.0 + 2.0 * omega)
-        C_cr  = 0.7
-        lam_lim = 20.0 * A_cr * B_cr * C_cr / sqrt(n_rel)
-
-        slender = lam > lam_lim
-
-        M0Ed_imp = M0Ed_kNm + NEd_kN * ei * 1e-3
-        M0Ed_eff = max(M0Ed_imp, NEd_kN * e0_min * 1e-3)
-
-        if slender and NEd_kN < Ncr:
-            MEd = M0Ed_eff / (1.0 - NEd_kN / Ncr)
+        navn = lc.get("label", "LC")
+        NEd = float(lc["NEd_kN"])
+        M0 = abs(float(lc["M0Ed_kNm"]))
+        n = max(NEd * 1000 / (Ac * fcd), 0.0)
+        lam_lim = 20 * A_ * B_ * C_ / sqrt(max(n, 1e-6))
+        M0_i = M0 + NEd * e_i / 1000
+        M0_eff = max(M0_i, NEd * e_0 / 1000)
+        slank = lam > lam_lim and NEd > 0
+        blocks.append(T(f"{navn}:  N_Ed = {_dk(NEd, 1)} kN,  M₀_Ed = {_dk(M0, 1)} kNm"))
+        blocks += [
+            CALC_ROW("n", "= N_Ed/(A_c·f_cd)", _dk(n, 3)),
+            CALC_ROW("λ_lim", "= 20·A·B·C/√n  (5.13N)", _dk(lam_lim, 1)),
+            CALC_ROW("M₀_Ed,i", "= max(M₀_Ed + N_Ed·e_i; N_Ed·e₀)", f"{_dk(M0_eff, 1)} kNm"),
+        ]
+        ustabil = False
+        if slank:
+            k2 = min(n * lam / 170, 0.20)
+            Kc = k1 * k2 / (1 + phi_ef)
+            EI = (Kc * Ecd * Ic + 1.0 * Es * Is) * 1e-9   # kNm²
+            N_B = pi ** 2 * EI / (l0 / 1000) ** 2
+            blocks += [
+                CALC_ROW("K_c", f"= k₁·k₂/(1+φ_ef), k₁ = {_dk(k1, 3)}, k₂ = n·λ/170 ≤ 0,20 = {_dk(k2, 3)}",
+                         _dk(Kc, 4)),
+                CALC_ROW("EI", "= K_c·E_cd·I_c + K_s·E_s·I_s, K_s = 1  (5.21)", f"{_dk(EI, 0)} kNm²"),
+                CALC_ROW("N_B", "= π²·EI/l₀²", f"{_dk(N_B, 0)} kN"),
+            ]
+            if NEd >= N_B:
+                ustabil = True
+                MEd = float("inf")
+                blocks.append(CALC_ROW("M_Ed", "N_Ed ≥ N_B — søjlen er ustabil", "—"))
+            else:
+                MEd = M0_eff / (1 - NEd / N_B)
+                blocks.append(CALC_ROW("M_Ed", "= M₀_Ed,i/(1 − N_Ed/N_B)  (5.28, β = 1)",
+                                       f"{_dk(MEd, 1)} kNm"))
         else:
-            MEd = M0Ed_eff
+            MEd = M0_eff
+            blocks.append(CALC_ROW("M_Ed", "λ ≤ λ_lim: 2. ordens effekter kan ignoreres",
+                                   f"{_dk(MEd, 1)} kNm"))
 
-        MRd = _mrd_at_ned(N_curve, M_curve, NEd_kN)
-
-        if MRd is None or MRd <= 0:
+        MRd = _mrd_at_ned(N_curve, M_curve, NEd)
+        if ustabil or MRd is None or MRd <= 0:
             ratio = 999.0
-            passes = False
-            MRd_str = "—"
+            blocks.append(CALC_ROW("M_Rd", "N_Ed ligger uden for N–M-kurven" if not ustabil else "", "—"))
         else:
-            ratio   = MEd / MRd
-            passes  = ratio <= 1.0
-            MRd_str = f"{MRd:.1f}"
+            ratio = MEd / MRd
+            blocks.append(CALC_ROW("M_Rd", "af N–M-kurven ved N_Ed", f"{_dk(MRd, 1)} kNm"))
+        blocks.append(cc.check(f"Lasttilfælde {navn}  M_Ed ≤ M_Rd", ratio, 1.0))
+        rows.append([navn, _dk(NEd, 0), _dk(M0, 1), "2. orden" if slank else "1. orden",
+                     "—" if ustabil else _dk(MEd, 1),
+                     "—" if MRd is None else _dk(MRd, 1), _dk(ratio, 3) if ratio < 999 else "—"])
+        pts.append({"label": navn, "NEd_kN": NEd,
+                    "MEd_kNm": 0 if ustabil else MEd, "ok": ratio <= 1.0})
 
-        slend_flag = f"λ={lam:.1f}  >  λ_lim={lam_lim:.1f}  → 2nd order" if slender \
-                     else f"λ={lam:.1f}  ≤  λ_lim={lam_lim:.1f}  → 1st order only"
+    blocks.append(S("Oversigt"))
+    blocks.append(TBL(["Tilfælde", "N_Ed [kN]", "M₀_Ed [kNm]", "Teori",
+                       "M_Ed [kNm]", "M_Rd [kNm]", "η"], rows))
 
-        chk_rows.append([
-            lc_label,
-            f"{NEd_kN:.0f}",
-            f"{M0Ed_kNm:.1f}",
-            slend_flag,
-            f"{M0Ed_eff:.1f}",
-            f"{MEd:.1f}",
-            MRd_str,
-            f"{ratio*100:.1f} %",
-            "✓ OK" if passes else "✗ FAIL",
-        ])
-
-        plot_pts.append({
-            "label":   lc_label,
-            "NEd_kN":  NEd_kN,
-            "MEd_kNm": MEd,
-            "ok":      passes,
-        })
-
-        blocks.append(CALC_ROW("η_M",
-            f"= M_Ed / M_Rd  [{lc_label}]",
-            f"{ratio:.3f}"))
-        blocks.append(cc.check(f"Load case {lc_label}", ratio, 1.0))
-
-    if chk_rows:
-        blocks.append(TBL(
-            ["LC", "N_Ed [kN]", "M₀_Ed [kNm]", "Slenderness",
-             "M₀_Ed,eff [kNm]", "M_Ed [kNm]", "M_Rd [kNm]", "Util.", "Result"],
-            chk_rows,
-        ))
-
-    # ── N–M interaction diagram ────────────────────────────────────────────
-    blocks.append(S("N–M interaction diagram"))
-
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        nm_img = _nm_plot(N_curve, M_curve, plot_pts, h, tmp_dir)
-        with open(nm_img, 'rb') as f:
-            nm_bytes = f.read()
-
-    nm_hash = hashlib.md5(nm_bytes).hexdigest()[:12]
-    nm_out  = Path(tempfile.gettempdir()) / f"nm_diagram_{nm_hash}.png"
-    if not nm_out.exists():
-        nm_out.write_bytes(nm_bytes)
-
-    blocks.append(FIG(str(nm_out), "N–M interaction envelope with design load cases."))
-
-    # ── Optional user figure ──────────────────────────────────────────────
-    if figure_path and Path(figure_path).exists():
-        blocks.append(S("Column sketch / plan"))
-        blocks.append(FIG(figure_path, figure_caption or "Column sketch."))
-
+    with tempfile.TemporaryDirectory() as tmp:
+        img = _nm_plot(N_curve, M_curve, pts, h, tmp)
+        data = Path(img).read_bytes()
+    blocks.append(FIG(_gem_figur(data, "rc_nm"), "N–M-kurve med lasttilfældene."))
+    blocks.append(N("Bøjning om én akse. Virker der moment om begge akser, skal "
+                    "søjlen også eftervises for tosidet bøjning (§5.8.9)."))
     return blocks
