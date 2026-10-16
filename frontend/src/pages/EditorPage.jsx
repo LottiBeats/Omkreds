@@ -33,6 +33,7 @@ import { DOC_TEMPLATES } from '../templates/docTemplates.js'
 import { PROJECT_TYPES, makeProjectDocuments, optionsFor } from '../templates/projectTypes.js'
 import { laesImport, anvendImport, beskrivImport } from '../lib/importDokumenter.js'
 import { bogAf, medArk, nytArk, visningerAf, flytRegnearkTilBog, harGamleRegneark, indsaetSkabelon, tilpasBlokke } from '../lib/regnearksbog.js'
+import { medStandardbog } from '../lib/bogSkabeloner.js'
 import { BogKontekst } from '../components/bog/BogKontekst.js'
 import { anvendKoblinger, koblingerTil } from '../lib/koblinger.js'
 
@@ -182,6 +183,11 @@ export default function EditorPage() {
       const a = nytArk(b)
       opdaterBog(medArk(b, [...b.ark, a]))
       return a.id
+    },
+    standard: () => {
+      const { bog: ny, id } = medStandardbog(bogAf(live.current.project))
+      opdaterBog(ny)
+      return id
     },
   }), [bog, opdaterBog])
   const visningerFor = useCallback((arkId) => visningerAf(live.current.project, arkId)

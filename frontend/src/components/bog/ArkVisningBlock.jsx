@@ -62,7 +62,8 @@ export function ArkTabel({ ark, omraade, titel, onAabn }) {
 }
 
 export default function ArkVisningBlock({ block, onChange }) {
-  const { bog, aabn, nytArk } = useBog()
+  const { bog, aabn, nytArk, standard } = useBog()
+  const medStandard = (id) => { if (id) { set({ ark: id }); aabn?.(id) } }
   const d = block.data ?? {}
   const ark = bog.ark.find(a => a.id === d.ark) ?? null
   const set = (p) => onChange({ ...block, data: { ...d, ...p } })
@@ -77,11 +78,13 @@ export default function ArkVisningBlock({ block, onChange }) {
       <div className="av-top">
         <select value={ark ? d.ark : ''} onChange={e => {
           if (e.target.value === '__nyt') { const id = nytArk?.(); if (id) { set({ ark: id }); aabn?.(id) } return }
+          if (e.target.value === '__std') { medStandard(standard?.()); return }
           set({ ark: e.target.value })
         }}>
           <option value="">{d.ark && !ark ? 'Arket er slettet — vælg et andet…' : 'Vælg ark…'}</option>
           {bog.ark.map(a => <option key={a.id} value={a.id}>{a.navn}</option>)}
           {nytArk && <option value="__nyt">+ Nyt ark…</option>}
+          {standard && <option value="__std">+ Standardbogen (lodret og vandret lastnedføring)…</option>}
         </select>
         {ark && (
           <>
@@ -95,7 +98,17 @@ export default function ArkVisningBlock({ block, onChange }) {
       </div>
       {ark
         ? <ArkTabel ark={ark} omraade={ok ? d.omraade : ''} titel={d.titel} onAabn={aabn ? () => aabn(ark.id, start()) : undefined} />
-        : <div className="av-tom">Vælg et ark fra projektets regnearksbog{nytArk ? ', eller opret et nyt' : ''}.</div>}
+        : (
+          <div className="av-tom">
+            {bog.ark.length || !standard
+              ? <>Vælg et ark fra projektets regnearksbog{nytArk ? ', eller opret et nyt' : ''}.</>
+              : <>
+                  Projektet har ingen regneark endnu.{' '}
+                  <button type="button" className="av-std" onClick={() => medStandard(standard())}>Start med standardbogen</button>
+                  <span className="av-std-tekst">forudsætninger → opbygninger → lastoversigt → lodret og vandret lastnedføring</span>
+                </>}
+          </div>
+        )}
     </div>
   )
 }
