@@ -840,7 +840,12 @@ export default function RegnearksBog({
         ) : (
           <div className="rkb-tom">
             <p>Bogen har ingen ark endnu.</p>
-            <button type="button" onClick={() => nyFane()}>+ Nyt ark</button>
+            <button type="button" className="rkb-tom-std" onClick={() => nyeFraBogskabelon(BOG_SKABELONER[0].key)}
+                    title={BOG_SKABELONER[0].beskrivelse}>
+              Start med standardbogen
+            </button>
+            <small>{BOG_SKABELONER[0].beskrivelse}</small>
+            <button type="button" onClick={() => nyFane()}>+ Tomt ark</button>
           </div>
         )}
         {visNavne && (

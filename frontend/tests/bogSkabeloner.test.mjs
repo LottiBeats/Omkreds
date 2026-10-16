@@ -80,3 +80,75 @@ test('A2-skabelonen: koblede felter og Egen beregning får regnearkets tal', () 
   assert.ok(!/error|fejl/i.test(tekst), tekst.slice(0, 300))
   assert.equal(isStaleResult(cc), false, 'Egen beregning regnet af koblingerne er ikke forældet')
 })
+
+// ── Standardbogen ────────────────────────────────────────────────────────────
+import { makeStandardLastnedfoeringTemplate, standardBog } from '../src/templates/a2Standard.js'
+import { STANDARD_OMRAADER } from '../src/lib/bogSkabeloner.js'
+import { gyldigtOmraade } from '../src/lib/regnearksbog.js'
+
+const naer = (a, b, tol = 1e-6) => assert.ok(Math.abs(a - b) < tol, `${a} ≠ ${b}`)
+const uds = (bog) => Object.fromEntries(udgange(bog).map(x => [x.navn, x.vaerdi]))
+/** Sæt en celle i arket med det navn og regn bogen igennem. */
+function saet(bog, arkNavn, adresse, vaerdi) {
+  const k = adresse.charCodeAt(0) - 65, r = Number(adresse.slice(1)) - 1
+  return medArk(bog, bog.ark.map(a => {
+    if (a.navn !== arkNavn) return a
+    const celler = a.celler.map(x => [...x])
+    while (celler[r].length <= k) celler[r].push('')
+    celler[r][k] = vaerdi
+    return { ...a, celler }
+  }))
+}
+const find = (bog, arkNavn, tekst) => bog.ark.find(a => a.navn === arkNavn).celler.findIndex(r => r[0] === tekst) + 1
+
+test('standardbogen er den første skabelon og regner som håndregningen', () => {
+  assert.equal(BOG_SKABELONER[0].key, 'standard')
+  const { bog } = indsaetSkabelon({ ark: [] }, standardBog())
+  assert.deepEqual(bog.ark.map(a => a.navn),
+    ['Forudsætninger', 'Materialer', 'Opbygninger', 'Lastoversigt', 'Lodret lastnedføring', 'Vandret lastnedføring'])
+  const u = uds(bog)
+  naer(u.KFI, 1)
+  naer(u.s_tag, 0.8)
+  // q_p(9,9 m), terrænkategori II: k_r = 0,19; c_r = 0,19·ln(9,9/0,05); I_v = 1/ln(9,9/0,05)
+  const ln = Math.log(9.9 / 0.05)
+  naer(u.q_p, (1 + 7 / ln) * 0.5 * 1.25 * (0.19 * ln * 24) ** 2 / 1000)
+  // Vind på langfacaden: h/d = 0,99 → c_D, c_E interpoleret; ρ = 0,85; b = 20 m; skiverne 2,8 + 2,8 + 2,9 m
+  const hd = 9.9 / 10
+  const w = 0.85 * ((0.7 + (hd - 0.25) / 0.75 * 0.1) - (-0.3 - (hd - 0.25) / 0.75 * 0.2)) * u.q_p
+  naer(u.V_y, w * 20 * (2.8 + 2.8 + 2.9))
+  // Ydervæg akse A: 3 × (væg 2,8 m + dæk/nyttelast 3 m) + tag 4,5 m + fundament — Q dominerer
+  const tag = 1.226 / Math.cos(25 * Math.PI / 180)
+  const G = 4.5 * tag + 3 * 2.8 * 5.839 + 2 * 3 * 3.42 + 1.2 * 7.2
+  const Q = 2 * 3 * (1.5 + 0.5)
+  naer(u.ln_A_d, G + 1.5 * Q + 1.5 * 0.3 * (4.5 * 0.8 + 4.5 * 0.6 * u.q_p), 1e-3)
+})
+
+test('standardbogen følger forudsætningerne: K_FI, terrænkategori og typer', () => {
+  let { bog } = indsaetSkabelon({ ark: [] }, standardBog())
+  const u0 = uds(bog)
+  const cc = find(bog, 'Forudsætninger', 'Konsekvensklasse')
+  bog = saet(bog, 'Forudsætninger', `B${cc}`, 'CC3')
+  const u1 = uds(bog)
+  naer(u1.KFI, 1.1)
+  naer(u1.ln_A_d, 1.1 * u0.ln_A_d)
+  const tk = find(bog, 'Forudsætninger', 'Terrænkategori')
+  bog = saet(bog, 'Forudsætninger', `B${tk}`, 'III')
+  const u2 = uds(bog)
+  assert.ok(u2.q_p < u1.q_p && u2.V_y < u1.V_y, 'by-terræn giver mindre vind')
+  // En stavefejl i en lasttype giver en fejl i stedet for et stille nul
+  const r = bog.ark.find(a => a.navn === 'Lodret lastnedføring').celler.findIndex(x => x[1] === 'Sne') + 1
+  bog = saet(bog, 'Lodret lastnedføring', `B${r}`, 'Snee')
+  assert.ok(fejlI(bog).length > 0)
+})
+
+test('A2-skabelonen til nyt byggeri: visningerne har gyldige områder og Egen beregning regner', () => {
+  for (const o of Object.values(STANDARD_OMRAADER)) assert.ok(gyldigtOmraade(o), o)
+  const { bog, idFor, navnFor } = indsaetSkabelon({ ark: [] }, standardBog())
+  const blocks = tilpasBlokke(makeStandardLastnedfoeringTemplate(), idFor, navnFor)
+  assert.ok(blocks.filter(b => b.type === 'ark_visning').every(b => [...idFor.values()].includes(b.data.ark)))
+  const p = anvendKoblinger({ documents: { A2: { blocks, subdocs: [] } }, bog })
+  const cc = p.documents.A2.blocks.find(b => b.type === 'custom_calc')
+  const tekst = JSON.stringify(cc.data._result)
+  assert.ok(tekst.includes('Lodret lastnedføring'), tekst.slice(0, 300))
+  assert.ok(!/error|fejl/i.test(tekst), tekst.slice(0, 300))
+})

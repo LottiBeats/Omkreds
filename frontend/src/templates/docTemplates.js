@@ -12,6 +12,7 @@ import { makeB1Template } from './b1.js'
 import { makeTimberRoofTemplate } from './a2TimberRoof.js'
 import { makeB2Template } from './b2.js'
 import { makeTraehusRegnearkTemplate, traehusBog } from './a2Regnearksbog.js'
+import { makeStandardLastnedfoeringTemplate, standardBog } from './a2Standard.js'
 
 // ── Document templates ────────────────────────────────────────────────────────
 
@@ -481,6 +482,12 @@ export const DOC_TEMPLATES = {
     },
   ],
   A2: [
+    {
+      label:       'Nyt byggeri — lodret og vandret lastnedføring (regneark)',
+      description: 'Standardbogen: forudsætninger, opbygninger, lastoversigt, lodret lastnedføring plan for plan og vind fordelt på de stabiliserende vægge — med rapporten skrevet om arkene',
+      bog:         standardBog,
+      make:        makeStandardLastnedfoeringTemplate,
+    },
     {
       label:       'Træhus — laster og stabilitet (regneark)',
       description: 'Lægger arkene opbygninger → laster → lastnedføring → stabilitet → fundament i regnearksbogen og skriver rapporten om dem, med kipbjælken koblet til arket',
