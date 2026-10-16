@@ -16,7 +16,7 @@
  * Kører i skrivebordsprogrammet (Tauri) og, under udvikling, i en almindelig
  * browser mod `python backend/desktop_app.py` eller Vite + en lokal backend.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import './index.css'
@@ -31,6 +31,9 @@ import { hashCalcInputs, calcRevision, isStaleResult, hasCalcResult } from './li
 import useBlockUndo from './hooks/useBlockUndo.js'
 import RapportView from './components/rapport/RapportView.jsx'
 import { pdfBlokke, femIRapport, medBog } from './lib/rapport.js'
+import { udgange } from './lib/regnearksbog.js'
+import { opdaterLinks, anvendPaaBlokke, udgangsMap } from './lib/koblinger.js'
+import { KoblingKontekst } from './components/bog/KoblingKontekst.js'
 
 const VISNINGER = [['fem', 'FEM'], ['begge', 'Side om side'], ['rapport', 'Rapport']]
 
@@ -99,7 +102,36 @@ function FemApp() {
 
   const state = useRef({ meta, blocks, fil, aendret, bog })
   state.current = { meta, blocks, fil, aendret, bog }
-  const onBog = useCallback((nb) => { state.current.bog = nb; setBog(nb); setAendret(true) }, [])
+  // Koblinger til regnearket (lib/koblinger.js): "=" i et talfelt melder,
+  // hvilket navn den næste værdi kommer fra; ændringen af blokken gemmer det.
+  const udgListe = useMemo(() => udgange(bog), [bog])
+  const ventende = useRef(null)
+  const kobling = useMemo(() => ({
+    udgange: udgListe,
+    forvent: (navn, vaerdi) => { ventende.current = { navn, vaerdi, t: Date.now() } },
+  }), [udgListe])
+  const medLinks = (gamle, nye) => {
+    const v = ventende.current && Date.now() - ventende.current.t < 5000 ? ventende.current : null
+    const map = new Map(udgListe.map(u => [u.navn, u]))
+    let brugt = false
+    const ud = nye.map(b => {
+      const gl = gamle.find(x => x.id === b.id)
+      if (!gl || gl === b) return b
+      const d = opdaterLinks(gl.data, b.data, v, map)
+      if (v && d?._links && Object.values(d._links).includes(v.navn)) brugt = true
+      return d === b.data ? b : { ...b, data: d }
+    })
+    if (brugt) ventende.current = null
+    return ud
+  }
+  const medLinksRef = useRef(medLinks)
+  medLinksRef.current = medLinks
+  const onBog = useCallback((nb) => {
+    state.current.bog = nb; setBog(nb); setAendret(true)
+    // Felter og Egen beregning, der er koblet til bogens navne, følger med.
+    const bs = anvendPaaBlokke(state.current.blocks, udgangsMap(nb))
+    if (bs !== state.current.blocks) { state.current.blocks = bs; setBlocks(bs) }
+  }, [])
 
   const { record: undoRecord, undo: undoStep, redo: redoStep, clearAll: undoClear } = useBlockUndo('fem')
 
@@ -247,7 +279,7 @@ function FemApp() {
     const nyt = (d._result && d._result !== gl._result) || (d._summary && d._summary !== gl._summary)
     const { _run_hash, ...dRest } = d
     const b = nyt ? { ...nb, data: { ...dRest, _input_hash: _run_hash ?? hashCalcInputs(dRest), _calc_rev: calcRevision(nb.type) } } : nb
-    const nyeBs = bs.map((x, j) => (j === i ? b : x))
+    const nyeBs = medLinksRef.current(bs, bs.map((x, j) => (j === i ? b : x)))
     // Kun ændringer af modellen kan fortrydes — et resultat, der kommer ind
     // efter "Regn", er ikke et skridt, man vil tilbage over.
     if (hashCalcInputs(d) !== hashCalcInputs(gl)) undoRecord(bs)
@@ -258,7 +290,8 @@ function FemApp() {
 
   // Rapport-visningen. Flyt, indsæt og slet kan fortrydes med Ctrl+Z; det,
   // man skriver, fortrydes i feltet selv.
-  const onRapport = useCallback((nyeBs, struktur) => {
+  const onRapport = useCallback((nyeBsRaa, struktur) => {
+    const nyeBs = medLinksRef.current(state.current.blocks, nyeBsRaa)
     if (struktur) undoRecord(state.current.blocks)
     state.current.blocks = nyeBs
     setBlocks(nyeBs)
@@ -297,7 +330,7 @@ function FemApp() {
   )
 
   return (
-    <>
+    <KoblingKontekst.Provider value={kobling}>
       {/* Modelvinduet er kun monteret i FEM-visningen: dets tastatur (Delete,
           værktøjstaster) må ikke ramme en markering, mens man skriver rapport. */}
       {visning === 'fem' && blok && (
@@ -352,7 +385,7 @@ function FemApp() {
           {besked.tekst}
         </div>
       )}
-    </>
+    </KoblingKontekst.Provider>
   )
 }
 
