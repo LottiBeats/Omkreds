@@ -790,6 +790,16 @@ def restore_project_version(
 
 # ── PDF generation ────────────────────────────────────────────────────────────
 
+def _underdok_overskrift(tekst: str) -> dict:
+    """Overskriften, der står over hvert underdokument i eksporten.
+
+    Den får ikke selv et afsnitsnummer ("A2.1 Laster" er nummeret), og
+    nummereringen starter forfra under den, så afsnittene hedder 1, 2, 3 …
+    som i editoren. Før blev overskriften til "1  A2.1 Laster", og afsnittene
+    i A2.1 begyndte ved 2."""
+    return {"level": 1, "text": tekst, "nummereret": False, "nulstil_numre": True}
+
+
 @protected.post("/projects/{project_id}/pdf/{doc_id}", tags=["PDF"])
 def generate_pdf(project_id: str, doc_id: str, user: dict = Depends(get_current_user)):
     """
@@ -818,7 +828,7 @@ def generate_pdf(project_id: str, doc_id: str, user: dict = Depends(get_current_
                 # Insert a heading block so each sub-doc starts a named section
                 combined.append({
                     "type": "heading",
-                    "data": {"level": 1, "text": f"{doc_id}.{i + 1}  {sd_name}"},
+                    "data": _underdok_overskrift(f"{doc_id}.{i + 1}  {sd_name}"),
                 })
                 combined.extend(sd.get("blocks", []))
             blocks = combined
@@ -870,7 +880,7 @@ def generate_pdf_zip(project_id: str, doc_id: str, user: dict = Depends(get_curr
                     sd_name = sd.get("name") or f"Sub-document {i + 1}"
                     # Prepend the subdoc name as a heading so each PDF is self-labelled
                     blocks = [
-                        {"type": "heading", "data": {"level": 1, "text": sd_name}},
+                        {"type": "heading", "data": _underdok_overskrift(sd_name)},
                         *sd.get("blocks", []),
                     ]
                     pdf_bytes = build_pdf(project, blocks, doc_id=doc_id)
@@ -925,7 +935,7 @@ def generate_word(project_id: str, doc_id: str, user: dict = Depends(get_current
                 sd_name = sd.get("name") or f"Sub-document {i + 1}"
                 combined.append({
                     "type": "heading",
-                    "data": {"level": 1, "text": f"{doc_id}.{i + 1}  {sd_name}"},
+                    "data": _underdok_overskrift(f"{doc_id}.{i + 1}  {sd_name}"),
                 })
                 combined.extend(sd.get("blocks", []))
             blocks = combined

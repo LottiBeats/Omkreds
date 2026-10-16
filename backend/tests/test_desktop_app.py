@@ -57,3 +57,18 @@ def test_pdf_med_egenvaegt_og_sne(client):
     import pypdfium2 as pdfium
     tekst = "\n".join(p.get_textpage().get_text_range() for p in pdfium.PdfDocument(r.content))
     assert "Gipsplade" in tekst and "0,80 kN/m" in tekst and "EGENVÆGT TAG" in tekst.upper()
+
+
+def test_underdokumenter_nummereres_forfra():
+    """"A2.1 Laster" får ikke selv et nummer, og hvert underdokument starter ved 1."""
+    from main import _underdok_overskrift
+    from pdf_builder import _number_headings
+    bl = [
+        {"type": "heading", "data": _underdok_overskrift("A2.1  Laster")},
+        {"type": "heading", "data": {"level": 1, "text": "Grundlag"}},
+        {"type": "heading", "data": {"level": 1, "text": "Egenlast"}},
+        {"type": "heading", "data": _underdok_overskrift("A2.2  Tag")},
+        {"type": "heading", "data": {"level": 1, "text": "Spær"}},
+    ]
+    tekster = [b["data"]["text"] for b in _number_headings(bl)]
+    assert tekster == ["A2.1  Laster", "1  Grundlag", "2  Egenlast", "A2.2  Tag", "1  Spær"]

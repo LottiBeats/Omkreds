@@ -1392,6 +1392,10 @@ def _number_headings(blocks: list) -> list:
             text  = block["data"].get("text", "")
             idx   = level - 1  # 0, 1, or 2
 
+            # Et nyt underdokument (A2.1, A2.2 …) nummererer forfra.
+            if block["data"].get("nulstil_numre"):
+                counters = [0, 0, 0]
+
             if (block["data"].get("nummereret") is False
                     or _ALREADY_NUMBERED.match(text.strip())):
                 result.append(block)
