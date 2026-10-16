@@ -17,6 +17,7 @@
  */
 import traehus from '../templates/bog/traehus.js'
 import standard from '../templates/bog/standard.js'
+import { indsaetSkabelon } from './regnearksbog.js'
 
 const T = (rows) => rows.map(r => r.map(c => (c === undefined || c === null ? '' : String(c))))
 
@@ -130,3 +131,9 @@ export const BOG_SKABELONER = [
 
 /** Områder i standardbogen, som rapportskabelonen viser (fx oversigten i Lodret lastnedføring). */
 export const STANDARD_OMRAADER = standard.omraader
+
+/** Bogen med standardbogen sat ind, og id'et på dens Lodret lastnedføring (det ark, en visning viser). */
+export function medStandardbog(bog) {
+  const { bog: ny, idFor } = indsaetSkabelon(bog, BOG_SKABELONER[0].bog())
+  return { bog: ny, id: idFor.get('Lodret lastnedføring') ?? [...idFor.values()][0] }
+}

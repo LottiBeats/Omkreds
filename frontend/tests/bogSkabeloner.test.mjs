@@ -152,3 +152,12 @@ test('A2-skabelonen til nyt byggeri: visningerne har gyldige områder og Egen be
   assert.ok(tekst.includes('Lodret lastnedføring'), tekst.slice(0, 300))
   assert.ok(!/error|fejl/i.test(tekst), tekst.slice(0, 300))
 })
+
+test('medStandardbog: visningen får Lodret lastnedføring, også i en bog med ark i forvejen', async () => {
+  const { medStandardbog } = await import('../src/lib/bogSkabeloner.js')
+  const { bog, id } = medStandardbog({ ark: [], navne: {} })
+  assert.equal(bog.ark.find(a => a.id === id).navn, 'Lodret lastnedføring')
+  const igen = medStandardbog(bog)
+  assert.equal(igen.bog.ark.find(a => a.id === igen.id).navn, 'Lodret lastnedføring (2)')
+  assert.deepEqual(fejlI(igen.bog), [])
+})

@@ -21,6 +21,7 @@ import ArkVisningBlock from '../bog/ArkVisningBlock.jsx'
 import RegnearksBog from '../bog/RegnearksBog.jsx'
 import { BogKontekst } from '../bog/BogKontekst.js'
 import { medArk, nytArk } from '../../lib/regnearksbog.js'
+import { medStandardbog } from '../../lib/bogSkabeloner.js'
 import { gemBlob } from '../../lib/femFile.js'
 import { overskriftsnumre } from '../../lib/indhold.js'
 import { hasCalcResult, isStaleResult } from '../../lib/calcState.js'
@@ -88,6 +89,12 @@ export default function RapportView({ blocks, onChange, onVisFem, smal = false, 
       bogRef.current = ny
       onBog(ny)
       return a.id
+    } : null,
+    standard: onBog ? () => {
+      const { bog: ny, id } = medStandardbog(bogRef.current)
+      bogRef.current = ny
+      onBog(ny)
+      return id
     } : null,
   }), [bog, onBog])
   const numre = useMemo(() => overskriftsnumre(blocks), [blocks])
