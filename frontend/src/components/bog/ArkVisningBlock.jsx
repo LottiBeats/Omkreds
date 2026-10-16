@@ -27,15 +27,16 @@ export function ArkTabel({ ark, omraade, titel, onAabn }) {
   const u = udsnit(ark, omraade)
   if (!u || !u.raekker.length) return <div className="av-tom">Arket er tomt.</div>
   const total = u.bredder.reduce((a, b) => a + b, 0)
-  // Mange kolonner (fx lastnedføringen) må gerne rulle; ellers fylder tabellen siden.
-  const bred = u.bredder.length > 14
+  // Mange kolonner (fx lastnedføringen) holdes inden for siden med mindre skrift.
+  const bred = u.bredder.length > 10
   return (
     <div>
       {(titel || ark.titel) && <div className="av-caption">{titel || ark.titel}</div>}
       <div className="av-rul">
-      <table lang="da" className={'av-tabel' + (bred ? ' av-bred' : '')} style={bred ? { minWidth: Math.round(total * 0.8) } : undefined}
+      <table lang="da" className={'av-tabel' + (bred ? ' av-bred' : '')}
              onDoubleClick={onAabn} title={onAabn ? 'Dobbeltklik for at åbne arket' : undefined}>
-        <colgroup>{u.bredder.map((b, i) => <col key={i} style={{ width: `${(100 * b / total).toFixed(2)}%` }} />)}</colgroup>
+        {/* Brede tabeller får kolonnebredder efter indholdet, så tallene ikke klippes. */}
+        {!bred && <colgroup>{u.bredder.map((b, i) => <col key={i} style={{ width: `${(100 * b / total).toFixed(2)}%` }} />)}</colgroup>}
         <tbody>
           {u.raekker.map((r, i) => (u.typer[i] === 'tom' && (i === 0 || u.typer[i - 1] === 'tom')) ? null : (
             <tr key={i} className={u.typer[i] ? `av-${u.typer[i]}` : ''}>

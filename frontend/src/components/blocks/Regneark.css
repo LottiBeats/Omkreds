@@ -125,7 +125,8 @@
 .rkb-menu .rkb-slet { color: #b91c1c; }
 
 /* ── Visning af et ark i rapporten (ark_visning) ── */
-.av { display: grid; gap: 6px; }
+.av { display: grid; gap: 6px; min-width: 0; }
+.av > * { min-width: 0; }
 .av-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; }
 .av-top select, .av-top input { border: 1px solid var(--line, #e4dfda); border-radius: 4px; padding: 3px 6px; font-size: 12px; background: #fff; }
 .av-omr { width: 90px; font-family: var(--font-mono, monospace); }
@@ -139,7 +140,10 @@
   border: 1.5px solid #1f2937; color: #111; }
 .av-tabel td { padding: 3px 7px; border-bottom: 1px solid #ececec; vertical-align: top; overflow-wrap: break-word; hyphens: auto; line-height: 1.35; }
 .av-tabel td.av-tal { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; }
-.av-bred td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.av-tabel.av-bred { font-size: 10px; table-layout: auto; }
+.av-bred td { padding: 2px 3px; }
+.av-bred td:not(.av-tal) { overflow-wrap: normal; hyphens: manual; }
+.av-bred tr.av-hoved td { overflow-wrap: anywhere; }
 .av-tabel td.av-input { color: #1d4ed8; }
 .av-tabel td.av-fed { font-weight: 700; }
 .av-tabel td.av-fejl { color: #b91c1c; text-align: center; }
