@@ -20,6 +20,7 @@
  * mouse or space+drag pans, Ctrl+Z undoes (the document's own undo).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useUdgangsVaelger } from '../bog/UdgangsVaelger.jsx'
 import { Button, Dialog } from '../../ui/index.js'
 import CalcResultView from '../CalcResultView.jsx'
 import SectionView from './SectionView.jsx'
@@ -142,24 +143,45 @@ function etaColor(eta) { return eta > 1 ? '#b91c1c' : eta > 0.9 ? '#d97706' : '#
 
 // ── Small inputs ──────────────────────────────────────────────────────────────
 
-/** A number field that commits on blur/Enter, so "4," or "-" can be typed. */
+/**
+ * A number field that commits on blur/Enter, so "4," or "-" can be typed.
+ * "=" først viser regnearksbogens navngivne celler; et valgt navn kobler
+ * feltet til cellen, så fx en linjelast følger med regnearket.
+ */
 function Num({ value, onCommit, unit, width, title }) {
-  const [txt, setTxt] = useState(value == null ? '' : String(value).replace('.', ','))
+  const vis = (v) => (v == null ? '' : String(typeof v === 'number' && String(v).length > 10 ? Number(v.toPrecision(6)) : v).replace('.', ','))
+  const [txt, setTxt] = useState(vis(value))
   const focused = useRef(false)
-  useEffect(() => { if (!focused.current) setTxt(value == null ? '' : String(value).replace('.', ',')) }, [value])
+  const ref = useRef(null)
+  const valg = useUdgangsVaelger({
+    tekst: txt, inputRef: ref,
+    onVaelg: (v) => { focused.current = false; setTxt(vis(v)); onCommit(v); ref.current?.blur() },
+  })
+  useEffect(() => { if (!focused.current) setTxt(vis(value)) }, [value])
   const commit = () => {
     focused.current = false
+    if (txt.startsWith('=')) { if (!valg.vedBlur()) setTxt(vis(value)); return }
     const v = num(txt)
-    if (v === null) setTxt(value == null ? '' : String(value).replace('.', ','))
+    if (v === null) setTxt(vis(value))
     else if (v !== value) onCommit(v)
   }
   const input = (
-    <input value={txt} title={title} inputMode="decimal" style={width ? { width } : undefined}
-      onFocus={() => { focused.current = true }}
-      onChange={e => setTxt(e.target.value)}
+    <input ref={ref} value={txt} title={title ?? (valg.kanKoble ? 'Skriv = for at hente en værdi fra regnearket' : undefined)}
+      inputMode="decimal" style={width ? { width } : undefined}
+      onFocus={() => {
+        focused.current = true
+        // Det fulde tal, mens man retter, så et uændret felt ikke gemmes afrundet
+        if (value != null && !txt.startsWith('=')) setTxt(String(value).replace('.', ','))
+      }}
+      onChange={e => { setTxt(e.target.value); if (e.target.value.startsWith('=')) valg.nulstil() }}
       onBlur={commit}
-      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setTxt(String(value ?? '')); e.currentTarget.blur() } }} />
+      onKeyDown={e => {
+        if (valg.tast(e)) return
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') { setTxt(vis(value)); e.currentTarget.blur() }
+      }} />
   )
+  if (valg.liste) return <>{unit ? <span className="fem-unit">{input}<i>{unit}</i></span> : input}{valg.liste}</>
   return unit ? <span className="fem-unit">{input}<i>{unit}</i></span> : input
 }
 
