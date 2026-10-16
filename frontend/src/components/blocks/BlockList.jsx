@@ -1155,7 +1155,8 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
             // Only the open editor needs the sibling blocks (for its pickers)
             // and only the document list needs the project — passing them to
             // every row would re-render every row on every keystroke.
-            blocks={selectedId === block.id ? blocks : null}
+            // Regneark always need them: their formulas refer to the other sheets.
+            blocks={selectedId === block.id || block.type === 'regneark' ? blocks : null}
             project={block.type === 'doclist' ? project : null}
             templates={templates}
             clipboard={clipboard}
