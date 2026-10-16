@@ -99,6 +99,8 @@
 .rkb-spor-del em { color: #999; font-size: 12px; }
 .rkb-tom { flex: 1; display: grid; place-content: center; gap: 10px; text-align: center; color: #666; }
 .rkb-tom button { padding: 6px 14px; border: 1px solid #217346; color: #217346; background: #fff; border-radius: 4px; cursor: pointer; }
+.rkb-tom .rkb-tom-std { background: #217346; color: #fff; font-weight: 600; padding: 9px 18px; font-size: 14px; }
+.rkb-tom small { max-width: 420px; color: #888; }
 
 .rkb-faner { display: flex; align-items: stretch; gap: 2px; border-top: 1px solid #c6c6c6; padding: 0 0 6px; min-height: 32px; overflow-x: auto; }
 .rkb-fane {

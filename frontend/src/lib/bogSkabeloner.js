@@ -2,9 +2,13 @@
  * bogSkabeloner.js — skabeloner med flere ark til regnearksbogen.
  *
  * En skabelon er { key, titel, beskrivelse, bog: () => ({ ark, navne }) }.
+ * Den første (standard) er den, en tom bog tilbyder at starte med.
  * Den sættes ind med indsaetSkabelon (lib/regnearksbog.js), der giver ark og
  * navne nye navne, hvis de allerede er brugt i bogen.
  *
+ *   standard    Til nye byggerier: forudsætninger (K_FI, sne, q_p) → materialer
+ *               → opbygninger → lastoversigt → lodret lastnedføring plan for
+ *               plan → vandret lastnedføring (vind fordelt på væggene).
  *   elementer   Lastopbygninger med ID (TRa, Tka …) og elementlaster: last-
  *               områder x₁–x₂ på et element, laster slået op på ID'et, og
  *               reaktionerne R_A og R_B pr. lasttype — som Excel-arkene.
@@ -12,6 +16,7 @@
  *               stabilitet nord–syd → fundament (fra Sommerhus H+H).
  */
 import traehus from '../templates/bog/traehus.js'
+import standard from '../templates/bog/standard.js'
 
 const T = (rows) => rows.map(r => r.map(c => (c === undefined || c === null ? '' : String(c))))
 
@@ -107,6 +112,11 @@ function elementer() {
 
 export const BOG_SKABELONER = [
   {
+    key: 'standard', titel: 'Standard — lodret og vandret lastnedføring',
+    beskrivelse: 'Forudsætninger → materialer → opbygninger → lastoversigt → lodret lastnedføring plan for plan → vandret lastnedføring på de stabiliserende vægge',
+    bog: () => structuredClone({ ark: standard.ark, navne: standard.navne }),
+  },
+  {
     key: 'elementer', titel: 'Lastopbygninger og elementlaster',
     beskrivelse: 'Opbygninger med ID (TRa, Tka …), lastområder på hvert element og reaktionerne R_A og R_B pr. lasttype',
     bog: elementer,
@@ -117,3 +127,6 @@ export const BOG_SKABELONER = [
     bog: () => structuredClone({ ark: traehus.ark, navne: traehus.navne }),
   },
 ]
+
+/** Områder i standardbogen, som rapportskabelonen viser (fx oversigten i Lodret lastnedføring). */
+export const STANDARD_OMRAADER = standard.omraader
