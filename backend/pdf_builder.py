@@ -1066,7 +1066,8 @@ def _regneark_raekketyper(rows, fed, art, overskrift) -> list:
         if len(fyldte) == 1 and fyldte[0] == 0 and art[i][0] == "t" and (fed.get(_adresse(i, 0)) or versal):
             typer.append("sektion"); continue
         efter_tom = i > 0 and not any(str(c).strip() for c in rows[i - 1])
-        if len(fyldte) > 1 and alle_fede and efter_tom and all(art[i][k] == "t" for k in fyldte):
+        tal_under = i + 1 < len(rows) and any(art[i + 1][k] != "t" and _er_tal(c) for k, c in enumerate(rows[i + 1]))
+        if len(fyldte) > 1 and alle_fede and (efter_tom or tal_under) and all(art[i][k] == "t" for k in fyldte):
             typer.append("hoved"); continue
         typer.append("")
     return typer
@@ -1093,6 +1094,8 @@ def _regneark_tabel(block: dict) -> list:
         behold.pop()
     rows, art, typer = [rows[i] for i in behold], [art[i] for i in behold], [typer[i] for i in behold]
     fed = {_adresse(ny, k): True for ny, i in enumerate(behold) for k in range(n) if fed0.get(_adresse(i, k))}
+    fmt0 = d.get("fmt") or {}
+    fmt = {_adresse(ny, k): fmt0[_adresse(i, k)] for ny, i in enumerate(behold) for k in range(n) if fmt0.get(_adresse(i, k))}
 
     font_pt = 8 if n <= 6 else 7 if n <= 9 else 6 if n <= 14 else 5
     MORK = rl_colors.HexColor("#1f2937")
@@ -1102,11 +1105,12 @@ def _regneark_tabel(block: dict) -> list:
     bredder = t.get("col_widths") or [100.0 / n] * n
     col_w = [(w / sum(bredder)) * TOTAL_MM * mm for w in bredder]
 
-    def stil(navn, bold=False, hoejre=False, farve="#111111"):
+    def stil(navn, bold=False, hoejre=False, farve="#111111", kursiv=False, just=None):
         # Tal brydes ikke midt i ("6,2 | 5"); de står højrestillet på én linje.
+        align = {"v": 0, "c": 1, "h": 2}.get(just, 2 if hoejre else 0)
         return ParagraphStyle(navn, fontSize=font_pt, leading=font_pt + 2.2,
-                              fontName="Plex-SemiBold" if bold else "Plex",
-                              textColor=rl_colors.HexColor(farve), alignment=2 if hoejre else 0,
+                              fontName="Plex-SemiBold" if bold else ("Plex-Italic" if kursiv else "Plex"),
+                              textColor=rl_colors.HexColor(farve), alignment=align,
                               splitLongWords=0 if hoejre else 1)
 
     # Tekst løber ud over tomme celler til højre, som i Excel (ingen lodrette
@@ -1133,7 +1137,8 @@ def _regneark_tabel(block: dict) -> list:
                 "#b91c1c" if str(c).startswith("#") else "#111111")
             if typer[i] == "sektion" and k == 0:
                 tekst = f"<u>{tekst}</u>"
-            raek.append(Paragraph(tekst, stil(f"rk{i}_{k}", bold, tal, farve)))
+            f = fmt.get(_adresse(i, k)) or {}
+            raek.append(Paragraph(tekst, stil(f"rk{i}_{k}", bold, tal, farve, bool(f.get("kursiv")), f.get("just"))))
         rl_rows.append(raek)
 
     cmds = [
@@ -1154,6 +1159,24 @@ def _regneark_tabel(block: dict) -> list:
         elif i + 1 < len(typer) and typer[i + 1] not in ("sum", "tom", "sektion", "hoved"):
             cmds.append(("LINEBELOW", (0, i), (-1, i), 0.3, LYS))
     cmds += [("SPAN", (k, i), (j, i)) for i, k, j in spans]
+    # Cellernes egen formatering (fyld og rammer fra regnearksbogen) til sidst.
+    for adr, f in fmt.items():
+        m = re.fullmatch(r"([A-Z]+)(\d+)", adr)
+        if not m or not isinstance(f, dict):
+            continue
+        kk = sum((ord(c) - 64) * 26 ** i for i, c in enumerate(reversed(m.group(1)))) - 1
+        rr = int(m.group(2)) - 1
+        if rr >= len(rows) or kk >= n:
+            continue
+        if f.get("fyld"):
+            try:
+                cmds.append(("BACKGROUND", (kk, rr), (kk, rr), rl_colors.HexColor(f["fyld"])))
+            except Exception:   # noqa: BLE001 — en ukendt farve springes over
+                pass
+        ra = f.get("ramme") or {}
+        for side, cmd in (("t", "LINEABOVE"), ("b", "LINEBELOW"), ("l", "LINEBEFORE"), ("r", "LINEAFTER")):
+            if ra.get(side):
+                cmds.append((cmd, (kk, rr), (kk, rr), 1.4 if ra[side] == 2 else 0.8, MORK))
     tbl = Table(rl_rows, colWidths=col_w, repeatRows=1 if typer and typer[0] == "hoved" else 0,
                 rowHeights=[(2.2 * mm if ty == "tom" else None) for ty in typer])
     tbl.setStyle(TableStyle(cmds))
@@ -1186,6 +1209,7 @@ def udfold_arkvisninger(blocks: list, bog) -> list:
         celler = [list(r) for r in (a.get("celler") or [])]
         bredder = list(a.get("bredder") or [])
         fed = dict(a.get("fed") or {})
+        fmt = dict(a.get("fmt") or {})
         overskrift = a.get("overskrift", True) is not False
         o = _laes_omraade(d.get("omraade"))
         if o:
@@ -1196,10 +1220,12 @@ def udfold_arkvisninger(blocks: list, bog) -> list:
             bredder = [(bredder[k] if k < len(bredder) and bredder[k] else (150 if k == 0 else 92)) for k in range(k0, k1 + 1)]
             fed = {_adresse(r - r0, k - k0): True for r in range(r0, r1 + 1) for k in range(k0, k1 + 1)
                    if fed.get(_adresse(r, k))}
+            fmt = {_adresse(r - r0, k - k0): fmt[_adresse(r, k)] for r in range(r0, r1 + 1) for k in range(k0, k1 + 1)
+                   if fmt.get(_adresse(r, k))}
             overskrift = overskrift and r0 == 0
         ud.append({**b, "type": "regneark", "data": {
             "titel": d.get("titel") or a.get("titel") or "", "overskrift": overskrift,
-            "_vist": vist, "celler": celler, "bredder": bredder, "fed": fed,
+            "_vist": vist, "celler": celler, "bredder": bredder, "fed": fed, "fmt": fmt,
         }})
     return ud
 
