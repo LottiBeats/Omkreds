@@ -1,0 +1,13 @@
+/* ── "=" i et talfelt: regnearkets navngivne celler (NumericInput) ── */
+.ni-udgange {
+  position: fixed; z-index: 1200; background: #fff; border: 1px solid #c6c6c6; border-radius: 5px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.16); max-height: 300px; overflow: auto; padding: 4px 0; font-size: 12.5px;
+}
+.ni-udg-top { font-size: 11px; color: #217346; font-weight: 600; padding: 2px 10px 4px; text-transform: uppercase; letter-spacing: .04em; }
+.ni-udg { display: grid; grid-template-columns: 1fr auto; gap: 0 12px; width: 100%; border: 0; background: transparent; text-align: left; padding: 4px 10px; cursor: pointer; }
+.ni-udg:disabled { cursor: not-allowed; opacity: .55; }
+.ni-udg-valgt { background: #e6f2ea; }
+.ni-udg-navn { font-family: var(--font-mono, monospace); font-weight: 600; color: #14532d; }
+.ni-udg-v { text-align: right; font-variant-numeric: tabular-nums; }
+.ni-udg-sted { grid-column: 1 / -1; font-size: 11px; color: #888; }
+.ni-udg-ingen { padding: 6px 10px; color: #777; max-width: 300px; }

@@ -11,7 +11,9 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { evaluate, toReportBlocks, itemsToLines, chip, SYMBOLS } from '../../lib/calcEngine.js'
+import { toReportBlocks, itemsToLines, chip, SYMBOLS } from '../../lib/calcEngine.js'
+import { evaluerMedUdgange } from '../../lib/koblinger.js'
+import { useKobling } from '../bog/KoblingKontekst.js'
 import { calcRevision } from '../../lib/calcState.js'
 import CalcResultView from '../CalcResultView.jsx'
 import './CustomCalcEditor.css'
@@ -37,7 +39,11 @@ export default function CustomCalcEditor({ block, onChange }) {
     if (propLines !== sent.current) { sent.current = propLines; setLines(propLines) }
   }, [propLines])
   const subst = d.subst ?? true
-  const rows = useMemo(() => evaluate(lines), [lines])
+  // [navn] henter en navngiven celle fra regnearksbogen (lib/koblinger.js).
+  const { udgange } = useKobling()
+  const udgMap = useMemo(() => new Map(udgange.map(u => [u.navn, u])), [udgange])
+  const evaluate = (ls) => evaluerMedUdgange(ls, udgMap)
+  const rows = useMemo(() => evaluate(lines), [lines, udgMap]) // eslint-disable-line react-hooks/exhaustive-deps
   const [focusIdx, setFocusIdx] = useState(null)
   const [showGuide, setShowGuide] = useState(false)
   const [showReport, setShowReport] = useState(true)

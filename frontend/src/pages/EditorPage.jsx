@@ -34,6 +34,7 @@ import { PROJECT_TYPES, makeProjectDocuments, optionsFor } from '../templates/pr
 import { laesImport, anvendImport, beskrivImport } from '../lib/importDokumenter.js'
 import { bogAf, medArk, nytArk, visningerAf, flytRegnearkTilBog, harGamleRegneark } from '../lib/regnearksbog.js'
 import { BogKontekst } from '../components/bog/BogKontekst.js'
+import { anvendKoblinger, koblingerTil } from '../lib/koblinger.js'
 
 import BlockList from '../components/blocks/BlockList.jsx'
 import EditorRail from '../components/editor/EditorRail.jsx'
@@ -168,7 +169,8 @@ export default function EditorPage() {
   const opdaterBog = useCallback((nyBog) => {
     const p = live.current.project
     if (!p) return
-    const ny = { ...p, bog: nyBog }
+    // Felter og Egen beregning, der er koblet til bogens navne, følger med.
+    const ny = anvendKoblinger({ ...p, bog: nyBog })
     live.current = { ...live.current, project: ny }
     saveSoon(ny)
   }, [saveSoon])
@@ -183,6 +185,8 @@ export default function EditorPage() {
     },
   }), [bog, opdaterBog])
   const visningerFor = useCallback((arkId) => visningerAf(live.current.project, arkId)
+    .map(x => ({ ...x, sted: x.sub !== null ? `${x.doc}.${x.sub + 1}` : x.doc })), [])
+  const koblingerFor = useCallback((navn) => koblingerTil(live.current.project, navn)
     .map(x => ({ ...x, sted: x.sub !== null ? `${x.doc}.${x.sub + 1}` : x.doc })), [])
 
   // Regneark-blokke fra før bogen flyttes ind i den én gang, med en version først.
@@ -552,7 +556,7 @@ export default function EditorPage() {
       return
     }
     undoClear()
-    save(anvendImport(project, imp))
+    save(anvendKoblinger(anvendImport(project, imp)))
     toast.ok(`Importeret: ${beskrivImport(imp)}.`)
   }
 
@@ -613,6 +617,7 @@ export default function EditorPage() {
             startArk={bogAaben.arkId}
             startCelle={bogAaben.celle}
             visninger={visningerFor}
+            koblinger={koblingerFor}
             onLuk={() => setBogAaben(null)}
           />
         </Suspense>

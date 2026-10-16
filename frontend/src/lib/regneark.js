@@ -11,7 +11,7 @@
  *   =HVIS(A1>0;"tryk";"træk")
  *
  * Tomme celler tæller som 0. Fejl hedder som i Excel (#DIV/0!, #REF!, #NAVN?,
- * #VÆRDI!, #CYKLUS!) og føres videre til de celler, der bruger dem.
+ * #VÆRDI!, #CYKLUS!, #I/T) og føres videre til de celler, der bruger dem.
  *
  * Udtrykket læses af mathjs' parser, men regnes her: kun tal, tekst, celler,
  * operatorer og funktionerne i FUNK. Der er ingen vej til mathjs' øvrige
@@ -162,6 +162,79 @@ const FUNK = {
   ARCSIN: en(Math.asin), ARCCOS: en(Math.acos), ARCTAN: en(Math.atan),
   RADIANER: en(x => x * Math.PI / 180),
   GRADER: en(x => x * 180 / Math.PI),
+  // Opslag, fx en last ud fra opbygningens ID: =LOPSLAG("Tka";Opbygninger!A2:F20;3;FALSK)
+  LOPSLAG: (v, omr, kol, omtrent = true) => {
+    const t = tabel(omr); if (erFejl(t)) return t
+    const k = tilTal(kol); if (erFejl(k)) return k
+    if (k < 1 || k > (t[0]?.length ?? 0)) return F('#REF!')
+    const i = find(v, t.map(r => r[0]), sandt(omtrent) ? 1 : 0)
+    return erFejl(i) ? i : t[i][k - 1]
+  },
+  VOPSLAG: (v, omr, raek, omtrent = true) => {
+    const t = tabel(omr); if (erFejl(t)) return t
+    const r = tilTal(raek); if (erFejl(r)) return r
+    if (r < 1 || r > t.length) return F('#REF!')
+    const i = find(v, t[0], sandt(omtrent) ? 1 : 0)
+    return erFejl(i) ? i : t[r - 1][i]
+  },
+  XOPSLAG: (v, opslag, retur, ikkeFundet) => {
+    const o = linje(opslag), r = linje(retur)
+    if (erFejl(o)) return o
+    if (erFejl(r)) return r
+    if (o.length !== r.length) return F('#VÆRDI!')
+    const i = find(v, o, 0)
+    if (erFejl(i)) return ikkeFundet !== undefined ? ikkeFundet : i
+    return r[i]
+  },
+  INDEKS: (omr, raek, kol = 1) => {
+    const t = tabel(omr); if (erFejl(t)) return t
+    let r = tilTal(raek), k = tilTal(kol)
+    if (erFejl(r)) return r
+    if (erFejl(k)) return k
+    if (t.length === 1 && kol === 1 && r > 1) { k = r; r = 1 }   // INDEKS(A1:F1; 3) = tredje celle i rækken
+    if (r < 1 || k < 1 || r > t.length || k > t[0].length) return F('#REF!')
+    return t[r - 1][k - 1]
+  },
+  SAMMENLIGN: (v, omr, type = 1) => {
+    const o = linje(omr); if (erFejl(o)) return o
+    const ty = tilTal(type); if (erFejl(ty)) return ty
+    const i = find(v, o, ty === 0 ? 0 : 1)
+    return erFejl(i) ? i : i + 1
+  },
+  HVIS_FEJL: (v, alt) => (erFejl(v) ? alt : v),
+}
+
+const sandt = (v) => (typeof v === 'boolean' ? v : tilTal(v) !== 0)
+/** Et område som 2D (en enkelt værdi bliver 1×1). */
+const tabel = (omr) => (erFejl(omr) ? omr : Array.isArray(omr) ? omr : [[omr]])
+/** Et område med én række eller én kolonne som en liste. */
+const linje = (omr) => {
+  const t = tabel(omr); if (erFejl(t)) return t
+  if (t.length === 1) return t[0]
+  if (t.every(r => r.length === 1)) return t.map(r => r[0])
+  return F('#VÆRDI!')
+}
+const ens = (a, b) => {
+  if (typeof a === 'number' || typeof b === 'number') {
+    const x = tilTal(a), y = tilTal(b)
+    return !erFejl(x) && !erFejl(y) && Math.abs(x - y) <= 1e-12 * Math.max(1, Math.abs(x))
+  }
+  return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase()
+}
+/**
+ * Pladsen for v i listen. type 0: præcis (tekst uden forskel på store og små
+ * bogstaver); type 1: den største værdi ≤ v i en stigende liste, som Excel.
+ */
+function find(v, liste, type) {
+  if (erFejl(v)) return v
+  if (type === 0) {
+    const i = liste.findIndex(x => ens(x, v))
+    return i < 0 ? F('#I/T') : i
+  }
+  const x = tilTal(v); if (erFejl(x)) return F('#I/T')
+  let bedst = -1
+  liste.forEach((y, i) => { if (typeof y === 'number' && y <= x) bedst = i })
+  return bedst < 0 ? F('#I/T') : bedst
 }
 // Engelske navne, som mange også skriver.
 const ALIAS = {
@@ -169,6 +242,8 @@ const ALIAS = {
   OR: 'ELLER', NOT: 'IKKE', ROUND: 'AFRUND', ROUNDUP: 'RUND_OP', ROUNDDOWN: 'RUND_NED', SQRT: 'KVROD',
   POWER: 'POTENS', EXP: 'EKSP', ASIN: 'ARCSIN', ACOS: 'ARCCOS', ATAN: 'ARCTAN', RADIANS: 'RADIANER',
   DEGREES: 'GRADER', 'AFRUND.OP': 'RUND_OP', 'AFRUND.NED': 'RUND_NED',
+  VLOOKUP: 'LOPSLAG', HLOOKUP: 'VOPSLAG', XLOOKUP: 'XOPSLAG', INDEX: 'INDEKS', MATCH: 'SAMMENLIGN',
+  'HVIS.FEJL': 'HVIS_FEJL', IFERROR: 'HVIS_FEJL',
 }
 export const FUNKTIONER = Object.keys(FUNK)
 
@@ -222,9 +297,10 @@ function regnNode(node, scope) {
     case 'ParenthesisNode': return regnNode(node.content, scope)
     case 'SymbolNode': {
       if (node.name in scope) return scope[node.name]
+      if (scope.__navn) { const v = scope.__navn(node.name); if (v !== undefined) return v }
       if (/^pi$/i.test(node.name)) return Math.PI
-      if (/^sand$/i.test(node.name) || node.name === 'true') return true
-      if (/^falsk$/i.test(node.name) || node.name === 'false') return false
+      if (/^(sand|true)$/i.test(node.name)) return true
+      if (/^(falsk|false)$/i.test(node.name)) return false
       return F('#NAVN?')
     }
     case 'FunctionNode': {
@@ -291,11 +367,20 @@ function regnUdtryk(udtryk, scope) {
 
 /**
  * Regn alle ark. ark: [{ navn, celler: string[][] }].
+ * navne: navngivne celler, { q_p: { ark: 'Laster', r, k } } — kan bruges i
+ * formler som =q_p*2 (se regnearksbog.js).
  * Returnerer { [navn]: (string|number|boolean|Fejl)[][] } med samme form som cellerne.
  */
-export function regnBog(ark) {
+export function regnBog(ark, navne = null) {
   const efterNavn = new Map()
   for (const a of ark) efterNavn.set(String(a.navn ?? '').trim().toLowerCase(), a)
+  const navneMap = new Map(Object.entries(navne ?? {}).map(([n, v]) => [n.toLowerCase(), v]))
+  const slaaOp = (n) => {
+    const x = navneMap.get(String(n).toLowerCase())
+    if (!x) return undefined
+    const maal = x.ark ? efterNavn.get(String(x.ark).trim().toLowerCase()) : null
+    return maal && x.r !== null && x.r !== undefined ? celle(maal, x.r, x.k) : F('#REF!')
+  }
   const cache = new Map()      // "ark|r|k" → værdi
   const igang = new Set()
 
@@ -319,7 +404,7 @@ export function regnBog(ark) {
 
   function formel(a, tekst) {
     const { udtryk, refs } = oversaet(tekst)
-    const scope = {}
+    const scope = navneMap.size ? { __navn: slaaOp } : {}
     for (const [i, ref] of refs.entries()) {
       const maal = ref.ark ? efterNavn.get(ref.ark.trim().toLowerCase()) : a
       if (!maal) { scope[`__R${i}x`] = F('#REF!'); continue }
@@ -523,4 +608,14 @@ export function omdoebHenvisninger(raw, gammel, ny) {
 export function arkIFormel(raw) {
   if (typeof raw !== 'string' || !raw.trim().startsWith('=')) return []
   return [...new Set(oversaet(raw.trim().slice(1)).refs.filter(r => r.ark).map(r => r.ark.trim().toLowerCase()))]
+}
+
+/** Er det et gyldigt navn til en celle? Ikke en adresse, en funktion eller SAND/FALSK/PI. */
+export function gyldigtCellenavn(navn) {
+  const n = String(navn ?? '').trim()
+  if (!/^[A-Za-zÆØÅæøå_][\wÆØÅæøå]*$/.test(n)) return false
+  if (/^[A-Za-z]{1,3}\d+$/.test(n)) return false
+  const N = n.toUpperCase()
+  if (FUNK[N] || ALIAS[N] || ['SAND', 'FALSK', 'PI', 'TRUE', 'FALSE'].includes(N)) return false
+  return true
 }

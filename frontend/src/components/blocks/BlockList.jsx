@@ -27,7 +27,10 @@ import ElementBlock, { ElementPreview } from './ElementBlock.jsx'
 import ElementPanel      from './ElementPanel.jsx'
 import { naesteNr, nytElement, indsaetPlads } from '../../lib/elementer.js'
 import { overskriftsnumre } from '../../lib/indhold.js'
-import { erRegneark, ledigtNavn } from '../../lib/regneark.js'
+import { useBog } from '../bog/BogKontekst.js'
+import { KoblingKontekst, useKobling } from '../bog/KoblingKontekst.js'
+import { udgange as bogUdgange } from '../../lib/regnearksbog.js'
+import { opdaterLinks, laesSti } from '../../lib/koblinger.js'
 // The text editor (TipTap) is loaded on demand; until then the same text is
 // shown formatted by RichTextStatic, so nothing jumps when it arrives.
 const TextBlock = lazy(() => import('./TextBlock.jsx'))
@@ -708,6 +711,15 @@ function AddZone({ onAdd, templates = [], onAddTemplate, clipboard, onPaste }) {
 
 export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock, project, focusRequest, elementer = false, onAfsnitHjaelp }) {
   const confirm = useConfirm()
+  // Regnearksbogens navngivne celler: "=" i et talfelt kobler feltet til en
+  // (lib/koblinger.js). Koblingen gemmes ved næste ændring af blokken.
+  const { bog } = useBog()
+  const udgListe = useMemo(() => bogUdgange(bog), [bog])
+  const ventende = useRef(null)
+  const kobling = useMemo(() => ({
+    udgange: udgListe,
+    forvent: (navn, vaerdi) => { ventende.current = { navn, vaerdi, t: Date.now() } },
+  }), [udgListe])
   const [selectedId,  setSelectedId]  = useState(null)
   // IDs of selected blocks where the editor is collapsed (preview only, blue border)
   const [minimised,   setMinimised]   = useState(() => new Set())
@@ -771,6 +783,8 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   // current without giving the rows a reason to re-render.
   const blocksRef = useRef(blocks)
   blocksRef.current = blocks
+  const udgListeRef = useRef(udgListe)
+  udgListeRef.current = udgListe
   const h = useRef({}).current
 
   const reveal = (id) => setMinimised(prev => { const s = new Set(prev); s.delete(id); return s })
@@ -790,6 +804,12 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     const i = cur.findIndex(x => x.id === id)
     if (i < 0) return cur
     const oldD = cur[i]?.data || {}
+    // Koblinger til regnearket: et felt, der netop har fået en værdi fra et
+    // navn, kobles; et koblet felt, der er rettet i hånden, mister koblingen.
+    const v = ventende.current && Date.now() - ventende.current.t < 5000 ? ventende.current : null
+    if (v) ventende.current = null
+    const medLinks = opdaterLinks(oldD, b.data || {}, v, new Map(udgListeRef.current.map(u => [u.navn, u])))
+    if (medLinks !== b.data) b = { ...b, data: medLinks }
     const newD = b.data || {}
     // Fresh result arrived → stamp the input hash it was computed from.
     const gotNewResult =
@@ -822,7 +842,6 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     const def = TYPE_MAP[type]; if (!def) return
     const data = { ...def.default }
     if (type === 'element') data.nr = naesteNr(blocksRef.current, data.art)
-    if (type === 'regneark') data.navn = ledigtNavn(blocksRef.current.filter(erRegneark).map(x => x.data.navn), 'Ark1')
     h.insertAt(atIndex, { id: Date.now(), type, data })
   }
 
@@ -1045,6 +1064,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
+    <KoblingKontekst.Provider value={kobling}>
     <div style={s.outer}>
 
       {/* ── Left block-type panel ── */}
@@ -1172,6 +1192,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
       </div>
       </div>
     </div>
+    </KoblingKontekst.Provider>
   )
 }
 
@@ -1270,6 +1291,7 @@ const BlockRow = React.memo(function BlockRow({
                       {staleReason(block)}
                     </div>
                   )}
+                  {block.data?._links && <KoblingListe block={block} onChange={onBlockChange} />}
                   <Suspense fallback={<div style={{ padding: 12, color: 'var(--muted)', fontSize: 12 }}>Indlæser…</div>}>
                     <Comp
                       block={block}
@@ -1303,6 +1325,12 @@ const BlockRow = React.memo(function BlockRow({
 // Hover states for the palette live in editor.css (.bl-panel-btn).
 
 const s = {
+  koblinger: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', margin: '0 0 10px', padding: '6px 10px',
+               background: '#f1f8f3', border: '1px solid #cfe5d6', borderRadius: 6, fontSize: 12 },
+  koblTitel: { fontWeight: 700, color: '#217346', marginRight: 4 },
+  kobl:      { display: 'inline-flex', gap: 4, alignItems: 'center', background: '#fff', border: '1px solid #d9e9de',
+               borderRadius: 4, padding: '2px 6px' },
+  koblBtn:   { border: '1px solid #d4d4d4', background: '#fff', borderRadius: 3, fontSize: 11, padding: '0 5px', cursor: 'pointer', marginLeft: 2 },
   outer: {
     display:    'flex',
     gap:        20,
@@ -1427,4 +1455,39 @@ const s = {
     paddingTop: 14,
     borderTop:  '1px solid var(--line)',
   },
+}
+
+// ── Koblinger til regnearket (lib/koblinger.js) ─────────────────────────────
+
+/** "loads.0.w_kNm" → "loads 1 › w_kNm" */
+const stiNavn = (sti) => laesSti(sti).map(x => (typeof x === 'number' ? x + 1 : x)).join(' › ')
+
+function KoblingListe({ block, onChange }) {
+  const { udgange } = useKobling()
+  const { aabn } = useBog()
+  const links = Object.entries(block.data?._links ?? {})
+  if (!links.length) return null
+  const fjern = (sti) => {
+    const l = { ...block.data._links }
+    delete l[sti]
+    const { _links, ...rest } = block.data
+    onChange({ ...block, data: Object.keys(l).length ? { ...rest, _links: l } : rest })
+  }
+  return (
+    <div style={s.koblinger}>
+      <span style={s.koblTitel}>Fra regnearket</span>
+      {links.map(([sti, navn]) => {
+        const u = udgange.find(x => x.navn === navn)
+        return (
+          <span key={sti} style={s.kobl} title={u ? `${u.arkNavn}!${u.celle}` : 'Navnet findes ikke længere i regnearket'}>
+            <code>{stiNavn(sti)}</code> ← <b>{navn}</b>
+            {u ? (u.fejl ? <em style={{ color: 'var(--danger, #b91c1c)' }}> {u.fejl}</em> : ` = ${u.tekst} ${u.enhed}`)
+               : <em style={{ color: 'var(--danger, #b91c1c)' }}> findes ikke</em>}
+            {u && aabn && <button type="button" style={s.koblBtn} onClick={() => aabn(u.arkId, u.celle)}>Åbn</button>}
+            <button type="button" style={s.koblBtn} onClick={() => fjern(sti)} title="Fjern koblingen (værdien bliver stående)">Fjern</button>
+          </span>
+        )
+      })}
+    </div>
+  )
 }

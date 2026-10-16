@@ -10,10 +10,15 @@
  * _vist er arkets viste tekster. De regnes om ved hver ændring af bogen og
  * gemmes, så PDF og Word kan skrive dem ud uden at regne formler.
  *
+ * Navngivne celler (udgange) ligger i bog.navne = { w_kip_V4: { ark, celle,
+ * enhed } } (ark = arkets id). De kan bruges i formler (=w_kip_V4*2) og
+ * kobles til talfelter i beregningsblokkene (lib/koblinger.js).
+ *
  * Funktionerne er rene (ingen React), så de kan testes for sig.
  */
 import {
   regnBog, vistArk, ledigtNavn, omdoebHenvisninger, arkIFormel, laesAdresse, adresse, erRegneark,
+  gyldigtCellenavn, erFejl, formatVaerdi, kolNavn,
 } from './regneark.js'
 
 export const erArkVisning = (b) => b?.type === 'ark_visning'
@@ -43,8 +48,8 @@ export function nytArk(bog, onsket = 'Ark1') {
  * Bogen med friske _vist i alle ark. Ark, hvis visning ikke har ændret sig,
  * beholder deres objekt, så React kun tegner det, der er ændret.
  */
-export function regnArk(ark) {
-  const vaerdier = regnBog(ark.map(a => ({ navn: a.navn, celler: a.celler ?? [] })))
+export function regnArk(ark, navne = {}) {
+  const vaerdier = regnBog(ark.map(a => ({ navn: a.navn, celler: a.celler ?? [] })), navneOpslag({ ark, navne }))
   return ark.map(a => {
     const vist = vistArk(vaerdier[a.navn] ?? [], a.dec ?? {})
     return JSON.stringify(vist) === JSON.stringify(a._vist) ? a : { ...a, _vist: vist }
@@ -52,7 +57,7 @@ export function regnArk(ark) {
 }
 
 /** Bogen med en ny liste af ark, regnet igennem. */
-export const medArk = (bog, ark) => ({ ...(bog ?? {}), ark: regnArk(ark) })
+export const medArk = (bog, ark) => ({ ...(bog ?? {}), ark: regnArk(ark, bog?.navne) })
 
 /** Bogen med ét ark erstattet. */
 export const medEtArk = (bog, nyt) => medArk(bog, bog.ark.map(a => (a.id === nyt.id ? nyt : a)))
@@ -217,3 +222,91 @@ export function flytRegnearkTilBog(project) {
 
 /** Har projektet regneark-blokke, der skal flyttes ind i bogen? */
 export const harGamleRegneark = (project) => alleBlokke(project).some(x => erRegneark(x.blok))
+
+// ── Navngivne celler (udgange) ──────────────────────────────────────────────
+
+/** Navnene som regnBog vil have dem: { navn: { ark: arknavn, r, k } }. */
+export function navneOpslag(bog) {
+  const ud = {}
+  for (const [navn, n] of Object.entries(bog?.navne ?? {})) {
+    const a = (bog.ark ?? []).find(x => x.id === n.ark)
+    const c = n.celle ? laesAdresse(n.celle) : null
+    ud[navn] = { ark: a?.navn ?? null, r: c?.r ?? null, k: c?.k ?? null }
+  }
+  return ud
+}
+
+/**
+ * Giv en celle et navn. Et navn bruges kun én gang i bogen; en celle kan
+ * have flere navne. Returnerer { bog, fejl }.
+ */
+export function navngiv(bog, navn, arkId, celle, enhed = '') {
+  const n = String(navn ?? '').trim()
+  if (!gyldigtCellenavn(n)) {
+    return { bog, fejl: 'Et navn skal begynde med et bogstav og kun have bogstaver, tal og _ (fx w_kip_V4). Det må ikke ligne en celle (B12) eller en funktion.' }
+  }
+  if (!bog.ark.some(a => a.id === arkId) || !laesAdresse(celle)) return { bog, fejl: 'Cellen findes ikke.' }
+  const fra = Object.keys(bog.navne ?? {}).find(x => x.toLowerCase() === n.toLowerCase())
+  if (fra && (bog.navne[fra].ark !== arkId || bog.navne[fra].celle !== celle)) {
+    return { bog, fejl: `Navnet "${n}" bruges allerede af en anden celle.` }
+  }
+  const navne = { ...(bog.navne ?? {}) }
+  if (fra) delete navne[fra]
+  navne[n] = { ark: arkId, celle, enhed: String(enhed ?? '').trim() }
+  return { bog: medArk({ ...bog, navne }, bog.ark), fejl: null }
+}
+
+export function fjernNavn(bog, navn) {
+  const navne = { ...(bog.navne ?? {}) }
+  delete navne[navn]
+  return medArk({ ...bog, navne }, bog.ark)
+}
+
+/** Navnene på cellen (arkId, "B12"). */
+export const navneFor = (bog, arkId, celle) =>
+  Object.entries(bog?.navne ?? {}).filter(([, n]) => n.ark === arkId && n.celle === celle).map(([navn]) => navn)
+
+/**
+ * Navnene på arket arkId, når rækker eller kolonner indsættes eller slettes
+ * (som flytHenvisninger). Et navn på en slettet celle mister sin celle og
+ * giver #REF!, indtil det får en ny.
+ */
+export function flytNavne(navne, arkId, akse, fra, n) {
+  const ud = {}
+  for (const [navn, x] of Object.entries(navne ?? {})) {
+    const c = x.ark === arkId && x.celle ? laesAdresse(x.celle) : null
+    if (!c) { ud[navn] = x; continue }
+    let { r, k } = c
+    let slettet = false
+    if (akse === 'r' && r >= fra) { if (n < 0 && r < fra - n) slettet = true; else r += n }
+    if (akse === 'k' && k >= fra) { if (n < 0 && k < fra - n) slettet = true; else k += n }
+    ud[navn] = { ...x, celle: slettet ? null : adresse(r, k) }
+  }
+  return ud
+}
+
+/**
+ * Bogens udgange med deres værdier: [{ navn, vaerdi, tekst, enhed, arkId,
+ * arkNavn, celle, fejl }]. vaerdi er et tal (eller null); fejl er en tekst,
+ * når navnet ikke peger på et tal.
+ */
+export function udgange(bog) {
+  const navne = bog?.navne ?? {}
+  if (!Object.keys(navne).length) return []
+  const vaerdier = regnBog((bog.ark ?? []).map(a => ({ navn: a.navn, celler: a.celler ?? [] })), navneOpslag(bog))
+  return Object.entries(navne).map(([navn, n]) => {
+    const a = (bog.ark ?? []).find(x => x.id === n.ark)
+    const c = n.celle ? laesAdresse(n.celle) : null
+    const v = a && c ? vaerdier[a.navn]?.[c.r]?.[c.k] : undefined
+    const dec = a && c ? (a.dec?.[n.celle] ?? a.dec?.[kolNavn(c.k)] ?? null) : null
+    let fejl = null
+    if (!a) fejl = 'arket er slettet'
+    else if (!c) fejl = 'cellen er slettet'
+    else if (erFejl(v)) fejl = v.kode
+    else if (typeof v !== 'number') fejl = 'cellen er ikke et tal'
+    return {
+      navn, enhed: n.enhed ?? '', arkId: n.ark, arkNavn: a?.navn ?? '?', celle: n.celle,
+      vaerdi: fejl ? null : v, tekst: fejl ? '' : formatVaerdi(v, dec), fejl,
+    }
+  }).sort((x, y) => x.navn.localeCompare(y.navn, 'da'))
+}

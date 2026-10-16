@@ -13,6 +13,10 @@
  *
  * "Spor" viser, hvad den aktive celle bygger på, og hvor den bruges — til
  * kontrollen. Fejl i bogen tælles i bunden; et klik går til den næste.
+ *
+ * "Navngiv" giver den aktive celle et navn (en udgang, fx w_kip_V4). Navnet
+ * kan bruges i formler (=w_kip_V4*2), i navnefeltet og i beregningsblokkene:
+ * "=" i et talfelt eller [w_kip_V4] i Egen beregning (lib/koblinger.js).
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -22,6 +26,7 @@ import {
 } from '../../lib/regneark.js'
 import {
   medArk, medEtArk, nytArk, omdoebArk, sletArk, dupliker, flytArk, arkDerBruger,
+  navneOpslag, navngiv, fjernNavn, navneFor, flytNavne, udgange,
 } from '../../lib/regnearksbog.js'
 import { SKABELONER } from '../../lib/regnearkSkabeloner.js'
 import '../blocks/Regneark.css'
@@ -48,7 +53,7 @@ function laesGaaTil(tekst) {
   return { ark, r0: a.r, k0: a.k, r1: b.r, k1: b.k }
 }
 
-export default function RegnearksBog({ bog, onBog, startArk = null, startCelle = null, onLuk, visninger = () => [] }) {
+export default function RegnearksBog({ bog, onBog, startArk = null, startCelle = null, onLuk, visninger = () => [], koblinger = () => [] }) {
   const [aktivId, setAktivId] = useState(() => startArk ?? bog.ark[0]?.id ?? null)
   const ark = bog.ark.find(a => a.id === aktivId) ?? bog.ark[0] ?? null
   const d = ark ?? { celler: [['']], dec: {}, fed: {} }
@@ -57,7 +62,8 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
   const fed = d.fed ?? {}
 
   // Alle ark regnet (rå værdier, til tal/fejl-farver og sporing)
-  const vaerdierAlle = useMemo(() => regnBog(bog.ark.map(a => ({ navn: a.navn, celler: a.celler ?? [] }))), [bog])
+  const vaerdierAlle = useMemo(() => regnBog(bog.ark.map(a => ({ navn: a.navn, celler: a.celler ?? [] })), navneOpslag(bog)), [bog])
+  const alleUdgange = useMemo(() => udgange(bog), [bog])
   const vaerdier = vaerdierAlle[d.navn] ?? []
 
   // ── Fortryd for hele bogen ──
@@ -104,6 +110,9 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
   const [menu, setMenu] = useState(null)      // { id, x, y }
   const [gaaTil, setGaaTil] = useState(null)  // tekst i navnefeltet, mens man skriver
   const [spor, setSpor] = useState(false)
+  const [visNavne, setVisNavne] = useState(false)
+  const [navngiver, setNavngiver] = useState(null)   // { navn, enhed, fejl, celle }
+  const [celleMenu, setCelleMenu] = useState(null)   // { x, y }
   const [besked, setBesked] = useState(null)
   const rodRef = useRef(null)
   const inputRef = useRef(null)
@@ -235,7 +244,39 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
       if (akse === 'k' && bredder.length > fra) { if (n > 0) bredder.splice(fra, 0, ...Array(n).fill(STD_BREDDE)); else bredder.splice(fra, -n) }
       return { ...a, celler: trim(c), bredder, dec: flytNoegler(dec, akse, fra, n), fed: flytNoegler(fed, akse, fra, n) }
     })
-    aendr(medArk(bog, nyeArk))
+    aendr(medArk({ ...bog, navne: flytNavne(bog.navne, d.id, akse, fra, n) }, nyeArk))
+  }
+
+  // ── Navngiv den aktive celle ──
+  function startNavngiv() {
+    setCelleMenu(null)
+    const celle = adresse(akt.r, akt.k)
+    const har = navneFor(bog, d.id, celle)[0]
+    if (har) { setNavngiver({ navn: har, enhed: bog.navne[har]?.enhed ?? '', fejl: null, celle, gl: har }); return }
+    // Forslag: rækkens tekst i kolonne A og (uden for kolonne B) kolonnens
+    // overskrift: "Kipbjælke V4" + "G sup [kN/m]" → Kipbjaelke_V4_Gsup, kN/m.
+    const rens = (t) => String(t ?? '').split(/[=(\[|:]/)[0].trim()
+      .replace(/[ÆØÅæøå]/g, c => ({ Æ: 'AE', Ø: 'OE', Å: 'AA', æ: 'ae', ø: 'oe', å: 'aa' })[c])
+      .replace(/[^\w\s]/g, '').trim().replace(/\s+/g, '_').slice(0, 28)
+    const raekke = rens(vaerdier[akt.r]?.[0])
+    const hoved = d.overskrift !== false && akt.k > 1 ? String(vaerdier[0]?.[akt.k] ?? '') : ''
+    const kol = rens(hoved).replace(/_/g, '')
+    let forslag = [raekke, kol].filter(Boolean).join('_').replace(/^(\d)/, '_$1')
+    if (forslag && !/^[A-Za-z_]/.test(forslag)) forslag = '_' + forslag
+    const hoejre = String(vaerdier[akt.r]?.[akt.k + 1] ?? '').trim()
+    const iHoved = hoved.match(/\[([^\]]+)\]/)?.[1] ?? ''
+    const enhed = typeof vaerdier[akt.r]?.[akt.k + 1] === 'string' && hoejre.length <= 10 && !/\s/.test(hoejre) ? hoejre : iHoved
+    setNavngiver({ navn: forslag, enhed, fejl: null, celle, gl: null })
+  }
+  function gemNavngiv() {
+    if (!navngiver) return
+    let b = bog
+    if (navngiver.gl && navngiver.gl !== navngiver.navn.trim()) b = fjernNavn(b, navngiver.gl)
+    const { bog: ny, fejl } = navngiv(b, navngiver.navn, d.id, navngiver.celle, navngiver.enhed)
+    if (fejl) { setNavngiver({ ...navngiver, fejl }); return }
+    aendr(ny)
+    setNavngiver(null)
+    rodRef.current?.focus()
   }
 
   // ── Kopiér / indsæt ──
@@ -306,6 +347,11 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
 
   // ── Gå til (navnefeltet) ──
   function gaaTilAdresse(tekst) {
+    const n = Object.entries(bog.navne ?? {}).find(([x]) => x.toLowerCase() === String(tekst).trim().toLowerCase())
+    if (n) {
+      const a = bog.ark.find(x => x.id === n[1].ark)
+      if (a && n[1].celle) tekst = `${arkPrefiks(a.navn)}${n[1].celle}`
+    }
     const m = laesGaaTil(tekst)
     if (!m) { setBesked(`Kan ikke gå til "${tekst}" — skriv fx B17 eller Fundament!B17.`); return false }
     let id = ark?.id
@@ -471,6 +517,12 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
     (fyldTil.r - omr.r1 >= fyldTil.k - omr.k1 && fyldTil.r > omr.r1 && r > omr.r1 && r <= fyldTil.r && k >= omr.k0 && k <= omr.k1)
     || (fyldTil.k - omr.k1 > fyldTil.r - omr.r1 && fyldTil.k > omr.k1 && k > omr.k1 && k <= fyldTil.k && r >= omr.r0 && r <= omr.r1))
 
+  // Navngivne celler i det viste ark: adresse → "navn, navn"
+  const celleNavne = useMemo(() => {
+    const m = new Map()
+    for (const [n, x] of Object.entries(bog.navne ?? {})) if (x.ark === ark?.id && x.celle) m.set(x.celle, m.has(x.celle) ? `${m.get(x.celle)}, ${n}` : n)
+    return m
+  }, [bog, ark])
   const aktRaw = red ? red.tekst : raw(akt.r, akt.k)
   const adrTekst = omr.r0 !== omr.r1 || omr.k0 !== omr.k1 ? `${adresse(omr.r0, omr.k0)}:${adresse(omr.r1, omr.k1)}` : adresse(akt.r, akt.k)
   const visTekst = (r, k) => formatVaerdi(vaerdier[r]?.[k], decFor(r, k))
@@ -478,7 +530,7 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
   const vis = ark ? visninger(ark.id) : []
 
   const indhold = (
-    <div className="rkb" role="dialog" aria-label="Regnearksbog" onClick={() => setMenu(null)}>
+    <div className="rkb" role="dialog" aria-label="Regnearksbog" onClick={() => { setMenu(null); setCelleMenu(null) }}>
       <div className="rkb-top">
         <span className="rkb-logo">XL</span>
         <strong className="rkb-titel">Regnearksbog</strong>
@@ -512,7 +564,10 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
           <button type="button" title="Fyld til højre (Ctrl+R)" onClick={fyldHoejre}>Fyld →</button>
           <span className="rk-sep" />
           <button type="button" className={spor ? 'rkb-on' : ''} title="Vis hvad cellen bygger på, og hvor den bruges"
-                  onClick={() => setSpor(s => !s)}>Spor celle</button>
+                  onClick={() => { setSpor(s => !s); setVisNavne(false) }}>Spor celle</button>
+          <button type="button" title="Giv cellen et navn, der kan bruges i formler og i beregningsblokkene" onClick={startNavngiv}>Navngiv celle</button>
+          <button type="button" className={visNavne ? 'rkb-on' : ''} title="Bogens navngivne celler"
+                  onClick={() => { setVisNavne(v => !v); setSpor(false) }}>Navne ({alleUdgange.length})</button>
           <button type="button" title="Fortryd (Ctrl+Z)" onClick={() => fortryd(false)}>↶</button>
           <button type="button" title="Gentag (Ctrl+Y)" onClick={() => fortryd(true)}>↷</button>
           {tom && (
@@ -543,13 +598,32 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
                  onFocus={() => { if (!red) setRed({ arkId: ark.id, r: akt.r, k: akt.k, tekst: raw(akt.r, akt.k), tilstand: 'ret' }) }}
                  onChange={e => setRed(r => ({ ...(r ?? { arkId: ark.id, r: akt.r, k: akt.k }), tekst: e.target.value, tilstand: 'ret' }))}
                  onKeyDown={tastRed} list="rkb-funktioner" />
-          <datalist id="rkb-funktioner">{FUNKTIONER.map(f => <option key={f} value={`=${f}(`} />)}</datalist>
+          <datalist id="rkb-funktioner">
+            {FUNKTIONER.map(f => <option key={f} value={`=${f}(`} />)}
+            {alleUdgange.map(u => <option key={u.navn} value={`=${u.navn}`} />)}
+          </datalist>
         </div>
       )}
       {red && !rederHer && (
         <div className="rkb-peg">Du skriver en formel i {redArk?.navn}!{adresse(red.r, red.k)} — klik på en celle for at henvise til den. Enter gemmer, Esc fortryder.</div>
       )}
       {besked && <div className="rkb-besked" onClick={() => setBesked(null)}>{besked}</div>}
+      {navngiver && (
+        <div className="rkb-navngiv" onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setNavngiver(null) } }}>
+          <span>Navn på {d.navn}!{navngiver.celle}:</span>
+          <input autoFocus value={navngiver.navn} placeholder="fx w_kip_V4"
+                 onChange={e => setNavngiver({ ...navngiver, navn: e.target.value, fejl: null })}
+                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); gemNavngiv() } }} />
+          <span>Enhed:</span>
+          <input className="rkb-enhed" value={navngiver.enhed} placeholder="kN/m"
+                 onChange={e => setNavngiver({ ...navngiver, enhed: e.target.value })}
+                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); gemNavngiv() } }} />
+          <button type="button" className="rkb-ok" onClick={gemNavngiv}>Gem</button>
+          {navngiver.gl && <button type="button" onClick={() => { aendr(fjernNavn(bog, navngiver.gl)); setNavngiver(null) }}>Fjern navnet</button>}
+          <button type="button" onClick={() => setNavngiver(null)}>Annullér</button>
+          {navngiver.fejl && <span className="rkb-fejltekst">{navngiver.fejl}</span>}
+        </div>
+      )}
 
       <div className="rkb-midt">
         {ark ? (
@@ -587,12 +661,13 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
                         iOmr(r, k) ? 'rk-mark' : '', aktiv ? 'rk-akt' : '', iFyld(r, k) ? 'rkb-fyldes' : '',
                         typeof v === 'number' ? 'rk-tal' : '', erFejl(v) ? 'rk-fejl' : '',
                         fed[adresse(r, k)] ? 'rk-fed' : '', String(raw(r, k)).startsWith('=') ? 'rk-f' : '',
-                        erForg(r, k) ? 'rkb-forg' : '',
+                        erForg(r, k) ? 'rkb-forg' : '', celleNavne.has(adresse(r, k)) ? 'rkb-harnavn' : '',
                       ].join(' ')
                       return (
                         <td key={k} data-c={`${r}-${k}`} className={cls} onMouseDown={e => musNed(r, k, e)} onMouseEnter={() => musOver(r, k)}
                             onDoubleClick={() => startRed(raw(r, k), 'ret')}
-                            title={String(raw(r, k)).startsWith('=') ? raw(r, k) : undefined}>
+                            onContextMenu={e => { e.preventDefault(); if (!iOmr(r, k)) { setAnker(null); setAkt({ r, k }) } setCelleMenu({ x: e.clientX, y: e.clientY }) }}
+                            title={[celleNavne.get(adresse(r, k)), String(raw(r, k)).startsWith('=') ? raw(r, k) : null].filter(Boolean).join('  ·  ') || undefined}>
                           {rettes
                             ? <input ref={inputRef} className="rk-in" value={red.tekst}
                                      onChange={e => setRed({ ...red, tekst: e.target.value })}
@@ -616,6 +691,22 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
             <p>Bogen har ingen ark endnu.</p>
             <button type="button" onClick={() => nyFane()}>+ Nyt ark</button>
           </div>
+        )}
+        {visNavne && (
+          <aside className="rkb-spor rkb-navne">
+            <h4>Navngivne celler</h4>
+            {!alleUdgange.length && <em>Ingen endnu. Markér en celle og tryk "Navngiv celle" (eller højreklik).</em>}
+            {alleUdgange.map(u => {
+              const brug = koblinger(u.navn)
+              return (
+                <div key={u.navn} className="rkb-navn-r">
+                  <button type="button" className="rkb-navn-n" onClick={() => gaaTilAdresse(u.navn)}>{u.navn}</button>
+                  <span className="rkb-navn-v">{u.fejl ? <em className="rkb-fejltekst">{u.fejl}</em> : `${u.tekst} ${u.enhed}`}</span>
+                  <span className="rkb-navn-s">{u.arkNavn}!{u.celle ?? '—'}{brug.length ? ` · bruges i ${[...new Set(brug.map(b => b.sted))].join(', ')}` : ''}</span>
+                </div>
+              )
+            })}
+          </aside>
         )}
         {spor && sporing && (
           <aside className="rkb-spor">
@@ -668,6 +759,14 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
         </button>
       </div>
 
+      {celleMenu && (
+        <div className="rkb-menu" style={{ left: celleMenu.x, top: celleMenu.y }} onClick={e => e.stopPropagation()}>
+          <button type="button" onClick={startNavngiv}>{celleNavne.has(adresse(akt.r, akt.k)) ? 'Ret navn…' : 'Navngiv celle…'}</button>
+          <button type="button" onClick={() => { setCelleMenu(null); aendrGitter('r', omr.r0, 1) }}>Indsæt række over</button>
+          <button type="button" onClick={() => { setCelleMenu(null); aendrGitter('r', omr.r0, -(omr.r1 - omr.r0 + 1)) }}>Slet række</button>
+          <button type="button" onClick={() => { setCelleMenu(null); setSpor(true); setVisNavne(false) }}>Spor celle</button>
+        </div>
+      )}
       {menu && (
         <div className="rkb-menu" style={{ left: menu.x, top: menu.y - 150 }} onClick={e => e.stopPropagation()}>
           <button type="button" onClick={() => { setOmdoeber({ id: menu.id, navn: bog.ark.find(a => a.id === menu.id)?.navn ?? '', fejl: null }); setMenu(null) }}>Omdøb</button>

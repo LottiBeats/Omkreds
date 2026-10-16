@@ -11,7 +11,7 @@ import { udsnit, gyldigtOmraade, laesOmraade } from '../../lib/regnearksbog.js'
 import { adresse, laesTal } from '../../lib/regneark.js'
 import '../blocks/Regneark.css'
 
-const FEJL = /^#(DIV\/0!|REF!|NAVN\?|VÆRDI!|CYKLUS!|TAL!)$/
+const FEJL = /^#(DIV\/0!|REF!|NAVN\?|VÆRDI!|CYKLUS!|TAL!|I\/T)$/
 
 export function ArkTabel({ ark, omraade, titel, onAabn }) {
   const u = udsnit(ark, omraade)

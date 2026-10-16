@@ -136,3 +136,18 @@
 .av-tabel td.av-fejl { color: #b91c1c; text-align: center; }
 .av-tabel tr.av-hoved td { background: #f7f7f5; font-weight: 600; border-bottom: 1px solid #b9b9b9; }
 .av-tom { font-size: 12.5px; color: var(--muted, #78716c); padding: 10px; border: 1px dashed var(--line, #e4dfda); border-radius: 4px; }
+.rkb-gitter td.rkb-harnavn::after {
+  content: ''; position: absolute; left: 0; top: 0; border-style: solid; border-width: 6px 6px 0 0;
+  border-color: #217346 transparent transparent transparent;
+}
+.rkb-navngiv { display: flex; gap: 8px; align-items: center; font-size: 12.5px; background: #f1f8f3; border: 1px solid #cfe5d6; border-radius: 4px; padding: 5px 10px; flex-wrap: wrap; }
+.rkb-navngiv input { border: 1px solid #c6c6c6; border-radius: 3px; padding: 2px 6px; font-family: var(--font-mono, monospace); font-size: 12.5px; width: 180px; }
+.rkb-navngiv .rkb-enhed { width: 80px; }
+.rkb-navngiv button { border: 1px solid #c6c6c6; background: #fff; border-radius: 3px; padding: 2px 10px; cursor: pointer; font-size: 12px; }
+.rkb-navngiv .rkb-ok { background: #217346; border-color: #217346; color: #fff; }
+.rkb-navne { width: 290px; }
+.rkb-navn-r { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 4px 0; border-bottom: 1px solid #eee; }
+.rkb-navn-n { border: 0; background: transparent; text-align: left; padding: 0; cursor: pointer; font-family: var(--font-mono, monospace); font-weight: 600; color: #14532d; }
+.rkb-navn-n:hover { text-decoration: underline; }
+.rkb-navn-v { text-align: right; font-variant-numeric: tabular-nums; }
+.rkb-navn-s { grid-column: 1 / -1; font-size: 11px; color: #888; }

@@ -24,6 +24,8 @@
  * Et ark med samme navn som et eksisterende erstatter det (og beholder dets
  * id, så rapportens visninger af det virker videre); nye navne lægges til.
  * En "ark_visning"-blok i filen kan pege på et ark ved navn: { "ark": "Laster" }.
+ * "bog": { "navne": { "w_kip": { "ark": "Lastnedføring", "celle": "P14", "enhed": "kN/m" } } }
+ * navngiver celler (udgange), som blokkenes "_links" og [navn] i Egen beregning kan bruge.
  *
  * "projektbeskrivelse" er det samme som beskrivelsen under Projektbeskrivelse
  * (metadata._doc_options): konsekvensklasse, materialer, fundering osv. Med den
@@ -90,6 +92,14 @@ export function laesImport(tekst) {
       }
     }
     ark = fil.bog.ark
+    if (fil.bog.navne !== undefined) {
+      if (!erObjekt(fil.bog.navne)) return { ok: false, fejl: '"bog.navne" skal være et objekt.' }
+      for (const [n, x] of Object.entries(fil.bog.navne)) {
+        if (!erObjekt(x) || typeof x.ark !== 'string' || typeof x.celle !== 'string') {
+          return { ok: false, fejl: `Navnet "${n}" skal have "ark" og "celle".` }
+        }
+      }
+    }
   }
   if (Object.keys(docs).length === 0 && !ark?.length) return { ok: false, fejl: 'Filen indeholder ingen dokumenter.' }
 
@@ -108,7 +118,7 @@ export function laesImport(tekst) {
     if (!erObjekt(fil.projektbeskrivelse)) return { ok: false, fejl: '"projektbeskrivelse" skal være et objekt.' }
     beskrivelse = fil.projektbeskrivelse
   }
-  return { ok: true, metadata, docs, beskrivelse, ark }
+  return { ok: true, metadata, docs, beskrivelse, ark, navne: fil.bog?.navne ?? null }
 }
 
 /**
@@ -130,7 +140,15 @@ export function anvendImport(project, imp, nu = Date.now()) {
       const nyt = { titel: '', overskrift: true, bredder: [], dec: {}, fed: {}, ...a, navn: a.navn.trim(), id: i >= 0 ? ark[i].id : nyArkId() }
       if (i >= 0) ark[i] = nyt; else ark.push(nyt)
     }
-    bog = medArk(bog, ark)
+    let navne = bog.navne ?? {}
+    if (imp.navne) {
+      navne = { ...navne }
+      for (const [n, x] of Object.entries(imp.navne)) {
+        const a = ark.find(y => y.id === x.ark) ?? ark.find(y => y.navn.toLowerCase() === x.ark.trim().toLowerCase())
+        if (a) navne[n] = { ark: a.id, celle: x.celle.replace(/\$/g, '').toUpperCase(), enhed: x.enhed ?? '' }
+      }
+    }
+    bog = medArk({ ...bog, navne }, ark)
   }
   const arkId = (v) => bog.ark.find(a => a.id === v)?.id ?? bog.ark.find(a => a.navn.toLowerCase() === String(v ?? '').trim().toLowerCase())?.id ?? v
 
