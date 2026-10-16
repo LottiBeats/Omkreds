@@ -523,8 +523,10 @@ def create_project_from_template(
             "cvr":          template["metadata"].get("cvr", ""),
             "logo_b64":     template["metadata"].get("logo_b64", ""),
         },
-        # Copy document structures (blocks + subdocs) verbatim
+        # Copy document structures (blocks + subdocs) verbatim, and the
+        # spreadsheet workbook the documents' sheet views point into.
         "documents": _copy.deepcopy(template.get("documents", {})),
+        "bog": _copy.deepcopy(template.get("bog") or {"ark": []}),
         "created": str(date.today()),
     }
     _db.save_project(project, user=user["id"])

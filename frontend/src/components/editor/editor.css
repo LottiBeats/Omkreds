@@ -185,3 +185,5 @@
 /* ── Block palette (BlockList) ─────────────────────────────────────────── */
 .bl-panel-btn { background: none; border-left: 3px solid transparent !important; }
 .bl-panel-btn:hover { background: var(--sunk); color: var(--ink) !important; border-left-color: var(--brand) !important; }
+
+.ed-xl { background: #217346; color: #fff; font-weight: 700; font-size: 9.5px; padding: 1px 3px; border-radius: 2px; margin-right: 3px; }

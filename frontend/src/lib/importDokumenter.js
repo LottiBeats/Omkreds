@@ -20,11 +20,17 @@
  * ikke. Filen læses her og kontrolleres helt, før noget bliver ændret: en fil
  * med én fejl ændrer ingenting.
  *
+ * "bog" er ark til projektets regnearksbog: { "ark": [ { "navn", "celler", … } ] }.
+ * Et ark med samme navn som et eksisterende erstatter det (og beholder dets
+ * id, så rapportens visninger af det virker videre); nye navne lægges til.
+ * En "ark_visning"-blok i filen kan pege på et ark ved navn: { "ark": "Laster" }.
+ *
  * "projektbeskrivelse" er det samme som beskrivelsen under Projektbeskrivelse
  * (metadata._doc_options): konsekvensklasse, materialer, fundering osv. Med den
  * ved A1-hjælperen og "skriv A1 forfra", hvad det er for en sag.
  */
 import { DOC_TITLES } from '../templates/docs.js'
+import { bogAf, medArk, nyArkId } from './regnearksbog.js'
 
 const erObjekt = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
@@ -70,7 +76,22 @@ export function laesImport(tekst) {
     }
     docs[docId] = d
   }
-  if (Object.keys(docs).length === 0) return { ok: false, fejl: 'Filen indeholder ingen dokumenter.' }
+  let ark = null
+  if (fil.bog !== undefined) {
+    if (!erObjekt(fil.bog) || !Array.isArray(fil.bog.ark)) return { ok: false, fejl: '"bog" skal have en liste "ark".' }
+    const navne = new Set()
+    for (const [i, a] of fil.bog.ark.entries()) {
+      const sted = `Regneark ${i + 1}`
+      if (!erObjekt(a) || typeof a.navn !== 'string' || !a.navn.trim()) return { ok: false, fejl: `${sted}: et ark skal have et "navn".` }
+      if (navne.has(a.navn.trim().toLowerCase())) return { ok: false, fejl: `To ark i filen hedder "${a.navn}".` }
+      navne.add(a.navn.trim().toLowerCase())
+      if (!Array.isArray(a.celler) || !a.celler.every(r => Array.isArray(r) && r.every(c => typeof c === 'string'))) {
+        return { ok: false, fejl: `Arket "${a.navn}": "celler" skal være en liste af rækker med tekst.` }
+      }
+    }
+    ark = fil.bog.ark
+  }
+  if (Object.keys(docs).length === 0 && !ark?.length) return { ok: false, fejl: 'Filen indeholder ingen dokumenter.' }
 
   // Kun tekstfelter, og ingen interne felter (_rev, _doc_options …): de hører
   // til projektet, ikke til et dokument, der flyttes ind udefra.
@@ -87,7 +108,7 @@ export function laesImport(tekst) {
     if (!erObjekt(fil.projektbeskrivelse)) return { ok: false, fejl: '"projektbeskrivelse" skal være et objekt.' }
     beskrivelse = fil.projektbeskrivelse
   }
-  return { ok: true, metadata, docs, beskrivelse }
+  return { ok: true, metadata, docs, beskrivelse, ark }
 }
 
 /**
@@ -99,11 +120,25 @@ export function anvendImport(project, imp, nu = Date.now()) {
   let naeste = nu
   const brugt = new Set()
   const documents = { ...project.documents }
+
+  // Arkene først, så visningerne kan slå navnene op.
+  let bog = bogAf(project)
+  if (imp.ark?.length) {
+    const ark = [...bog.ark]
+    for (const a of imp.ark) {
+      const i = ark.findIndex(x => x.navn.trim().toLowerCase() === a.navn.trim().toLowerCase())
+      const nyt = { titel: '', overskrift: true, bredder: [], dec: {}, fed: {}, ...a, navn: a.navn.trim(), id: i >= 0 ? ark[i].id : nyArkId() }
+      if (i >= 0) ark[i] = nyt; else ark.push(nyt)
+    }
+    bog = medArk(bog, ark)
+  }
+  const arkId = (v) => bog.ark.find(a => a.id === v)?.id ?? bog.ark.find(a => a.navn.toLowerCase() === String(v ?? '').trim().toLowerCase())?.id ?? v
+
   const medId = (bs) => bs.map(b => {
     let id = b.id
     if (id === undefined || id === null || brugt.has(id)) id = naeste++
     brugt.add(id)
-    return { ...b, id }
+    return b.type === 'ark_visning' ? { ...b, id, data: { ...b.data, ark: arkId(b.data.ark) } } : { ...b, id }
   })
   for (const [docId, d] of Object.entries(imp.docs)) {
     const eksisterende = documents[docId] ?? { title: DOC_TITLES[docId], blocks: [], subdocs: [] }
@@ -116,7 +151,7 @@ export function anvendImport(project, imp, nu = Date.now()) {
   }
   const metadata = { ...(project.metadata ?? {}), ...imp.metadata }
   if (imp.beskrivelse) metadata._doc_options = imp.beskrivelse
-  return { ...project, metadata, documents }
+  return { ...project, metadata, documents, ...(imp.ark?.length ? { bog } : {}) }
 }
 
 /** "A1 (231 blokke), B2 (36 blokke)" til bekræftelsen. */
@@ -127,5 +162,5 @@ export function beskrivImport(imp) {
       ...(Array.isArray(d.blocks) ? [`${id} (${d.blocks.length} blokke)`] : []),
       ...(d.subdocs ?? []).map((sd, j) => `${id}.${j + 1} ${sd.name} (${sd.blocks.length} blokke)`),
     ]
-  }).join(', ')
+  }).concat(imp.ark?.length ? [`regnearksbogen (${imp.ark.length} ark)`] : []).join(', ')
 }

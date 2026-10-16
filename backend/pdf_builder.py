@@ -999,6 +999,64 @@ def regneark_som_tabel(block: dict) -> dict:
     }}
 
 
+def _laes_adresse(a: str):
+    import re
+    m = re.fullmatch(r"\$?([A-Za-z]{1,2})\$?(\d+)", a.strip())
+    if not m:
+        return None
+    k = 0
+    for ch in m.group(1).upper():
+        k = k * 26 + (ord(ch) - 64)
+    return int(m.group(2)) - 1, k - 1
+
+
+def _laes_omraade(tekst: str):
+    """"A1:D34" → (r0, k0, r1, k1), 0-baseret. Tomt eller ugyldigt → None (hele arket)."""
+    t = str(tekst or "").strip()
+    if not t:
+        return None
+    dele = t.split(":")
+    fra = _laes_adresse(dele[0])
+    til = _laes_adresse(dele[1]) if len(dele) > 1 else fra
+    if not fra or not til or len(dele) > 2:
+        return None
+    return min(fra[0], til[0]), min(fra[1], til[1]), max(fra[0], til[0]), max(fra[1], til[1])
+
+
+def udfold_arkvisninger(blocks: list, bog) -> list:
+    """Blokkene med hver ark_visning erstattet af arket fra projektets bog.
+
+    En visning peger på et ark (id) i project["bog"] og evt. et område. Den
+    bliver et regneark med de viste tekster for området, så den skrives ud
+    som en tabel ligesom regnearkene. En visning af et slettet ark udelades.
+    """
+    ark = {a.get("id"): a for a in ((bog or {}).get("ark") or []) if isinstance(a, dict)}
+    ud = []
+    for b in blocks:
+        if b.get("type") != "ark_visning":
+            ud.append(b)
+            continue
+        d = b.get("data") or {}
+        a = ark.get(d.get("ark"))
+        if not a:
+            continue
+        vist = [list(r) for r in (a.get("_vist") or [])]
+        bredder = list(a.get("bredder") or [])
+        overskrift = a.get("overskrift", True) is not False
+        o = _laes_omraade(d.get("omraade"))
+        if o:
+            r0, k0, r1, k1 = o
+            vist = [[(vist[r][k] if r < len(vist) and k < len(vist[r]) else "") for k in range(k0, k1 + 1)]
+                    for r in range(r0, r1 + 1)]
+            bredder = [(bredder[k] if k < len(bredder) and bredder[k] else (150 if k == 0 else 92)) for k in range(k0, k1 + 1)]
+            overskrift = overskrift and r0 == 0
+        ud.append({**b, "type": "regneark", "data": {
+            "titel": d.get("titel") or a.get("titel") or "", "overskrift": overskrift,
+            "_vist": vist, "bredder": bredder,
+        }})
+    return ud
+
+
 def _convert_block(block: dict, tmp_files: list) -> list:
     t = block.get("type", "")
     if t == "regneark":
@@ -1460,6 +1518,7 @@ def build_pdf(project: dict, blocks: list, doc_id: str = "") -> bytes:
         The blocks array from project["documents"][doc_id]["blocks"].
     """
     tmp_files: list[str] = []   # temp image files to clean up afterwards
+    blocks = udfold_arkvisninger(blocks, project.get("bog"))
 
     # holst_layout expects flat keys; v2 stores them nested under "metadata"
     flat_project = _flatten_project(project, doc_id=doc_id)
@@ -1538,7 +1597,7 @@ def build_pdf(project: dict, blocks: list, doc_id: str = "") -> bytes:
 
 # ── Simpel rapport (skrivebordsprogrammet) ────────────────────────────────────
 
-def build_pdf_simpel(blocks: list, titel: str = "") -> bytes:
+def build_pdf_simpel(blocks: list, titel: str = "", bog: dict | None = None) -> bytes:
     """
     Rapporten fra skrivebordsprogrammet på blankt papir: ingen forside,
     ingen sagsoplysninger, ingen indholdsfortegnelse og intet tegningshoved
@@ -1552,7 +1611,7 @@ def build_pdf_simpel(blocks: list, titel: str = "") -> bytes:
     from calc_core import build_story, make_styles
 
     tmp_files: list[str] = []
-    numbered = nummerer_figurer(_number_headings(list(blocks)))
+    numbered = nummerer_figurer(_number_headings(udfold_arkvisninger(list(blocks), bog)))
     try:
         indhold = []
         for block in numbered:

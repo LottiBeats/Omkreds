@@ -30,7 +30,7 @@ import { resultaterSomCsv } from './lib/femCsv.js'
 import { hashCalcInputs, calcRevision, isStaleResult, hasCalcResult } from './lib/calcState.js'
 import useBlockUndo from './hooks/useBlockUndo.js'
 import RapportView from './components/rapport/RapportView.jsx'
-import { pdfBlokke, femIRapport } from './lib/rapport.js'
+import { pdfBlokke, femIRapport, medBog } from './lib/rapport.js'
 
 const VISNINGER = [['fem', 'FEM'], ['begge', 'Side om side'], ['rapport', 'Rapport']]
 
@@ -61,6 +61,8 @@ const femIndeks = (blocks) => Math.max(0, blocks.findIndex(b => b.type === 'gene
 function FemApp() {
   const [meta, setMeta] = useState(TOM_META)
   const [blocks, setBlocks] = useState(nyeBlokke)
+  // Regnearksbogen (lib/regnearksbog.js): ark, som rapportens "Regneark"-blokke viser.
+  const [bog, setBog] = useState(() => ({ ark: [] }))
   const [fil, setFil] = useState({ handle: null, navn: null })
   const [aendret, setAendret] = useState(false)
   const [besked, setBesked] = useState(null)
@@ -95,8 +97,9 @@ function FemApp() {
   // Editoren husker valgt blok m.m.; en ny eller åbnet model skal starte forfra.
   const [noegle, setNoegle] = useState(0)
 
-  const state = useRef({ meta, blocks, fil, aendret })
-  state.current = { meta, blocks, fil, aendret }
+  const state = useRef({ meta, blocks, fil, aendret, bog })
+  state.current = { meta, blocks, fil, aendret, bog }
+  const onBog = useCallback((nb) => { state.current.bog = nb; setBog(nb); setAendret(true) }, [])
 
   const { record: undoRecord, undo: undoStep, redo: redoStep, clearAll: undoClear } = useBlockUndo('fem')
 
@@ -118,7 +121,7 @@ function FemApp() {
 
   const ny = () => {
     if (!forkastOk()) return
-    setMeta(TOM_META); setBlocks(nyeBlokke()); setFil({ handle: null, navn: null }); undoClear()
+    setMeta(TOM_META); setBlocks(nyeBlokke()); setBog({ ark: [] }); setFil({ handle: null, navn: null }); undoClear()
     setAendret(false); setNoegle(k => k + 1)
   }
 
@@ -127,18 +130,20 @@ function FemApp() {
     try {
       const r = await aabn()
       if (!r) return
-      setMeta({ ...TOM_META, ...r.model.metadata }); setBlocks(r.model.blocks); undoClear()
-      setFil({ handle: r.handle, navn: r.navn }); setAendret(false); setNoegle(k => k + 1)
-      vis(`Åbnede ${r.navn}`)
+      // En fil fra før regnearksbogen: regnearkene flyttes ind i bogen.
+      const m = medBog(r.model.blocks, r.model.bog)
+      setMeta({ ...TOM_META, ...r.model.metadata }); setBlocks(m.blocks); setBog(m.bog); undoClear()
+      setFil({ handle: r.handle, navn: r.navn }); setAendret(m.antal > 0); setNoegle(k => k + 1)
+      vis(m.antal ? `Åbnede ${r.navn} — ${m.antal} regneark er flyttet ind i regnearksbogen. Gem for at beholde det.` : `Åbnede ${r.navn}`)
     } catch (e) {
       vis(e.message, true)
     }
   }
 
   const gemFil = async (som = false) => {
-    const { meta, blocks, fil } = state.current
+    const { meta, blocks, fil, bog } = state.current
     try {
-      const r = await gem(lavModel(meta, blocks), som ? null : fil.handle, forslag())
+      const r = await gem(lavModel(meta, blocks, bog), som ? null : fil.handle, forslag())
       if (!r) return
       setFil(r); setAendret(false)
       vis(`Gemt som ${r.navn}`)
@@ -163,10 +168,10 @@ function FemApp() {
   }
 
   const lavPdf = async () => {
-    const { meta, blocks: alle } = state.current
+    const { meta, blocks: alle, bog } = state.current
     // PDF'en er rapporten. Rammeberegningen er med, når den har en model og
     // ikke er valgt fra i Rapport-visningen.
-    const { blocks, tom } = pdfBlokke(alle)
+    const { blocks, tom } = pdfBlokke(alle, bog)
     if (tom) { vis('Der er ikke noget at lave PDF af endnu: tegn en model i FEM eller skriv i Rapport.', true); return }
     // En PDF er en dokumentation af et bestemt regnet resultat. Er modellen
     // ændret siden, eller er den ikke regnet, ville rapporten vise tal for en
@@ -176,7 +181,7 @@ function FemApp() {
     if (femIRapport(fem) && isStaleResult(fem)) { vis('Modellen er ændret siden sidste beregning — regn igen (F5), før der laves en PDF.', true); return }
     setTravl(true)
     try {
-      const blob = await desktopPdf(meta, blocks)
+      const blob = await desktopPdf(meta, blocks, bog)
       const sti = await gemPdf(blob, forslag())
       if (sti) vis(`PDF gemt: ${String(sti).split(/[\\/]/).pop()}`)
     } catch (e) {
@@ -314,7 +319,7 @@ function FemApp() {
           {/* tabIndex: et klik i rapporten flytter fokus hertil, så modellens
               taster (Delete, værktøjer) ikke rammer en markering i FEM. */}
           <div style={{ ...s.rude, flex: 1 }} tabIndex={-1} data-fem-ignorer-taster="">
-            <RapportView key={noegle} blocks={blocks} onChange={onRapport} smal />
+            <RapportView key={noegle} blocks={blocks} onChange={onRapport} smal bog={bog} onBog={onBog} />
           </div>
          </div>
         </div>
@@ -323,7 +328,7 @@ function FemApp() {
         <div style={s.rapport}>
           <div style={s.rapportTop}>{knapper}</div>
           <div style={s.rapportKrop}>
-            <RapportView key={noegle} blocks={blocks} onChange={onRapport} onVisFem={() => setVisning('fem')} />
+            <RapportView key={noegle} blocks={blocks} onChange={onRapport} onVisFem={() => setVisning('fem')} bog={bog} onBog={onBog} />
           </div>
         </div>
       )}

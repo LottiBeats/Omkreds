@@ -32,6 +32,8 @@ import { DOC_IDS, DOC_TITLES } from '../templates/docs.js'
 import { DOC_TEMPLATES } from '../templates/docTemplates.js'
 import { PROJECT_TYPES, makeProjectDocuments, optionsFor } from '../templates/projectTypes.js'
 import { laesImport, anvendImport, beskrivImport } from '../lib/importDokumenter.js'
+import { bogAf, medArk, nytArk, visningerAf, flytRegnearkTilBog, harGamleRegneark } from '../lib/regnearksbog.js'
+import { BogKontekst } from '../components/bog/BogKontekst.js'
 
 import BlockList from '../components/blocks/BlockList.jsx'
 import EditorRail from '../components/editor/EditorRail.jsx'
@@ -50,6 +52,7 @@ import A1OptionsModal from '../components/A1OptionsModal.jsx'
 import ProjectTypeModal from '../components/ProjectTypeModal.jsx'
 // Opened rarely, and it renders calc results (KaTeX) — load it when needed.
 const TemplateEditorModal = lazy(() => import('../components/TemplateEditorModal.jsx'))
+const RegnearksBog = lazy(() => import('../components/bog/RegnearksBog.jsx'))
 import '../components/editor/editor.css'
 
 const LAST_KEY = (id) => `omkreds.sidst.${id}`
@@ -154,6 +157,55 @@ export default function EditorPage() {
   live.current = { project, loc, currentBlocks }
 
   const { record: undoRecord, undo: undoStep, redo: redoStep, clearAll: undoClear } = undo
+
+  // ── Regnearksbogen (lib/regnearksbog.js) ─────────────────────────────────
+  // Én bog pr. projekt. Rapporten viser ark fra den med "ark_visning"-blokke;
+  // bogen redigeres i fuld skærm. Ændringer i bogen sættes også straks i
+  // live.current, så en blok, der ændres i samme øjeblik (fx en visning, der
+  // peger på et nyt ark), ikke gemmer oven i dem.
+  const [bogAaben, setBogAaben] = useState(null)   // { arkId, celle }
+  const bog = useMemo(() => bogAf(project), [project])
+  const opdaterBog = useCallback((nyBog) => {
+    const p = live.current.project
+    if (!p) return
+    const ny = { ...p, bog: nyBog }
+    live.current = { ...live.current, project: ny }
+    saveSoon(ny)
+  }, [saveSoon])
+  const bogKontekst = useMemo(() => ({
+    bog,
+    aabn: (arkId = null, celle = null) => setBogAaben({ arkId, celle }),
+    nytArk: () => {
+      const b = bogAf(live.current.project)
+      const a = nytArk(b)
+      opdaterBog(medArk(b, [...b.ark, a]))
+      return a.id
+    },
+  }), [bog, opdaterBog])
+  const visningerFor = useCallback((arkId) => visningerAf(live.current.project, arkId)
+    .map(x => ({ ...x, sted: x.sub !== null ? `${x.doc}.${x.sub + 1}` : x.doc })), [])
+
+  // Regneark-blokke fra før bogen flyttes ind i den én gang, med en version først.
+  const flytter = useRef(null)
+  useEffect(() => {
+    if (!project || !harGamleRegneark(project) || flytter.current === projectId) return
+    flytter.current = projectId
+    ;(async () => {
+      try {
+        await flushSave(live.current.project)
+        await createVersion(projectId, 'Før regnearksbogen', 'manual')
+      } catch (err) {
+        console.warn('Kunne ikke gemme en version før regnearkene blev flyttet:', err)
+        return
+      }
+      const { project: ny, antal } = flytRegnearkTilBog(live.current.project)
+      if (!antal) return
+      live.current = { ...live.current, project: ny }
+      save(ny)
+      flytter.current = null   // en senere import med regneark-blokke flyttes også
+      toast.ok(`${antal} regneark er flyttet ind i projektets regnearksbog (knappen "Regneark" øverst).`)
+    })()
+  }, [project, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateBlocks = useCallback((newBlocks) => {
     const { project: p, loc: l, currentBlocks: cur } = live.current
@@ -550,7 +602,21 @@ export default function EditorPage() {
         onHistory={() => setHistoryOpen(true)}
         onSaveAsTemplate={() => setNameDialog({ kind: 'template', initial: project.metadata?.project_name || '' })}
         onImport={() => importInput.current?.click()}
+        onRegneark={() => setBogAaben({ arkId: null, celle: null })}
+        antalArk={bog.ark.length}
       />
+      {bogAaben && (
+        <Suspense fallback={null}>
+          <RegnearksBog
+            bog={bog}
+            onBog={opdaterBog}
+            startArk={bogAaben.arkId}
+            startCelle={bogAaben.celle}
+            visninger={visningerFor}
+            onLuk={() => setBogAaben(null)}
+          />
+        </Suspense>
+      )}
       <input ref={importInput} type="file" accept=".json,application/json" hidden onChange={handleImportFile} />
 
       <EditorRail
@@ -597,6 +663,7 @@ export default function EditorPage() {
                 })}
                 onDeleteSubdoc={deleteSubdoc}
               />
+              <BogKontekst.Provider value={bogKontekst}>
               <BlockList
                 key={locKey}
                 blocks={currentBlocks}
@@ -611,6 +678,7 @@ export default function EditorPage() {
                 elementer={activeDoc === 'A2'}
                 onAfsnitHjaelp={(id) => setHjaelp({ id, loc: locKey })}
               />
+              </BogKontekst.Provider>
               {hjaelpAfsnit && (
                 <AfsnitHjaelper
                   key={`${locKey}:${hjaelpOverskrift.id}`}

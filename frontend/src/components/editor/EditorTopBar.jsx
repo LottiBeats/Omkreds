@@ -41,7 +41,7 @@ export default function EditorTopBar({
   undo, onUndo, onRedo,
   activeDoc, hasSubdocs, busy,
   onPreview, onExportPdf, onExportZip, onExportWord, onIssue,
-  onHistory, onSaveAsTemplate, onImport,
+  onHistory, onSaveAsTemplate, onImport, onRegneark, antalArk = 0,
 }) {
   const meta = project.metadata ?? {}
   return (
@@ -66,6 +66,13 @@ export default function EditorTopBar({
           <Button variant="ghost" size="sm" icon onClick={onUndo} disabled={!undo.canUndo} title="Fortryd (Ctrl+Z)" aria-label="Fortryd">↶</Button>
           <Button variant="ghost" size="sm" icon onClick={onRedo} disabled={!undo.canRedo} title="Annullér fortryd (Ctrl+Y)" aria-label="Annullér fortryd">↷</Button>
         </span>
+      )}
+
+      {onRegneark && (
+        <Button variant="ghost" size="sm" onClick={onRegneark}
+                title="Projektets regnearksbog i fuld skærm — alle ark med faner, som i Excel">
+          <span className="ed-xl">XL</span> Regneark{antalArk ? ` (${antalArk})` : ''}
+        </Button>
       )}
 
       <Menu align="right" trigger={() => <Button variant="ghost" size="sm" title="Projekt">Projekt ▾</Button>}>

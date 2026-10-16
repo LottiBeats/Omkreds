@@ -55,3 +55,84 @@
   position: absolute; inset: 0; width: 100%; height: 100%; border: 0; outline: 2px solid #217346; outline-offset: -2px;
   padding: 0 5px; font: inherit; background: #fff; box-sizing: border-box;
 }
+
+/* ── Regnearksbogen i fuld skærm (components/bog/RegnearksBog.jsx) ── */
+.rkb {
+  position: fixed; inset: 0; z-index: 1000; background: #fff; display: flex; flex-direction: column;
+  gap: 6px; padding: 8px 12px 0; font-family: var(--font-sans, inherit);
+}
+.rkb-top { display: flex; align-items: center; gap: 10px; }
+.rkb-logo { background: #217346; color: #fff; font-weight: 700; font-size: 11px; padding: 3px 5px; border-radius: 3px; }
+.rkb-titel { font-size: 14px; color: #14532d; }
+.rkb-fyld { flex: 1; }
+.rkb-brug { font-size: 12px; color: var(--muted, #78716c); }
+.rkb-luk { border: 1px solid #c6c6c6; background: #fff; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 13px; }
+.rkb-luk:hover { background: #f3f3f3; }
+.rkb .rk-bar button.rkb-on { background: #d3e5d9; border-color: #217346; color: #0b4e2b; }
+.rkb-gaatil { border: 0; outline: none; font-family: inherit; background: transparent; }
+.rkb-gaatil:focus { background: #f4f8f4; }
+.rkb-peg { font-size: 12px; background: #fff7e6; border: 1px solid #f3d3a4; color: #92400e; padding: 4px 10px; border-radius: 4px; }
+.rkb-besked { font-size: 12px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+.rkb-midt { flex: 1; min-height: 0; display: flex; gap: 8px; }
+.rkb .rkb-gitter { flex: 1; max-height: none; height: 100%; }
+/* Overskriftsrækken og kolonne A står fast, når man ruller */
+.rkb-gitter tr.rk-hoved td { position: sticky; top: 21px; z-index: 1; }
+.rkb-gitter td:nth-child(2) { position: sticky; left: 38px; z-index: 1; background: #fff; }
+.rkb-gitter tr.rk-hoved td:nth-child(2) { z-index: 2; background: #f7f7f5; }
+.rkb-gitter td.rk-mark:nth-child(2) { background: #e6f2ea; }
+.rkb-gitter td.rkb-fyldes { outline: 1px dashed #217346; outline-offset: -2px; background: #f1f8f3; }
+.rkb-gitter td.rkb-forg { background: #e0ecff; box-shadow: inset 0 0 0 1px #3b82f6; }
+.rkb-haandtag {
+  position: absolute; right: -4px; bottom: -4px; width: 7px; height: 7px; background: #217346;
+  border: 1px solid #fff; cursor: crosshair; z-index: 3;
+}
+.rkb-gitter td { overflow: visible; }
+.rkb-gitter td:not(.rk-akt) { overflow: hidden; }
+.rkb-spor { width: 230px; border: 1px solid #c6c6c6; border-radius: 4px; padding: 8px 10px; overflow: auto; font-size: 12.5px; }
+.rkb-spor h4 { margin: 0 0 8px; font-size: 13px; color: #14532d; }
+.rkb-spor-del { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; align-items: center; }
+.rkb-spor-del > span { width: 100%; font-weight: 600; color: #555; }
+.rkb-spor-del button { border: 1px solid #d4d4d4; background: #fff; border-radius: 3px; padding: 1px 6px; cursor: pointer; font-family: var(--font-mono, monospace); font-size: 12px; }
+.rkb-spor-del button:hover { border-color: #217346; }
+.rkb-spor-del em { color: #999; font-size: 12px; }
+.rkb-tom { flex: 1; display: grid; place-content: center; gap: 10px; text-align: center; color: #666; }
+.rkb-tom button { padding: 6px 14px; border: 1px solid #217346; color: #217346; background: #fff; border-radius: 4px; cursor: pointer; }
+
+.rkb-faner { display: flex; align-items: stretch; gap: 2px; border-top: 1px solid #c6c6c6; padding: 0 0 6px; min-height: 32px; overflow-x: auto; }
+.rkb-fane {
+  padding: 5px 14px; font-size: 12.5px; cursor: pointer; border: 1px solid transparent; border-top: 0;
+  border-radius: 0 0 4px 4px; color: #333; white-space: nowrap; user-select: none;
+}
+.rkb-fane:hover { background: #f3f3f3; }
+.rkb-fane.rkb-aktiv { background: #fff; border-color: #c6c6c6; color: #217346; font-weight: 600; box-shadow: inset 0 2px 0 #217346; }
+.rkb-fane.rkb-kilde { font-style: italic; }
+.rkb-fanenavn { width: 130px; font: inherit; padding: 0 4px; border: 1px solid #217346; outline: none; }
+.rkb-ny { border: 0; background: transparent; font-size: 18px; color: #217346; cursor: pointer; padding: 0 10px; }
+.rkb-nyskab { border: 1px solid #e2e2e2; border-radius: 4px; font-size: 12px; margin: 4px 0; color: #555; background: #fff; }
+.rkb-fejltekst { color: #b91c1c; font-size: 12px; align-self: center; margin-right: 10px; }
+.rkb-fejlknap { border: 0; background: transparent; font-size: 12px; color: #15803d; cursor: pointer; padding: 0 8px; }
+.rkb-fejlknap.rkb-harfejl { color: #b91c1c; font-weight: 600; }
+.rkb-menu {
+  position: fixed; z-index: 1001; background: #fff; border: 1px solid #c6c6c6; border-radius: 4px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.15); display: grid; padding: 4px 0; min-width: 150px;
+}
+.rkb-menu button { border: 0; background: transparent; text-align: left; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+.rkb-menu button:hover { background: #f3f3f3; }
+.rkb-menu .rkb-slet { color: #b91c1c; }
+
+/* ── Visning af et ark i rapporten (ark_visning) ── */
+.av { display: grid; gap: 6px; }
+.av-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+.av-top select, .av-top input { border: 1px solid var(--line, #e4dfda); border-radius: 4px; padding: 3px 6px; font-size: 12px; background: #fff; }
+.av-omr { width: 90px; font-family: var(--font-mono, monospace); }
+.av-omr.av-ugyldig { border-color: #dc2626; }
+.av-titel { flex: 1; min-width: 160px; }
+.av-aabn { border: 1px solid #217346 !important; color: #fff; background: #217346 !important; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+.av-caption { font-size: 12px; color: #555; font-style: italic; }
+.av-tabel { border-collapse: collapse; font-size: 12px; table-layout: fixed; width: 100%; cursor: zoom-in; }
+.av-tabel td { border: 1px solid #e2e2e2; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.av-tabel td.av-tal { text-align: right; font-variant-numeric: tabular-nums; }
+.av-tabel td.av-fed { font-weight: 700; }
+.av-tabel td.av-fejl { color: #b91c1c; text-align: center; }
+.av-tabel tr.av-hoved td { background: #f7f7f5; font-weight: 600; border-bottom: 1px solid #b9b9b9; }
+.av-tom { font-size: 12.5px; color: var(--muted, #78716c); padding: 10px; border: 1px dashed var(--line, #e4dfda); border-radius: 4px; }

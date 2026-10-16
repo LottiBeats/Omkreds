@@ -16,8 +16,9 @@ export const FORMAT = 'omkreds-fem'
 export const VERSION = 1
 export const FILTYPE = 'omkfem'
 
-export function lavModel(metadata, blocks) {
-  return { format: FORMAT, version: VERSION, gemt: new Date().toISOString(), metadata, blocks }
+export function lavModel(metadata, blocks, bog = null) {
+  return { format: FORMAT, version: VERSION, gemt: new Date().toISOString(), metadata, blocks,
+           ...(bog?.ark?.length ? { bog } : {}) }
 }
 
 export function laesModel(tekst) {
@@ -31,7 +32,8 @@ export function laesModel(tekst) {
     throw new Error('Filen er ikke en Omkreds FEM-model.')
   if ((m.version ?? 1) > VERSION)
     throw new Error('Filen er gemt med en nyere version af programmet. Opdatér programmet for at åbne den.')
-  return { metadata: m.metadata ?? {}, blocks: m.blocks }
+  // Regnearksbogen (lib/regnearksbog.js) ligger ved siden af blokkene.
+  return { metadata: m.metadata ?? {}, blocks: m.blocks, bog: Array.isArray(m.bog?.ark) ? m.bog : { ark: [] } }
 }
 
 const tauri = () => (typeof window !== 'undefined' ? window.__TAURI__ : null)

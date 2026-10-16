@@ -17,7 +17,10 @@ import HeadingBlock from '../blocks/HeadingBlock.jsx'
 import TextBlock from '../blocks/TextBlock.jsx'
 import CustomCalcBlock from '../blocks/CustomCalcBlock.jsx'
 import { EgenvaegtModul, SneModul } from './RapportModuler.jsx'
-import RegnearkBlock from '../blocks/RegnearkBlock.jsx'
+import ArkVisningBlock from '../bog/ArkVisningBlock.jsx'
+import RegnearksBog from '../bog/RegnearksBog.jsx'
+import { BogKontekst } from '../bog/BogKontekst.js'
+import { medArk, nytArk } from '../../lib/regnearksbog.js'
 import { overskriftsnumre } from '../../lib/indhold.js'
 import { hasCalcResult, isStaleResult } from '../../lib/calcState.js'
 import { RAPPORT_TYPER, REDIGERBARE, nyBlok, indsaet, flyt, fjern, erFem, femHarModel, femIRapport } from '../../lib/rapport.js'
@@ -69,8 +72,23 @@ function FemKort({ blok, onVisFem, onSkift }) {
   )
 }
 
-export default function RapportView({ blocks, onChange, onVisFem, smal = false }) {
+export default function RapportView({ blocks, onChange, onVisFem, smal = false, bog = { ark: [] }, onBog }) {
   const [valgt, setValgt] = useState(null)
+  // Regnearksbogen i fuld skærm: { arkId, celle } eller null.
+  const [bogAaben, setBogAaben] = useState(null)
+  const bogRef = useRef(bog)
+  bogRef.current = bog
+  const bogKontekst = useMemo(() => ({
+    bog,
+    aabn: onBog ? (arkId = null, celle = null) => setBogAaben({ arkId, celle }) : null,
+    nytArk: onBog ? () => {
+      const a = nytArk(bogRef.current)
+      const ny = medArk(bogRef.current, [...bogRef.current.ark, a])
+      bogRef.current = ny
+      onBog(ny)
+      return a.id
+    } : null,
+  }), [bog, onBog])
   const numre = useMemo(() => overskriftsnumre(blocks), [blocks])
   const refs = useRef({})
 
@@ -86,20 +104,16 @@ export default function RapportView({ blocks, onChange, onVisFem, smal = false }
   }
 
   const saetInd = (i, type) => {
-    const b = nyBlok(type, blocks)
+    const b = nyBlok(type)
     onChange(indsaet(blocks, i, b), true)
     setValgt(b.id)
     fokus(b.id)
   }
   const opdater = (nb) => onChange(blocks.map(b => (b.id === nb.id ? nb : b)), false)
-  // Regnearkene opdaterer flere ark på én gang (henvisninger mellem ark).
-  const opdaterFlere = (par) => {
-    const m = new Map(par)
-    onChange(blocks.map(b => m.get(b.id) ?? b), false)
-  }
   const tom = !blocks.some(b => !erFem(b))
 
   return (
+    <BogKontekst.Provider value={bogKontekst}>
     <div className={'rp' + (smal ? ' rp-smal' : '')}>
       <div className="rp-side">
         {tom && (
@@ -141,9 +155,7 @@ export default function RapportView({ blocks, onChange, onVisFem, smal = false }
               {b.type === 'custom_calc' && <CustomCalcBlock block={b} onChange={opdater} />}
               {b.type === 'rapport_egenvaegt' && <EgenvaegtModul block={b} onChange={opdater} />}
               {b.type === 'rapport_sne' && <SneModul block={b} onChange={opdater} />}
-              {b.type === 'regneark' && (
-                <RegnearkBlock block={b} onChange={opdater} blocks={blocks} onUpdateBlock={opdaterFlere} />
-              )}
+              {b.type === 'ark_visning' && <ArkVisningBlock block={b} onChange={opdater} />}
               {erFem(b) && (
                 <FemKort blok={b} onVisFem={onVisFem}
                          onSkift={(med) => onChange(blocks.map(x => (x.id === b.id ? { ...x, iRapport: med } : x)), true)} />
@@ -157,6 +169,12 @@ export default function RapportView({ blocks, onChange, onVisFem, smal = false }
 
         <IndsaetLinje altid onVaelg={(t) => saetInd(blocks.length, t)} />
       </div>
+      {bogAaben && onBog && (
+        <RegnearksBog bog={bog} onBog={onBog} startArk={bogAaben.arkId} startCelle={bogAaben.celle}
+                      visninger={(id) => blocks.filter(b => b.type === 'ark_visning' && b.data?.ark === id).map(() => ({ sted: 'rapporten' }))}
+                      onLuk={() => setBogAaben(null)} />
+      )}
     </div>
+    </BogKontekst.Provider>
   )
 }

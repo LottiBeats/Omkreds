@@ -754,8 +754,8 @@ def build_word(project: dict, blocks: list, doc_id: str = "") -> bytes:
 
     # Expand project-generated blocks (document list) — same rule as the PDF:
     # they read the project at render time and are never stored.
-    from pdf_builder import _expand_generated_blocks
-    expanded_blocks = _expand_generated_blocks(blocks, project)
+    from pdf_builder import _expand_generated_blocks, udfold_arkvisninger
+    expanded_blocks = _expand_generated_blocks(udfold_arkvisninger(blocks, project.get("bog")), project)
 
     # Number headings
     numbered_blocks = nummerer_figurer(_number_headings(expanded_blocks))
