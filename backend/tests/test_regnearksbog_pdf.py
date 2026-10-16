@@ -56,3 +56,12 @@ def test_pdf_og_word_viser_arket():
     w = build_word(projekt, blokke, doc_id="A2")
     t = "\n".join(c.text for tb in d.Document(io.BytesIO(w)).tables for r in tb.rows for c in r.cells)
     assert "59,92" in t and "29,96" not in t
+
+
+def test_raekketyper_som_i_frontend():
+    from pdf_builder import _regneark_raekketyper, _celle_art
+    rows = [["Lag", "G"], ["TAG — pr. m²", ""], ["Tegl", "0,5"], ["Σ tag", "0,5"], ["", ""], ["RESULTATER", "Værdi"], ["Noter", ""], ["NOTE", ""]]
+    fed = {"A2": True, "A6": True, "B6": True}
+    art = [[_celle_art(c) for c in r] for r in rows]
+    assert _regneark_raekketyper(rows, fed, art, True) == ["hoved", "sektion", "", "sum", "tom", "hoved", "", "sektion"]
+    assert [_celle_art(x) for x in ["=A1", "1,5", "Lag", "", "−3"]] == ["f", "i", "t", "", "i"]

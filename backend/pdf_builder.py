@@ -16,6 +16,7 @@ and calc_core expect: {"type": "section"/"text"/"handcalc"/"check"/...}
 This module converts the v2 blocks into that format and calls generate_pdf_holst.
 """
 
+import re
 import rich_text
 import base64
 import os
@@ -1023,6 +1024,147 @@ def _laes_omraade(tekst: str):
     return min(fra[0], til[0]), min(fra[1], til[1]), max(fra[0], til[0]), max(fra[1], til[1])
 
 
+def _adresse(r: int, k: int) -> str:
+    navn, k1 = "", k + 1
+    while k1:
+        k1, rest = divmod(k1 - 1, 26)
+        navn = chr(65 + rest) + navn
+    return f"{navn}{r + 1}"
+
+
+_TAL = re.compile(r"[-+−]?\d{1,3}(\.\d{3})*(,\d+)?|[-+−]?\d+([.,]\d+)?([eE][-+]?\d+)?")
+
+
+def _er_tal(t: str) -> bool:
+    return bool(_TAL.fullmatch(str(t).strip().replace("\u00a0", "").replace(" ", "")))
+
+
+def _celle_art(raw) -> str:
+    """'f' formel, 'i' indtastet tal (inddata), 't' tekst, '' tom (som celleArt i regnearksbog.js)."""
+    t = str(raw if raw is not None else "").strip()
+    if not t:
+        return ""
+    if t.startswith("=") and len(t) > 1:
+        return "f"
+    return "i" if _er_tal(t) else "t"
+
+
+def _regneark_raekketyper(rows, fed, art, overskrift) -> list:
+    """Rækkernes rolle — samme regler som raekkeTyper i frontend/src/lib/regnearksbog.js."""
+    typer = []
+    for i, r in enumerate(rows):
+        fyldte = [k for k, c in enumerate(r) if str(c).strip()]
+        if i == 0 and overskrift:
+            typer.append("hoved"); continue
+        if not fyldte:
+            typer.append("tom"); continue
+        forste = str(r[fyldte[0]]).strip()
+        if fyldte[0] <= 1 and forste.startswith("Σ"):
+            typer.append("sum"); continue
+        alle_fede = all(fed.get(_adresse(i, k)) for k in fyldte)
+        versal = len(forste) > 3 and forste == forste.upper() and re.search(r"[A-ZÆØÅ]", forste)
+        if len(fyldte) == 1 and fyldte[0] == 0 and art[i][0] == "t" and (fed.get(_adresse(i, 0)) or versal):
+            typer.append("sektion"); continue
+        efter_tom = i > 0 and not any(str(c).strip() for c in rows[i - 1])
+        if len(fyldte) > 1 and alle_fede and efter_tom and all(art[i][k] == "t" for k in fyldte):
+            typer.append("hoved"); continue
+        typer.append("")
+    return typer
+
+
+def _regneark_tabel(block: dict) -> list:
+    """Et regneark i PDF'en, sat op som et ingeniør-Excel-ark: ramme om
+    tabellen, streg under overskriften, Σ-rækker med streg over, sektioner
+    understreget, indtastede tal (inddata) i blåt og formler i sort."""
+    t = regneark_som_tabel(block)["data"]
+    rows = t["rows"]
+    if not rows:
+        return []
+    d = block.get("data") or {}
+    n = len(rows[0])
+    celler = d.get("celler") or []
+    art = [[_celle_art(celler[r][k] if r < len(celler) and k < len(celler[r]) else "") for k in range(n)]
+           for r in range(len(rows))]
+    fed0 = d.get("fed") or {}
+    typer = _regneark_raekketyper(rows, fed0, art, t["has_header"])
+    # Flere tomme rækker i træk (fx ubrugte lastområder) bliver til én.
+    behold = [i for i in range(len(rows)) if not (typer[i] == "tom" and (i == 0 or typer[i - 1] == "tom"))]
+    while behold and typer[behold[-1]] == "tom":
+        behold.pop()
+    rows, art, typer = [rows[i] for i in behold], [art[i] for i in behold], [typer[i] for i in behold]
+    fed = {_adresse(ny, k): True for ny, i in enumerate(behold) for k in range(n) if fed0.get(_adresse(i, k))}
+
+    font_pt = 8 if n <= 6 else 7 if n <= 9 else 6 if n <= 14 else 5
+    MORK = rl_colors.HexColor("#1f2937")
+    LYS = rl_colors.HexColor("#e5e5e5")
+    BLAA = "#1d4ed8"
+    TOTAL_MM = 170
+    bredder = t.get("col_widths") or [100.0 / n] * n
+    col_w = [(w / sum(bredder)) * TOTAL_MM * mm for w in bredder]
+
+    def stil(navn, bold=False, hoejre=False, farve="#111111"):
+        # Tal brydes ikke midt i ("6,2 | 5"); de står højrestillet på én linje.
+        return ParagraphStyle(navn, fontSize=font_pt, leading=font_pt + 2.2,
+                              fontName="Plex-SemiBold" if bold else "Plex",
+                              textColor=rl_colors.HexColor(farve), alignment=2 if hoejre else 0,
+                              splitLongWords=0 if hoejre else 1)
+
+    # Tekst løber ud over tomme celler til højre, som i Excel (ingen lodrette
+    # streger, så det ses ikke — men en lang note bliver ikke presset ned i en
+    # smal kolonne).
+    spans = []
+    for i, r in enumerate(rows):
+        for k, c in enumerate(r):
+            if not str(c).strip() or _er_tal(c) or art[i][k] == "i":
+                continue
+            j = k
+            while j + 1 < n and not str(r[j + 1]).strip():
+                j += 1
+            if j > k:
+                spans.append((i, k, j))
+    rl_rows = []
+    for i, r in enumerate(rows):
+        raek = []
+        for k, c in enumerate(r):
+            tekst = _pdf(c)
+            tal = _er_tal(c)
+            bold = typer[i] in ("hoved", "sektion", "sum") or bool(fed.get(_adresse(i, k)))
+            farve = BLAA if art[i][k] == "i" and tal and typer[i] != "hoved" else (
+                "#b91c1c" if str(c).startswith("#") else "#111111")
+            if typer[i] == "sektion" and k == 0:
+                tekst = f"<u>{tekst}</u>"
+            raek.append(Paragraph(tekst, stil(f"rk{i}_{k}", bold, tal, farve)))
+        rl_rows.append(raek)
+
+    cmds = [
+        ("BOX", (0, 0), (-1, -1), 1.1, MORK),
+        ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]
+    for i, ty in enumerate(typer):
+        if ty == "hoved":
+            cmds += [("LINEBELOW", (0, i), (-1, i), 1.0, MORK), ("VALIGN", (0, i), (-1, i), "BOTTOM")]
+        elif ty == "sum":
+            cmds.append(("LINEABOVE", (0, i), (-1, i), 0.9, MORK))
+        elif ty == "sektion":
+            cmds.append(("TOPPADDING", (0, i), (-1, i), 5))
+        elif ty == "tom":
+            cmds += [("TOPPADDING", (0, i), (-1, i), 0), ("BOTTOMPADDING", (0, i), (-1, i), 0)]
+        elif i + 1 < len(typer) and typer[i + 1] not in ("sum", "tom", "sektion", "hoved"):
+            cmds.append(("LINEBELOW", (0, i), (-1, i), 0.3, LYS))
+    cmds += [("SPAN", (k, i), (j, i)) for i, k, j in spans]
+    tbl = Table(rl_rows, colWidths=col_w, repeatRows=1 if typer and typer[0] == "hoved" else 0,
+                rowHeights=[(2.2 * mm if ty == "tom" else None) for ty in typer])
+    tbl.setStyle(TableStyle(cmds))
+    ud = []
+    if t["caption"]:
+        ud.append(Paragraph(_pdf(t["caption"]), ParagraphStyle(
+            "rkCap", fontSize=8, fontName="Plex-Italic", textColor=rl_colors.HexColor("#555555"), leading=10, spaceAfter=2)))
+    ud += [tbl, Spacer(1, 4 * mm)]
+    return ud
+
+
 def udfold_arkvisninger(blocks: list, bog) -> list:
     """Blokkene med hver ark_visning erstattet af arket fra projektets bog.
 
@@ -1041,18 +1183,23 @@ def udfold_arkvisninger(blocks: list, bog) -> list:
         if not a:
             continue
         vist = [list(r) for r in (a.get("_vist") or [])]
+        celler = [list(r) for r in (a.get("celler") or [])]
         bredder = list(a.get("bredder") or [])
+        fed = dict(a.get("fed") or {})
         overskrift = a.get("overskrift", True) is not False
         o = _laes_omraade(d.get("omraade"))
         if o:
             r0, k0, r1, k1 = o
-            vist = [[(vist[r][k] if r < len(vist) and k < len(vist[r]) else "") for k in range(k0, k1 + 1)]
-                    for r in range(r0, r1 + 1)]
+            klip = lambda m: [[(m[r][k] if r < len(m) and k < len(m[r]) else "") for k in range(k0, k1 + 1)]
+                              for r in range(r0, r1 + 1)]
+            vist, celler = klip(vist), klip(celler)
             bredder = [(bredder[k] if k < len(bredder) and bredder[k] else (150 if k == 0 else 92)) for k in range(k0, k1 + 1)]
+            fed = {_adresse(r - r0, k - k0): True for r in range(r0, r1 + 1) for k in range(k0, k1 + 1)
+                   if fed.get(_adresse(r, k))}
             overskrift = overskrift and r0 == 0
         ud.append({**b, "type": "regneark", "data": {
             "titel": d.get("titel") or a.get("titel") or "", "overskrift": overskrift,
-            "_vist": vist, "bredder": bredder,
+            "_vist": vist, "celler": celler, "bredder": bredder, "fed": fed,
         }})
     return ud
 
@@ -1060,7 +1207,7 @@ def udfold_arkvisninger(blocks: list, bog) -> list:
 def _convert_block(block: dict, tmp_files: list) -> list:
     t = block.get("type", "")
     if t == "regneark":
-        return _table_block(regneark_som_tabel(block))
+        return _regneark_tabel(block)
     if t == "heading":
         return _heading(block)
     if t == "text":
