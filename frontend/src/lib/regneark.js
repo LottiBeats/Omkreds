@@ -202,6 +202,9 @@ const FUNK = {
     return erFejl(i) ? i : i + 1
   },
   HVIS_FEJL: (v, alt) => (erFejl(v) ? alt : v),
+  // SAND() og FALSK() — sådan gemmer Excel og LibreOffice ofte SAND/FALSK
+  SAND: () => true,
+  FALSK: () => false,
   // Summer pr. ID: =SUMHVIS(Elementer!A2:A40;"J1.D503";Elementer!L2:L40)
   SUMHVIS: (omr, kriterie, sumOmr) => {
     const o = tabel(omr).flat(), s = sumOmr === undefined ? o : tabel(sumOmr).flat()
@@ -272,9 +275,9 @@ const ALIAS = {
   MAX: 'MAKS', AVERAGE: 'MIDDEL', COUNT: 'ANTAL', SUMPRODUCT: 'SUMPRODUKT', IF: 'HVIS', AND: 'OG',
   OR: 'ELLER', NOT: 'IKKE', ROUND: 'AFRUND', ROUNDUP: 'RUND_OP', ROUNDDOWN: 'RUND_NED', SQRT: 'KVROD',
   POWER: 'POTENS', EXP: 'EKSP', ASIN: 'ARCSIN', ACOS: 'ARCCOS', ATAN: 'ARCTAN', RADIANS: 'RADIANER',
-  DEGREES: 'GRADER', 'AFRUND.OP': 'RUND_OP', 'AFRUND.NED': 'RUND_NED',
+  DEGREES: 'GRADER', 'AFRUND.OP': 'RUND_OP', 'AFRUND.NED': 'RUND_NED', 'RUND.OP': 'RUND_OP', 'RUND.NED': 'RUND_NED',
   VLOOKUP: 'LOPSLAG', HLOOKUP: 'VOPSLAG', XLOOKUP: 'XOPSLAG', INDEX: 'INDEKS', MATCH: 'SAMMENLIGN',
-  'HVIS.FEJL': 'HVIS_FEJL', IFERROR: 'HVIS_FEJL', SUMIF: 'SUMHVIS', 'ANTAL.HVIS': 'ANTAL_HVIS', COUNTIF: 'ANTAL_HVIS',
+  'HVIS.FEJL': 'HVIS_FEJL', IFERROR: 'HVIS_FEJL', TRUE: 'SAND', FALSE: 'FALSK', SUMIF: 'SUMHVIS', 'ANTAL.HVIS': 'ANTAL_HVIS', COUNTIF: 'ANTAL_HVIS',
 }
 export const FUNKTIONER = Object.keys(FUNK)
 

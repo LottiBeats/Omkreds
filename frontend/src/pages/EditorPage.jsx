@@ -630,6 +630,7 @@ export default function EditorPage() {
             startCelle={bogAaben.celle}
             visninger={visningerFor}
             koblinger={koblingerFor}
+            filnavn={`${fileBase()}_regneark`}
             onLuk={() => setBogAaben(null)}
           />
         </Suspense>

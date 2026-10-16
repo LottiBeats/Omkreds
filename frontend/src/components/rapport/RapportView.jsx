@@ -21,6 +21,7 @@ import ArkVisningBlock from '../bog/ArkVisningBlock.jsx'
 import RegnearksBog from '../bog/RegnearksBog.jsx'
 import { BogKontekst } from '../bog/BogKontekst.js'
 import { medArk, nytArk } from '../../lib/regnearksbog.js'
+import { gemBlob } from '../../lib/femFile.js'
 import { overskriftsnumre } from '../../lib/indhold.js'
 import { hasCalcResult, isStaleResult } from '../../lib/calcState.js'
 import { RAPPORT_TYPER, REDIGERBARE, nyBlok, indsaet, flyt, fjern, erFem, femHarModel, femIRapport } from '../../lib/rapport.js'
@@ -172,6 +173,7 @@ export default function RapportView({ blocks, onChange, onVisFem, smal = false, 
       {bogAaben && onBog && (
         <RegnearksBog bog={bog} onBog={onBog} startArk={bogAaben.arkId} startCelle={bogAaben.celle}
                       visninger={(id) => blocks.filter(b => b.type === 'ark_visning' && b.data?.ark === id).map(() => ({ sted: 'rapporten' }))}
+                      gemFil={(blob, navn) => gemBlob(blob, navn.replace(/\.xlsx$/, ''), 'xlsx', 'Excel')}
                       onLuk={() => setBogAaben(null)} />
       )}
     </div>

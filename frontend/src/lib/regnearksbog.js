@@ -316,15 +316,21 @@ export function udgange(bog) {
 /**
  * Sæt en skabelon ind i bogen. skabelon = { ark: [{ navn, celler, … }],
  * navne: { n: { ark: arknavn, celle, enhed } } }. Et arknavn eller et
- * cellenavn, der allerede er brugt, får et nyt (Laster → Laster2, q_p →
+ * cellenavn, der allerede er brugt, får et nyt (Laster → Laster (2), q_p →
  * q_p_2), og skabelonens formler skrives om med. Returnerer { bog, idFor:
  * Map(arknavn i skabelonen → id), navnFor: Map(navn i skabelonen → navn i bogen) }.
  */
 export function indsaetSkabelon(bog, skabelon) {
   const brugteArk = bog.ark.map(a => a.navn)
   const arkNavn = new Map()
+  // Et navn, der er brugt, får (2), (3) … — "Stabilitet V1 (2)", ikke "Stabilitet V2".
+  const ledigt = (navn) => {
+    const sm = new Set(brugteArk.map(n => n.toLowerCase()))
+    if (!sm.has(navn.toLowerCase())) return navn
+    for (let i = 2; ; i++) { const n = `${navn} (${i})`; if (!sm.has(n.toLowerCase())) return n }
+  }
   for (const a of skabelon.ark ?? []) {
-    const ny = ledigtNavn(brugteArk, a.navn)
+    const ny = ledigt(a.navn)
     brugteArk.push(ny)
     arkNavn.set(a.navn, ny)
   }
