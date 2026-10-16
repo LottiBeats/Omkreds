@@ -163,3 +163,44 @@
 .rkb-navn-s { grid-column: 1 / -1; font-size: 11px; color: #888; }
 .av-rul { overflow-x: auto; }
 .rkb-besked.rkb-besked-ok { background: #f1f8f3; border-color: #cfe5d6; color: #14532d; }
+
+/* ── Rækkernes rolle i gitteret (samme regler som i rapporten) ── */
+.rkb-gitter tr.rkb-t-sektion td { background: #eaf3ed; font-weight: 700; color: #14532d; border-top: 1px solid #c9dfd0; }
+.rkb-gitter tr.rkb-t-sektion td.rk-mark { background: #d8eadd; }
+.rkb-gitter tr.rkb-t-hoved td { font-weight: 600; border-bottom: 2px solid #1f2937; background: #fafaf8; }
+.rkb-gitter tr.rkb-t-sum td { font-weight: 700; border-top: 1.5px solid #1f2937; background: #fcfcfa; }
+.rkb-gitter td.rk-akt { z-index: 2; }
+.rkb-vaelg { height: 24px; }
+
+/* ── Forklar celle ── */
+.rkb-forklar { width: 300px; display: flex; flex-direction: column; gap: 4px; }
+.rkb-fk-adr { font-family: var(--font-mono, monospace); font-size: 11.5px; color: #777; }
+.rkb-forklar h4 { margin: 0; font-size: 13.5px; line-height: 1.35; color: #14532d; }
+.rkb-fk-v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; color: #111; margin: 2px 0 4px; }
+.rkb-fk-note { margin: 0 0 6px; color: #555; font-size: 12px; }
+.rkb-fk-del { display: grid; gap: 4px; margin-top: 8px; }
+.rkb-fk-del > span { font-weight: 600; color: #555; font-size: 12px; }
+.rkb-fk-del em { color: #999; font-size: 12px; }
+.rkb-fk-tal { font-size: 14px; background: #f1f8f3; border: 1px solid #cfe5d6; border-radius: 4px; padding: 5px 8px; color: #111; white-space: pre-wrap; word-break: break-word; }
+.rkb-fk-formel { font-size: 11.5px; color: #888; padding: 0 2px; word-break: break-all; }
+.rkb-fk-ref {
+  display: grid; grid-template-columns: auto 1fr; gap: 0 8px; text-align: left; border: 1px solid #e5e5e5; background: #fff;
+  border-radius: 4px; padding: 4px 7px; cursor: pointer; font-size: 12px;
+}
+.rkb-fk-ref:hover { border-color: #217346; background: #f7fbf8; }
+.rkb-fk-r { font-family: var(--font-mono, monospace); color: #217346; }
+.rkb-fk-rv { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.rkb-fk-re { grid-column: 1 / -1; color: #555; font-size: 11.5px; line-height: 1.3; }
+.rkb-gitter:focus, .rkb-gitter:focus-visible { outline: none; }
+.rkb-gitter td:has(> .rkb-ud) { overflow: visible; }
+.rkb-ud { position: absolute; left: 5px; top: 0; bottom: 0; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 1; pointer-events: none; }
+/* Den faste overskriftsrække ligger over alt, der ruller ind under den */
+.rkb-gitter tr.rk-hoved td { z-index: 4; }
+.rkb-gitter tr.rk-hoved td:nth-child(2) { z-index: 5; }
+.rkb-gitter tr.rk-hoved td.rk-akt { z-index: 6; }
+.rkb-gitter tr.rk-hoved td { top: 20px; box-shadow: 0 -4px 0 #f7f7f5; }
+.rkb-gitter tr.rk-hoved td { top: 18px; box-shadow: 0 -5px 0 #f7f7f5; }
+.rkb-gitter thead th { box-shadow: 0 -3px 0 #f3f3f3; }
+.rkb-gitter thead th { top: -1px; }
+.rkb-gitter tr.rk-hoved td { top: 17px; }
+.rkb-gitter tr.rk-hoved th { position: sticky; top: 17px; z-index: 6; box-shadow: 0 -5px 0 #f3f3f3; }

@@ -33,6 +33,9 @@ import {
 } from '../../lib/regnearksbog.js'
 import { SKABELONER } from '../../lib/regnearkSkabeloner.js'
 import { BOG_SKABELONER } from '../../lib/bogSkabeloner.js'
+import { forklar, brugtAf } from '../../lib/forklar.js'
+import { FYLD, fmtStil } from '../../lib/regnearkFormat.js'
+import { raekkeTyper, celleArt } from '../../lib/regnearksbog.js'
 import { bogTilXlsx, bogFraXlsx } from '../../api/client.js'
 import '../blocks/Regneark.css'
 
@@ -77,6 +80,7 @@ export default function RegnearksBog({
   const celler = d.celler ?? [['']]
   const dec = d.dec ?? {}
   const fed = d.fed ?? {}
+  const fmt = d.fmt ?? {}   // { A1: { fyld, ramme: { t, b, l, r }, kursiv, just } }
 
   // Alle ark regnet (rå værdier, til tal/fejl-farver og sporing)
   const vaerdierAlle = useMemo(() => regnBog(bog.ark.map(a => ({ navn: a.navn, celler: a.celler ?? [] })), navneOpslag(bog)), [bog])
@@ -126,7 +130,7 @@ export default function RegnearksBog({
   const [omdoeber, setOmdoeber] = useState(null)   // { id, navn, fejl }
   const [menu, setMenu] = useState(null)      // { id, x, y }
   const [gaaTil, setGaaTil] = useState(null)  // tekst i navnefeltet, mens man skriver
-  const [spor, setSpor] = useState(false)
+  const [spor, setSpor] = useState(true)   // "Forklar celle" står åben fra start
   const [visNavne, setVisNavne] = useState(false)
   const [navngiver, setNavngiver] = useState(null)   // { navn, enhed, fejl, celle }
   const [celleMenu, setCelleMenu] = useState(null)   // { x, y }
@@ -244,6 +248,46 @@ export default function RegnearksBog({
     skift({ ...d, fed: nyFed })
   }
 
+  // ── Formatering af markeringen (fyld, rammer, kursiv, justering) ──
+  function formater(fn) {
+    const ny = { ...fmt }
+    for (let r = omr.r0; r <= omr.r1; r++) for (let k = omr.k0; k <= omr.k1; k++) {
+      const a = adresse(r, k)
+      const f = fn({ ...(ny[a] ?? {}), ramme: { ...(ny[a]?.ramme ?? {}) } }, r, k)
+      const tomRamme = !Object.values(f.ramme ?? {}).some(Boolean)
+      if (tomRamme) delete f.ramme
+      if (!f.fyld) delete f.fyld
+      if (!f.kursiv) delete f.kursiv
+      if (!f.just) delete f.just
+      if (Object.keys(f).length) ny[a] = f; else delete ny[a]
+    }
+    skift({ ...d, fmt: ny })
+  }
+  const saetFyld = (farve) => formater(f => ({ ...f, fyld: farve || undefined }))
+  const saetJust = (j) => formater(f => ({ ...f, just: j || undefined }))
+  function saetKursiv() {
+    let alle = true
+    for (let r = omr.r0; r <= omr.r1; r++) for (let k = omr.k0; k <= omr.k1; k++) if (!fmt[adresse(r, k)]?.kursiv) alle = false
+    formater(f => ({ ...f, kursiv: !alle || undefined }))
+  }
+  function saetRamme(type) {
+    formater((f, r, k) => {
+      const ra = { ...f.ramme }
+      if (type === 'ingen') return { ...f, ramme: {} }
+      if (type === 'under') ra.b = 1
+      if (type === 'tyk_under') ra.b = 2
+      if (type === 'over') ra.t = 1
+      if (type === 'rundt') {
+        if (r === omr.r0) ra.t = 1
+        if (r === omr.r1) ra.b = 1
+        if (k === omr.k0) ra.l = 1
+        if (k === omr.k1) ra.r = 1
+      }
+      if (type === 'alle') { ra.t = ra.b = ra.l = ra.r = 1 }
+      return { ...f, ramme: ra }
+    })
+  }
+
   function decimaler(delta) {
     const nyDec = { ...dec }
     for (let r = omr.r0; r <= omr.r1; r++) for (let k = omr.k0; k <= omr.k1; k++) {
@@ -293,7 +337,7 @@ export default function RegnearksBog({
       }
       const bredder = [...(a.bredder ?? [])]
       if (akse === 'k' && bredder.length > fra) { if (n > 0) bredder.splice(fra, 0, ...Array(n).fill(STD_BREDDE)); else bredder.splice(fra, -n) }
-      return { ...a, celler: trim(c), bredder, dec: flytNoegler(dec, akse, fra, n), fed: flytNoegler(fed, akse, fra, n) }
+      return { ...a, celler: trim(c), bredder, dec: flytNoegler(dec, akse, fra, n), fed: flytNoegler(fed, akse, fra, n), fmt: flytNoegler(fmt, akse, fra, n) }
     })
     aendr(medArk({ ...bog, navne: flytNavne(bog.navne, d.id, akse, fra, n) }, nyeArk))
   }
@@ -486,6 +530,7 @@ export default function RegnearksBog({
     if (ctrl && (k === 'z' || k === 'Z')) { e.preventDefault(); e.stopPropagation(); fortryd(e.shiftKey); return }
     if (ctrl && (k === 'y' || k === 'Y')) { e.preventDefault(); e.stopPropagation(); fortryd(true); return }
     if (ctrl && (k === 'b' || k === 'B')) { e.preventDefault(); toggleFed(); return }
+    if (ctrl && (k === 'i' || k === 'I')) { e.preventDefault(); saetKursiv(); return }
     if (ctrl && (k === 'd' || k === 'D')) { e.preventDefault(); fyldNed(); return }
     if (ctrl && (k === 'r' || k === 'R')) { e.preventDefault(); fyldHoejre(); return }
     if (ctrl && (k === 'a' || k === 'A')) { e.preventDefault(); setAnker({ r: 0, k: 0 }); setAkt({ r: celler.length - 1, k: Math.max(...celler.map(r => r.length)) - 1 }); return }
@@ -576,6 +621,18 @@ export default function RegnearksBog({
     (fyldTil.r - omr.r1 >= fyldTil.k - omr.k1 && fyldTil.r > omr.r1 && r > omr.r1 && r <= fyldTil.r && k >= omr.k0 && k <= omr.k1)
     || (fyldTil.k - omr.k1 > fyldTil.r - omr.r1 && fyldTil.k > omr.k1 && k > omr.k1 && k <= fyldTil.k && r >= omr.r0 && r <= omr.r1))
 
+  // Rækkernes rolle (overskrift, sektion, Σ) — samme regler som i rapporten.
+  const rkTyper = useMemo(() => {
+    const vist = celler.map((rr, i) => rr.map((_, k) => formatVaerdi(vaerdier[i]?.[k], decFor(i, k))))
+    return raekkeTyper(vist, celler.map((rr, i) => rr.map((_, k) => !!fed[adresse(i, k)])), celler.map(rr => rr.map(celleArt)), d.overskrift !== false)
+  }, [d, vaerdier]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Forklar celle": hvad den aktive celle er og regner, og hvor den bruges.
+  const forklaring = useMemo(() => {
+    if (!spor || !ark) return null
+    return { ...forklar(bog, ark, akt.r, akt.k, vaerdierAlle), brugtAf: brugtAf(bog, ark.navn, akt.r, akt.k, vaerdierAlle) }
+  }, [spor, bog, ark, akt, vaerdierAlle])
+
   // Navngivne celler i det viste ark: adresse → "navn, navn"
   const celleNavne = useMemo(() => {
     const m = new Map()
@@ -616,6 +673,27 @@ export default function RegnearksBog({
       {ark && (
         <div className="rk-bar">
           <button type="button" title="Fed (Ctrl+B)" onClick={toggleFed}><b>F</b></button>
+          <button type="button" title="Kursiv (Ctrl+I)" onClick={saetKursiv}><i>K</i></button>
+          <select className="rk-skabelon rkb-vaelg" value="" title="Fyldfarve" onChange={e => { saetFyld(e.target.value === 'ingen' ? '' : e.target.value); e.target.value = '' }}>
+            <option value="">Fyld ▾</option>
+            {FYLD.map(([f, t]) => <option key={f} value={f}>{t}</option>)}
+          </select>
+          <select className="rk-skabelon rkb-vaelg" value="" title="Rammer" onChange={e => { saetRamme(e.target.value); e.target.value = '' }}>
+            <option value="">Ramme ▾</option>
+            <option value="under">Streg under</option>
+            <option value="tyk_under">Tyk streg under</option>
+            <option value="over">Streg over</option>
+            <option value="rundt">Ramme rundt om</option>
+            <option value="alle">Alle kanter</option>
+            <option value="ingen">Ingen rammer</option>
+          </select>
+          <select className="rk-skabelon rkb-vaelg" value="" title="Justering" onChange={e => { saetJust(e.target.value === 'auto' ? '' : e.target.value); e.target.value = '' }}>
+            <option value="">Justér ▾</option>
+            <option value="v">Venstre</option>
+            <option value="c">Midte</option>
+            <option value="h">Højre</option>
+            <option value="auto">Automatisk</option>
+          </select>
           <button type="button" title="Færre decimaler" onClick={() => decimaler(-1)}>,0←</button>
           <button type="button" title="Flere decimaler" onClick={() => decimaler(1)}>→,00</button>
           <span className="rk-sep" />
@@ -627,8 +705,8 @@ export default function RegnearksBog({
           <button type="button" title="Fyld nedad (Ctrl+D)" onClick={fyldNed}>Fyld ↓</button>
           <button type="button" title="Fyld til højre (Ctrl+R)" onClick={fyldHoejre}>Fyld →</button>
           <span className="rk-sep" />
-          <button type="button" className={spor ? 'rkb-on' : ''} title="Vis hvad cellen bygger på, og hvor den bruges"
-                  onClick={() => { setSpor(s => !s); setVisNavne(false) }}>Spor celle</button>
+          <button type="button" className={spor ? 'rkb-on' : ''} title="Forklar den markerede celle: hvad den er, hvad den regner med tal, og hvor den bruges"
+                  onClick={() => { setSpor(s => !s); setVisNavne(false) }}>Forklar celle</button>
           <button type="button" title="Giv cellen et navn, der kan bruges i formler og i beregningsblokkene" onClick={startNavngiv}>Navngiv celle</button>
           <button type="button" className={visNavne ? 'rkb-on' : ''} title="Bogens navngivne celler"
                   onClick={() => { setVisNavne(v => !v); setSpor(false) }}>Navne ({alleUdgange.length})</button>
@@ -693,7 +771,9 @@ export default function RegnearksBog({
         {ark ? (
           <div className="rk-gitter rkb-gitter" ref={rodRef} tabIndex={0} onKeyDown={tast}
                onCopy={e => kopier(e)} onCut={e => kopier(e, true)} onPaste={indsaet}>
-            <table>
+            {/* Fast bredde: table-layout: fixed virker kun med en bredde, og ellers
+                trækker en lang tekst (fx en note i A1) kolonnen ud. */}
+            <table style={{ width: 38 + Array.from({ length: antalK }, (_, k) => bredde(k)).reduce((x, y) => x + y, 0) }}>
               <colgroup>
                 <col style={{ width: 38 }} />
                 {Array.from({ length: antalK }, (_, k) => <col key={k} data-k={k} style={{ width: bredde(k) }} />)}
@@ -712,7 +792,7 @@ export default function RegnearksBog({
               </thead>
               <tbody>
                 {Array.from({ length: antalR }, (_, r) => (
-                  <tr key={r} className={r === 0 && d.overskrift !== false ? 'rk-hoved' : ''}>
+                  <tr key={r} className={[r === 0 && d.overskrift !== false ? 'rk-hoved' : '', rkTyper[r] ? `rkb-t-${rkTyper[r]}` : ''].join(' ')}>
                     <th className={r >= omr.r0 && r <= omr.r1 ? 'rk-on' : ''}
                         onMouseDown={e => { setAnker({ r, k: 0 }); setAkt({ r, k: antalK - 1 }); rodRef.current?.focus(); e.preventDefault() }}>
                       {r + 1}
@@ -728,7 +808,7 @@ export default function RegnearksBog({
                         erForg(r, k) ? 'rkb-forg' : '', celleNavne.has(adresse(r, k)) ? 'rkb-harnavn' : '',
                       ].join(' ')
                       return (
-                        <td key={k} data-c={`${r}-${k}`} className={cls} onMouseDown={e => musNed(r, k, e)} onMouseEnter={() => musOver(r, k)}
+                        <td key={k} data-c={`${r}-${k}`} className={cls} style={fmtStil(fmt[adresse(r, k)])} onMouseDown={e => musNed(r, k, e)} onMouseEnter={() => musOver(r, k)}
                             onDoubleClick={() => startRed(raw(r, k), 'ret')}
                             onContextMenu={e => { e.preventDefault(); if (!iOmr(r, k)) { setAnker(null); setAkt({ r, k }) } setCelleMenu({ x: e.clientX, y: e.clientY }) }}
                             title={[celleNavne.get(adresse(r, k)), String(raw(r, k)).startsWith('=') ? raw(r, k) : null].filter(Boolean).join('  ·  ') || undefined}>
@@ -737,7 +817,14 @@ export default function RegnearksBog({
                                      onChange={e => setRed({ ...red, tekst: e.target.value })}
                                      onKeyDown={tastRed}
                                      onBlur={() => { if (document.activeElement !== linjeRef.current && !red.tekst.startsWith('=')) gemRed() }} />
-                            : visTekst(r, k)}
+                            : (() => {
+                                // Tekst løber ud over tomme celler til højre, som i Excel.
+                                const t = visTekst(r, k)
+                                if (!t || typeof v === 'number' || raw(r, k + 1) !== '') return t
+                                let w = bredde(k)
+                                for (let j = k + 1; j < antalK && j < k + 12 && raw(r, j) === ''; j++) w += bredde(j)
+                                return <span className="rkb-ud" style={{ width: w - 10 }}>{t}</span>
+                              })()}
                           {r === omr.r1 && k === omr.k1 && !red && (
                             <span className="rkb-haandtag" title="Træk for at fylde"
                                   onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setTraek('fyld'); setFyldTil({ r, k }) }} />
@@ -772,19 +859,41 @@ export default function RegnearksBog({
             })}
           </aside>
         )}
-        {spor && sporing && (
-          <aside className="rkb-spor">
-            <h4>{ark.navn}!{adresse(akt.r, akt.k)}</h4>
-            <div className="rkb-spor-del">
-              <span>Bygger på</span>
-              {sporing.forg.length ? sporing.forg.map((f, i) => (
-                <button key={i} type="button" onClick={() => gaaTilAdresse(f.ref.ark ? f.tekst : `${arkPrefiks(ark.navn)}${f.tekst}`)}>{f.tekst}</button>
-              )) : <em>ingen henvisninger</em>}
-            </div>
-            <div className="rkb-spor-del">
+        {spor && forklaring && (
+          <aside className="rkb-spor rkb-forklar">
+            <div className="rkb-fk-adr">{ark.navn}!{forklaring.adresse}{celleNavne.get(forklaring.adresse) ? ` · ${celleNavne.get(forklaring.adresse)}` : ''}</div>
+            <h4>{forklaring.art === 'tom' ? 'Tom celle' : (forklaring.etiket || 'Celle')}</h4>
+            {forklaring.art !== 'tom' && forklaring.art !== 'tekst' && (
+              <div className={'rkb-fk-v' + (forklaring.fejl ? ' rkb-fejltekst' : '')}>{forklaring.vaerdi || '—'}</div>
+            )}
+            {forklaring.art === 'inddata' && <p className="rkb-fk-note">Indtastet værdi (inddata). Ret den her, så regnes alt, der bygger på den, om.</p>}
+            {forklaring.art === 'formel' && (
+              <>
+                <div className="rkb-fk-del">
+                  <span>Regnestykket</span>
+                  <code className="rkb-fk-tal">{forklaring.medTal}</code>
+                  <code className="rkb-fk-formel">{forklaring.formel}</code>
+                </div>
+                <div className="rkb-fk-del">
+                  <span>Bygger på</span>
+                  {forklaring.henvisninger.map((h, i) => (
+                    <button key={i} type="button" className="rkb-fk-ref" onClick={() => gaaTilAdresse(h.tekst.includes('!') ? h.tekst : `${arkPrefiks(ark.navn)}${h.tekst}`)}>
+                      <span className="rkb-fk-r">{h.tekst}</span>
+                      <span className="rkb-fk-rv">{h.vaerdi}</span>
+                      <span className="rkb-fk-re">{h.etiket || '—'}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="rkb-fk-del">
               <span>Bruges af</span>
-              {sporing.efterf.length ? sporing.efterf.map((f, i) => (
-                <button key={i} type="button" onClick={() => gaaTilAdresse(f.tekst.includes('!') ? f.tekst : `${arkPrefiks(ark.navn)}${f.tekst}`)}>{f.tekst}</button>
+              {forklaring.brugtAf.length ? forklaring.brugtAf.slice(0, 30).map((h, i) => (
+                <button key={i} type="button" className="rkb-fk-ref" onClick={() => gaaTilAdresse(h.tekst.includes('!') ? h.tekst : `${arkPrefiks(ark.navn)}${h.tekst}`)}>
+                  <span className="rkb-fk-r">{h.tekst}</span>
+                  <span className="rkb-fk-rv">{h.vaerdi}</span>
+                  <span className="rkb-fk-re">{h.etiket || '—'}</span>
+                </button>
               )) : <em>ingen celler</em>}
             </div>
           </aside>

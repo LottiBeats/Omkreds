@@ -103,3 +103,12 @@ def test_eksport_genberegnes_ens_i_libreoffice(tmp_path):
     assert math.isclose(ws["I2"].value, 6.55 * 1.2 * 3.6 / 4.2)
     assert math.isclose(ws["H3"].value, 6.55 * 1.2 * 3.6 / 4.2)
     assert math.isclose(ws["I3"].value, 1.42 + 1.5)
+
+
+def test_formatering_frem_og_tilbage():
+    bog = {"ark": [{"id": "a", "navn": "A", "celler": [["x", "1,5"]],
+                    "fmt": {"B1": {"fyld": "#fff2cc", "ramme": {"b": 2, "t": 1}, "kursiv": True, "just": "c"}}}]}
+    ws = load_workbook(io.BytesIO(bog_til_xlsx(bog)))["A"]
+    assert ws["B1"].fill.fgColor.rgb.endswith("FFF2CC") and ws["B1"].border.bottom.style == "medium"
+    assert ws["B1"].font.i and ws["B1"].alignment.horizontal == "center"
+    assert xlsx_til_bog(bog_til_xlsx(bog))["ark"][0]["fmt"]["B1"] == {"kursiv": True, "fyld": "#fff2cc", "ramme": {"t": 1, "b": 2}, "just": "c"}

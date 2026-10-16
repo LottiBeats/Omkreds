@@ -9,6 +9,7 @@ import React from 'react'
 import { useBog } from './BogKontekst.js'
 import { udsnit, gyldigtOmraade, laesOmraade } from '../../lib/regnearksbog.js'
 import { adresse, laesTal } from '../../lib/regneark.js'
+import { fmtStil } from '../../lib/regnearkFormat.js'
 import '../blocks/Regneark.css'
 
 const FEJL = /^#(DIV\/0!|REF!|NAVN\?|VÆRDI!|CYKLUS!|TAL!|I\/T)$/
@@ -45,7 +46,7 @@ export function ArkTabel({ ark, omraade, titel, onAabn }) {
                 let span = 1
                 if (String(c).trim() && !tal && u.art[i][k] !== 'i') while (k + span < r.length && !String(r[k + span]).trim()) span++
                 return (
-                  <td key={k} colSpan={span > 1 ? span : undefined} className={[
+                  <td key={k} colSpan={span > 1 ? span : undefined} style={fmtStil(u.fmt[i][k])} className={[
                     tal ? 'av-tal' : '', FEJL.test(c) ? 'av-fejl' : '', u.fed[i][k] ? 'av-fed' : '',
                     u.art[i][k] === 'i' && tal && u.typer[i] !== 'hoved' ? 'av-input' : '',
                   ].join(' ')}>{c}</td>

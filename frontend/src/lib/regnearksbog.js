@@ -171,7 +171,13 @@ export function udsnit(ark, omraadeTekst) {
     art.push(a)
   }
   const overskrift = o.r0 === 0 && ark.overskrift !== false
-  return { raekker, fed, bredder, overskrift, art, typer: raekkeTyper(raekker, fed, art, overskrift), ...o }
+  const fmt = []
+  for (let r = o.r0; r <= o.r1; r++) {
+    const f = []
+    for (let k = o.k0; k <= o.k1; k++) f.push(ark.fmt?.[adresse(r, k)] ?? null)
+    fmt.push(f)
+  }
+  return { raekker, fed, bredder, overskrift, art, fmt, typer: raekkeTyper(raekker, fed, art, overskrift), ...o }
 }
 
 /** Cellens art til visningen: 'f' formel, 'i' indtastet tal (inddata), 't' tekst, '' tom. */
@@ -186,7 +192,8 @@ export function celleArt(raw) {
  * Rækkernes rolle i et ark, som en ingeniør sætter en Excel-tabel op (samme
  * regler i backend/pdf_builder.py, _regneark_raekketyper):
  *   hoved    første række, når den er overskrift — og en fed tekstrække med
- *            flere celler lige efter en tom række (fx "RESULTATER | Værdi | Enhed")
+ *            flere celler lige efter en tom række eller lige over tal
+ *            (fx "RESULTATER | Værdi | Enhed", "Last | q [kN/m²] | …")
  *   sektion  én fed (eller VERSAL) tekst i første kolonne, resten tomt
  *   sum      rækken begynder med Σ
  *   tom      ingen tekst
@@ -202,7 +209,8 @@ export function raekkeTyper(raekker, fed, art, overskrift) {
     const alleFede = fyldte.every(k => fed[i]?.[k])
     if (fyldte.length === 1 && fyldte[0] === 0 && art[i]?.[0] === 't' && (fed[i]?.[0] || (forste.length > 3 && forste === forste.toUpperCase() && /[A-ZÆØÅ]/.test(forste)))) return 'sektion'
     const efterTom = i > 0 && !raekker[i - 1].some(c => String(c ?? '').trim())
-    if (fyldte.length > 1 && alleFede && efterTom && fyldte.every(k => art[i]?.[k] === 't')) return 'hoved'
+    const talUnder = (raekker[i + 1] ?? []).some((c, k) => art[i + 1]?.[k] !== 't' && laesTal(String(c ?? '')) !== null)
+    if (fyldte.length > 1 && alleFede && (efterTom || talUnder) && fyldte.every(k => art[i]?.[k] === 't')) return 'hoved'
     return ''
   })
 }

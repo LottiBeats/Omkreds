@@ -25,7 +25,7 @@ import re
 from datetime import date, datetime
 
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 from openpyxl.workbook.defined_name import DefinedName
 
@@ -202,8 +202,20 @@ def bog_til_xlsx(bog: dict) -> bytes:
                 d = dec.get(adr, dec.get(get_column_letter(k + 1)))
                 if isinstance(d, int) and d >= 0:
                     celle.number_format = "0" if d == 0 else "0." + "0" * d
-                if fed.get(adr):
-                    celle.font = Font(bold=True)
+                f = (a.get("fmt") or {}).get(adr) or {}
+                if fed.get(adr) or f.get("kursiv"):
+                    celle.font = Font(bold=bool(fed.get(adr)), italic=bool(f.get("kursiv")))
+                if f.get("fyld"):
+                    farve = str(f["fyld"]).lstrip("#").upper()
+                    if re.fullmatch(r"[0-9A-F]{6}", farve):
+                        celle.fill = PatternFill("solid", fgColor=farve)
+                ra = f.get("ramme") or {}
+                if any(ra.values()):
+                    side = lambda v: Side(style="medium" if v == 2 else "thin") if v else Side()
+                    celle.border = Border(top=side(ra.get("t")), bottom=side(ra.get("b")),
+                                          left=side(ra.get("l")), right=side(ra.get("r")))
+                if f.get("just") in ("v", "c", "h"):
+                    celle.alignment = Alignment(horizontal={"v": "left", "c": "center", "h": "right"}[f["just"]])
         for k, px in enumerate(a.get("bredder") or []):
             if px:
                 ws.column_dimensions[get_column_letter(k + 1)].width = max(4, round((px - 5) / 7, 1))
@@ -251,7 +263,7 @@ def xlsx_til_bog(data: bytes) -> dict:
     celler_i_alt = 0
     maks_raekke = max((ws.max_row for ws in wb.worksheets), default=1)
     for ws in wb.worksheets:
-        celler, dec, fed, bredder = [], {}, {}, []
+        celler, dec, fed, bredder, fmt = [], {}, {}, [], {}
         nr = ws.max_row if ws.max_row and ws.max_column else 0
         for r in range(1, nr + 1):
             raek = []
@@ -281,6 +293,29 @@ def xlsx_til_bog(data: bytes) -> dict:
                     dec[adr] = d
                 if c.font is not None and c.font.b:
                     fed[adr] = True
+                f = {}
+                if c.font is not None and c.font.i:
+                    f["kursiv"] = True
+                try:
+                    if c.fill is not None and c.fill.fill_type == "solid":
+                        rgb = c.fill.fgColor.rgb if isinstance(c.fill.fgColor.rgb, str) else None
+                        if rgb and len(rgb) >= 6 and rgb[-6:].upper() not in ("FFFFFF", "000000"):
+                            f["fyld"] = "#" + rgb[-6:].lower()
+                except Exception:   # noqa: BLE001 — temafarver o.l. springes over
+                    pass
+                ra = {}
+                if c.border is not None:
+                    for side, navn in (("t", "top"), ("b", "bottom"), ("l", "left"), ("r", "right")):
+                        st = getattr(getattr(c.border, navn), "style", None)
+                        if st:
+                            ra[side] = 2 if st in ("medium", "thick", "double") else 1
+                if ra:
+                    f["ramme"] = ra
+                h = c.alignment.horizontal if c.alignment is not None else None
+                if h in ("left", "center", "right"):
+                    f["just"] = {"left": "v", "center": "c", "right": "h"}[h]
+                if f:
+                    fmt[adr] = f
             celler.append(raek)
         while celler and not any(x for x in celler[-1]):
             celler.pop()
@@ -292,7 +327,7 @@ def xlsx_til_bog(data: bytes) -> dict:
         if ws.merged_cells.ranges:
             advarsler.append(f"{ws.title}: flettede celler er delt op igen (indholdet står i den øverste venstre).")
         ark.append({"navn": ws.title, "titel": "", "overskrift": False, "celler": celler,
-                    "bredder": bredder, "dec": dec, "fed": fed})
+                    "bredder": bredder, "dec": dec, "fed": fed, "fmt": fmt})
     navne = {}
     for navn, dn in wb.defined_names.items():
         try:

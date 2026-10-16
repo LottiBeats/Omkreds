@@ -65,3 +65,14 @@ def test_raekketyper_som_i_frontend():
     art = [[_celle_art(c) for c in r] for r in rows]
     assert _regneark_raekketyper(rows, fed, art, True) == ["hoved", "sektion", "", "sum", "tom", "hoved", "", "sektion"]
     assert [_celle_art(x) for x in ["=A1", "1,5", "Lag", "", "−3"]] == ["f", "i", "t", "", "i"]
+
+
+def test_pdf_med_formatering_og_overskrift_midt_i_arket():
+    pytest.importorskip("pypdfium2")
+    from pdf_builder import build_pdf_simpel, _regneark_raekketyper, _celle_art
+    rows = [["Rem", ""], ["Bredde B", "4"], ["Last", "q"], ["G sup", "1,38"]]
+    art = [[_celle_art(c) for c in r] for r in rows]
+    assert _regneark_raekketyper(rows, {"A1": True, "A3": True, "B3": True}, art, False) == ["sektion", "", "hoved", ""]
+    bog = {"ark": [{"id": "a", "navn": "A", "overskrift": False, "celler": rows, "_vist": rows,
+                    "fmt": {"B4": {"fyld": "#fff2cc", "ramme": {"b": 2}, "kursiv": True}}}]}
+    assert len(build_pdf_simpel([{"id": 1, "type": "ark_visning", "data": {"ark": "a"}}], bog=bog)) > 1000

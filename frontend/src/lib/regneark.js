@@ -661,3 +661,23 @@ export function omdoebNavnIFormel(raw, gammel, ny) {
   const re = new RegExp(`(^|[^\\wÆØÅæøå!'.])(${esc})(?![\\wÆØÅæøå(!])`, 'gi')
   return raw.split(/("(?:[^"]|"")*")/).map((del, i) => (i % 2 === 1 ? del : del.replace(re, (h, foer) => `${foer}${ny}`))).join('')
 }
+
+/**
+ * Formlen med hver henvisning erstattet af fn({ ark, fra, til, tekst }) —
+ * fx værdien, så man kan se regnestykket med tal. Tekst i "…" røres ikke.
+ */
+export function erstatHenvisninger(raw, fn) {
+  if (typeof raw !== 'string' || !raw.trim().startsWith('=')) return raw
+  return raw.split(/("(?:[^"]|"")*")/).map((del, i) => {
+    if (i % 2 === 1) return del
+    return del.replace(REF, (hel, arkDel, arkQ, arkU, a, b, pos, str) => {
+      const foer = str[pos - 1]
+      if (foer && /[\wÆØÅæøå]/.test(foer)) return hel
+      const fra = laesAdresse(a.replace(/\$/g, '')), til = b ? laesAdresse(b.replace(/\$/g, '')) : null
+      if (!fra || (b && !til)) return hel
+      const ark = arkQ ? arkQ.replace(/''/g, "'") : arkU || null
+      const ud = fn({ ark, fra, til, tekst: hel })
+      return ud === undefined || ud === null ? hel : ud
+    })
+  }).join('')
+}
