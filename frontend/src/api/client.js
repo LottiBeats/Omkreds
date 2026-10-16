@@ -422,8 +422,8 @@ export const fetchMaterialDensities = async () => {
  * PDF af en FEM-model i det selvstændige program (backend/desktop_app.py).
  * Ingen projekt eller database — blokkene sendes med.
  */
-export const desktopPdf = (metadata, blocks) =>
-  request('POST', '/desktop/pdf', { metadata, blocks, doc_id: 'A2' })
+export const desktopPdf = (metadata, blocks, bog = { ark: [] }) =>
+  request('POST', '/desktop/pdf', { metadata, blocks, doc_id: 'A2', bog })
 
 /**
  * Egenlast af tag, dæk eller væg ud fra lagopbygningen → G_k.

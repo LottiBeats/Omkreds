@@ -11,7 +11,7 @@
  */
 
 import { EGENVAEGT_STANDARD, egenvaegtRapport, SNE_STANDARD, sneRapport } from './rapportModuler.js'
-import { ledigtNavn } from './regneark.js'
+import { bogAf, flytRegnearkTilBog } from './regnearksbog.js'
 
 // Det, man kan sætte ind i rapporten. Bevidst kort: simpel tekst, egen
 // beregning og to små lastberegninger. Resten af omkreds.dk's blokke hører
@@ -22,7 +22,7 @@ export const RAPPORT_TYPER = [
   { type: 'custom_calc', label: 'Egen beregning' },
   { type: 'rapport_egenvaegt', label: 'Egenvægt' },
   { type: 'rapport_sne', label: 'Sne' },
-  { type: 'regneark', label: 'Regneark' },
+  { type: 'ark_visning', label: 'Regneark' },
 ]
 
 // Typerne, Rapport-visningen selv kan redigere.
@@ -40,15 +40,15 @@ const STANDARD = {
   // aldrig røres.
   rapport_egenvaegt: () => { const d = EGENVAEGT_STANDARD(); return { ...d, _result: egenvaegtRapport(d) } },
   rapport_sne: () => { const d = SNE_STANDARD(); return { ...d, _result: sneRapport(d) } },
-  regneark: () => ({ navn: 'Ark1', titel: '', overskrift: true, celler: [['']], bredder: [], dec: {}, fed: {}, _vist: [] }),
+  // Et ark fra filens regnearksbog; arket vælges (eller oprettes) i blokken.
+  ark_visning: () => ({ ark: null, omraade: '', titel: '' }),
 }
 
 let _seq = 0
 /** En ny blok af typen. Id'et er unikt, også for flere blokke i samme ms. */
-export function nyBlok(type, blocks = []) {
+export function nyBlok(type) {
   if (!STANDARD[type]) throw new Error(`Ukendt bloktype i rapporten: ${type}`)
   const data = STANDARD[type]()
-  if (type === 'regneark') data.navn = ledigtNavn(blocks.filter(b => b.type === 'regneark').map(b => b.data.navn), 'Ark1')
   return { id: `r${Date.now().toString(36)}${(_seq++).toString(36)}`, type, data }
 }
 
@@ -86,13 +86,23 @@ export const femIRapport = (b) => femHarModel(b) && b.iRapport !== false
  * Blokkene, PDF'en laves af: rammeberegningen kun, når den har en model og
  * ikke er valgt fra. `tom` er sand, når der ikke er noget at skrive ud.
  */
-export function pdfBlokke(blocks) {
+export function pdfBlokke(blocks, bog = { ark: [] }) {
+  const harArk = (id) => (bog?.ark ?? []).some(a => a.id === id && (a._vist ?? []).some(r => r.some(c => String(c).trim())))
   const ud = blocks.filter(b => (erFem(b) ? femIRapport(b) : true))
   const tom = !ud.some(b => (erFem(b)
     || (b.type === 'heading' && (b.data?.text ?? '').trim())
     || (b.type === 'text' && (b.data?.text ?? '').trim())
     || (['custom_calc', 'rapport_egenvaegt', 'rapport_sne'].includes(b.type) && (b.data?._result?.length ?? 0) > 0)
-    || (b.type === 'regneark' && (b.data?._vist ?? []).some(r => r.some(c => String(c).trim())))
+    || (b.type === 'ark_visning' && harArk(b.data?.ark))
     || !REDIGERBARE.includes(b.type)))
   return { blocks: ud, tom }
+}
+
+/**
+ * En fil fra før regnearksbogen: dens regneark-blokke flyttes ind i bogen og
+ * bliver visninger. Returnerer { blocks, bog, antal }.
+ */
+export function medBog(blocks, bog) {
+  const { project, antal } = flytRegnearkTilBog({ documents: { A2: { blocks, subdocs: [] } }, bog: bogAf({ bog }) })
+  return { blocks: project.documents.A2.blocks, bog: bogAf(project), antal }
 }

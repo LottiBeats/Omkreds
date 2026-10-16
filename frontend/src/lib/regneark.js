@@ -492,3 +492,35 @@ export function ledigtNavn(brugte, onsket = 'Ark') {
   const stamme = onsket.replace(/\s*\d+$/, '')
   for (let i = 2; ; i++) { const n = `${stamme}${i}`; if (!sm.has(n.toLowerCase())) return n }
 }
+
+/** Arknavnet, som det skrives foran en henvisning: Laster! eller 'Stabilitet V1'!. */
+export function arkPrefiks(navn) {
+  const n = String(navn)
+  return /^[A-Za-zÆØÅæøå_][\wÆØÅæøå.]*$/.test(n) ? `${n}!` : `'${n.replace(/'/g, "''")}'!`
+}
+
+/**
+ * Formlen med henvisninger til arket `gammel` skrevet om til `ny` (når et
+ * ark omdøbes). Henvisninger uden arknavn peger på eget ark og røres ikke.
+ */
+export function omdoebHenvisninger(raw, gammel, ny) {
+  if (typeof raw !== 'string' || !raw.trim().startsWith('=')) return raw
+  const dele = raw.split(/("(?:[^"]|"")*")/)
+  return dele.map((del, i) => {
+    if (i % 2 === 1) return del
+    return del.replace(REF, (hel, arkDel, arkQ, arkU, a, b, pos, str) => {
+      const foer = str[pos - 1]
+      if (foer && /[\wÆØÅæøå]/.test(foer)) return hel
+      if (!arkDel) return hel
+      const refArk = arkQ ? arkQ.replace(/''/g, "'") : arkU
+      if (String(refArk).trim().toLowerCase() !== String(gammel).trim().toLowerCase()) return hel
+      return `${arkPrefiks(ny)}${a}${b ? ':' + b : ''}`
+    })
+  }).join('')
+}
+
+/** Navnene på de andre ark, formlen henviser til (små bogstaver). */
+export function arkIFormel(raw) {
+  if (typeof raw !== 'string' || !raw.trim().startsWith('=')) return []
+  return [...new Set(oversaet(raw.trim().slice(1)).refs.filter(r => r.ark).map(r => r.ark.trim().toLowerCase()))]
+}

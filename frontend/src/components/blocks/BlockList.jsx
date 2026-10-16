@@ -21,6 +21,7 @@ import { STANDARD_OPBYGNING } from '../../lib/egenlast.js'
 import HeadingBlock      from './HeadingBlock.jsx'
 const TableBlock = lazy(() => import('./TableBlock.jsx'))
 const RegnearkBlock = lazy(() => import('./RegnearkBlock.jsx'))
+const ArkVisningBlock = lazy(() => import('../bog/ArkVisningBlock.jsx'))
 import DocListBlock      from './DocListBlock.jsx'
 import ElementBlock, { ElementPreview } from './ElementBlock.jsx'
 import ElementPanel      from './ElementPanel.jsx'
@@ -77,9 +78,13 @@ const BLOCK_TYPES = [
     default: { image_b64: null, caption: '', width_pct: 100 } },
   { type: 'table',         label: 'Tabel',             icon: 'TBL', color: '#64748b', component: TableBlock,
     default: { caption: '', has_header: true, rows: [['Kolonne 1', 'Kolonne 2'], ['', '']] } },
-  // Regneark med formler som Excel; arkene i et dokument henviser til hinanden
-  // (lastnedføring, opbygninger, vægskiver). Se lib/regneark.js.
-  { type: 'regneark',      label: 'Regneark',          icon: 'XL',  color: '#217346', component: RegnearkBlock,
+  // Et ark fra projektets regnearksbog (lib/regnearksbog.js), vist i rapporten.
+  // Arkene redigeres i fuld skærm (components/bog/RegnearksBog.jsx).
+  { type: 'ark_visning',   label: 'Regneark',          icon: 'XL',  color: '#217346', component: ArkVisningBlock,
+    default: { ark: null, omraade: '', titel: '' } },
+  // Den første udgave: et regneark som blok. Flyttes ind i bogen, når
+  // projektet åbnes (flytRegnearkTilBog), og står derfor ikke i panelet.
+  { type: 'regneark',      label: 'Regneark (gammel)', icon: 'XL',  color: '#217346', component: RegnearkBlock,
     default: { navn: 'Ark1', titel: '', overskrift: true, celler: [['']], bredder: [], dec: {}, fed: {}, _vist: [] } },
   // Read-only: content comes from the project, so there is no editor component
   // and no palette entry — it arrives with the B1 template.
@@ -280,7 +285,7 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Indhold',
-    types: ['heading', 'text', 'image', 'table', 'regneark'],
+    types: ['heading', 'text', 'image', 'table', 'ark_visning'],
   },
   {
     label: 'Laster  (EN 1990)',
@@ -1178,7 +1183,7 @@ const BlockRow = React.memo(function BlockRow({
 }) {
   const Comp             = TYPE_MAP[block.type]?.component
   const showEditor       = isSelected && !isMinimised && !!Comp
-  const isInlineEditable = ['text', 'heading', 'image', 'regneark'].includes(block.type)
+  const isInlineEditable = ['text', 'heading', 'image', 'regneark', 'ark_visning'].includes(block.type)
   const id = block.id
   const onBlockChange = useCallback(b => h.updateBlock(id, b), [h, id])
   const onAddBlock    = useCallback((type, data) => h.addBlockAfter(id, type, data), [h, id])

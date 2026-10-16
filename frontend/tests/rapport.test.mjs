@@ -33,3 +33,17 @@ test('PDF: tom FEM er ikke med, fravalgt FEM er ikke med', () => {
   assert.deepEqual(pdfBlokke([{ ...FEM, iRapport: false }, t]).blocks.map(b => b.type), ['text'])
   assert.equal(pdfBlokke([FEM_TOM, nyBlok('text')]).tom, true, 'tomme afsnit alene er ikke en rapport')
 })
+
+test('regnearksbogen i skrivebordsprogrammet: gamle regneark flyttes ind, og en visning tæller i PDF\'en', async () => {
+  const { medBog } = await import('../src/lib/rapport.js')
+  const gl = [{ id: 'x', type: 'regneark', data: { navn: 'Ark1', celler: [['=2*3']], _vist: [['6']] } }, nyBlok('text')]
+  const { blocks, bog, antal } = medBog(gl, undefined)
+  assert.equal(antal, 1)
+  assert.equal(blocks[0].type, 'ark_visning')
+  assert.equal(bog.ark[0]._vist[0][0], '6')
+  assert.equal(blocks[0].data.ark, bog.ark[0].id)
+  assert.equal(pdfBlokke(blocks, bog).tom, false)
+  assert.equal(pdfBlokke(blocks, { ark: [] }).tom, true, 'en visning af et ark, der ikke findes, er ikke indhold')
+  assert.equal(medBog(blocks, bog).antal, 0)
+  assert.deepEqual(nyBlok('ark_visning').data, { ark: null, omraade: '', titel: '' })
+})

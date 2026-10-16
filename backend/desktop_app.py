@@ -55,6 +55,7 @@ class ModelPdf(BaseModel):
     metadata: dict = {}
     blocks: list = []
     doc_id: str = "A2"
+    bog: dict = {}
 
 
 @main.app.post("/desktop/pdf", tags=["Desktop"])
@@ -66,7 +67,7 @@ def desktop_pdf(data: ModelPdf):
         from pdf_builder import build_pdf_simpel
         m = data.metadata or {}
         titel = " · ".join(str(x).strip() for x in (m.get("project_ref"), m.get("project_name")) if x and str(x).strip())
-        pdf = build_pdf_simpel(data.blocks, titel=titel)
+        pdf = build_pdf_simpel(data.blocks, titel=titel, bog=data.bog)
         return Response(content=pdf, media_type="application/pdf")
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
