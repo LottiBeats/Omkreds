@@ -26,9 +26,10 @@ import {
 } from '../../lib/regneark.js'
 import {
   medArk, medEtArk, nytArk, omdoebArk, sletArk, dupliker, flytArk, arkDerBruger,
-  navneOpslag, navngiv, fjernNavn, navneFor, flytNavne, udgange,
+  navneOpslag, navngiv, fjernNavn, navneFor, flytNavne, udgange, indsaetSkabelon,
 } from '../../lib/regnearksbog.js'
 import { SKABELONER } from '../../lib/regnearkSkabeloner.js'
+import { BOG_SKABELONER } from '../../lib/bogSkabeloner.js'
 import '../blocks/Regneark.css'
 
 const STD_BREDDE = 92
@@ -315,6 +316,14 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
     if (red && !red.tekst.startsWith('=')) gemRed()
     setAktivId(id)
     setMenu(null)
+  }
+  function nyeFraBogskabelon(key) {
+    const s = BOG_SKABELONER.find(x => x.key === key)
+    if (!s) return
+    const { bog: ny, idFor } = indsaetSkabelon(bog, s.bog())
+    aendr(ny)
+    setAktivId([...idFor.values()][0] ?? aktivId)
+    setBesked(null)
   }
   function nyFane(skabelon) {
     const s = SKABELONER.find(x => x.key === skabelon)
@@ -747,9 +756,17 @@ export default function RegnearksBog({ bog, onBog, startArk = null, startCelle =
           </div>
         ))}
         <button type="button" className="rkb-ny" title="Nyt ark" onClick={() => nyFane()}>+</button>
-        <select className="rkb-nyskab" value="" title="Nyt ark fra skabelon" onChange={e => { if (e.target.value) nyFane(e.target.value) }}>
+        <select className="rkb-nyskab" value="" title="Nyt ark fra skabelon" onChange={e => {
+          const v = e.target.value
+          if (v.startsWith('bog:')) nyeFraBogskabelon(v.slice(4)); else if (v) nyFane(v)
+        }}>
           <option value="">Nyt fra skabelon…</option>
-          {SKABELONER.map(s => <option key={s.key} value={s.key}>{s.titel}</option>)}
+          <optgroup label="Ét ark">
+            {SKABELONER.map(s => <option key={s.key} value={s.key}>{s.titel}</option>)}
+          </optgroup>
+          <optgroup label="Flere ark, der hænger sammen">
+            {BOG_SKABELONER.map(s => <option key={s.key} value={`bog:${s.key}`} title={s.beskrivelse}>{s.titel}</option>)}
+          </optgroup>
         </select>
         <span className="rkb-fyld" />
         {omdoeber?.fejl && <span className="rkb-fejltekst">{omdoeber.fejl}</span>}

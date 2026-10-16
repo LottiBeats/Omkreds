@@ -11,6 +11,7 @@ import { makeA1Template } from './a1.js'
 import { makeB1Template } from './b1.js'
 import { makeTimberRoofTemplate } from './a2TimberRoof.js'
 import { makeB2Template } from './b2.js'
+import { makeTraehusRegnearkTemplate, traehusBog } from './a2Regnearksbog.js'
 
 // ── Document templates ────────────────────────────────────────────────────────
 
@@ -480,6 +481,13 @@ export const DOC_TEMPLATES = {
     },
   ],
   A2: [
+    {
+      label:       'Træhus — laster og stabilitet (regneark)',
+      description: 'Lægger arkene opbygninger → laster → lastnedføring → stabilitet → fundament i regnearksbogen og skriver rapporten om dem, med kipbjælken koblet til arket',
+      // Skabelonen har ark til regnearksbogen; EditorPage sætter dem ind.
+      bog:         traehusBog,
+      make:        makeTraehusRegnearkTemplate,
+    },
     {
       label:       'Portalstel — 2D FEM',
       description: 'IPE 240/300 · 6m spænd · 4m søjler · 2 indspændte baser · UDL + vandret last',

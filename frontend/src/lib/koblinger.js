@@ -20,6 +20,7 @@
  */
 import { evaluate, toReportBlocks } from './calcEngine.js'
 import { bogAf, udgange } from './regnearksbog.js'
+import { hashCalcInputs, calcRevision } from './calcState.js'
 
 // ── Stier i blokkens data ───────────────────────────────────────────────────
 
@@ -156,7 +157,11 @@ export function anvendPaaBlok(blok, udgMap) {
   }
   if (blok.type === 'custom_calc' && harUdgangslinjer(d)) {
     const res = toReportBlocks(d.title, evaluerMedUdgange(d.lines, udgMap), { subst: d.subst ?? true })
-    if (JSON.stringify(res) !== JSON.stringify(d._result ?? null)) ny = { ...ny, _result: res }
+    // Stemplet som når editoren regner (BlockList.stampBlock), ellers står den som forældet.
+    if (JSON.stringify(res) !== JSON.stringify(d._result ?? null) || (d._calc_rev ?? 1) !== calcRevision(blok.type)) {
+      ny = { ...ny, _result: res }
+      ny = { ...ny, _input_hash: hashCalcInputs(ny), _calc_rev: calcRevision(blok.type) }
+    }
   }
   return ny === d ? blok : { ...blok, data: ny }
 }

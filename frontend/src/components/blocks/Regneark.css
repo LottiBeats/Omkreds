@@ -151,3 +151,4 @@
 .rkb-navn-n:hover { text-decoration: underline; }
 .rkb-navn-v { text-align: right; font-variant-numeric: tabular-nums; }
 .rkb-navn-s { grid-column: 1 / -1; font-size: 11px; color: #888; }
+.av-rul { overflow-x: auto; }
