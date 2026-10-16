@@ -468,6 +468,10 @@ _CALC_TYPES = {
 
 def _convert_doc_block(doc: Document, block: dict, tmp_files: list):
     btype = block.get('type', '')
+    if btype == 'regneark':
+        from pdf_builder import regneark_som_tabel
+        block = regneark_som_tabel(block)
+        btype = 'table'
 
     # ── heading ───────────────────────────────────────────────────────────────
     if btype == 'heading':

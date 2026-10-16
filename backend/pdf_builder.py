@@ -968,8 +968,41 @@ _CALC_TYPES = {
 }
 
 
+def regneark_som_tabel(block: dict) -> dict:
+    """Et regneark (frontend: RegnearkBlock) som en almindelig tabel.
+
+    Tallene er de viste tekster (data._vist), som regnearket selv gemmer, så
+    rapporten viser det samme som skærmen. Tomme rækker og kolonner i
+    slutningen udelades; kolonnebredderne følger arket.
+    """
+    d = block.get("data") or {}
+    rows = [list(r) for r in (d.get("_vist") or [])]
+    if not rows:
+        rows = [[str(c) for c in r] for r in (d.get("celler") or []) if not any(str(c).startswith("=") for c in r)]
+    while rows and not any(str(c).strip() for c in rows[-1]):
+        rows.pop()
+    bredde = 0
+    for r in rows:
+        for k in range(len(r) - 1, -1, -1):
+            if str(r[k]).strip():
+                bredde = max(bredde, k + 1)
+                break
+    rows = [(r + [""] * bredde)[:bredde] for r in rows]
+    bredder = list(d.get("bredder") or [])
+    col = None
+    if bredde and bredder:
+        b = [(bredder[k] if k < len(bredder) and bredder[k] else (150 if k == 0 else 92)) for k in range(bredde)]
+        col = [100.0 * x / sum(b) for x in b]
+    return {"type": "table", "data": {
+        "caption": d.get("titel") or "", "has_header": d.get("overskrift", True) is not False,
+        "rows": rows, "col_widths": col,
+    }}
+
+
 def _convert_block(block: dict, tmp_files: list) -> list:
     t = block.get("type", "")
+    if t == "regneark":
+        return _table_block(regneark_som_tabel(block))
     if t == "heading":
         return _heading(block)
     if t == "text":

@@ -1,0 +1,57 @@
+/* Regneark.css — regnearket (RegnearkBlock.jsx), så tæt på Excel som muligt. */
+.rk { display: grid; gap: 6px; font-family: var(--font-sans, inherit); }
+
+.rk-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rk-navn {
+  font-weight: 600; font-size: 13px; border: 1px solid var(--line, #e4dfda); border-radius: 4px;
+  padding: 3px 8px; width: 160px; background: #f4f8f4; color: #14532d;
+}
+.rk-titel { flex: 1; min-width: 160px; border: 0; border-bottom: 1px dashed var(--line, #e4dfda);
+  font-size: 12.5px; padding: 3px 2px; background: transparent; color: var(--ink-2, #44403c); outline: none; }
+.rk-check { font-size: 12px; color: var(--muted, #78716c); display: inline-flex; gap: 5px; align-items: center; }
+.rk-adv { font-size: 11.5px; color: #b45309; }
+
+.rk-bar { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.rk-bar button, .rk-skabelon {
+  border: 1px solid var(--line, #e4dfda); background: var(--surface, #fff); border-radius: 4px;
+  padding: 2px 8px; font-size: 12px; cursor: pointer; color: var(--ink-2, #44403c); height: 24px;
+}
+.rk-bar button:hover { border-color: var(--line-2, #c8c0b8); background: #f7f7f5; }
+.rk-sep { width: 1px; height: 18px; background: var(--line, #e4dfda); margin: 0 4px; }
+
+.rk-linje { display: flex; align-items: center; border: 1px solid #c6c6c6; border-radius: 3px; background: #fff; height: 26px; }
+.rk-adr { width: 92px; padding: 0 8px; font-size: 12px; color: #333; border-right: 1px solid #d4d4d4; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+.rk-fx { padding: 0 8px; font-style: italic; color: #888; font-size: 12px; border-right: 1px solid #d4d4d4; }
+.rk-formel { flex: 1; border: 0; outline: none; font-size: 13px; padding: 0 8px; font-family: var(--font-mono, ui-monospace, monospace); height: 100%; background: transparent; }
+
+.rk-gitter { overflow: auto; max-height: 520px; border: 1px solid #c6c6c6; outline: none; background: #fff; position: relative; }
+.rk-gitter:focus { border-color: #217346; }
+.rk-gitter table { border-collapse: collapse; table-layout: fixed; font-size: 12.5px; }
+.rk-gitter th {
+  position: sticky; top: 0; z-index: 2; background: #f3f3f3; color: #555; font-weight: 400; font-size: 11.5px;
+  border: 1px solid #d9d9d9; height: 20px; text-align: center; user-select: none; cursor: default;
+}
+.rk-gitter tbody th { position: sticky; left: 0; z-index: 1; }
+.rk-gitter thead th:first-child { left: 0; z-index: 3; }
+.rk-gitter th.rk-on { background: #d3e5d9; color: #0b4e2b; font-weight: 600; }
+.rk-gitter thead th { position: sticky; }
+.rk-traek { position: absolute; right: -3px; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 4; }
+.rk-gitter thead th { position: sticky; }
+.rk-gitter thead th > .rk-traek { position: absolute; }
+
+.rk-gitter td {
+  border: 1px solid #e2e2e2; height: 21px; padding: 0 5px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; cursor: cell; color: #111; position: relative; user-select: none;
+}
+.rk-gitter td.rk-tal { text-align: right; font-variant-numeric: tabular-nums; }
+.rk-gitter td.rk-fejl { color: #b91c1c; text-align: center; }
+.rk-gitter td.rk-fed { font-weight: 700; }
+.rk-gitter td.rk-mark { background: #e6f2ea; }
+.rk-gitter td.rk-akt { outline: 2px solid #217346; outline-offset: -2px; background: #fff; z-index: 1; }
+.rk-gitter tr.rk-hoved td { background: #f7f7f5; font-weight: 600; border-bottom: 1px solid #b9b9b9; }
+.rk-gitter tr.rk-hoved td.rk-mark { background: #e1eee5; }
+.rk-gitter tr.rk-hoved td.rk-akt { background: #fff; }
+.rk-in {
+  position: absolute; inset: 0; width: 100%; height: 100%; border: 0; outline: 2px solid #217346; outline-offset: -2px;
+  padding: 0 5px; font: inherit; background: #fff; box-sizing: border-box;
+}
