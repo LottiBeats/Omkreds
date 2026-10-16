@@ -17,6 +17,7 @@ import HeadingBlock from '../blocks/HeadingBlock.jsx'
 import TextBlock from '../blocks/TextBlock.jsx'
 import CustomCalcBlock from '../blocks/CustomCalcBlock.jsx'
 import { EgenvaegtModul, SneModul } from './RapportModuler.jsx'
+import RegnearkBlock from '../blocks/RegnearkBlock.jsx'
 import { overskriftsnumre } from '../../lib/indhold.js'
 import { hasCalcResult, isStaleResult } from '../../lib/calcState.js'
 import { RAPPORT_TYPER, REDIGERBARE, nyBlok, indsaet, flyt, fjern, erFem, femHarModel, femIRapport } from '../../lib/rapport.js'
@@ -85,12 +86,17 @@ export default function RapportView({ blocks, onChange, onVisFem, smal = false }
   }
 
   const saetInd = (i, type) => {
-    const b = nyBlok(type)
+    const b = nyBlok(type, blocks)
     onChange(indsaet(blocks, i, b), true)
     setValgt(b.id)
     fokus(b.id)
   }
   const opdater = (nb) => onChange(blocks.map(b => (b.id === nb.id ? nb : b)), false)
+  // Regnearkene opdaterer flere ark på én gang (henvisninger mellem ark).
+  const opdaterFlere = (par) => {
+    const m = new Map(par)
+    onChange(blocks.map(b => m.get(b.id) ?? b), false)
+  }
   const tom = !blocks.some(b => !erFem(b))
 
   return (
@@ -135,6 +141,9 @@ export default function RapportView({ blocks, onChange, onVisFem, smal = false }
               {b.type === 'custom_calc' && <CustomCalcBlock block={b} onChange={opdater} />}
               {b.type === 'rapport_egenvaegt' && <EgenvaegtModul block={b} onChange={opdater} />}
               {b.type === 'rapport_sne' && <SneModul block={b} onChange={opdater} />}
+              {b.type === 'regneark' && (
+                <RegnearkBlock block={b} onChange={opdater} blocks={blocks} onUpdateBlock={opdaterFlere} />
+              )}
               {erFem(b) && (
                 <FemKort blok={b} onVisFem={onVisFem}
                          onSkift={(med) => onChange(blocks.map(x => (x.id === b.id ? { ...x, iRapport: med } : x)), true)} />

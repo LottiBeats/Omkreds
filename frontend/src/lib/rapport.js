@@ -11,6 +11,7 @@
  */
 
 import { EGENVAEGT_STANDARD, egenvaegtRapport, SNE_STANDARD, sneRapport } from './rapportModuler.js'
+import { ledigtNavn } from './regneark.js'
 
 // Det, man kan sætte ind i rapporten. Bevidst kort: simpel tekst, egen
 // beregning og to små lastberegninger. Resten af omkreds.dk's blokke hører
@@ -21,6 +22,7 @@ export const RAPPORT_TYPER = [
   { type: 'custom_calc', label: 'Egen beregning' },
   { type: 'rapport_egenvaegt', label: 'Egenvægt' },
   { type: 'rapport_sne', label: 'Sne' },
+  { type: 'regneark', label: 'Regneark' },
 ]
 
 // Typerne, Rapport-visningen selv kan redigere.
@@ -38,13 +40,16 @@ const STANDARD = {
   // aldrig røres.
   rapport_egenvaegt: () => { const d = EGENVAEGT_STANDARD(); return { ...d, _result: egenvaegtRapport(d) } },
   rapport_sne: () => { const d = SNE_STANDARD(); return { ...d, _result: sneRapport(d) } },
+  regneark: () => ({ navn: 'Ark1', titel: '', overskrift: true, celler: [['']], bredder: [], dec: {}, fed: {}, _vist: [] }),
 }
 
 let _seq = 0
 /** En ny blok af typen. Id'et er unikt, også for flere blokke i samme ms. */
-export function nyBlok(type) {
+export function nyBlok(type, blocks = []) {
   if (!STANDARD[type]) throw new Error(`Ukendt bloktype i rapporten: ${type}`)
-  return { id: `r${Date.now().toString(36)}${(_seq++).toString(36)}`, type, data: STANDARD[type]() }
+  const data = STANDARD[type]()
+  if (type === 'regneark') data.navn = ledigtNavn(blocks.filter(b => b.type === 'regneark').map(b => b.data.navn), 'Ark1')
+  return { id: `r${Date.now().toString(36)}${(_seq++).toString(36)}`, type, data }
 }
 
 export const erFem = (b) => b?.type === 'general_frame_fem'
@@ -87,6 +92,7 @@ export function pdfBlokke(blocks) {
     || (b.type === 'heading' && (b.data?.text ?? '').trim())
     || (b.type === 'text' && (b.data?.text ?? '').trim())
     || (['custom_calc', 'rapport_egenvaegt', 'rapport_sne'].includes(b.type) && (b.data?._result?.length ?? 0) > 0)
+    || (b.type === 'regneark' && (b.data?._vist ?? []).some(r => r.some(c => String(c).trim())))
     || !REDIGERBARE.includes(b.type)))
   return { blocks: ud, tom }
 }

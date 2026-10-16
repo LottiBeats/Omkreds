@@ -20,11 +20,13 @@ import { STANDARD_OPBYGNING } from '../../lib/egenlast.js'
 // KaTeX, which the result views need) out of the first download.
 import HeadingBlock      from './HeadingBlock.jsx'
 const TableBlock = lazy(() => import('./TableBlock.jsx'))
+const RegnearkBlock = lazy(() => import('./RegnearkBlock.jsx'))
 import DocListBlock      from './DocListBlock.jsx'
 import ElementBlock, { ElementPreview } from './ElementBlock.jsx'
 import ElementPanel      from './ElementPanel.jsx'
 import { naesteNr, nytElement, indsaetPlads } from '../../lib/elementer.js'
 import { overskriftsnumre } from '../../lib/indhold.js'
+import { erRegneark, ledigtNavn } from '../../lib/regneark.js'
 // The text editor (TipTap) is loaded on demand; until then the same text is
 // shown formatted by RichTextStatic, so nothing jumps when it arrives.
 const TextBlock = lazy(() => import('./TextBlock.jsx'))
@@ -75,6 +77,10 @@ const BLOCK_TYPES = [
     default: { image_b64: null, caption: '', width_pct: 100 } },
   { type: 'table',         label: 'Tabel',             icon: 'TBL', color: '#64748b', component: TableBlock,
     default: { caption: '', has_header: true, rows: [['Kolonne 1', 'Kolonne 2'], ['', '']] } },
+  // Regneark med formler som Excel; arkene i et dokument henviser til hinanden
+  // (lastnedføring, opbygninger, vægskiver). Se lib/regneark.js.
+  { type: 'regneark',      label: 'Regneark',          icon: 'XL',  color: '#217346', component: RegnearkBlock,
+    default: { navn: 'Ark1', titel: '', overskrift: true, celler: [['']], bredder: [], dec: {}, fed: {}, _vist: [] } },
   // Read-only: content comes from the project, so there is no editor component
   // and no palette entry — it arrives with the B1 template.
   { type: 'doclist',       label: 'Dokumentliste',     icon: 'DOC', color: '#64748b', component: null,
@@ -274,7 +280,7 @@ const PANEL_GROUPS = [
   },
   {
     label: 'Indhold',
-    types: ['heading', 'text', 'image', 'table'],
+    types: ['heading', 'text', 'image', 'table', 'regneark'],
   },
   {
     label: 'Laster  (EN 1990)',
@@ -811,6 +817,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     const def = TYPE_MAP[type]; if (!def) return
     const data = { ...def.default }
     if (type === 'element') data.nr = naesteNr(blocksRef.current, data.art)
+    if (type === 'regneark') data.navn = ledigtNavn(blocksRef.current.filter(erRegneark).map(x => x.data.navn), 'Ark1')
     h.insertAt(atIndex, { id: Date.now(), type, data })
   }
 
@@ -1170,7 +1177,7 @@ const BlockRow = React.memo(function BlockRow({
 }) {
   const Comp             = TYPE_MAP[block.type]?.component
   const showEditor       = isSelected && !isMinimised && !!Comp
-  const isInlineEditable = ['text', 'heading', 'image'].includes(block.type)
+  const isInlineEditable = ['text', 'heading', 'image', 'regneark'].includes(block.type)
   const id = block.id
   const onBlockChange = useCallback(b => h.updateBlock(id, b), [h, id])
   const onAddBlock    = useCallback((type, data) => h.addBlockAfter(id, type, data), [h, id])
@@ -1234,7 +1241,8 @@ const BlockRow = React.memo(function BlockRow({
                       headNo={headNo} onEnter={() => h.addTextAfter(block.id)}
                       onHjaelp={block.type === 'heading' && h.afsnitHjaelp ? () => h.afsnitHjaelp(block.id) : undefined}
                       onInsertImage={(before, after, img) => h.insertImageInText(block.id, before, after, img)}
-                      onCursor={split => { h.lastCursor = { id: block.id, split, at: Date.now() } }} />
+                      onCursor={split => { h.lastCursor = { id: block.id, split, at: Date.now() } }}
+                      blocks={blocks ?? []} onUpdateBlock={onUpdateBlock} />
               </Suspense>
             </div>
           ) : (
