@@ -106,39 +106,71 @@ test('standardbogen er den første skabelon og regner som håndregningen', () =>
   const { bog } = indsaetSkabelon({ ark: [] }, standardBog())
   assert.deepEqual(bog.ark.map(a => a.navn),
     ['Forudsætninger', 'Materialer', 'Opbygninger', 'Lastoversigt', 'Lodret lastnedføring', 'Vandret lastnedføring'])
+  assert.deepEqual(fejlI(bog), [])
   const u = uds(bog)
   naer(u.KFI, 1)
-  naer(u.s_tag, 0.8)
-  // q_p(9,9 m), terrænkategori II: k_r = 0,19; c_r = 0,19·ln(9,9/0,05); I_v = 1/ln(9,9/0,05)
-  const ln = Math.log(9.9 / 0.05)
+  naer(u.s_0, 1)
+  // q_p(3,5 m), terrænkategori II: k_r = 0,19; c_r = 0,19·ln(3,5/0,05); I_v = 1/ln(3,5/0,05)
+  const ln = Math.log(3.5 / 0.05)
   naer(u.q_p, (1 + 7 / ln) * 0.5 * 1.25 * (0.19 * ln * 24) ** 2 / 1000)
-  // Vind på langfacaden: h/d = 0,99 → c_D, c_E interpoleret; ρ = 0,85; b = 20 m; skiverne 2,8 + 2,8 + 2,9 m
-  const hd = 9.9 / 10
+
+  // Spær T1: tag 25°, pr. m² vandret = lagene / cos α; last −0,5 … 4,0 m på understøtninger 0 og 4,0 m
+  const gTag = (0.08 + 5 * 0.018 + 4.2 * 0.045 * 0.22 / 0.6 + 0.5 * 0.25 + 0.01 + 0.05 + 9 * 0.013) / Math.cos(25 * Math.PI / 180)
+  const fA = 4.5 * (4 - 1.75) / 4, fB = 4.5 * 1.75 / 4
+  const s = 0.8, wNed = 0.3 * u.q_p, wOp = -0.8 * u.q_p
+  // 6.10b: sne dominerer (0,7·s > 0,7·w), vind med ψ0 = 0,3
+  naer(u.T1_RA_d, gTag * fA + 1.5 * (s * fA + 0.3 * wNed * fA), 1e-9)
+  naer(u.T1_RB_d, gTag * fB + 1.5 * (s * fB + 0.3 * wNed * fB), 1e-9)
+  // Løft: 0,9·G_inf + 1,5·W_op; gipsen er fri og tæller ikke i G_inf
+  naer(u.T1_RA_loeft, 0.9 * (gTag - 9 * 0.013 / Math.cos(25 * Math.PI / 180)) * fA + 1.5 * wOp * fA, 1e-9)
+
+  // Kipbjælke B1: begge tagsider (R_B fra T1 to gange) og egenvægten over 6 m
+  const kip = 4.6 * 0.115 * 0.405
+  naer(u.B1_RB_d, (2 * gTag * fB + kip) * 3 + 1.5 * (2 * s * fB + 0.3 * 2 * wNed * fB) * 3, 1e-9)
+  // Midterstolpe S1 får B1 fra begge sider; punktfundamentet F3 får stolpen og sin egen vægt
+  const pf = 24 * 0.6 * 0.6 * 0.9, st = 4.6 * 0.115 * 0.115 * 4.4
+  const GS1 = 2 * (2 * gTag * fB + kip) * 3 + st, SS1 = 2 * 2 * s * fB * 3, WS1 = 2 * 2 * wNed * fB * 3
+  naer(u.S1_N_d, GS1 + 1.5 * (SS1 + 0.3 * WS1), 1e-9)
+  naer(u.F3_N_d, GS1 + pf + 1.5 * (SS1 + 0.3 * WS1), 1e-9)
+
+  // Ydervæg V1: ΣN og M om midten giver den plastiske fordeling (her for g_k,inf)
+  const vist = bog.ark.find(a => a.navn === 'Lodret lastnedføring')._vist
+  const raekke = (noegle) => vist.find(r => r[20] === noegle)
+  const tal = (t) => Number(String(t).replace(',', '.'))
+  const N = tal(raekke('V1/N')[7]), M = tal(raekke('V1/M')[7])
+  const xr = 6 + M / N
+  naer(u.V1_q_ginf, N / (2 * xr), 0.01)
+  // Vinden: langfacaden 12 m, tagskiven 2,6/2 + 0,9 m
+  const hd = 3.5 / 8
   const w = 0.85 * ((0.7 + (hd - 0.25) / 0.75 * 0.1) - (-0.3 - (hd - 0.25) / 0.75 * 0.2)) * u.q_p
-  naer(u.V_y, w * 20 * (2.8 + 2.8 + 2.9))
-  // Ydervæg akse A: 3 × (væg 2,8 m + dæk/nyttelast 3 m) + tag 4,5 m + fundament — Q dominerer
-  const tag = 1.226 / Math.cos(25 * Math.PI / 180)
-  const G = 4.5 * tag + 3 * 2.8 * 5.839 + 2 * 3 * 3.42 + 1.2 * 7.2
-  const Q = 2 * 3 * (1.5 + 0.5)
-  naer(u.ln_A_d, G + 1.5 * Q + 1.5 * 0.3 * (4.5 * 0.8 + 4.5 * 0.6 * u.q_p), 1e-3)
+  naer(u.V_y, w * 12 * (1.3 + 0.9))
 })
 
-test('standardbogen følger forudsætningerne: K_FI, terrænkategori og typer', () => {
+test('lastnedføringen: konsekvensklasse, nyttelastkategori og en ukendt kilde', () => {
   let { bog } = indsaetSkabelon({ ark: [] }, standardBog())
   const u0 = uds(bog)
   const cc = find(bog, 'Forudsætninger', 'Konsekvensklasse')
   bog = saet(bog, 'Forudsætninger', `B${cc}`, 'CC3')
   const u1 = uds(bog)
   naer(u1.KFI, 1.1)
-  naer(u1.ln_A_d, 1.1 * u0.ln_A_d)
-  const tk = find(bog, 'Forudsætninger', 'Terrænkategori')
-  bog = saet(bog, 'Forudsætninger', `B${tk}`, 'III')
-  const u2 = uds(bog)
-  assert.ok(u2.q_p < u1.q_p && u2.V_y < u1.V_y, 'by-terræn giver mindre vind')
-  // En stavefejl i en lasttype giver en fejl i stedet for et stille nul
-  const r = bog.ark.find(a => a.navn === 'Lodret lastnedføring').celler.findIndex(x => x[1] === 'Sne') + 1
-  bog = saet(bog, 'Lodret lastnedføring', `B${r}`, 'Snee')
-  assert.ok(fejlI(bog).length > 0)
+  // 6.10b = G + K_FI·1,5·(…): kun de variable laster ganges med K_FI
+  const fA = 4.5 * (4 - 1.75) / 4
+  const gTag = (0.08 + 5 * 0.018 + 4.2 * 0.045 * 0.22 / 0.6 + 0.5 * 0.25 + 0.01 + 0.05 + 9 * 0.013) / Math.cos(25 * Math.PI / 180)
+  naer(u1.T1_RA_d - gTag * fA, 1.1 * (u0.T1_RA_d - gTag * fA), 1e-9)
+  // Hemsen som kontor (kategori B): q_k = 2,5, og lasten lander i kolonnen q_k,B
+  const ops = bog.ark.find(a => a.navn === 'Opbygninger').celler
+  const hems = ops.findIndex(r => r[0] === 'HEMS')
+  const kat = ops.findIndex((r, i) => i > hems && r[2] === 'A1 Bolig og interne adgangsveje') + 1
+  bog = saet(bog, 'Opbygninger', `C${kat}`, 'B Kontor')
+  const d1 = bog.ark.find(a => a.navn === 'Lodret lastnedføring')._vist.find(r => r[20] === 'D1/A')
+  assert.deepEqual([d1[9], d1[10]], ['0,00', formatVaerdi(2.5 * 1.5, 2)])
+  // En stavefejl i kilden giver en fejl hele vejen ned i stedet for et stille nul
+  const ln = bog.ark.find(a => a.navn === 'Lodret lastnedføring').celler
+  const r = ln.findIndex(x => x[0] === 'HEMS') + 1
+  bog = saet(bog, 'Lodret lastnedføring', `A${r}`, 'HEMSS')
+  const vist = bog.ark.find(a => a.navn === 'Lodret lastnedføring')._vist
+  assert.equal(vist[r - 1][20], '? ukendt kilde')
+  assert.ok(fejlI(bog).some(f => f.startsWith('Lodret lastnedføring')))
 })
 
 test('A2-skabelonen til nyt byggeri: visningerne har gyldige områder og Egen beregning regner', () => {

@@ -342,15 +342,51 @@ function regnNode(node, scope) {
       if (navn.startsWith('__UKENDT_')) return F('#NAVN?')
       const fn = FUNK[navn]
       if (!fn) return F('#NAVN?')
-      const args = node.args.map(a => regnNode(a, scope))
-      // HVIS og fejl i ubrugte grene: Excel regner kun den valgte gren.
+      // HVIS og HVIS.FEJL regner kun den gren, der bruges — som Excel. Det
+      // sparer også opslag i store områder i grene, der ikke bruges.
       if (navn === 'HVIS') {
-        const b = args[0]
+        const b = regnNode(node.args[0], scope)
         if (erFejl(b)) return b
         const sand = typeof b === 'boolean' ? b : tilTal(b) !== 0
-        const v = sand ? (args.length > 1 ? args[1] : true) : (args.length > 2 ? args[2] : false)
+        const gren = node.args[sand ? 1 : 2]
+        const v = gren ? regnNode(gren, scope) : sand
         return Array.isArray(v) ? F('#VÆRDI!') : v
       }
+      // INDEKS og SUMHVIS slår kun op i de celler, de bruger, når området står
+      // direkte i formlen — så en lang lastnedføring ikke regner hele kolonnen
+      // for hver række.
+      const omr = (i) => (node.args[i]?.type === 'SymbolNode' ? scope.__omr?.[node.args[i].name] : undefined)
+      if (navn === 'INDEKS' && omr(0)) {
+        const o = omr(0)
+        let r = tilTal(node.args[1] ? regnNode(node.args[1], scope) : 1)
+        let k = tilTal(node.args[2] ? regnNode(node.args[2], scope) : 1)
+        if (erFejl(r)) return r
+        if (erFejl(k)) return k
+        if (o.raekker === 1 && !node.args[2] && r > 1) { k = r; r = 1 }
+        if (r < 1 || k < 1 || r > o.raekker || k > o.kolonner) return F('#REF!')
+        return o.ved(r - 1, k - 1)
+      }
+      if (navn === 'SUMHVIS' && node.args.length === 3 && omr(2)) {
+        const o = omr(2)
+        const krit = regnNode(node.args[1], scope)
+        if (erFejl(krit)) return krit
+        const liste = tabel(regnNode(node.args[0], scope))
+        if (erFejl(liste)) return liste
+        const flad_ = liste.flat()
+        let sum = 0
+        for (let i = 0; i < flad_.length && i < o.raekker * o.kolonner; i++) {
+          if (!opfylder(flad_[i], krit)) continue
+          const v = o.ved(Math.floor(i / o.kolonner), i % o.kolonner)
+          if (erFejl(v)) return v
+          if (typeof v === 'number') sum += v
+        }
+        return sum
+      }
+      if (navn === 'HVIS_FEJL') {
+        const v = regnNode(node.args[0], scope)
+        return erFejl(v) && node.args[1] ? regnNode(node.args[1], scope) : v
+      }
+      const args = node.args.map(a => regnNode(a, scope))
       const r = fn(...args)
       return r
     }
@@ -391,10 +427,20 @@ function regnNode(node, scope) {
   }
 }
 
-function regnUdtryk(udtryk, scope) {
-  let node
-  try { node = parse(udtryk) } catch { return F('#NAVN?') }
-  return regnNode(node, scope)
+// Oversatte og parsede formler, så en bog, der regnes om efter hver rettelse,
+// ikke parser de samme formler igen.
+const FORMLER = new Map()
+function forbered(tekst) {
+  let f = FORMLER.get(tekst)
+  if (!f) {
+    const { udtryk, refs } = oversaet(tekst)
+    let node = null
+    try { node = parse(udtryk) } catch { /* #NAVN? */ }
+    f = { node, refs }
+    if (FORMLER.size > 50000) FORMLER.clear()
+    FORMLER.set(tekst, f)
+  }
+  return f
 }
 
 // ── Arbejdsbogen ────────────────────────────────────────────────────────────
@@ -415,41 +461,59 @@ export function regnBog(ark, navne = null) {
     const maal = x.ark ? efterNavn.get(String(x.ark).trim().toLowerCase()) : null
     return maal && x.r !== null && x.r !== undefined ? celle(maal, x.r, x.k) : F('#REF!')
   }
-  const cache = new Map()      // "ark|r|k" → værdi
-  const igang = new Set()
+  const cache = new Map()      // ark → rækker af regnede værdier
+  const IGANG = {}             // markerer en celle, der er ved at blive regnet
 
   function celle(a, r, k) {
-    const noegle = `${a.navn}|${r}|${k}`
-    if (cache.has(noegle)) return cache.get(noegle)
-    if (igang.has(noegle)) return F('#CYKLUS!')
+    let rk = cache.get(a)
+    if (!rk) { rk = []; cache.set(a, rk) }
+    const raek = rk[r] ?? (rk[r] = [])
+    const har = raek[k]
+    if (har === IGANG) return F('#CYKLUS!')
+    if (har !== undefined) return har
     const raw = a.celler?.[r]?.[k]
     let v
     if (typeof raw === 'string' && raw.trim().startsWith('=') && raw.trim().length > 1) {
-      igang.add(noegle)
+      raek[k] = IGANG
       v = formel(a, raw.trim().slice(1))
-      igang.delete(noegle)
     } else {
       v = konstant(raw)
     }
     if (Array.isArray(v)) v = F('#VÆRDI!')
-    cache.set(noegle, v)
+    raek[k] = v
     return v
   }
 
   function formel(a, tekst) {
-    const { udtryk, refs } = oversaet(tekst)
+    const { node, refs } = forbered(tekst)
+    if (!node) return F('#NAVN?')
     const scope = navneMap.size ? { __navn: slaaOp } : {}
+    // Henvisningerne regnes først, når formlen bruger dem (en gren af HVIS,
+    // der ikke vælges, slår ikke op i sine områder).
     for (const [i, ref] of refs.entries()) {
-      const maal = ref.ark ? efterNavn.get(ref.ark.trim().toLowerCase()) : a
-      if (!maal) { scope[`__R${i}x`] = F('#REF!'); continue }
-      if (!ref.til) { scope[`__R${i}x`] = celle(maal, ref.fra.r, ref.fra.k); continue }
-      const r0 = Math.min(ref.fra.r, ref.til.r), r1 = Math.max(ref.fra.r, ref.til.r)
-      const k0 = Math.min(ref.fra.k, ref.til.k), k1 = Math.max(ref.fra.k, ref.til.k)
-      const omr = []
-      for (let r = r0; r <= r1; r++) { const raek = []; for (let k = k0; k <= k1; k++) raek.push(celle(maal, r, k)); omr.push(raek) }
-      scope[`__R${i}x`] = omr
+      let v
+      Object.defineProperty(scope, `__R${i}x`, { enumerable: true, get: () => (v === undefined ? (v = hent(a, ref)) : v) })
+      const maal = ref.til && (ref.ark ? efterNavn.get(ref.ark.trim().toLowerCase()) : a)
+      if (maal) {
+        const r0 = Math.min(ref.fra.r, ref.til.r), k0 = Math.min(ref.fra.k, ref.til.k)
+        ;(scope.__omr ??= {})[`__R${i}x`] = {
+          raekker: Math.abs(ref.til.r - ref.fra.r) + 1, kolonner: Math.abs(ref.til.k - ref.fra.k) + 1,
+          ved: (r, k) => celle(maal, r0 + r, k0 + k),
+        }
+      }
     }
-    return regnUdtryk(udtryk, scope)
+    return regnNode(node, scope)
+  }
+
+  function hent(a, ref) {
+    const maal = ref.ark ? efterNavn.get(ref.ark.trim().toLowerCase()) : a
+    if (!maal) return F('#REF!')
+    if (!ref.til) return celle(maal, ref.fra.r, ref.fra.k)
+    const r0 = Math.min(ref.fra.r, ref.til.r), r1 = Math.max(ref.fra.r, ref.til.r)
+    const k0 = Math.min(ref.fra.k, ref.til.k), k1 = Math.max(ref.fra.k, ref.til.k)
+    const omr = []
+    for (let r = r0; r <= r1; r++) { const raek = []; for (let k = k0; k <= k1; k++) raek.push(celle(maal, r, k)); omr.push(raek) }
+    return omr
   }
 
   const ud = {}
