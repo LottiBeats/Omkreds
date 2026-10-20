@@ -46,7 +46,7 @@ export function oversigtNoegler(art) {
 export const antalRaekker = (art) => P.prototyper[art]?.celler.length ?? 0
 
 export const erLastnedfoering = (ark) =>
-  ark?.celler?.[0]?.[K.A] === 'ID / kilde' && ark.celler[0][K.U] === 'Nøgle'
+  ['ID', 'ID / kilde'].includes(ark?.celler?.[0]?.[K.A]) && ark.celler[0][K.U] === 'Nøgle'
 
 const tekst = (v) => String(v ?? '').trim()
 const tom = (raek) => !raek || raek.every(c => tekst(c) === '')

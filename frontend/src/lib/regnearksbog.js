@@ -51,7 +51,7 @@ export function nytArk(bog, onsket = 'Ark1') {
 export function regnArk(ark, navne = {}) {
   const vaerdier = regnBog(ark.map(a => ({ navn: a.navn, celler: a.celler ?? [] })), navneOpslag({ ark, navne }))
   return ark.map(a => {
-    const vist = vistArk(vaerdier[a.navn] ?? [], a.dec ?? {})
+    const vist = vistArk(vaerdier[a.navn] ?? [], a.dec ?? {}, { nul: a.nul, skjulte: a.skjulte, celler: a.celler })
     return JSON.stringify(vist) === JSON.stringify(a._vist) ? a : { ...a, _vist: vist }
   })
 }
@@ -79,7 +79,13 @@ export function aendrGitter(bog, arkId, akse, fra, n, regn = true) {
     }
     const bredder = [...(a.bredder ?? [])]
     if (akse === 'k' && bredder.length > fra) { if (n > 0) bredder.splice(fra, 0, ...Array(n).fill(92)); else bredder.splice(fra, -n) }
-    return { ...a, celler: c, bredder, dec: flytNoegler(a.dec, akse, fra, n), fed: flytNoegler(a.fed, akse, fra, n), fmt: flytNoegler(a.fmt, akse, fra, n) }
+    const skjulte = akse === 'k' && a.skjulte
+      ? a.skjulte.flatMap(k => (k < fra ? [k] : n < 0 && k < fra - n ? [] : [k + n]))
+      : a.skjulte
+    return {
+      ...a, celler: c, bredder, dec: flytNoegler(a.dec, akse, fra, n), fed: flytNoegler(a.fed, akse, fra, n), fmt: flytNoegler(a.fmt, akse, fra, n),
+      ...(skjulte ? { skjulte } : {}),
+    }
   })
   const ny = { ...bog, navne: flytNavne(bog.navne, arkId, akse, fra, n) }
   return regn ? medArk(ny, nyeArk) : { ...ny, ark: nyeArk }

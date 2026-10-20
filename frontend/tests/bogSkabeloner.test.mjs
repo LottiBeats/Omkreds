@@ -163,7 +163,7 @@ test('lastnedføringen: konsekvensklasse, nyttelastkategori og en ukendt kilde',
   const kat = ops.findIndex((r, i) => i > hems && r[2] === 'A1 Bolig og interne adgangsveje') + 1
   bog = saet(bog, 'Opbygninger', `C${kat}`, 'B Kontor')
   const d1 = bog.ark.find(a => a.navn === 'Lodret lastnedføring')._vist.find(r => r[20] === 'D1/A')
-  assert.deepEqual([d1[9], d1[10]], ['0,00', formatVaerdi(2.5 * 1.5, 2)])
+  assert.deepEqual([d1[9], d1[10]], ['–', formatVaerdi(2.5 * 1.5, 2)])   // 0 vises som –
   // En stavefejl i kilden giver en fejl hele vejen ned i stedet for et stille nul
   const ln = bog.ark.find(a => a.navn === 'Lodret lastnedføring').celler
   const r = ln.findIndex(x => x[0] === 'HEMS') + 1

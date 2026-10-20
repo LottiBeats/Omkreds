@@ -38,6 +38,7 @@ class Ark:
     def __init__(self, navn, titel, bredder, overskrift=True):
         self.navn, self.titel, self.bredder, self.overskrift = navn, titel, bredder, overskrift
         self.celler, self.fed, self.dec, self.fmt = [], {}, {}, {}
+        self.nul, self.skjulte = None, []           # "–" for 0 og skjulte hjælpekolonner
 
     @property
     def n(self):
@@ -63,14 +64,16 @@ class Ark:
         self.form(n, range(len(v)), b=1)
         return n
 
-    def form(self, n, kolonner, fyld=None, kursiv=False, **ramme):
-        """Formatering af rækken n i kolonnerne (indeks): fyld, kursiv og rammer (t/b/l/r = 1 tynd, 2 tyk)."""
+    def form(self, n, kolonner, fyld=None, kursiv=False, graa=False, **ramme):
+        """Formatering af rækken n i kolonnerne (indeks): fyld, kursiv, grå skrift og rammer (t/b/l/r = 1 tynd, 2 tyk)."""
         for i in kolonner:
             f = self.fmt.setdefault(f"{kol(i)}{n}", {})
             if fyld:
                 f["fyld"] = fyld
             if kursiv:
                 f["kursiv"] = True
+            if graa:
+                f["graa"] = True
             if ramme:
                 f.setdefault("ramme", {}).update(ramme)
 
@@ -89,7 +92,8 @@ class Ark:
 
     def data(self):
         return {"navn": self.navn, "titel": self.titel, "overskrift": self.overskrift, "celler": self.celler,
-                "bredder": self.bredder, "dec": self.dec, "fed": self.fed, "fmt": self.fmt}
+                "bredder": self.bredder, "dec": self.dec, "fed": self.fed, "fmt": self.fmt,
+                **({"nul": self.nul} if self.nul else {}), **({"skjulte": self.skjulte} if self.skjulte else {})}
 
 
 ark = []
@@ -223,7 +227,7 @@ m1 = ma.n - 1
 MATOMR = f"Materialer!$A$2:$C${m1 + 10}"
 ark.append(ma)
 
-BLAA, GROEN = "#ddebf7", "#e2efda"              # ID-rækker / dimensionerende resultater (regnearkFormat.js)
+BLAA, GROEN, GUL = "#ddebf7", "#e2efda", "#fff2cc"   # ID-rækker / dimensionerende resultater / inddata (regnearkFormat.js)
 
 # ── Lasttyperne ─────────────────────────────────────────────────────────────
 # De 13 kolonner, lasterne føres ned i. Hver lasttype holdes for sig hele vejen
@@ -298,13 +302,14 @@ for i, t in enumerate(TYPER):
 # ID-rækken samler de 13 lasttyper i kolonne I–U (pr. m² vandret projektion),
 # og det er dem, Lodret lastnedføring slår op ved ID. Ny opbygning: kopiér en blok.
 op = Ark("Opbygninger", "Opbygninger — egenlast lag for lag og laster pr. m²",
-         [70, 300, 78, 52, 70, 70, 70, 70] + [62] * 13)
-op.hoved("ID", "Navn / lag (materiale fra Materialer)", "t [mm] / værdi", "Fri", "Egen g_inf", "Egen g_sup",
+         [64, 270, 92, 40, 78, 78, 66, 66] + [66] * 13)
+op.nul = "–"
+op.hoved("ID", "Opbygning / lag", "t [mm] / valg", "Fri", "Egen g_k,inf", "Egen g_k,sup",
          "g_k,inf", "g_k,sup", *TYPER)
-op.note("Lag: skriv materialet som i Materialer og tykkelsen, eller en egen værdi i E/F (kN/m²). x i Fri = laget kan "
-        "fjernes og tæller ikke i g_k,inf. Rækken med ID'et (kolonne I–U) er det, Lodret lastnedføring henter.")
-op.note("Lasterne er pr. m² vandret projektion: egenlasten deles med cos α. Vind på taget: netto c_pe (inkl. c_pi) "
-        "nedad og opad — w = c·q_p (opad negativ).")
+op.note("Gule felter er inddata. Lag: materiale (som i Materialer) og tykkelse, eller en egen værdi i kN/m². "
+        "x i Fri = laget kan fjernes og tæller ikke i g_k,inf.")
+op.note("ID-rækken (kolonne I–U) er det, Lodret lastnedføring henter: pr. m² vandret projektion. "
+        "Vind på taget: netto c_pe nedad og opad, w = c·q_p (opad negativ).")
 D_OP = {"C": 1, "E": 2, "F": 2, "G": 2, "H": 2, **{kol(8 + i): 2 for i in range(13)}}
 OPB = {}
 
@@ -328,17 +333,25 @@ def opbygning(id_, navn_, lagliste, alfa="0", kategori="Ingen nyttelast", tag="N
              f'=HVIS(B{n}="";"";HVIS(F{n}<>"";F{n};{mat}))', dec=D_OP)
     op.r("", "Σ pr. m² flade", "", "", "", "", f"=SUM(G{h + 1}:G{sig - 1})", f"=SUM(H{h + 1}:H{sig - 1})",
          dec=D_OP, fedkol="BGH")
-    op.r("", "Hældning α [°] → pr. m² vandret projektion (0 for dæk og vægge)", alfa, "", "", "",
+    op.r("", "Hældning α [°] → pr. m² vandret", alfa, "", "", "",
          f"=G{sig}/COS(RADIANER(C{al}))", f"=H{sig}/COS(RADIANER(C{al}))", dec=D_OP, fedkol="GH")
-    op.r("", "Nyttelast: kategori (Lastoversigt) → bogstav og q_k", kategori, "", "", "",
+    op.r("", "Nyttelast: kategori → bogstav, q_k", kategori, "", "", "",
          f'=HVIS(C{ny}="";"";HVIS.FEJL(LOPSLAG(C{ny};{NYT};7;FALSK);"?"))',
          f'=HVIS(E{ny}<>"";E{ny};HVIS.FEJL(LOPSLAG(C{ny};{NYT};2;FALSK);0))', dec=D_OP)
-    op.r("", "Sne: tag (Ja/Nej) → μ₁ og s = μ₁·C_e·C_t·s_k", tag, "", "", "",
+    op.r("", "Sne: tag? (Ja/Nej) → μ₁, s", tag, "", "", "",
          f'=HVIS(C{sn}<>"Ja";"";HVIS(C{al}<=30;0,8;HVIS(C{al}<60;0,8*(60-C{al})/30;0)))',
          f'=HVIS(E{sn}<>"";E{sn};HVIS(C{sn}="Ja";G{sn}*s_0;0))', dec={**D_OP, "G": 2})
-    op.r("", "Vind: netto c_pe nedad (C) og opad (D) → w = c·q_p", c_ned, c_op, "", "",
+    op.r("", "Vind: c_pe ned / op → w", c_ned, c_op, "", "",
          f"=C{vi}*q_p", f"=D{vi}*q_p", dec={**D_OP, "C": 2, "D": 2})
     slut = vi
+    for n in range(h + 1, sig):
+        op.form(n, range(1, 6), fyld=GUL)                     # lagene: inddata
+    op.form(al, [2], fyld=GUL)
+    op.form(ny, [2, 4], fyld=GUL)
+    op.form(sn, [2, 4], fyld=GUL)
+    op.form(vi, [2, 3], fyld=GUL)
+    op.form(ny, [6], graa=True)
+    op.form(sn, [6], graa=True)
     op.form(h, range(21), fyld=BLAA, t=2)                     # ID-rækken: tyk streg over, blå
     op.form(sig, [6, 7], t=1)                                 # Σ
     for n in range(h, slut + 1):
@@ -410,25 +423,23 @@ OPB_A = f"Opbygninger!$A$2:$A${OPB_N}"
 # resultatrækkerne ovenfor (nøglen "ID/del", kolonne U). Kun rækker ovenfor
 # bruges, så der aldrig opstår cykler, og en blok kan kopieres ned.
 ln = Ark(LODRET, "Lodret lastnedføring — element for element, lasttype for lasttype",
-         [96, 64, 58, 58, 70, 58, 58] + [58] * 13 + [74, 58, 58, 64, 70, 58] + [26] * 8)
+         [84, 92, 78, 78, 76, 56, 56] + [64] * 13 + [70, 58, 58, 62, 62, 62] + [40] * 8)
+ln.nul = "–"
+ln.skjulte = list(range(26, 34))              # AA–AH: hjælpeformler (ID-række, x_A, x_B, art, opslag)
 TK = [kol(7 + i) for i in range(13)]          # H … T
 VAR = TK[2:12]                                # nyttelast A–H, sne, vind nedad
-ln.hoved("ID / kilde", "Art / del", "x_A / x₁ [m]", "x_B / x₂ [m]", "Ovenover / faktor", "L / → A", "→ B / P·x",
-         *TYPER, "Nøgle", "6.10a", "6.10b", "Dim.", "0,9G + 1,5W op", "Kar. (SLS)", "hoved", "art", "ID-række", "x_A", "x_B", "art", "opb.", "kilde")
+ln.hoved("ID", "Art", "x_A / x₁ [m]", "x_B / x₂ [m]", "Ovenover", "L [m]", "",
+         *TYPER, "Nøgle", "6.10a", "6.10b", "Dim.", "Løft", "SLS kar.", "hoved", "art", "ID-række", "x_A", "x_B", "art", "opb.", "kilde")
 PSI0 = ln.n
 ln.r("ψ0", "", "", "", "", "", "", "", "",
      *[f"=Lastoversigt!$D${PSI[i]}" for i in range(2, 13)], dec={c: 1 for c in TK})
 ln.form(PSI0, range(26), b=1)
-ln.note("Art: Dæk, Spær eller Bjælke (to understøtninger x_A, x_B — udkragning tilladt), Væg eller Fundament "
-        "(linjeunderstøttet x₁–x₂: N, M og plastisk fordeling) eller Søjle/Punktfundament (N).")
-ln.note("Last: kilden er et ID fra Opbygninger (× faktor, fx væghøjde; tom = 1) eller et element ovenfor med del "
-        "A/B (reaktion), q (væggens linjelast) eller N. x₂ tom = punktlast i x₁. Ovenover: væggen/søjlen ovenover, "
-        "hvis N og M føres med ned.")
-ln.note("6.10a = K_FI·1,2·G_sup.  6.10b = G_sup + K_FI·1,5·(dominerende + Σψ0·øvrige), dominerende valgt som den "
-        "største.  0,9·G_inf + K_FI·1,5·W_op = løft, når den er negativ.  Ny last: indsæt en række over blokkens tomme "
-        "række og kopiér en lastrække.")
+ln.note("Gule felter er inddata. Kilde: et ID fra Opbygninger (× faktor, fx væghøjde) eller et element ovenfor "
+        "med del A/B, N eller q. x₂ tom = punktlast. Ovenover: væggen eller søjlen, hvis N og M føres med ned.")
+ln.note("Dim. = største af 6.10a = K_FI·1,2·G og 6.10b = G + K_FI·1,5·(dominerende + Σψ0·øvrige).  "
+        "Løft = 0,9·G_inf + K_FI·1,5·W_op (negativ = løft).")
 S = ln.n - 1                                  # globale områder starter her (en noterække)
-D_LN = {**{c: 2 for c in TK}, "C": 2, "D": 2, "E": 2, "F": 3, "G": 3, "V": 1, "W": 1, "X": 1, "Y": 1, "Z": 1}
+D_LN = {**{c: 2 for c in TK}, "C": 2, "D": 2, "E": 2, "F": 2, "G": 2, "V": 1, "W": 1, "X": 1, "Y": 1, "Z": 1}
 KEY = lambda n: f"$U${S}:$U{n}"
 OVER = lambda c, n: f"{c}${S}:{c}{n}"
 
@@ -459,6 +470,8 @@ def lastraekke(kilde="", del_="", x1="", x2="", fak=""):
          f'=HVIS($A{n}="";0;HVIS.FEJL(SAMMENLIGN($A{n};{OPB_A};0);0))',
          # en kilde, der hverken er en opbygning eller et element ovenfor, giver #I/T hele vejen ned
          f'=HVIS(ELLER($A{n}="";$AG{n}>0);0;SAMMENLIGN($A{n}&"/"&$B{n};{KEY(n - 1)};0))', dec=D_LN)
+    ln.form(n, range(5), fyld=GUL)                # kilde, del, x₁, x₂, faktor
+    ln.form(n, [5, 6], graa=True)                 # andele / arm: mellemregninger
     return n
 
 
@@ -474,8 +487,8 @@ def element(id_, art, xa, xb, beskr, laster, ovenover=""):
          f'=HVIS(ELLER(B{h}="Væg";B{h}="Fundament");2;HVIS(ELLER(B{h}="Søjle";B{h}="Punktfundament");3;1))',
          fed=True, dec={"C": 2, "D": 2, "F": 2})
     mode = 2 if art in ("Væg", "Fundament") else 3 if art in ("Søjle", "Punktfundament") else 1
-    ln.r("Last / kilde", "del", "x₁ [m]", "x₂ [m]", "faktor", "→ A / P" if mode == 1 else "P", "→ B" if mode == 1 else "P·x",
-         *TYPER, "kontrol")
+    ln.r("Kilde", "Del", "x₁ [m]", "x₂ [m]", "Faktor", "→ A" if mode == 1 else "P", "→ B" if mode == 1 else "P·x",
+         *TYPER, "Kontrol")
     ln.fmt[f"A{ln.n - 1}"] = {"kursiv": True}
     a = ln.n - 1                              # fra underoverskriften (tekst tæller som 0), så en
                                               # række indsat over den ledige række altid er med
@@ -492,6 +505,7 @@ def element(id_, art, xa, xb, beskr, laster, ovenover=""):
             for k, v in hjaelp(n).items():
                 rk[k] = v
         ln.r(*rk, fedkol="A", dec=D_LN)
+        ln.form(n, [1, 20], graa=True)
         res[noegle] = n
         return n
 

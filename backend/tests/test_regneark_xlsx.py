@@ -112,3 +112,22 @@ def test_formatering_frem_og_tilbage():
     assert ws["B1"].fill.fgColor.rgb.endswith("FFF2CC") and ws["B1"].border.bottom.style == "medium"
     assert ws["B1"].font.i and ws["B1"].alignment.horizontal == "center"
     assert xlsx_til_bog(bog_til_xlsx(bog))["ark"][0]["fmt"]["B1"] == {"kursiv": True, "fyld": "#fff2cc", "ramme": {"t": 1, "b": 2}, "just": "c"}
+
+
+def test_skjulte_kolonner_nul_og_formater_paa_tomme_celler():
+    """Hjælpekolonner er skjulte, en formel med 0 vises som –, og rammer/fyld står også på tomme celler."""
+    import io as _io
+    import openpyxl
+    bog = {"ark": [{"id": "a", "navn": "Lodret", "celler": [["ID", "", "x"], ["V1", "=0*1", "0"]],
+                    "nul": "–", "skjulte": [2], "dec": {"B2": 2},
+                    "fmt": {"C1": {"fyld": "#ddebf7"}, "D2": {"ramme": {"t": 2}}, "B2": {"graa": True}}}]}
+    ws = openpyxl.load_workbook(_io.BytesIO(bog_til_xlsx(bog)))["Lodret"]
+    assert ws.column_dimensions["C"].hidden
+    assert ws["B2"].number_format == '0.00;-0.00;"–"'
+    assert ws["C2"].number_format == "General"          # indtastet 0 er et tal
+    assert ws["C2"].font.color.rgb.endswith("1D4ED8")   # indtastede tal i blåt
+    assert ws["B2"].font.color.rgb.endswith("8A8A8A")
+    assert ws["D2"].border.top.style == "medium"        # tom celle med ramme
+    assert ws.freeze_panes == "A2"
+    tilbage = xlsx_til_bog(bog_til_xlsx(bog))["ark"][0]
+    assert tilbage["skjulte"] == [2]
