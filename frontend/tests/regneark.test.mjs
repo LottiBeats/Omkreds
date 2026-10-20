@@ -137,3 +137,25 @@ test('skabeloner: lastnedføringen henter fra opbygningen og regner om, når den
   const b2 = regnBeggge(op2)
   assert.ok(b2.Lastnedføring[11][13] > b1.Lastnedføring[11][13], 'fundamentet får mere last, når tagstenen bliver tungere')
 })
+
+test('HVIS og HVIS.FEJL regner kun den gren, der bruges', () => {
+  // B1 henviser til sig selv i den gren, der ikke vælges — ingen #CYKLUS!
+  const r = regnBog([{ navn: 'A', celler: [['1', '=HVIS(A1>0;A1*2;B1)', '=HVIS.FEJL(A1;C1)', '=HVIS(A1>0;"ja")', '=HVIS(A1<0;"ja")']] }]).A[0]
+  assert.deepEqual(r.map(v => formatVaerdi(v)), ['1', '2', '1', 'ja', 'FALSK'])
+})
+
+test('INDEKS og SUMHVIS slår kun op i de celler, de bruger', () => {
+  // Rækkerne i en lastnedføring slår op i rækkerne ovenfor i den samme kolonne:
+  // B3 bruger B1 via INDEKS, B4 summer B1 via SUMHVIS — B2 (fejl) og rækkerne selv berøres ikke.
+  const celler = [
+    ['x', '5'],
+    ['y', '=1/0'],
+    ['', '=INDEKS(B1:B4;1)*2'],
+    ['', '=SUMHVIS(A1:A4;"x";B1:B4)+INDEKS(B1:B4;3)'],
+  ]
+  const r = regnBog([{ navn: 'A', celler }]).A.map(x => formatVaerdi(x[1]))
+  assert.deepEqual(r, ['5', '#DIV/0!', '10', '15'])
+  // En reel cyklus er stadig en cyklus
+  const d = regnBog([{ navn: 'A', celler: [['=INDEKS(A1:A2;2)'], ['=A1']] }]).A
+  assert.equal(formatVaerdi(d[0][0]), '#CYKLUS!')
+})

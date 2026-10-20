@@ -6,9 +6,12 @@
  * Den sættes ind med indsaetSkabelon (lib/regnearksbog.js), der giver ark og
  * navne nye navne, hvis de allerede er brugt i bogen.
  *
- *   standard    Til nye byggerier: forudsætninger (K_FI, sne, q_p) → materialer
- *               → opbygninger → lastoversigt → lodret lastnedføring plan for
- *               plan → vandret lastnedføring (vind fordelt på væggene).
+ *   standard    Til nye byggerier, små og store: forudsætninger (K_FI, sne, q_p)
+ *               → materialer → opbygninger med ID → nyttelastkategorier og ψ
+ *               → lodret lastnedføring element for element (spær/dæk/bjælker,
+ *               vægge, søjler, fundamenter; hver lasttype for sig) → vandret
+ *               lastnedføring (vind fordelt på væggene). Genereres af
+ *               scripts/lav_standardbog.py.
  *   elementer   Lastopbygninger med ID (TRa, Tka …) og elementlaster: last-
  *               områder x₁–x₂ på et element, laster slået op på ID'et, og
  *               reaktionerne R_A og R_B pr. lasttype — som Excel-arkene.
@@ -114,7 +117,7 @@ function elementer() {
 export const BOG_SKABELONER = [
   {
     key: 'standard', titel: 'Standard — lodret og vandret lastnedføring',
-    beskrivelse: 'Forudsætninger → materialer → opbygninger → lastoversigt → lodret lastnedføring plan for plan → vandret lastnedføring på de stabiliserende vægge',
+    beskrivelse: 'Forudsætninger → opbygninger med ID → lodret lastnedføring element for element (spær, dæk, bjælker, vægge, søjler, fundamenter) med kombinationer → vandret lastnedføring på de stabiliserende vægge',
     bog: () => structuredClone({ ark: standard.ark, navne: standard.navne }),
   },
   {
