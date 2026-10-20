@@ -190,8 +190,8 @@ function tilOversigt(bog, arkId, id, noegler) {
     b = aendrGitter(b, arkId, 'r', q, 1, false)
     const a = arkAf(b, arkId)
     const fed = Object.fromEntries(Object.entries(ark.fed ?? {}).filter(([k]) => laesAdresse(k)?.r === kilde).map(([k, v]) => [adresse(q, laesAdresse(k).k), v]))
-    const dec = Object.fromEntries(Object.entries(ark.dec ?? {}).filter(([k]) => laesAdresse(k)?.r === kilde).map(([k, v]) => [adresse(q, laesAdresse(k).k), v]))
-    b = medEt(b, skrivRaekker(a, q, [raek], { fed, dec }))
+    const somKilde = (obj) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => laesAdresse(k)?.r === kilde).map(([k, v]) => [adresse(q, laesAdresse(k).k), v]))
+    b = medEt(b, skrivRaekker(a, q, [raek], { fed, dec: somKilde(ark.dec), fmt: somKilde(ark.fmt) }))
   }
   return b
 }

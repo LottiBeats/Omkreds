@@ -19,7 +19,9 @@ export function fmtStil(f) {
   if (f.fyld) st.background = f.fyld
   if (f.kursiv) st.fontStyle = 'italic'
   if (f.just) st.textAlign = { v: 'left', c: 'center', h: 'right' }[f.just]
-  const kant = (n) => (n === 2 ? '2px solid #1f2937' : '1.2px solid #1f2937')
+  // Bredere end gitterlinjerne (1 px): ved lige brede kanter vinder cellen til
+  // venstre/over, og så ville en tynd ramme forsvinde i gitteret.
+  const kant = (n) => (n === 2 ? '3px solid #1f2937' : '2px solid #4b5563')
   if (f.ramme?.t) st.borderTop = kant(f.ramme.t)
   if (f.ramme?.b) st.borderBottom = kant(f.ramme.b)
   if (f.ramme?.l) st.borderLeft = kant(f.ramme.l)
