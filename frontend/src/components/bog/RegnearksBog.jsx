@@ -25,11 +25,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   regnBog, formatVaerdi, erFejl, kolNavn, adresse, laesAdresse, laesTsv, skrivTsv, udvid, forskydFormel,
-  flytHenvisninger, flytNoegler, FUNKTIONER, oversaet, arkPrefiks,
+  FUNKTIONER, oversaet, arkPrefiks,
 } from '../../lib/regneark.js'
 import {
   medArk, medEtArk, nytArk, omdoebArk, sletArk, dupliker, flytArk, arkDerBruger,
-  navneOpslag, navngiv, fjernNavn, navneFor, flytNavne, udgange, indsaetSkabelon,
+  navneOpslag, navngiv, fjernNavn, navneFor, udgange, indsaetSkabelon, aendrGitter as aendrGitterBog,
 } from '../../lib/regnearksbog.js'
 import { SKABELONER } from '../../lib/regnearkSkabeloner.js'
 import { BOG_SKABELONER } from '../../lib/bogSkabeloner.js'
@@ -37,6 +37,10 @@ import { forklar, brugtAf } from '../../lib/forklar.js'
 import { FYLD, fmtStil } from '../../lib/regnearkFormat.js'
 import { raekkeTyper, celleArt } from '../../lib/regnearksbog.js'
 import { bogTilXlsx, bogFraXlsx } from '../../api/client.js'
+import {
+  ARTER, erLastnedfoering, elementer, elementVed, nytElement, kopierElement, fjernElement, nyLast, brugere,
+  ledigtId, tjekId, oversigtNoegler, antalRaekker,
+} from '../../lib/lastnedfoering.js'
 import '../blocks/Regneark.css'
 
 const STD_BREDDE = 92
@@ -59,6 +63,13 @@ function laesGaaTil(tekst) {
   const a = laesAdresse(m[3].replace(/\$/g, '')), b = m[4] ? laesAdresse(m[4].replace(/\$/g, '')) : a
   if (!a || !b) return null
   return { ark, r0: a.r, k0: a.k, r1: b.r, k1: b.k }
+}
+
+/** Felterne for et nyt element af arten: x_A/x_B (spænd), x₁/x₂ (væg) eller x₁ (søjle). */
+function tilstandTekst(art) {
+  if (['Væg', 'Fundament'].includes(art)) return { a: 'x₁', b: 'x₂', ovenover: true }
+  if (['Søjle', 'Punktfundament'].includes(art)) return { a: 'x₁', b: null, ovenover: true }
+  return { a: 'x_A', b: 'x_B', ovenover: false }
 }
 
 /** Standard: hent filen i browseren. Skrivebordsprogrammet giver sin egen gem-dialog. */
@@ -135,6 +146,7 @@ export default function RegnearksBog({
   const [navngiver, setNavngiver] = useState(null)   // { navn, enhed, fejl, celle }
   const [celleMenu, setCelleMenu] = useState(null)   // { x, y }
   const [excelTravl, setExcelTravl] = useState(false)
+  const [elDlg, setElDlg] = useState(null)   // { slags: 'ny' | 'kopi', art, id, xa, xb, ovenover, beskrivelse, efter, fejl }
   const excelInput = useRef(null)
 
   async function hentExcel() {
@@ -325,21 +337,63 @@ export default function RegnearksBog({
 
   // Indsæt/slet rækker og kolonner. Henvisninger i alle ark flytter med.
   function aendrGitter(akse, fra, n) {
-    const flytAlle = (a) => ({ ...a, celler: (a.celler ?? []).map(raek => raek.map(c => flytHenvisninger(c, a.navn, d.navn, akse, fra, n))) })
-    const nyeArk = bog.ark.map(a => {
-      if (a.id !== d.id) return flytAlle(a)
-      let c = flytAlle(a).celler.map(r => [...r])
-      if (akse === 'r') {
-        if (n > 0) c.splice(fra, 0, ...Array.from({ length: n }, () => Array(c[0]?.length ?? 1).fill('')))
-        else c.splice(fra, -n)
-      } else {
-        c = c.map(r => { const x = [...r]; if (n > 0) x.splice(fra, 0, ...Array(n).fill('')); else x.splice(fra, -n); return x })
-      }
-      const bredder = [...(a.bredder ?? [])]
-      if (akse === 'k' && bredder.length > fra) { if (n > 0) bredder.splice(fra, 0, ...Array(n).fill(STD_BREDDE)); else bredder.splice(fra, -n) }
-      return { ...a, celler: trim(c), bredder, dec: flytNoegler(dec, akse, fra, n), fed: flytNoegler(fed, akse, fra, n), fmt: flytNoegler(fmt, akse, fra, n) }
-    })
-    aendr(medArk({ ...bog, navne: flytNavne(bog.navne, d.id, akse, fra, n) }, nyeArk))
+    const ny = aendrGitterBog(bog, d.id, akse, fra, n, false)
+    aendr(medArk(ny, ny.ark.map(a => (a.id === d.id ? { ...a, celler: trim(a.celler) } : a))))
+  }
+
+  // ── Elementer i en lastnedføring (lib/lastnedfoering.js) ──
+  const lnd = erLastnedfoering(d)
+  const lnEls = useMemo(() => (lnd ? elementer(d) : []), [lnd, d])
+  const aktEl = lnd ? elementVed(d, akt.r) : null
+  const gaaTilRaekke = (r, besk) => {
+    setAnker(null); setAkt({ r, k: 0 })
+    setBesked(besk ? { ok: true, tekst: besk } : null)
+    requestAnimationFrame(() => rodRef.current?.querySelector(`td[data-c="${r}-0"]`)?.scrollIntoView({ block: 'center' }))
+    rodRef.current?.focus()
+  }
+  function startNytElement() {
+    const art = aktEl?.art && ARTER.some(a => a.art === aktEl.art) ? aktEl.art : 'Væg'
+    setElDlg({ slags: 'ny', art, id: ledigtId(bog, d.id, art), xa: '', xb: '', ovenover: '', beskrivelse: '',
+      efter: aktEl?.id ?? lnEls.at(-1)?.id ?? '', fejl: null })
+  }
+  function startKopi() {
+    if (!aktEl) return
+    setElDlg({ slags: 'kopi', art: aktEl.art, id: ledigtId(bog, d.id, aktEl.art), fejl: null })
+  }
+  function gemElDlg() {
+    if (!elDlg) return
+    const r = elDlg.slags === 'ny'
+      ? nytElement(bog, d.id, { ...elDlg, efter: elDlg.efter || null })
+      : kopierElement(bog, d.id, aktEl?.id, elDlg.id)
+    if (r.fejl) { setElDlg({ ...elDlg, fejl: r.fejl }); return }
+    aendr(r.bog)
+    const id = elDlg.id.trim()
+    setElDlg(null)
+    gaaTilRaekke(r.r, elDlg.slags === 'ny'
+      ? `${id} er sat ind i række ${r.r + 1}. Skriv lasterne i den tomme række: kilden er et ID fra Opbygninger eller et element ovenfor (del A/B, N eller q). "+ Last" giver flere rækker.`
+      : `${id} er en kopi af ${aktEl?.id} (række ${r.r + 1}). Ret mål, laster og "ovenover", så den passer.`)
+  }
+  function fjernAktEl() {
+    if (!aktEl) return
+    const b = brugere(bog, d.id, aktEl.id)
+    const n = aktEl.slut - aktEl.r + 1
+    const linjer = [`Fjern ${aktEl.id} (${aktEl.art}) — ${n} rækker?`]
+    if (b.length) {
+      linjer.push('Det bruges her:\n' + b.map(x => `• ${x}`).join('\n'))
+      if (b.some(x => !x.startsWith('Oversigten'))) linjer.push(`Laster, der henter fra ${aktEl.id}, viser "? ukendt kilde" og en fejl, til de rettes eller fjernes.`)
+    } else linjer.push('Ingen andre elementer eller ark bruger det.')
+    if (!window.confirm(linjer.join('\n\n'))) return
+    const r = fjernElement(bog, d.id, aktEl.id)
+    if (r.fejl) { setBesked(r.fejl); return }
+    aendr(r.bog)
+    setBesked({ ok: true, tekst: `${aktEl.id} er fjernet. Fortryd med Ctrl+Z.` })
+    rodRef.current?.focus()
+  }
+  function nyLastHer() {
+    const r = nyLast(bog, d.id, akt.r)
+    if (r.fejl) { setBesked(r.fejl); return }
+    aendr(r.bog)
+    gaaTilRaekke(r.r, `Ny lastrække i ${aktEl?.id}: skriv kilden i A, del i B og x₁/x₂ i C/D (x₂ tom = punktlast), faktor i E.`)
   }
 
   // ── Navngiv den aktive celle ──
@@ -724,6 +778,65 @@ export default function RegnearksBog({
         </div>
       )}
 
+      {lnd && (
+        <div className="rkb-ln">
+          <strong>Lastnedføring</strong>
+          <span className="rkb-ln-el" title="Elementet, markøren står i">
+            {aktEl ? <>Element <b>{aktEl.id}</b> · {aktEl.art} · række {aktEl.r + 1}–{aktEl.slut + 1}</> : `${lnEls.length} elementer — markér et for at kopiere, fjerne eller give det en last`}
+          </span>
+          <button type="button" onClick={startNytElement} title="Sæt et nyt element ind: ID-række, en tom lastrække og resultaterne, og en række i oversigten">+ Element…</button>
+          <button type="button" disabled={!aktEl} onClick={nyLastHer} title="En ny lastrække i elementet (nederst, over den tomme række)">+ Last</button>
+          <button type="button" disabled={!aktEl} onClick={startKopi} title="Kopiér elementet med alle laster til et nyt ID lige under">Kopiér element…</button>
+          <button type="button" disabled={!aktEl} className="rkb-slet" onClick={fjernAktEl} title="Fjern elementet — du ser først, hvem der bruger det">Fjern element…</button>
+          <span className="rkb-fyld" />
+          <select className="rk-skabelon" value="" title="Gå til et element" onChange={e => { const x = lnEls.find(y => y.id === e.target.value); if (x) gaaTilRaekke(x.r) }}>
+            <option value="">Gå til element…</option>
+            {lnEls.map(x => <option key={x.id + x.r} value={x.id}>{x.id} · {x.art}</option>)}
+          </select>
+        </div>
+      )}
+      {elDlg && (() => {
+        const art = ARTER.find(a => a.art === elDlg.art)
+        const noegler = oversigtNoegler(elDlg.art).map(([x]) => `${elDlg.id.trim() || '?'}/${x}`)
+        const idFejl = elDlg.id.trim() ? tjekId(bog, d.id, elDlg.id) : null
+        const efterEl = lnEls.find(x => x.id === elDlg.efter)
+        const over = lnEls.filter(x => !efterEl || x.r <= efterEl.r)
+        const t = tilstandTekst(elDlg.art)
+        const forklaringNy = `Indsætter ${antalRaekker(elDlg.art) + 1} rækker ${efterEl ? `efter ${efterEl.id}` : 'sidst'}: ID-række, en tom lastrække og ${art?.giver}. Oversigten får ${noegler.join(' og ')}.`
+        const forklaringKopi = aktEl && `Kopierer ${aktEl.id} med ${aktEl.laster.filter(r => String(celler[r]?.[0] ?? '').trim()).length} laster til ${elDlg.id.trim() || '?'} lige under ${aktEl.id}. Mål, laster og "ovenover" er de samme — ret dem bagefter. Oversigten får ${noegler.join(' og ')}.`
+        return (
+          <div className="rkb-navngiv rkb-eldlg" onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setElDlg(null) } if (e.key === 'Enter') { e.preventDefault(); gemElDlg() } }}>
+            <strong>{elDlg.slags === 'ny' ? 'Nyt element' : `Kopiér ${aktEl?.id}`}</strong>
+            {elDlg.slags === 'ny' && (
+              <label>Art <select value={elDlg.art} onChange={e => setElDlg({ ...elDlg, art: e.target.value, id: ledigtId(bog, d.id, e.target.value), fejl: null })}>
+                {ARTER.map(a => <option key={a.art} value={a.art}>{a.art}</option>)}
+              </select></label>
+            )}
+            <label>ID <input autoFocus value={elDlg.id} className="rkb-enhed" onChange={e => setElDlg({ ...elDlg, id: e.target.value, fejl: null })} /></label>
+            {elDlg.slags === 'ny' && (
+              <>
+                <label>{t.a} <input className="rkb-enhed" value={elDlg.xa} placeholder="m" onChange={e => setElDlg({ ...elDlg, xa: e.target.value })} /></label>
+                {t.b && <label>{t.b} <input className="rkb-enhed" value={elDlg.xb} placeholder="m" onChange={e => setElDlg({ ...elDlg, xb: e.target.value })} /></label>}
+                {t.ovenover && (
+                  <label title="Væggen eller søjlen ovenover, hvis N og M skal føres med ned">Ovenover <select value={elDlg.ovenover} onChange={e => setElDlg({ ...elDlg, ovenover: e.target.value, fejl: null })}>
+                    <option value="">—</option>
+                    {over.filter(x => ['Væg', 'Fundament', 'Søjle', 'Punktfundament'].includes(x.art)).map(x => <option key={x.id} value={x.id}>{x.id} · {x.art}</option>)}
+                  </select></label>
+                )}
+                <label>Placering <select value={elDlg.efter} onChange={e => setElDlg({ ...elDlg, efter: e.target.value, fejl: null })}>
+                  {lnEls.map(x => <option key={x.id + x.r} value={x.id}>efter {x.id}</option>)}
+                  <option value="">sidst</option>
+                </select></label>
+                <label className="rkb-eldlg-b">Beskrivelse <input value={elDlg.beskrivelse} placeholder="fx Ydervæg nord, x = 0–12" onChange={e => setElDlg({ ...elDlg, beskrivelse: e.target.value })} /></label>
+              </>
+            )}
+            <button type="button" className="rkb-ok" disabled={!!idFejl} onClick={gemElDlg}>{elDlg.slags === 'ny' ? 'Sæt ind' : 'Kopiér'}</button>
+            <button type="button" onClick={() => setElDlg(null)}>Annullér</button>
+            <span className="rkb-eldlg-tekst">{elDlg.slags === 'ny' ? forklaringNy : forklaringKopi}</span>
+            {(idFejl || elDlg.fejl) && <span className="rkb-fejltekst">{idFejl || elDlg.fejl}</span>}
+          </div>
+        )
+      })()}
       {ark && (
         <div className="rk-linje">
           <input className="rk-adr rkb-gaatil" value={gaaTil ?? (red && !rederHer ? `${redArk?.navn}!${adresse(red.r, red.k)}` : adrTekst)}
@@ -792,7 +905,8 @@ export default function RegnearksBog({
               </thead>
               <tbody>
                 {Array.from({ length: antalR }, (_, r) => (
-                  <tr key={r} className={[r === 0 && d.overskrift !== false ? 'rk-hoved' : '', rkTyper[r] ? `rkb-t-${rkTyper[r]}` : ''].join(' ')}>
+                  <tr key={r} className={[r === 0 && d.overskrift !== false ? 'rk-hoved' : '', rkTyper[r] ? `rkb-t-${rkTyper[r]}` : '',
+                    aktEl && r >= aktEl.r && r <= aktEl.slut ? 'rkb-el-akt' : '', lnd && lnEls.some(x => x.r === r) ? 'rkb-el-id' : ''].join(' ')}>
                     <th className={r >= omr.r0 && r <= omr.r1 ? 'rk-on' : ''}
                         onMouseDown={e => { setAnker({ r, k: 0 }); setAkt({ r, k: antalK - 1 }); rodRef.current?.focus(); e.preventDefault() }}>
                       {r + 1}

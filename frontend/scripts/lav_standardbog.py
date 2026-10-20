@@ -453,7 +453,8 @@ def element(id_, art, xa, xb, beskr, laster, ovenover=""):
     ln.r("Last / kilde", "del", "x₁ [m]", "x₂ [m]", "faktor", "→ A / P" if mode == 1 else "P", "→ B" if mode == 1 else "P·x",
          *TYPER, "kontrol")
     ln.fmt[f"A{ln.n - 1}"] = {"kursiv": True}
-    a = ln.n
+    a = ln.n - 1                              # fra underoverskriften (tekst tæller som 0), så en
+                                              # række indsat over den ledige række altid er med
     for last in laster:
         lastraekke(*last)
     b = lastraekke()                          # ledig række: indsæt nye laster over den
@@ -543,9 +544,10 @@ element("F2", "Fundament", "0", "4,0", "Fundament under V2", [
 element("F3", "Punktfundament", "6,0", "", "Punktfundament under midterstolpen S1", [
     ("PF1", "", "6,0"),
 ], ovenover="S1")
-SLUT = ln.n - 1
-
 ln.tom()
+SLUT = ln.n - 1                               # en tom række efter sidste element: et nyt element sættes
+                                              # ind her, inden for områderne i oversigten
+
 ln.sektion("Oversigt — dimensionerende laster (skriv nøglen ID/del; del = A, B, N eller q)")
 ov_h = ln.r("Nøgle", "Enhed", "", "", "", "", "", *TYPER, "", "6.10a", "6.10b", "Dim.", "0,9G + 1,5W op", "Kar. (SLS)", fed=True)
 OVERSIGT = [("T1/A", "kN/m"), ("T1/B", "kN/m"), ("D1/A", "kN/m"), ("D1/B", "kN/m"), ("B1/A", "kN"), ("B1/B", "kN"),
@@ -695,7 +697,25 @@ navn("stab_y_R_gavl", va, f"J{wy}", "kN")
 navn("stab_x_R_V2", va, f"J{wx + 1}", "kN")
 
 OMR = {"lodret_oversigt": f"A{ov_h}:Z{max(OV.values()) - 2}", "vandret_y": f"A{wy - 1}:K{wy + 9}", "vandret_x": f"A{wx - 1}:K{wx + 8}"}
-ud = {"titel": "Standard — lodret og vandret lastnedføring", "ark": [a.data() for a in ark], "navne": NAVNE, "omraader": OMR}
+# ── Skabeloner til nye elementer (knappen "+ Element", lib/lastnedfoering.js) ──
+# Hver art som en blok med en tom lastrække, lagt i række PROTO; formlerne
+# flyttes ned til den række, blokken sættes ind i.
+PROTO = 1001
+PROTOTYPER = {}
+for art_ in ["Spær", "Dæk", "Bjælke", "Væg", "Fundament", "Søjle", "Punktfundament"]:
+    gem = ln
+    ln = Ark(LODRET, "", [])
+    ln.celler = [[] for _ in range(PROTO - 1)]
+    element("NY", art_, "", "", "", [])
+    rk = lambda key: int("".join(ch for ch in key if ch.isdigit()))
+    PROTOTYPER[art_] = {"fra": PROTO, "celler": ln.celler[PROTO - 1:],
+                        **{m: {k: v for k, v in getattr(ln, m).items() if rk(k) >= PROTO} for m in ("fed", "dec", "fmt")}}
+    ln = gem
+ELEMENT.pop("NY", None)
+
+ud = {"titel": "Standard — lodret og vandret lastnedføring", "ark": [a.data() for a in ark], "navne": NAVNE, "omraader": OMR,
+      "lastnedfoering": {"S": S, "slut": SLUT, "opbygninger": {"navn": "Opbygninger", "fra": 2, "til": OPB_N},
+                         "prototyper": PROTOTYPER}}
 if UD.endswith(".js"):
     open(UD, "w", encoding="utf-8").write(
         "/** Genereret af scripts/lav_standardbog.py — standardbogen til nye byggerier. Se lib/bogSkabeloner.js. */\n"

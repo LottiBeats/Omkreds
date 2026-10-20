@@ -136,7 +136,8 @@ const FUNK = {
     let s = 0
     for (let i = 0; i < n; i++) {
       let p = 1
-      for (const l of lister) { const x = typeof l[i] === 'number' ? l[i] : (l[i] === '' ? 0 : tilTal(l[i])); if (erFejl(x)) return x; p *= x }
+      // Som Excel: tekst og tomme celler i områderne tæller som 0
+      for (const l of lister) { const x = typeof l[i] === 'number' ? l[i] : erFejl(l[i]) ? l[i] : 0; if (erFejl(x)) return x; p *= x }
       s += p
     }
     return s
