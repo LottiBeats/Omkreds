@@ -39,7 +39,7 @@ test('Forklar celle: etiket af række, kolonne og sektion; regnestykket med tal'
 test('formatering: style og udsnit', () => {
   assert.equal(fmtStil(undefined), undefined)
   assert.deepEqual(fmtStil({ fyld: '#fff2cc', kursiv: true, just: 'c', ramme: { b: 2, t: 1 } }), {
-    background: '#fff2cc', fontStyle: 'italic', textAlign: 'center', borderTop: '1.2px solid #1f2937', borderBottom: '2px solid #1f2937',
+    background: '#fff2cc', fontStyle: 'italic', textAlign: 'center', borderTop: '2px solid #4b5563', borderBottom: '3px solid #1f2937',
   })
   const b = medArk({ ark: [] }, [{ id: 'a', navn: 'A', celler: [['x', '1'], ['y', '2']], fmt: { B2: { fyld: '#e2efda' } } }])
   assert.deepEqual(udsnit(b.ark[0], 'B1:B2').fmt, [[null], [{ fyld: '#e2efda' }]])

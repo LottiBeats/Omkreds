@@ -59,7 +59,20 @@ class Ark:
         return self.r(tekst, fed=True)
 
     def hoved(self, *v):
-        return self.r(*v, fed=True)
+        n = self.r(*v, fed=True)
+        self.form(n, range(len(v)), b=1)
+        return n
+
+    def form(self, n, kolonner, fyld=None, kursiv=False, **ramme):
+        """Formatering af rækken n i kolonnerne (indeks): fyld, kursiv og rammer (t/b/l/r = 1 tynd, 2 tyk)."""
+        for i in kolonner:
+            f = self.fmt.setdefault(f"{kol(i)}{n}", {})
+            if fyld:
+                f["fyld"] = fyld
+            if kursiv:
+                f["kursiv"] = True
+            if ramme:
+                f.setdefault("ramme", {}).update(ramme)
 
     def note(self, tekst):
         n = self.r(tekst)
@@ -210,6 +223,8 @@ m1 = ma.n - 1
 MATOMR = f"Materialer!$A$2:$C${m1 + 10}"
 ark.append(ma)
 
+BLAA, GROEN = "#ddebf7", "#e2efda"              # ID-rækker / dimensionerende resultater (regnearkFormat.js)
+
 # ── Lasttyperne ─────────────────────────────────────────────────────────────
 # De 13 kolonner, lasterne føres ned i. Hver lasttype holdes for sig hele vejen
 # ned; kombinationerne regnes først i resultatrækkerne (kolonne V–Z).
@@ -323,6 +338,13 @@ def opbygning(id_, navn_, lagliste, alfa="0", kategori="Ingen nyttelast", tag="N
          f'=HVIS(E{sn}<>"";E{sn};HVIS(C{sn}="Ja";G{sn}*s_0;0))', dec={**D_OP, "G": 2})
     op.r("", "Vind: netto c_pe nedad (C) og opad (D) → w = c·q_p", c_ned, c_op, "", "",
          f"=C{vi}*q_p", f"=D{vi}*q_p", dec={**D_OP, "C": 2, "D": 2})
+    slut = vi
+    op.form(h, range(21), fyld=BLAA, t=2)                     # ID-rækken: tyk streg over, blå
+    op.form(sig, [6, 7], t=1)                                 # Σ
+    for n in range(h, slut + 1):
+        op.form(n, [6], l=1)                                  # g_k-kolonnerne
+        op.form(n, [8], l=1)                                  # de 13 lasttyper
+    op.form(slut, range(21), b=1)
     if note:
         op.note(note)
     op.tom()
@@ -393,8 +415,10 @@ TK = [kol(7 + i) for i in range(13)]          # H … T
 VAR = TK[2:12]                                # nyttelast A–H, sne, vind nedad
 ln.hoved("ID / kilde", "Art / del", "x_A / x₁ [m]", "x_B / x₂ [m]", "Ovenover / faktor", "L / → A", "→ B / P·x",
          *TYPER, "Nøgle", "6.10a", "6.10b", "Dim.", "0,9G + 1,5W op", "Kar. (SLS)", "hoved", "art", "ID-række", "x_A", "x_B", "art", "opb.", "kilde")
+PSI0 = ln.n
 ln.r("ψ0", "", "", "", "", "", "", "", "",
      *[f"=Lastoversigt!$D${PSI[i]}" for i in range(2, 13)], dec={c: 1 for c in TK})
+ln.form(PSI0, range(26), b=1)
 ln.note("Art: Dæk, Spær eller Bjælke (to understøtninger x_A, x_B — udkragning tilladt), Væg eller Fundament "
         "(linjeunderstøttet x₁–x₂: N, M og plastisk fordeling) eller Søjle/Punktfundament (N).")
 ln.note("Last: kilden er et ID fra Opbygninger (× faktor, fx væghøjde; tom = 1) eller et element ovenfor med del "
@@ -497,6 +521,20 @@ def element(id_, art, xa, xb, beskr, laster, ovenover=""):
             f'=HVIS({c}{rN}<=0;"";HVIS({xr(c)}<={xm};MAKS($C{h};$C{h}+2*({xr(c)}-$C{h}));$D{h}))'), "xe", kombi=False)
         resultat("q", "kN/m", lambda n, c: (
             f'=HVIS({c}{rN}=0;"";HVIS({c}{rN}<0;{c}{rN}/($D{h}-$C{h});HVIS.FEJL({c}{rN}/({c}{re}-{c}{rs});"e > L/2")))'), "q")
+    # Rammer som i Excel-arkene: tyk streg og blå ID-række øverst, streg under
+    # underoverskriften, lodrette streger før lasttyperne, nøglen og kombinationerne,
+    # streg over resultaterne og grøn Dim.
+    sidste = ln.n - 1
+    ln.form(h, range(26), fyld=BLAA, t=2)
+    ln.form(h + 1, range(21), b=1, kursiv=True)
+    for n in range(h, sidste + 1):
+        ln.form(n, [7, 20, 21], l=1)
+    ln.form(min(res.values()), range(26), t=1)
+    for d_, n in res.items():
+        if d_ in ("A", "B", "N", "q"):
+            ln.form(n, [23], fyld=GROEN)
+            ln.fed[f"X{n}"] = True
+    ln.form(sidste, range(26), b=1)
     ELEMENT[id_] = res
     return res
 
@@ -550,6 +588,7 @@ SLUT = ln.n - 1                               # en tom række efter sidste eleme
 
 ln.sektion("Oversigt — dimensionerende laster (skriv nøglen ID/del; del = A, B, N eller q)")
 ov_h = ln.r("Nøgle", "Enhed", "", "", "", "", "", *TYPER, "", "6.10a", "6.10b", "Dim.", "0,9G + 1,5W op", "Kar. (SLS)", fed=True)
+ln.form(ov_h, range(26), fyld=BLAA, t=2, b=1)
 OVERSIGT = [("T1/A", "kN/m"), ("T1/B", "kN/m"), ("D1/A", "kN/m"), ("D1/B", "kN/m"), ("B1/A", "kN"), ("B1/B", "kN"),
             ("B2/A", "kN"), ("B2/B", "kN"), ("S1/N", "kN"), ("V1/q", "kN/m"), ("V2/q", "kN/m"),
             ("F1/q", "kN/m"), ("F2/q", "kN/m"), ("F3/N", "kN"), ("", ""), ("", "")]
@@ -559,6 +598,8 @@ for k, e in OVERSIGT:
     sh = lambda c: f'=HVIS($AH{n}=0;"";INDEKS({c}${S}:{c}${SLUT};$AH{n}))'
     ln.r(k, e, "", "", "", "", "", *[sh(c) for c in TK], "", *[sh(c) for c in "VWXYZ"], *[""] * 7,
          f'=HVIS($A{n}="";0;HVIS.FEJL(SAMMENLIGN($A{n};$U${S}:$U${SLUT};0);0))', dec=D_LN, fedkol="X")
+    ln.form(n, [7, 20, 21], l=1)
+    ln.form(n, [23], fyld=GROEN)
     OV[k] = n
 ark_ln = ln
 

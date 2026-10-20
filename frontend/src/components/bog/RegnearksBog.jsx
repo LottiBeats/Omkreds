@@ -906,7 +906,7 @@ export default function RegnearksBog({
               <tbody>
                 {Array.from({ length: antalR }, (_, r) => (
                   <tr key={r} className={[r === 0 && d.overskrift !== false ? 'rk-hoved' : '', rkTyper[r] ? `rkb-t-${rkTyper[r]}` : '',
-                    aktEl && r >= aktEl.r && r <= aktEl.slut ? 'rkb-el-akt' : '', lnd && lnEls.some(x => x.r === r) ? 'rkb-el-id' : ''].join(' ')}>
+                    aktEl && r >= aktEl.r && r <= aktEl.slut ? 'rkb-el-akt' : ''].join(' ')}>
                     <th className={r >= omr.r0 && r <= omr.r1 ? 'rk-on' : ''}
                         onMouseDown={e => { setAnker({ r, k: 0 }); setAkt({ r, k: antalK - 1 }); rodRef.current?.focus(); e.preventDefault() }}>
                       {r + 1}
