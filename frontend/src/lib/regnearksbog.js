@@ -18,7 +18,7 @@
  */
 import {
   regnBog, vistArk, ledigtNavn, omdoebHenvisninger, arkIFormel, laesAdresse, adresse, erRegneark,
-  gyldigtCellenavn, erFejl, formatVaerdi, kolNavn, omdoebNavnIFormel, laesTal,
+  gyldigtCellenavn, erFejl, formatVaerdi, kolNavn, omdoebNavnIFormel, laesTal, flytHenvisninger, flytNoegler,
 } from './regneark.js'
 
 export const erArkVisning = (b) => b?.type === 'ark_visning'
@@ -58,6 +58,32 @@ export function regnArk(ark, navne = {}) {
 
 /** Bogen med en ny liste af ark, regnet igennem. */
 export const medArk = (bog, ark) => ({ ...(bog ?? {}), ark: regnArk(ark, bog?.navne) })
+
+/**
+ * Indsæt (n > 0) eller slet (n < 0) rækker (akse 'r') eller kolonner ('k') fra
+ * fra (0-baseret) i arket arkId. Henvisninger i alle ark, formater og navne
+ * flytter med, som i Excel. regn = false: bogen regnes ikke igennem (når flere
+ * ændringer følger efter hinanden).
+ */
+export function aendrGitter(bog, arkId, akse, fra, n, regn = true) {
+  const d = bog.ark.find(a => a.id === arkId)
+  if (!d || !n) return bog
+  const nyeArk = bog.ark.map(a => {
+    let c = (a.celler ?? []).map(raek => raek.map(x => flytHenvisninger(x, a.navn, d.navn, akse, fra, n)))
+    if (a.id !== arkId) return { ...a, celler: c }
+    if (akse === 'r') {
+      if (n > 0) c.splice(fra, 0, ...Array.from({ length: n }, () => Array(c[0]?.length ?? 1).fill('')))
+      else c.splice(fra, -n)
+    } else {
+      c = c.map(r => { const x = [...r]; if (n > 0) x.splice(fra, 0, ...Array(n).fill('')); else x.splice(fra, -n); return x })
+    }
+    const bredder = [...(a.bredder ?? [])]
+    if (akse === 'k' && bredder.length > fra) { if (n > 0) bredder.splice(fra, 0, ...Array(n).fill(92)); else bredder.splice(fra, -n) }
+    return { ...a, celler: c, bredder, dec: flytNoegler(a.dec, akse, fra, n), fed: flytNoegler(a.fed, akse, fra, n), fmt: flytNoegler(a.fmt, akse, fra, n) }
+  })
+  const ny = { ...bog, navne: flytNavne(bog.navne, arkId, akse, fra, n) }
+  return regn ? medArk(ny, nyeArk) : { ...ny, ark: nyeArk }
+}
 
 /** Bogen med ét ark erstattet. */
 export const medEtArk = (bog, nyt) => medArk(bog, bog.ark.map(a => (a.id === nyt.id ? nyt : a)))
