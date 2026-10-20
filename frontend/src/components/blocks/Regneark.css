@@ -225,3 +225,4 @@
 .rkb-eldlg-tekst { flex-basis: 100%; color: #2f4f3a; font-size: 12px; }
 .rkb-gitter tr.rkb-el-akt td { background-color: #f5f9ff; }
 .rkb-gitter tr.rkb-el-akt th { box-shadow: inset 3px 0 0 #3b82f6; }
+.rk-gitter th.rk-skjult, .rk-gitter td.rk-skjult { padding: 0; background: repeating-linear-gradient(90deg, #e5e7eb 0 1px, #f8f8f8 1px 5px) !important; border-left: 0; border-right: 0; }

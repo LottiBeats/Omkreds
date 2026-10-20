@@ -550,8 +550,20 @@ export function formatVaerdi(v, dec = null) {
 }
 
 /** De viste tekster for et ark (til PDF og eksport). */
-export function vistArk(vaerdier, dec = {}) {
-  return vaerdier.map((raek, r) => raek.map((v, k) => formatVaerdi(v, dec[adresse(r, k)] ?? dec[kolNavn(k)] ?? null)))
+/**
+ * Arkets viste tekster. valg.nul: tekst for en formel, der giver 0 (fx "–", som
+ * i Excel-arkene; indtastede nuller vises som tal) — kræver valg.celler.
+ * valg.skjulte: kolonner (indeks), der ikke vises (hjælpeformler).
+ */
+export const erNul = (v, raw) => typeof v === 'number' && Math.abs(v) < 1e-12 && String(raw ?? '').trim().startsWith('=')
+
+export function vistArk(vaerdier, dec = {}, valg = {}) {
+  const skjult = new Set(valg.skjulte ?? [])
+  return vaerdier.map((raek, r) => raek.map((v, k) => {
+    if (skjult.has(k)) return ''
+    if (valg.nul && erNul(v, valg.celler?.[r]?.[k])) return valg.nul
+    return formatVaerdi(v, dec[adresse(r, k)] ?? dec[kolNavn(k)] ?? null)
+  }))
 }
 
 // ── Kopiér og indsæt (Excel) ────────────────────────────────────────────────

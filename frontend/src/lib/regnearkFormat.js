@@ -1,7 +1,8 @@
 /**
  * regnearkFormat.js — cellernes formatering i regnearksbogen.
  *
- * ark.fmt = { A1: { fyld: '#fff2cc', ramme: { t, b, l, r }, kursiv, just: 'v'|'c'|'h' } }
+ * ark.fmt = { A1: { fyld: '#fff2cc', ramme: { t, b, l, r }, kursiv, graa, just: 'v'|'c'|'h' } }
+ * graa = grå skrift (mellemregninger).
  * ramme-kanterne er 1 (tynd) eller 2 (tyk). Bruges af editoren, rapportens
  * visning og (samme felter) af backend/pdf_builder.py og regneark_xlsx.py.
  */
@@ -18,6 +19,7 @@ export function fmtStil(f) {
   const st = {}
   if (f.fyld) st.background = f.fyld
   if (f.kursiv) st.fontStyle = 'italic'
+  if (f.graa) st.color = '#8a8a8a'
   if (f.just) st.textAlign = { v: 'left', c: 'center', h: 'right' }[f.just]
   // Bredere end gitterlinjerne (1 px): ved lige brede kanter vinder cellen til
   // venstre/over, og så ville en tynd ramme forsvinde i gitteret.

@@ -182,43 +182,62 @@ def bog_til_xlsx(bog: dict) -> bytes:
         celler = a.get("celler") or []
         dec = a.get("dec") or {}
         fed = a.get("fed") or {}
-        for r, raek in enumerate(celler):
-            for k, raw in enumerate(raek):
-                if raw is None or raw == "":
-                    continue
-                s = str(raw)
-                celle = ws.cell(row=r + 1, column=k + 1)
-                if s.strip().startswith("=") and len(s.strip()) > 1:
-                    celle.value = formel_til_excel(s)
+        fmt = a.get("fmt") or {}
+        nul = a.get("nul")
+        skjulte = set(a.get("skjulte") or [])
+        # Alle celler med indhold eller formatering (fyld og rammer står også på tomme celler).
+        adresser = {(r, k) for r, raek in enumerate(celler) for k, raw in enumerate(raek) if raw not in (None, "")}
+        for adr in list(fmt) + [x for x, v in fed.items() if v]:
+            p = _adr(adr)
+            if p:
+                adresser.add(p)
+        for r, k in sorted(adresser):
+            raw = celler[r][k] if r < len(celler) and k < len(celler[r]) else ""
+            celle = ws.cell(row=r + 1, column=k + 1)
+            s_ = "" if raw is None else str(raw)
+            formel = s_.strip().startswith("=") and len(s_.strip()) > 1
+            konstant_tal = False
+            if formel:
+                celle.value = formel_til_excel(s_)
+            elif s_ != "":
+                tal = _laes_tal(s_)
+                if tal is not None:
+                    celle.value = int(tal) if tal.is_integer() and abs(tal) < 1e15 and "," not in s_ and "." not in s_ else tal
+                    konstant_tal = True
+                elif s_.strip().lower() in ("sand", "falsk"):
+                    celle.value = s_.strip().lower() == "sand"
                 else:
-                    tal = _laes_tal(s)
-                    if tal is not None:
-                        celle.value = int(tal) if tal.is_integer() and abs(tal) < 1e15 and "," not in s and "." not in s else tal
-                    elif s.strip().lower() in ("sand", "falsk"):
-                        celle.value = s.strip().lower() == "sand"
-                    else:
-                        celle.value = s
-                adr = f"{get_column_letter(k + 1)}{r + 1}"
-                d = dec.get(adr, dec.get(get_column_letter(k + 1)))
-                if isinstance(d, int) and d >= 0:
-                    celle.number_format = "0" if d == 0 else "0." + "0" * d
-                f = (a.get("fmt") or {}).get(adr) or {}
-                if fed.get(adr) or f.get("kursiv"):
-                    celle.font = Font(bold=bool(fed.get(adr)), italic=bool(f.get("kursiv")))
-                if f.get("fyld"):
-                    farve = str(f["fyld"]).lstrip("#").upper()
-                    if re.fullmatch(r"[0-9A-F]{6}", farve):
-                        celle.fill = PatternFill("solid", fgColor=farve)
-                ra = f.get("ramme") or {}
-                if any(ra.values()):
-                    side = lambda v: Side(style="medium" if v == 2 else "thin") if v else Side()
-                    celle.border = Border(top=side(ra.get("t")), bottom=side(ra.get("b")),
-                                          left=side(ra.get("l")), right=side(ra.get("r")))
-                if f.get("just") in ("v", "c", "h"):
-                    celle.alignment = Alignment(horizontal={"v": "left", "c": "center", "h": "right"}[f["just"]])
+                    celle.value = s_
+            adr = f"{get_column_letter(k + 1)}{r + 1}"
+            d = dec.get(adr, dec.get(get_column_letter(k + 1)))
+            if isinstance(d, int) and d >= 0:
+                tf = "0" if d == 0 else "0." + "0" * d
+                celle.number_format = f'{tf};-{tf};"{nul}"' if nul and formel else tf
+            elif nul and formel:
+                celle.number_format = f'General;-General;"{nul}"'
+            f = fmt.get(adr) or {}
+            # Indtastede tal i blåt og mellemregninger i gråt, som i regnearksbogen
+            farve = "8A8A8A" if f.get("graa") else "1D4ED8" if konstant_tal else None
+            if fed.get(adr) or f.get("kursiv") or farve:
+                celle.font = Font(bold=bool(fed.get(adr)), italic=bool(f.get("kursiv")), color=farve)
+            if f.get("fyld"):
+                fy = str(f["fyld"]).lstrip("#").upper()
+                if re.fullmatch(r"[0-9A-F]{6}", fy):
+                    celle.fill = PatternFill("solid", fgColor=fy)
+            ra = f.get("ramme") or {}
+            if any(ra.values()):
+                side = lambda v: Side(style="medium" if v == 2 else "thin") if v else Side()
+                celle.border = Border(top=side(ra.get("t")), bottom=side(ra.get("b")),
+                                      left=side(ra.get("l")), right=side(ra.get("r")))
+            if f.get("just") in ("v", "c", "h"):
+                celle.alignment = Alignment(horizontal={"v": "left", "c": "center", "h": "right"}[f["just"]])
         for k, px in enumerate(a.get("bredder") or []):
             if px:
                 ws.column_dimensions[get_column_letter(k + 1)].width = max(4, round((px - 5) / 7, 1))
+        for k in skjulte:
+            ws.column_dimensions[get_column_letter(k + 1)].hidden = True
+        if a.get("overskrift") is not False:
+            ws.freeze_panes = "A2"
     if not wb.sheetnames:
         wb.create_sheet("Ark1")
     for navn, x in ((bog or {}).get("navne") or {}).items():
@@ -321,13 +340,17 @@ def xlsx_til_bog(data: bytes) -> dict:
             celler.pop()
         bredde = max((max((i + 1 for i, x in enumerate(r) if x != ""), default=0) for r in celler), default=0)
         celler = [(r + [""] * bredde)[:bredde] for r in celler] or [[""]]
+        skjulte = []
         for k in range(1, max(bredde, 1) + 1):
-            w = ws.column_dimensions[get_column_letter(k)].width
+            cd = ws.column_dimensions[get_column_letter(k)]
+            w = cd.width
             bredder.append(round(w * 7 + 5) if w else (150 if k == 1 else 92))
+            if cd.hidden:
+                skjulte.append(k - 1)
         if ws.merged_cells.ranges:
             advarsler.append(f"{ws.title}: flettede celler er delt op igen (indholdet står i den øverste venstre).")
         ark.append({"navn": ws.title, "titel": "", "overskrift": False, "celler": celler,
-                    "bredder": bredder, "dec": dec, "fed": fed, "fmt": fmt})
+                    "bredder": bredder, "dec": dec, "fed": fed, "fmt": fmt, **({"skjulte": skjulte} if skjulte else {})})
     navne = {}
     for navn, dn in wb.defined_names.items():
         try:

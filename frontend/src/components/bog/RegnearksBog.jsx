@@ -25,7 +25,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   regnBog, formatVaerdi, erFejl, kolNavn, adresse, laesAdresse, laesTsv, skrivTsv, udvid, forskydFormel,
-  FUNKTIONER, oversaet, arkPrefiks,
+  FUNKTIONER, oversaet, arkPrefiks, erNul,
 } from '../../lib/regneark.js'
 import {
   medArk, medEtArk, nytArk, omdoebArk, sletArk, dupliker, flytArk, arkDerBruger,
@@ -194,7 +194,11 @@ export default function RegnearksBog({
 
   const antalR = Math.max(celler.length + 20, 40, akt.r + 2)
   const antalK = Math.max(...celler.map(r => r.length), 10, akt.k + 2) + 2
-  const bredde = (k) => d.bredder?.[k] ?? (k === 0 ? 150 : STD_BREDDE)
+  // Skjulte kolonner (hjælpeformler) vises som en smal stribe, til man beder om dem.
+  const [visSkjulte, setVisSkjulte] = useState(false)
+  const skjulte = useMemo(() => new Set(d.skjulte ?? []), [d.skjulte])
+  const erSkjult = (k) => skjulte.has(k) && !visSkjulte
+  const bredde = (k) => (erSkjult(k) ? 6 : d.bredder?.[k] ?? (k === 0 ? 150 : STD_BREDDE))
   const raw = (r, k) => celler[r]?.[k] ?? ''
   const decFor = (r, k) => dec[adresse(r, k)] ?? dec[kolNavn(k)] ?? null
 
@@ -695,7 +699,11 @@ export default function RegnearksBog({
   }, [bog, ark])
   const aktRaw = red ? red.tekst : raw(akt.r, akt.k)
   const adrTekst = omr.r0 !== omr.r1 || omr.k0 !== omr.k1 ? `${adresse(omr.r0, omr.k0)}:${adresse(omr.r1, omr.k1)}` : adresse(akt.r, akt.k)
-  const visTekst = (r, k) => formatVaerdi(vaerdier[r]?.[k], decFor(r, k))
+  const visTekst = (r, k) => {
+    const v = vaerdier[r]?.[k]
+    if (erSkjult(k)) return ''
+    return d.nul && erNul(v, raw(r, k)) ? d.nul : formatVaerdi(v, decFor(r, k))
+  }
   const tom = celler.every(r => r.every(c => !c))
   const vis = ark ? visninger(ark.id) : []
 
@@ -764,6 +772,10 @@ export default function RegnearksBog({
           <button type="button" title="Giv cellen et navn, der kan bruges i formler og i beregningsblokkene" onClick={startNavngiv}>Navngiv celle</button>
           <button type="button" className={visNavne ? 'rkb-on' : ''} title="Bogens navngivne celler"
                   onClick={() => { setVisNavne(v => !v); setSpor(false) }}>Navne ({alleUdgange.length})</button>
+          {skjulte.size > 0 && (
+            <button type="button" className={visSkjulte ? 'rkb-on' : ''} title="Vis eller skjul arkets hjælpekolonner (formler, der finder elementer og opbygninger)"
+                    onClick={() => setVisSkjulte(v => !v)}>{visSkjulte ? 'Skjul hjælpekolonner' : 'Vis hjælpekolonner'}</button>
+          )}
           <button type="button" title="Fortryd (Ctrl+Z)" onClick={() => fortryd(false)}>↶</button>
           <button type="button" title="Gentag (Ctrl+Y)" onClick={() => fortryd(true)}>↷</button>
           {tom && (
@@ -895,9 +907,10 @@ export default function RegnearksBog({
                 <tr>
                   <th className="rk-hj" />
                   {Array.from({ length: antalK }, (_, k) => (
-                    <th key={k} className={k >= omr.k0 && k <= omr.k1 ? 'rk-on' : ''}
+                    <th key={k} className={[k >= omr.k0 && k <= omr.k1 ? 'rk-on' : '', erSkjult(k) ? 'rk-skjult' : ''].join(' ')}
+                        title={erSkjult(k) ? `Kolonne ${kolNavn(k)} er skjult (hjælpeformler) — "Vis hjælpekolonner" viser den` : undefined}
                         onMouseDown={e => { setAnker({ r: 0, k }); setAkt({ r: antalR - 1, k }); rodRef.current?.focus(); e.preventDefault() }}>
-                      {kolNavn(k)}
+                      {erSkjult(k) ? '' : kolNavn(k)}
                       <span className="rk-traek" onMouseDown={e => startBredde(k, e)} />
                     </th>
                   ))}
@@ -919,7 +932,7 @@ export default function RegnearksBog({
                         iOmr(r, k) ? 'rk-mark' : '', aktiv ? 'rk-akt' : '', iFyld(r, k) ? 'rkb-fyldes' : '',
                         typeof v === 'number' ? 'rk-tal' : '', erFejl(v) ? 'rk-fejl' : '',
                         fed[adresse(r, k)] ? 'rk-fed' : '', String(raw(r, k)).startsWith('=') ? 'rk-f' : '',
-                        erForg(r, k) ? 'rkb-forg' : '', celleNavne.has(adresse(r, k)) ? 'rkb-harnavn' : '',
+                        erForg(r, k) ? 'rkb-forg' : '', celleNavne.has(adresse(r, k)) ? 'rkb-harnavn' : '', erSkjult(k) ? 'rk-skjult' : '',
                       ].join(' ')
                       return (
                         <td key={k} data-c={`${r}-${k}`} className={cls} style={fmtStil(fmt[adresse(r, k)])} onMouseDown={e => musNed(r, k, e)} onMouseEnter={() => musOver(r, k)}
