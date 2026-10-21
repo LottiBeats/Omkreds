@@ -77,15 +77,16 @@ def test_vertical_load_acts_downwards(angle):
     assert gy == pytest.approx(-6.0, abs=1e-12)
 
 
-@pytest.mark.parametrize('angle', [0.0, 20.0, 40.0])
+@pytest.mark.parametrize('angle', [0.0, 20.0, 40.0, 158.0, 180.0, 200.0, -140.0])
 def test_projected_load_is_per_horizontal_length(angle):
     """
     Snow is given per metre of horizontal projection, so per metre of a rafter
-    it is p*cos(alpha) — still straight down.
+    it is p*|cos(alpha)| — still straight down, also on a rafter drawn from
+    right to left (158°: the right-hand rafter from the eaves to the ridge).
     """
     (gx, gy), (ca, _) = _project('projected', 2.5, angle)
     assert gx == pytest.approx(0.0, abs=1e-12)
-    assert gy == pytest.approx(-2.5 * ca, abs=1e-12)
+    assert gy == pytest.approx(-2.5 * abs(ca), abs=1e-12)
 
 
 @pytest.mark.parametrize('angle', [0.0, 30.0, 90.0])
