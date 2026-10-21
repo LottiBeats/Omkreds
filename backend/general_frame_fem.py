@@ -1132,7 +1132,7 @@ def _project_load(ld, elements, dict_nodes):
     'vertical'   : global Y downward — projects onto local element axes.
                    For horizontal elements this is simply wy = p.
     'projected'  : snow on horizontal projection.
-                   p [kN/m horizontal] → wy = p·cos²α, wx_local = -p·cosα·sinα
+                   p [kN/m horizontal] → as 'vertical' with p·|cosα|
     'horizontal' : global X (wind) → wy = p·sinα, wx_local = p·cosα
     """
     if ld.get('load_type') == 'nodal':
@@ -1160,12 +1160,17 @@ def _project_load(ld, elements, dict_nodes):
 
     if direction == 'projected':
         # Snow load per unit horizontal length, global downward.
-        # Per unit element length: p·cosα downward.
-        # local y: dot((0,-1), (-sa, ca))  = -ca  →  eleLoad wy = -p·ca², so
-        #          the input-convention value solve() will negate is +p·ca²
-        # local x: dot((0,-1), ( ca, sa))  = -sa  →  wx = -p·ca·sa (not negated)
-        wy =  p * ca * ca
-        wx = -p * ca * sa
+        # Per unit element length: p·|cosα| downward — the length of the
+        # horizontal projection, whichever way the element is drawn. It was
+        # p·cosα, and on a rafter drawn from right to left (cosα < 0) the snow
+        # acted upwards: the right-hand rafter of a pitched roof modelled from
+        # the eaves to the ridge got its snow load turned round.
+        # Then exactly as 'vertical' with that intensity:
+        # local y: dot((0,-1), (-sa, ca))  = -ca  →  wy = +p·|ca|·ca
+        # local x: dot((0,-1), ( ca, sa))  = -sa  →  wx = -p·|ca|·sa
+        k  = p * abs(ca)
+        wy =  k * ca
+        wx = -k * sa
 
     elif direction == 'horizontal':
         # Wind: p kN/m globally rightward (positive X).
