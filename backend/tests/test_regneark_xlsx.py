@@ -131,3 +131,16 @@ def test_skjulte_kolonner_nul_og_formater_paa_tomme_celler():
     assert ws.freeze_panes == "A2"
     tilbage = xlsx_til_bog(bog_til_xlsx(bog))["ark"][0]
     assert tilbage["skjulte"] == [2]
+
+
+def test_udskrift_og_gitter():
+    """Arkene udskrives liggende med hele bredden på én side; gitter: false skjuler gitterlinjerne (og læses tilbage)."""
+    bog = {"ark": [{"id": "a", "navn": "Lastnedføring", "celler": [["x"]], "gitter": False},
+                   {"id": "b", "navn": "Andet", "celler": [["y"]]}]}
+    wb = load_workbook(io.BytesIO(bog_til_xlsx(bog)))
+    ws = wb["Lastnedføring"]
+    assert ws.page_setup.orientation == "landscape" and ws.sheet_properties.pageSetUpPr.fitToPage
+    assert ws.page_setup.fitToWidth == 1 and ws.page_setup.fitToHeight == 0
+    assert ws.sheet_view.showGridLines is False and wb["Andet"].sheet_view.showGridLines is not False
+    tilbage = xlsx_til_bog(bog_til_xlsx(bog))["ark"]
+    assert tilbage[0].get("gitter") is False and "gitter" not in tilbage[1]

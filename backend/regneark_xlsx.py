@@ -238,6 +238,13 @@ def bog_til_xlsx(bog: dict) -> bytes:
             ws.column_dimensions[get_column_letter(k + 1)].hidden = True
         if a.get("overskrift") is not False:
             ws.freeze_panes = "A2"
+        if a.get("gitter") is False:
+            ws.sheet_view.showGridLines = False
+        # Udskrift: liggende, hele bredden på én side
+        ws.page_setup.orientation = "landscape"
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
     if not wb.sheetnames:
         wb.create_sheet("Ark1")
     for navn, x in ((bog or {}).get("navne") or {}).items():
@@ -350,7 +357,8 @@ def xlsx_til_bog(data: bytes) -> dict:
         if ws.merged_cells.ranges:
             advarsler.append(f"{ws.title}: flettede celler er delt op igen (indholdet står i den øverste venstre).")
         ark.append({"navn": ws.title, "titel": "", "overskrift": False, "celler": celler,
-                    "bredder": bredder, "dec": dec, "fed": fed, "fmt": fmt, **({"skjulte": skjulte} if skjulte else {})})
+                    "bredder": bredder, "dec": dec, "fed": fed, "fmt": fmt, **({"skjulte": skjulte} if skjulte else {}),
+                    **({"gitter": False} if ws.sheet_view.showGridLines is False else {})})
     navne = {}
     for navn, dn in wb.defined_names.items():
         try:
