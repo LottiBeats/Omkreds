@@ -89,3 +89,20 @@ test('min er minut, når der ikke står en parentes efter', () => {
   assert.deepEqual(run(['β_0 = 0,65 mm/min', 't = 30 min', 'd = β_0·t', 'a = min(3; 4)', 't_h = t → h']),
     ['= 0,65 mm/min', '= 30 min', '= 19,5 mm', '= 3', '= 0,5 h'])
 })
+
+test('enheder: stivhed, tierpotenser, høje potenser, promille og °C', () => {
+  // kNm² er kN·m² (EI), ikke (kNm)²; 10⁸ og mm⁶ kan skrives, som appen viser dem.
+  assert.deepEqual(run(['E = 11 000 MPa', 'I = 1,0·10⁸ mm⁴', 'EI = E·I → kNm²', 'EI_2 = 2 kNm²·5']).slice(1),
+    ['= 1,00·10⁸ mm⁴', '= 1100 kNm²', '= 10 kNm²'])
+  assert.deepEqual(run(['I_w = 3,2·10⁹ mm⁶', 'n = 10⁻³', 'eps = 2,5 ‰', 'M = 2 MNm', 'T = 20 °C']),
+    ['= 3,20·10⁹ mm⁶', '= 0,001', '= 0,0025', '= 2 MNm', '= 20 °C'])
+  const r = evaluate(['I = 1,0·10⁸ mm⁴', 'k = 0,8·1,2', 'L = 4 m', 'x = L⁵/2'])
+  assert.equal(r[0].input, true)                  // et tal med tierpotens er et input
+  assert.equal(r[1].input, false)                 // 0,8·1,2 er stadig en formel
+  assert.equal(r[3].formula, 'L⁵ / 2')
+})
+
+test('flere enheder under brøkstregen står i parentes', () => {
+  assert.deepEqual(run(['u = 2 kN/m/m', 'λ = 0,13 W/(m·K)', 'U = 0,2 W/m²K']),
+    ['= 2 kN/(m·m)', '= 0,13 W/(m·K)', '= 0,2 W/(m²·K)'])
+})

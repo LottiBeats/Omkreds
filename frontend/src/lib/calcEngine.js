@@ -41,12 +41,19 @@ export function pre(expr) {
     .replace(/(\d),(\d)/g, '$1.$2')
     .replace(/;/g, ',')
     .replace(/[·×]/g, '*').replace(/−/g, '-')
-    .replace(/²/g, '^2').replace(/³/g, '^3').replace(/⁴/g, '^4')
+    // Hævede tal som potens: m² m³ mm⁴ mm⁶ (I_w), 10⁻³.
+    .replace(/⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (t) => {
+      const n = [...t].map(c => (c === '⁻' ? '-' : SUP_CIF.indexOf(c))).join('')
+      return n.startsWith('-') ? `^(${n})` : `^${n}`
+    })
+    .replace(/‰/g, '*0.001')
     .replace(/≤/g, '<=').replace(/≥/g, '>=')
     .replace(/π/g, 'pi').replace(/°/g, ' deg')
     .replace(/√\s*\(/g, 'sqrt(')
     .replace(/√\s*([A-Za-zͰ-Ͽ_][\wͰ-Ͽ]*|\d+(?:\.\d+)?)/g, 'sqrt($1)')
-    .replace(/\bkNm\b/g, '(kN m)').replace(/\bNmm\b/g, '(N mm)')
+    // kNm² er stivhed (kN·m²), ikke (kNm)²: potensen hører til længden.
+    .replace(/\b(kN|MN)m\^(\d+)/g, '($1 m^$2)').replace(/\bNmm\^(\d+)/g, '(N mm^$1)')
+    .replace(/\bkNm\b/g, '(kN m)').replace(/\bMNm\b/g, '(MN m)').replace(/\bNmm\b/g, '(N mm)')
     // min er både minut og funktionen min(a; b): uden parentes er det minut.
     .replace(/\bmin\b(?!\s*\()/g, 'minute')
 }
@@ -89,9 +96,21 @@ const PREFERRED = [
   ['mm^2', 'mm²'], ['mm^3', 'mm³'], ['mm^4', 'mm⁴'], ['kg', 'kg'],
 ]
 
+const SUP_CIF = '⁰¹²³⁴⁵⁶⁷⁸⁹'
+const hævet = (n) => String(n).replace('-', '⁻').replace(/\d/g, d => SUP_CIF[d])
+
+/**
+ * mathjs' enhedstekst som læsbar enhed: "kN / m^2" → kN/m², "kN m" → kNm,
+ * "W / (m K)" → W/(m·K). Står der flere enheder under brøkstregen, beholder de
+ * parentesen; "kN/m·m" ville læses som kN.
+ */
 export function unitLabel(s) {
-  return String(s).replace(/\s*\/\s*/g, '/').replace(/\^2/g, '²').replace(/\^3/g, '³')
-    .replace(/\^4/g, '⁴').replace(/kN m\b/g, 'kNm').replace(/\bdeg\b/g, '°').replace(/\bminute\b/g, 'min').replace(/[()]/g, '').replace(/\s+/g, '·')
+  return String(s).replace(/\s*\/\s*/g, '/').replace(/\s*\^\s*(?:\(\s*(-?\d+)\s*\)|(-?\d+))/g, (_, a, b) => hævet(a ?? b))
+    .replace(/\b(kN|MN) m\b/g, '$1m').replace(/\bN mm\b/g, 'Nmm')
+    .replace(/\bdegC\b/g, '°C').replace(/\bdeg\b/g, '°').replace(/\bminute\b/g, 'min')
+    .replace(/^\(([^()]*)\)(?=\/|$)/, '$1')     // (kNm)/m → kNm/m, (kNm²) → kNm²
+    .replace(/\/\(([^()\s]*)\)/g, '/$1')           // m/(s) → m/s
+    .replace(/\s+/g, '·')
 }
 
 function pick(u) {
@@ -191,7 +210,10 @@ function linear(node, scope, subst) {
       if (node.op === '^') {
         const e = unwrap(a[1])
         const base = linear(a[0], scope, subst)
-        if (e.type === 'ConstantNode' && SUP[e.value]) return base + SUP[e.value]
+        // Hele tal som hævet skrift: L², mm⁶, 10⁸, 10⁻³.
+        const heltal = e.type === 'ConstantNode' ? e.value
+          : (e.type === 'OperatorNode' && e.fn === 'unaryMinus' && e.args[0].type === 'ConstantNode' ? -e.args[0].value : null)
+        if (Number.isInteger(heltal)) return base + hævet(heltal)
         return `${base}^(${linear(e, scope, false)})`
       }
       if (node.op === '*') {
@@ -266,8 +288,24 @@ function hasSymbols(n) {
 }
 
 // Et tal (eller et tal med enhed), som en enhed kan hægtes på.
+// 10⁸ og 2,78·10⁷: et tal skrevet med tierpotens, som appen selv viser store tal.
+function isTierpotens(n) {
+  const konst = (x) => x.type === 'ConstantNode' ||
+    (x.type === 'OperatorNode' && x.fn === 'unaryMinus' && x.args[0].type === 'ConstantNode')
+  if (n.type === 'ParenthesisNode') return isTierpotens(n.content)
+  if (n.type !== 'OperatorNode') return false
+  if (n.op === '^') return n.args[0].type === 'ConstantNode' && n.args[0].value === 10 && konst(unwrap(n.args[1]))
+  if (n.op === '*' && !n.implicit) return n.args[0].type === 'ConstantNode' && isTierpotens(n.args[1])
+  return false
+}
+
 function isLiteral(n) {
-  if (n.type === 'ConstantNode') return true
+  if (n.type === 'ConstantNode' || isTierpotens(n)) return true
+  // 1,0·10⁸ mm⁴: tallet foran tierpotensen hører med til tallet.
+  if (n.type === 'OperatorNode' && n.op === '*' && !n.implicit && n.args[0].type === 'ConstantNode') {
+    const b = n.args[1]
+    if (isQuantity(b) && isTierpotens(b.args[0])) return true
+  }
   if (n.type === 'ParenthesisNode') return !hasSymbols(n.content) || isQuantity(n.content)
   if (n.type === 'OperatorNode' && (n.fn === 'unaryMinus' || n.fn === 'unaryPlus')) return isLiteral(n.args[0])
   return isQuantity(n)
