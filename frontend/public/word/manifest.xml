@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Omkreds-beregning til Word (tilføjelsesprogram). Panelet er https://omkreds.dk/word.html.
+  Installation: se frontend/src/word/README.md.
+-->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+  <Id>88367dbb-ca98-45be-bec3-c30adfbff086</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Omkreds</ProviderName>
+  <DefaultLocale>da-DK</DefaultLocale>
+  <DisplayName DefaultValue="Omkreds-beregning"/>
+  <Description DefaultValue="Skriv en statisk beregning linje for linje med enheder, og sæt den ind i dokumentet som Word-ligninger."/>
+  <IconUrl DefaultValue="https://omkreds.dk/word/ikon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://omkreds.dk/word/ikon-64.png"/>
+  <SupportUrl DefaultValue="https://omkreds.dk"/>
+  <AppDomains>
+    <AppDomain>https://omkreds.dk</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Document"/>
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.3">
+      <Set Name="WordApi" MinVersion="1.3"/>
+    </Sets>
+  </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://omkreds.dk/word.html"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <FunctionFile resid="Panel.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Omkreds.Gruppe">
+                <Label resid="Gruppe.Navn"/>
+                <Icon>
+                  <bt:Image size="16" resid="Ikon.16"/>
+                  <bt:Image size="32" resid="Ikon.32"/>
+                  <bt:Image size="80" resid="Ikon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="Omkreds.Aabn">
+                  <Label resid="Knap.Navn"/>
+                  <Supertip>
+                    <Title resid="Knap.Navn"/>
+                    <Description resid="Knap.Tip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Ikon.16"/>
+                    <bt:Image size="32" resid="Ikon.32"/>
+                    <bt:Image size="80" resid="Ikon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Omkreds.Beregning</TaskpaneId>
+                    <SourceLocation resid="Panel.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Ikon.16" DefaultValue="https://omkreds.dk/word/ikon-16.png"/>
+        <bt:Image id="Ikon.32" DefaultValue="https://omkreds.dk/word/ikon-32.png"/>
+        <bt:Image id="Ikon.80" DefaultValue="https://omkreds.dk/word/ikon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Panel.Url" DefaultValue="https://omkreds.dk/word.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Gruppe.Navn" DefaultValue="Omkreds"/>
+        <bt:String id="Knap.Navn" DefaultValue="Beregning"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Knap.Tip" DefaultValue="Åbn Omkreds-beregning: skriv en beregning med enheder, og sæt den ind som Word-ligninger."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

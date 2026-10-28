@@ -10,6 +10,7 @@ import react from '@vitejs/plugin-react'
  */
 export default defineConfig({
   plugins: [react()],
+  // word.html er Word-tilføjelsesprogrammet (src/word/, public/word/manifest.xml).
   // fem.html er det selvstændige FEM-program (backend/desktop_app.py og
   // desktop/). Den bygges kun med OMKREDS_DESKTOP=1: på omkreds.dk ville den
   // hverken have login eller sit PDF-endpoint.
@@ -17,7 +18,7 @@ export default defineConfig({
     rollupOptions: {
       input: process.env.OMKREDS_DESKTOP
         ? { fem: 'fem.html' }
-        : { main: 'index.html' },
+        : { main: 'index.html', word: 'word.html' },
     },
   },
   server: {
