@@ -47,6 +47,8 @@ export function pre(expr) {
     .replace(/√\s*\(/g, 'sqrt(')
     .replace(/√\s*([A-Za-zͰ-Ͽ_][\wͰ-Ͽ]*|\d+(?:\.\d+)?)/g, 'sqrt($1)')
     .replace(/\bkNm\b/g, '(kN m)').replace(/\bNmm\b/g, '(N mm)')
+    // min er både minut og funktionen min(a; b): uden parentes er det minut.
+    .replace(/\bmin\b(?!\s*\()/g, 'minute')
 }
 
 // Bogstaver som mathjs kan bruge i navne: også æ, ø, å og Ø -- men ikke × og ÷.
@@ -89,7 +91,7 @@ const PREFERRED = [
 
 export function unitLabel(s) {
   return String(s).replace(/\s*\/\s*/g, '/').replace(/\^2/g, '²').replace(/\^3/g, '³')
-    .replace(/\^4/g, '⁴').replace(/kN m\b/g, 'kNm').replace(/\bdeg\b/g, '°').replace(/[()]/g, '').replace(/\s+/g, '·')
+    .replace(/\^4/g, '⁴').replace(/kN m\b/g, 'kNm').replace(/\bdeg\b/g, '°').replace(/\bminute\b/g, 'min').replace(/[()]/g, '').replace(/\s+/g, '·')
 }
 
 function pick(u) {
