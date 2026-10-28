@@ -106,3 +106,12 @@ test('flere enheder under brøkstregen står i parentes', () => {
   assert.deepEqual(run(['u = 2 kN/m/m', 'λ = 0,13 W/(m·K)', 'U = 0,2 W/m²K']),
     ['= 2 kN/(m·m)', '= 0,13 W/(m·K)', '= 0,2 W/(m²·K)'])
 })
+
+test('tyngdeacceleration: g som værdi og 9,81 m/s² efter en variabel', () => {
+  assert.deepEqual(run(['g = 9,81 m/s²', 'm_1 = 1200 kg', 'F = m_1·g', 'ρ = 2400 kg/m³', 'γ = ρ·g → kN/m³']),
+    ['= 9,81 m/s²', '= 1200 kg', '= 11,77 kN', '= 2400 kg/m³', '= 23,54 kN/m³'])
+  // Før: "s er ikke defineret" -- mathjs læser det som (m_1·(9,81 m))/s².
+  const r = evaluate(['m_1 = 1200 kg', 'F = m_1·9,81 m/s²', 'L_1 = 4 m', 'q = L_1·2,5 kN/m²'])
+  assert.deepEqual(r.map(chip).map(([, t]) => t), ['= 1200 kg', '= 11,77 kN', '= 4 m', '= 10 kN/m'])
+  assert.equal(r[1].formula, 'm_1·9,81 m/s²')
+})

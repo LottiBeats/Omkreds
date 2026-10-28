@@ -227,6 +227,8 @@ function linear(node, scope, subst) {
       // enheder indsat ville brøkstregen skære midt gennem "(4 m)", så dér
       // står skråstregen uden mellemrum.
       if (node.op === '/') {
+        // m_1·9,81 m/s²: enheden står på linjen, ikke som en brøk over det hele.
+        if (enhedEfterTal(node) && !usesVariables(a[1], scope)) return `${linear(a[0], scope, subst)}/${unitLabel(a[1].toString())}`
         const sp = subst ? '' : ' '
         return `${linear(a[0], scope, subst)}${sp}/${sp}${linear(a[1], scope, subst)}`
       }
@@ -322,11 +324,23 @@ function isQuantity(n) {
   return isQuantity(a)
 }
 
+// m_1·9,81 m/s² læser mathjs som (m_1·(9,81 m))/s²: enheden efter
+// brøkstregen hører til tallet lige foran, også når der står noget før tallet.
+function slutterMedMaengde(n) {
+  if (isQuantity(n)) return true
+  if (n.type === 'OperatorNode' && (n.op === '*' || n.op === '/') && n.args.length === 2) return slutterMedMaengde(n.args[1])
+  return false
+}
+function enhedEfterTal(n) {
+  return n.type === 'OperatorNode' && n.op === '/' && n.args.length === 2 &&
+    isUnitTerm(n.args[1]) && slutterMedMaengde(n.args[0])
+}
+
 /** Kaster, hvis et navn i udtrykket kan læses på to måder eller slet ikke. */
 export function checkNames(node, scope, defined = {}) {
   const unitPos = new Set()
   node.traverse(n => {
-    if (n.type === 'OperatorNode' && isQuantity(n)) {
+    if (n.type === 'OperatorNode' && (isQuantity(n) || enhedEfterTal(n))) {
       n.args[1].traverse(x => { if (x.type === 'SymbolNode') unitPos.add(x) })
     }
   })
