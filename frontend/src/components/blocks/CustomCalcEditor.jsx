@@ -25,7 +25,8 @@ export const EXAMPLE_LINES = [
   'M_Ed = q_d·L²/8 → kNm',
 ]
 
-export default function CustomCalcEditor({ block, onChange }) {
+// rapport={false}: uden rapportvisningen under linjerne (Word-panelet viser resultatet i dokumentet).
+export default function CustomCalcEditor({ block, onChange, rapport = true }) {
   const d = block.data
   const propLines = useMemo(() => (Array.isArray(d.lines) ? d.lines : itemsToLines(d.items)), [d.lines, d.items])
   // The lines live here while typing. Each keystroke goes up to the
@@ -206,13 +207,15 @@ export default function CustomCalcEditor({ block, onChange }) {
             Vis indsatte tal i rapporten
           </label>
           <span className="cc2-sp" />
-          <button type="button" className="cc2-link" onClick={() => setShowReport(v => !v)}>
-            {showReport ? 'Skjul rapportvisning' : 'Vis rapportvisning'}
-          </button>
+          {rapport && (
+            <button type="button" className="cc2-link" onClick={() => setShowReport(v => !v)}>
+              {showReport ? 'Skjul rapportvisning' : 'Vis rapportvisning'}
+            </button>
+          )}
         </div>
       </div>
 
-      {showReport && d._result?.length > 0 && (
+      {rapport && showReport && d._result?.length > 0 && (
         <div className="cc2-report">
           <CalcResultView blocks={d._result} />
         </div>

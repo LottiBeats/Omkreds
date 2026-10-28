@@ -68,3 +68,18 @@ test('et indsat tal i en funktion får ikke dobbelte parenteser', () => {
   const r = evaluate(['a = -5 kN', 'b = abs(a)'])
   assert.equal(r[1].subst, 'abs(−5 kN)')
 })
+
+test('indsatte tal står, som deres egen linje viste dem', () => {
+  // Før: W stod som "285 188 mm·mm²", V_Ed som "6,412 kNm/m" og A som "mm·mm".
+  const r = evaluate(['q = 2,85 kN/m', 'L = 4,5 m', 'V = q·L/2', 'W = 45 mm·(195 mm)²/6',
+    'A = 45 mm·195 mm', 'σ = V/A', 'M = 7,2 kNm', 's = M/W'])
+  const mel = (t) => t.replace(/[\u00a0\u202f]/g, ' ')
+  assert.equal(mel(r[5].subst), '(6,412 kN)/(8775 mm²)')
+  assert.equal(mel(r[7].subst), '(7,2 kNm)/(285 188 mm³)')
+})
+
+test('grader står uden mellemrum', () => {
+  const r = evaluate(['a = 30°', 'F = 10 kN·cos(a)'])
+  assert.equal(chip(r[0])[1], '= 30°')
+  assert.equal(r[1].subst, '10 kN·cos(30°)')
+})

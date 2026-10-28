@@ -21,7 +21,7 @@ import { create, all } from 'mathjs'
 
 const math = create(all)
 
-const GREEK = {
+export const GREEK = {
   alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', eta: 'η', theta: 'θ',
   kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ',
   phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Phi: 'Φ', Omega: 'Ω',
@@ -30,6 +30,9 @@ const GREEK = {
 export const SYMBOLS = ['·', '²', '³', '√', '≤', '→', '|', 'π', '°', 'γ', 'σ', 'τ', 'λ', 'η', 'ψ', 'χ', 'ρ', 'α']
 
 // ── Parsing ────────────────────────────────────────────────────────────────
+
+/** Et udtryk fra en linje som mathjs-træ (samme læsning som evaluate). */
+export const parseExpr = (s) => math.parse(pre(s))
 
 export function pre(expr) {
   return String(expr)
@@ -73,8 +76,8 @@ export function classify(raw) {
 
 // ── Quantities ─────────────────────────────────────────────────────────────
 
-const isUnit = (v) => v && typeof v === 'object' && v.type === 'Unit'
-function plain(v) {
+export const isUnit = (v) => v && typeof v === 'object' && v.type === 'Unit'
+export function plain(v) {
   if (isUnit(v) && v.dimensions.every(d => Math.abs(d) < 1e-12)) return v.value
   return v
 }
@@ -133,10 +136,18 @@ export function fmtQty(v, out, keepOwn) {
   return [fmtNum(v.toNumber(own)), unitLabel(own)]
 }
 
-const qtyText = (v, keepOwn = true) => {
-  const [n, u] = fmtQty(v, null, keepOwn)
-  return u ? `${n} ${u}` : n
+/** Tal og enhed som tekst: "4,5 m", men "30°" uden mellemrum. */
+export function medEnhed(n, u) {
+  if (!u) return n
+  return u === '°' ? n + u : `${n} ${u}`
 }
+
+const qtyText = (v, keepOwn = true) => medEnhed(...fmtQty(v, null, keepOwn))
+
+// De indsatte tal i en formel står, som deres egen linje viste dem: W som
+// "285 188 mm³" og ikke "mm·mm²", V_Ed som "6,41 kN" og ikke "kNm/m".
+// Teksterne ligger i scope under et symbol, så mathjs aldrig ser dem.
+const VIST = Symbol('vist')
 
 // ── Names and formulas as report text ──────────────────────────────────────
 //
@@ -162,7 +173,7 @@ function linear(node, scope, subst) {
       if (Object.prototype.hasOwnProperty.call(scope, node.name)) {
         if (!subst) return displayName(node.name)
         const v = plain(scope[node.name])
-        const txt = qtyText(v)
+        const txt = scope[VIST]?.[node.name] ?? qtyText(v)
         const neg = (typeof v === 'number' ? v : (isUnit(v) ? v.value : 0)) < 0
         return isUnit(v) || neg ? `(${txt})` : txt
       }
@@ -215,7 +226,7 @@ function linear(node, scope, subst) {
   }
 }
 
-function usesVariables(n, scope) {
+export function usesVariables(n, scope) {
   let hit = false
   n.traverse(x => { if (x.type === 'SymbolNode' && Object.prototype.hasOwnProperty.call(scope, x.name)) hit = true })
   return hit
@@ -237,7 +248,7 @@ function usesVariables(n, scope) {
 const isUnitName = (s) => { try { return math.Unit.isValuelessUnit(s) } catch { return false } }
 const FREE_NAMES = new Set(['pi'])
 
-function isUnitTerm(n) {
+export function isUnitTerm(n) {
   if (n.type === 'SymbolNode') return isUnitName(n.name)
   if (n.type === 'ParenthesisNode') return isUnitTerm(n.content)
   if (n.type !== 'OperatorNode') return false
@@ -318,7 +329,7 @@ function danish(msg) {
  * navne, der er defineret over den.
  */
 export function evaluate(lines) {
-  const scope = {}
+  const scope = { [VIST]: {} }
   const defined = {}
   return (lines ?? []).map((raw, idx) => {
     const c = classify(raw)
@@ -344,6 +355,7 @@ export function evaluate(lines) {
         const formula = input ? null : linear(node, scope, false)
         const subst = input ? null : linear(node, scope, true)
         scope[c.name] = v
+        scope[VIST][c.name] = medEnhed(...fmtQty(v, c.out, input))
         defined[c.name] = idx + 1
         return { ...c, raw, value: v, input, formula, subst }
       } catch (e) { return { ...c, raw, error: danish(e.message) } }
@@ -364,12 +376,12 @@ export function evaluate(lines) {
         if (isUnit(lv) && isUnit(rv)) {
           const [rn, ru] = fmtQty(rv, null, false)
           const unitStr = rv.formatUnits() || null
-          rvText = ru ? `${rn} ${ru}` : rn
+          rvText = medEnhed(rn, ru)
           const p = pick(rv)
           const [ln, lu] = p ? [fmtNum(lv.toNumber(p[0])), p[1]]
                              : unitStr ? [fmtNum(lv.toNumber(unitStr)), unitLabel(unitStr)] : fmtQty(lv)
-          lvText = lu ? `${ln} ${lu}` : ln
-          if (p) rvText = `${fmtNum(rv.toNumber(p[0]))} ${p[1]}`
+          lvText = medEnhed(ln, lu)
+          if (p) rvText = medEnhed(fmtNum(rv.toNumber(p[0])), p[1])
         } else {
           lvText = qtyText(lv); rvText = qtyText(rv)
         }
@@ -387,7 +399,7 @@ export function chip(r) {
   if (r.error) return ['err', r.error]
   if (r.kind === 'assign') {
     const [n, u] = fmtQty(r.value, r.out, r.input)
-    return ['', `= ${n}${u ? ' ' + u : ''}`]
+    return ['', `= ${medEnhed(n, u)}`]
   }
   if (r.kind === 'check') return [r.ok ? 'ok' : 'fail', `η ${r.util.toFixed(2).replace('.', ',')} ${r.ok ? 'OK' : 'IKKE OK'}`]
   if (r.kind === 'heading') return ['muted', 'afsnit']
@@ -412,7 +424,7 @@ export function toReportBlocks(title, rows, { subst = true } = {}) {
     }
     if (r.kind === 'assign') {
       const [n, u] = fmtQty(r.value, r.out, r.input)
-      const result = u ? `${n} ${u}` : n
+      const result = medEnhed(n, u)
       let formula
       if (r.input) formula = r.desc || ''
       else formula = subst && r.subst !== r.formula ? `${r.formula} = ${r.subst}` : r.formula

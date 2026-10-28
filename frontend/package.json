@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "node scripts/check-klasser.js && node scripts/check-projekttyper.js && node scripts/check-blokvariabler.js",
-    "test": "node --test tests/lastnedfoering.test.mjs tests/calcEngine.test.mjs tests/elementer.test.mjs tests/a1.test.mjs tests/importDokumenter.test.mjs tests/indhold.test.mjs tests/a1Afsnit.test.mjs tests/skabeloner.test.mjs tests/femReaktioner.test.mjs tests/femSnitlinje.test.mjs tests/rapport.test.mjs tests/rapportModuler.test.mjs tests/regneark.test.mjs tests/regnearksbog.test.mjs tests/koblinger.test.mjs tests/bogSkabeloner.test.mjs tests/forklar.test.mjs"
+    "test": "node --test tests/lastnedfoering.test.mjs tests/calcEngine.test.mjs tests/calcWord.test.mjs tests/elementer.test.mjs tests/a1.test.mjs tests/importDokumenter.test.mjs tests/indhold.test.mjs tests/a1Afsnit.test.mjs tests/skabeloner.test.mjs tests/femReaktioner.test.mjs tests/femSnitlinje.test.mjs tests/rapport.test.mjs tests/rapportModuler.test.mjs tests/regneark.test.mjs tests/regnearksbog.test.mjs tests/koblinger.test.mjs tests/bogSkabeloner.test.mjs tests/forklar.test.mjs"
   },
   "dependencies": {
     "@clerk/react": "^6.7.1",
