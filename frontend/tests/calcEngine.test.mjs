@@ -83,3 +83,9 @@ test('grader står uden mellemrum', () => {
   assert.equal(chip(r[0])[1], '= 30°')
   assert.equal(r[1].subst, '10 kN·cos(30°)')
 })
+
+test('min er minut, når der ikke står en parentes efter', () => {
+  // Før: "0,65 mm/min" kunne ikke læses, fordi min blev læst som funktionen min(a; b).
+  assert.deepEqual(run(['β_0 = 0,65 mm/min', 't = 30 min', 'd = β_0·t', 'a = min(3; 4)', 't_h = t → h']),
+    ['= 0,65 mm/min', '= 30 min', '= 19,5 mm', '= 3', '= 0,5 h'])
+})
