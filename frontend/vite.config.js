@@ -1,5 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
+
+const DESKTOP = !!process.env.OMKREDS_DESKTOP
 
 /**
  * Vite configuration.
@@ -11,13 +14,20 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   // word.html er Word-tilføjelsesprogrammet (src/word/, public/word/manifest.xml).
-  // fem.html er det selvstændige FEM-program (backend/desktop_app.py og
-  // desktop/). Den bygges kun med OMKREDS_DESKTOP=1: på omkreds.dk ville den
-  // hverken have login eller sit PDF-endpoint.
+  //
+  // OMKREDS_DESKTOP=1 bygger skrivebordsprogrammerne (backend/desktop_app.py og
+  // desktop/): fem.html er Omkreds FEM, og index.html er hele Omkreds lokalt.
+  // Der er intet login på computeren, så @clerk/react peger på en lokal
+  // erstatning (src/lokal/clerkStub.jsx), der altid er logget ind. fem.html
+  // bygges ikke til omkreds.dk: dér ville den hverken have login eller sit
+  // PDF-endpoint.
+  resolve: DESKTOP
+    ? { alias: { '@clerk/react': fileURLToPath(new URL('./src/lokal/clerkStub.jsx', import.meta.url)) } }
+    : {},
   build: {
     rollupOptions: {
-      input: process.env.OMKREDS_DESKTOP
-        ? { fem: 'fem.html' }
+      input: DESKTOP
+        ? { fem: 'fem.html', main: 'index.html' }
         : { main: 'index.html', word: 'word.html' },
     },
   },

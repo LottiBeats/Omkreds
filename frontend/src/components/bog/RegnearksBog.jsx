@@ -21,6 +21,7 @@
  * kan bruges i formler (=w_kip_V4*2), i navnefeltet og i beregningsblokkene:
  * "=" i et talfelt eller [w_kip_V4] i Egen beregning (lib/koblinger.js).
  */
+import { gemFil as gemPaaComputer } from '../../lib/gemFil.js'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
@@ -72,14 +73,8 @@ function tilstandTekst(art) {
   return { a: 'x_A', b: 'x_B', ovenover: false }
 }
 
-/** Standard: hent filen i browseren. Skrivebordsprogrammet giver sin egen gem-dialog. */
-function hentFil(blob, navn) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url; a.download = navn
-  document.body.appendChild(a); a.click(); a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
+/** Standard: download i browseren, gem-dialog i skrivebordsprogrammet (lib/gemFil.js). */
+const hentFil = (blob, navn) => gemPaaComputer(blob, navn)
 
 export default function RegnearksBog({
   bog, onBog, startArk = null, startCelle = null, onLuk, visninger = () => [], koblinger = () => [],

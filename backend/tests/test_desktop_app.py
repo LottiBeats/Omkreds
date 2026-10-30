@@ -72,3 +72,35 @@ def test_underdokumenter_nummereres_forfra():
     ]
     tekster = [b["data"]["text"] for b in _number_headings(bl)]
     assert tekster == ["A2.1  Laster", "1  Grundlag", "2  Egenlast", "A2.2  Tag", "1  Spær"]
+
+
+def test_hele_omkreds_vaelges_med_app_flaget():
+    import desktop_app
+    assert desktop_app._hvilken_app(["--app", "omkreds", "--port", "1"]) == "omkreds"
+    assert desktop_app._hvilken_app(["--app=omkreds"]) == "omkreds"
+    assert desktop_app._hvilken_app(["--port", "1"]) == "fem"
+
+
+def test_datamappe_kan_flyttes(monkeypatch, tmp_path):
+    import desktop_app
+    monkeypatch.setenv("OMKREDS_DATA", str(tmp_path / "data"))
+    assert desktop_app.datamappe() == tmp_path / "data"
+    monkeypatch.delenv("OMKREDS_DATA")
+    assert desktop_app.datamappe().name == "Omkreds"
+
+
+def test_appens_adresser_giver_index_html(monkeypatch, tmp_path):
+    """/projects/ab12cd34/A2 er appens egen adresse: genindlæses den, skal
+    serveren svare med index.html -- men en manglende fil er stadig 404."""
+    import desktop_app
+    from fastapi.testclient import TestClient
+    (tmp_path / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
+    (tmp_path / "fem.html").write_text("fem", encoding="utf-8")
+    monkeypatch.setattr(desktop_app, "APP", "omkreds")
+    monkeypatch.setattr(desktop_app, "_dist_dir", lambda: tmp_path)
+    with TestClient(desktop_app.lav_app()) as c:
+        assert 'id="root"' in c.get("/").text
+        assert 'id="root"' in c.get("/projects/ab12cd34/A2").text
+        assert c.get("/fem.html").text == "fem"
+        assert c.get("/assets/mangler.js").status_code == 404
+        assert c.get("/api/health").json()["status"] == "ok"
