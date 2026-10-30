@@ -38,6 +38,7 @@ export function NameDialog({ title, label, initial = '', confirmLabel = 'Gem', o
 export default function DocHeader({
   docId, doc, sub, title, templates = [], clipboard,
   onApplyTemplate, onAddSubdoc, onRenameSubdoc, onDeleteSubdoc, onClearClipboard,
+  sideVisning, onSideVisning,
 }) {
   const st = sub === null ? documentStatus(doc) : null
   const revs = doc?.revisions ?? []
@@ -55,6 +56,16 @@ export default function DocHeader({
       </div>
 
       <div className="ed-dochead-actions">
+        {onSideVisning && (
+          <div className="ed-visning" role="group" aria-label="Visning">
+            <button type="button" aria-pressed={sideVisning} className={sideVisning ? 'on' : ''}
+              title="Sidevisning: dokumentet på A4-ark med sidehoved og sideskift, som i PDF'en"
+              onClick={() => onSideVisning(true)}>Side</button>
+            <button type="button" aria-pressed={!sideVisning} className={!sideVisning ? 'on' : ''}
+              title="Kladde: kun indholdet, uden sider"
+              onClick={() => onSideVisning(false)}>Kladde</button>
+          </div>
+        )}
         {clipboard && (
           <span className="ed-clip" title="Indsæt via + mellem blokkene">
             Kopieret: {clipboard.data?.title || clipboard.type}

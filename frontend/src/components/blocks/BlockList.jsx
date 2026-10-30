@@ -35,6 +35,7 @@ import { opdaterLinks, laesSti } from '../../lib/koblinger.js'
 // shown formatted by RichTextStatic, so nothing jumps when it arrives.
 const TextBlock = lazy(() => import('./TextBlock.jsx'))
 import RichTextStatic    from './RichTextStatic.jsx'
+import SidePapir from '../editor/SidePapir.jsx'
 const ImageBlock = lazy(() => import('./ImageBlock.jsx'))
 const PythonBlock = lazy(() => import('./PythonBlock.jsx'))
 const CustomCalcBlock = lazy(() => import('./CustomCalcBlock.jsx'))
@@ -562,6 +563,7 @@ function AddZone({ onAdd, templates = [], onAddTemplate, clipboard, onPaste }) {
       ref={ref}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => { if (!open) setHover(false) }}
+      className="bl-addzone"
       style={{ position: 'relative', height: 20, display: 'flex', alignItems: 'center' }}
     >
       {/* Rule */}
@@ -709,7 +711,9 @@ function AddZone({ onAdd, templates = [], onAddTemplate, clipboard, onPaste }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock, project, focusRequest, elementer = false, onAfsnitHjaelp }) {
+// papir: { metadata, docId, afsnit, revision } viser dokumentet på et A4-ark som
+// i PDF'en (components/editor/SidePapir.jsx); null = det hvide kort.
+export default function BlockList({ blocks, onChange, templates = [], onManageTemplates, onOpenTemplateEditor, clipboard, onCopyBlock, project, focusRequest, elementer = false, onAfsnitHjaelp, papir = null }) {
   const confirm = useConfirm()
   // Regnearksbogens navngivne celler: "=" i et talfelt kobler feltet til en
   // (lib/koblinger.js). Koblingen gemmes ved næste ændring af blokken.
@@ -1136,7 +1140,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
       </aside>
 
-      <div style={s.col}>
+      <div style={papir ? s.colPapir : s.col}>
       {elementer && (
         <ElementPanel
           blocks={blocks}
@@ -1147,7 +1151,8 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
       )}
 
       {/* ── Document page ── */}
-      <div ref={pageRef} style={s.page} onClick={() => setSelectedId(null)}>
+      <Papir papir={papir}>
+      <div ref={pageRef} style={papir ? s.pageInd : s.page} onClick={() => setSelectedId(null)}>
 
         {blocks.length === 0 && (
           <div style={s.empty}>
@@ -1190,10 +1195,17 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
         ))}
 
       </div>
+      </Papir>
       </div>
     </div>
     </KoblingKontekst.Provider>
   )
+}
+
+/** Sidevisningens A4-ark om dokumentet, eller ingenting. */
+function Papir({ papir, children }) {
+  if (!papir) return children
+  return <SidePapir {...papir}>{children}</SidePapir>
 }
 
 // ── One block + the add-zone below it ─────────────────────────────────────────
@@ -1259,7 +1271,7 @@ const BlockRow = React.memo(function BlockRow({
         </div>
 
         {/* Content */}
-        <div style={s.blockBody}>
+        <div className="bl-body" style={s.blockBody}>
           {isInlineEditable ? (
             /* Text + heading: always render editor inline as the document content */
             <div onClick={e => e.stopPropagation()}>
@@ -1393,6 +1405,15 @@ const s = {
     flex:       1,
     minWidth:   0,
     maxWidth:   760,
+  },
+  // Sidevisning: arket er bredere end kortet, og sidetallene står i margenen til højre.
+  colPapir: {
+    flex:       1,
+    minWidth:   0,
+    paddingRight: 56,
+  },
+  pageInd: {
+    minHeight:  '100%',
   },
   page: {
     background: 'var(--surface)',
