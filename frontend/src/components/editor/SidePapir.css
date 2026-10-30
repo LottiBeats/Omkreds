@@ -1,0 +1,78 @@
+/* Sidevisning: A4 i PDF'ens mål (backend/holst_layout.py). Se SidePapir.jsx. */
+.sp-papir {
+  position: relative;
+  width: 210mm;
+  min-height: 297mm;
+  box-sizing: border-box;
+  padding: 8mm 10mm 14mm;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(28, 25, 23, .12), 0 8px 24px rgba(28, 25, 23, .08);
+  color: #111;
+}
+.sp-mmlineal { position: absolute; width: 100mm; height: 0; visibility: hidden; }
+
+/* ── Sidehoved ─────────────────────────────────────────────────────────── */
+.sp-hoved {
+  display: grid;
+  grid-template-columns: 35mm 1fr;
+  height: 22mm;
+  border: .4pt solid #000;
+  font-family: var(--font-sans);
+  user-select: none;
+}
+.sp-logo { display: grid; place-items: center; border-right: .4pt solid #000; padding: 2mm; overflow: hidden; }
+.sp-logo img { max-width: 100%; max-height: 18mm; object-fit: contain; }
+.sp-logo span { font-size: 7pt; font-weight: 600; text-align: center; }
+.sp-info { display: grid; grid-template-rows: 7mm 7mm 8mm; }
+.sp-raekke { display: flex; border-bottom: .4pt solid #000; min-width: 0; }
+.sp-raekke:last-child { border-bottom: 0; }
+.sp-felt { position: relative; flex: 1; min-width: 0; border-left: .4pt solid #000; display: flex; align-items: flex-end; justify-content: center; padding: 0 1.5mm .8mm; }
+.sp-raekke .sp-felt:first-child { border-left: 0; }
+.sp-sag { flex: 1; }
+.sp-smal { flex: 0 0 28mm; }
+.sp-seks .sp-felt { flex: 1 1 0; }
+.sp-lbl { position: absolute; left: 1.2mm; top: .5mm; font-size: 5.5pt; color: #000; }
+.sp-val { font-size: 7.5pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sp-sag .sp-val { font-size: 8pt; }
+.sp-seks .sp-val { font-size: 6.5pt; }
+
+/* ── Tekstboksen ───────────────────────────────────────────────────────── */
+.sp-boks { margin-top: 3mm; border: .5pt solid #000; padding: 4mm; min-height: calc(297mm - 8mm - 22mm - 3mm - 14mm); box-sizing: border-box; }
+.sp-indhold { position: relative; }
+
+/* Hvor PDF'en skifter side. Linjen ligger over indholdet og fanger ikke klik. */
+.sp-skift { position: absolute; left: -4mm; right: -4mm; height: 0; border-top: 1px dashed #b8b2ad; pointer-events: none; z-index: 2; }
+.sp-skift span {
+  position: absolute; right: -4mm; top: 0; transform: translate(100%, -50%);
+  padding: 1px 6px; margin-left: 6px; font: 600 10px var(--font-mono); color: var(--muted, #78716c);
+  background: var(--bg, #f5f5f4); border-radius: 3px; white-space: nowrap;
+}
+
+/* ── Sidefod ───────────────────────────────────────────────────────────── */
+.sp-fod {
+  position: absolute; left: 10mm; right: 10mm; bottom: 4mm;
+  border-top: .3pt solid #000; padding-top: 1.2mm;
+  font: 6.5pt var(--font-sans); color: #333; text-align: center; min-height: 3mm;
+}
+
+@media print { .sp-skift { display: none; } }
+
+/* ── PDF'ens typografi på arket (backend/calc_core.py make_styles) ──────────
+   Brødtekst 9 pt / 13 pt, overskrift 1 11 pt / 15 pt, underoverskrifter 8 pt
+   halvfed. Blokkenes egen luft er strammet til, så sideskiftene passer. */
+.sp-indhold .bl-addzone { height: 7px !important; }
+.sp-indhold .bl-body { padding: 1pt 0 !important; }
+.sp-indhold .rt { font-size: 9pt; line-height: 13pt; min-height: 13pt; color: #1c1917; }
+.sp-indhold .rt > * + *:not([data-join]) { margin-top: 13pt; }
+.sp-indhold .rt-empty { font-size: 9pt; }
+.sp-indhold .hdb-1 .hdb-row { font-size: 11pt; line-height: 15pt; font-weight: 600; padding: 6pt 0 2pt; border-bottom: .6pt solid #1c1917; }
+.sp-indhold .hdb-2 .hdb-row,
+.sp-indhold .hdb-3 .hdb-row {
+  font-size: 8pt; line-height: 12pt; font-weight: 600; padding: 5pt 0 1pt;
+  color: #6b6b6b; text-transform: uppercase; border-bottom: .4pt solid #d6d3d1;
+}
+.sp-indhold .hdb-2 .hdb-row input,
+.sp-indhold .hdb-3 .hdb-row input { color: inherit; text-transform: inherit; }
+.sp-indhold .hdb-no { color: inherit; }
+.sp-indhold .rt ul, .sp-indhold .rt ol { padding-left: 1.1em; }

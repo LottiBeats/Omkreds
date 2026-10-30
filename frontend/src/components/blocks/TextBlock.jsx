@@ -2,9 +2,11 @@
  * TextBlock.jsx — the Word-like text block.
  *
  * Type straight into the page. Enter starts a new paragraph, Shift+Enter a
- * line break. A small toolbar appears while you write:
+ * line break. Formatting comes from the ribbon above the document
+ * (components/editor/Baand.jsx), which works on the text the cursor is in --
+ * the block reports itself there (lib/aktivTekst.js). Shortcuts as in Word:
  *
- *   B  Fed (Ctrl+B)    I  Kursiv (Ctrl+I)    •  Punktliste    1.  Nummereret liste
+ *   Ctrl+B fed    Ctrl+I kursiv    Ctrl+U understreget
  *
  * Typing "• " or "- " at the start of a line starts a bullet list, "1. " a
  * numbered one. Pasting from Word keeps bold, italic and lists.
@@ -17,13 +19,14 @@
  * it as before.
  */
 import React, { useEffect, useRef, useState } from 'react'
-import { useEditor, EditorContent, Extension } from '@tiptap/react'
+import { useEditor, EditorContent, Extension, Mark } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { parseText, serializeDoc } from '../../lib/richText.js'
 import { compressImage } from './ImageBlock.jsx'
 import { findPlaceholders } from '../../lib/placeholders.js'
+import { saetAktiv, slipAktiv, glemAktiv, aabnSkraa } from '../../lib/aktivTekst.js'
 import './TextBlock.css'
 
 // joinPrev/indent keep the plain-text round trip exact (see richText.js).
@@ -84,6 +87,19 @@ const Placeholders = Extension.create({
   },
 })
 
+/** Understreget (Ctrl+U), gemt som ++tekst++ (lib/richText.js). */
+const Understreget = Mark.create({
+  name: 'underline',
+  parseHTML: () => [{ tag: 'u' }, { style: 'text-decoration=underline' }],
+  renderHTML: () => ['u', 0],
+  addCommands() {
+    return { toggleUnderline: () => ({ commands }) => commands.toggleMark(this.name) }
+  },
+  addKeyboardShortcuts() {
+    return { 'Mod-u': () => this.editor.commands.toggleUnderline() }
+  },
+})
+
 /** Tab / Shift+Tab indent and outdent list items, as in Word. */
 const ListKeys = Extension.create({
   name: 'listKeys',
@@ -95,20 +111,6 @@ const ListKeys = Extension.create({
     }
   },
 })
-
-function ToolButton({ on, label, title, onRun, children }) {
-  return (
-    <button
-      type="button"
-      className={'rt-tool' + (on ? ' is-on' : '')}
-      title={title}
-      aria-label={label}
-      aria-pressed={on}
-      // mousedown, not click: keep the editor's selection and focus
-      onMouseDown={e => { e.preventDefault(); onRun() }}
-    >{children}</button>
-  )
-}
 
 function imageFile(dt) {
   for (const f of dt?.files ?? []) if (f.type.startsWith('image/')) return f
@@ -139,12 +141,23 @@ export default function TextBlock({ block, onChange, onInsertImage, onCursor }) 
       LineLayout,
       Placeholders,
       ListKeys,
+      Understreget,
     ],
     content: parseText(text),
     editorProps: {
       attributes: { class: 'rt', 'aria-label': 'Tekst', spellcheck: 'true', lang: 'da' },
       // Et billede sat ind eller trukket ind i teksten deler afsnittet ved
       // markøren, og billedet kommer ind imellem -- som i Word.
+      // "/" i et tomt afsnit: indsæt en beregning, tabel, billede ... her.
+      // Midt i en tekst er "/" bare en skråstreg (m/s, kN/m²).
+      handleTextInput: (view, from, to, txt) => {
+        const $f = view.state.selection.$from
+        if (txt !== '/' || !view.state.selection.empty || $f.depth !== 1 || $f.parent.content.size > 0) return false
+        const c = view.coordsAtPos(from)
+        aabnSkraa({ x: c.left, y: c.bottom, blockId: blockRef.current.id,
+                    skrivSkraa: () => editorRef.current?.chain().focus().insertContent('/').run() })
+        return true
+      },
       handlePaste: (view, event) => {
         const f = imageFile(event.clipboardData)
         if (!f || !props.current.onInsertImage) return false
@@ -166,16 +179,40 @@ export default function TextBlock({ block, onChange, onInsertImage, onCursor }) 
       const b = blockRef.current
       onChange({ ...b, data: { ...b.data, text: next } })
     },
-    onSelectionUpdate: () => rerender(n => n + 1),   // keep the toolbar's on/off state current
-    onFocus: () => setFocused(true),
+    onSelectionUpdate: () => { rerender(n => n + 1); meldAktiv(true) },   // båndets til/fra-knapper
+    onTransaction: ({ editor: ed }) => { if (ed.isFocused) meldAktiv(true) },
+    onFocus: () => { setFocused(true); meldAktiv(true) },
     onBlur: ({ editor: ed }) => {
       setFocused(false)
+      slipAktiv(blockRef.current.id)
       // Remember where the cursor was, so "Billede" in the palette can put
       // the picture right here instead of at the end of the document.
       const pos = ed.state.selection.from
       props.current.onCursor?.(() => splitAt(ed, pos))
     },
   })
+
+  // Båndet (lib/aktivTekst.js): editoren, og hvordan blokken deles om det
+  // afsnit, markøren står i, når det bliver til en overskrift.
+  function meldAktiv(fokus) {
+    const ed = editorRef.current; if (!ed) return
+    saetAktiv({
+      blockId: blockRef.current.id, type: 'text', editor: ed, fokus,
+      afsnitOmMarkoer: () => afsnitOmMarkoer(ed),
+      delVedMarkoer: () => splitAt(ed, ed.state.selection.from),
+      vaelgBillede: props.current.onInsertImage
+        ? () => { pickPos.current = ed.state.selection.from; fileRef.current?.click() } : null,
+    })
+  }
+  useEffect(() => () => glemAktiv(blockRef.current.id), [])
+
+  // [tekst før, afsnittet selv (uden formatering), tekst efter]
+  function afsnitOmMarkoer(ed) {
+    const json = ed.getJSON().content ?? []
+    const k = Math.min(ed.state.selection.$from.index(0), Math.max(0, json.length - 1))
+    const ser = (arr) => serializeDoc({ type: 'doc', content: arr }).trim()
+    return [ser(json.slice(0, k)), ed.state.doc.child(k)?.textContent ?? '', ser(json.slice(k + 1))]
+  }
 
   function splitAt(ed, pos) {
     const doc = ed.state.doc
@@ -206,29 +243,6 @@ export default function TextBlock({ block, onChange, onInsertImage, onCursor }) 
 
   return (
     <div className={'rt-wrap' + (focused ? ' is-focused' : '')}>
-      {editor && focused && (
-        <div className="rt-toolbar" role="toolbar" aria-label="Tekstformatering">
-          <ToolButton on={editor.isActive('bold')} label="Fed" title="Fed (Ctrl+B)"
-                      onRun={() => editor.chain().focus().toggleBold().run()}><b>B</b></ToolButton>
-          <ToolButton on={editor.isActive('italic')} label="Kursiv" title="Kursiv (Ctrl+I)"
-                      onRun={() => editor.chain().focus().toggleItalic().run()}><i>I</i></ToolButton>
-          <span className="rt-sep" />
-          <ToolButton on={editor.isActive('bulletList')} label="Punktliste" title="Punktliste (skriv '- ' i starten af en linje)"
-                      onRun={() => editor.chain().focus().toggleBulletList().run()}>•</ToolButton>
-          <ToolButton on={editor.isActive('orderedList')} label="Nummereret liste" title="Nummereret liste (skriv '1. ' i starten af en linje)"
-                      onRun={() => editor.chain().focus().toggleOrderedList().run()}>1.</ToolButton>
-          {onInsertImage && <>
-            <span className="rt-sep" />
-            <ToolButton label="Indsæt billede" title="Indsæt billede her, ved markøren (eller Ctrl+V et skærmklip)"
-                        onRun={() => { pickPos.current = editor.state.selection.from; fileRef.current?.click() }}>
-              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-                <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" /><circle cx="5.5" cy="6.5" r="1.2" /><path d="m2.5 12 3.5-3.5 2.5 2.5 2-2 3 3" />
-              </svg>
-            </ToolButton>
-          </>}
-          <span className="rt-hint">Enter: nyt afsnit · Shift+Enter: linjeskift · Ctrl+V: billede</span>
-        </div>
-      )}
       {empty && !focused && <div className="rt-empty">Skriv tekst her…</div>}
       <EditorContent editor={editor} />
       <input ref={fileRef} type="file" accept="image/*" hidden

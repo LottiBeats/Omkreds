@@ -59,6 +59,10 @@ import '../components/editor/editor.css'
 import { gemFil } from '../lib/gemFil.js'
 
 const LAST_KEY = (id) => `omkreds.sidst.${id}`
+const SIDEVISNING_KEY = 'omkreds.sidevisning'
+function laesSidevisning() {
+  try { return localStorage.getItem(SIDEVISNING_KEY) !== 'kladde' } catch { return true }
+}
 
 /** Parse the part of the URL after /projects/:id into a location. */
 function parseLocation(splat) {
@@ -323,6 +327,12 @@ export default function EditorPage() {
   const [busy, setBusy] = useState({ export: false, issue: false })
   const [exportCheck, setExportCheck] = useState(null)   // { what, run, problems }
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null)
+  // Sidevisning (A4 som i PDF'en) eller kladde; huskes på computeren.
+  const [sideVisning, setSideVisningState] = useState(laesSidevisning)
+  const setSideVisning = (v) => {
+    setSideVisningState(v)
+    try { localStorage.setItem(SIDEVISNING_KEY, v ? 'side' : 'kladde') } catch {}
+  }
   const [issueOpen, setIssueOpen] = useState(false)
 
   /** Run an export, but show the stale/unrun calculations by name first. */
@@ -681,6 +691,8 @@ export default function EditorPage() {
                   kind: 'rename-subdoc', docId, idx, initial: project.documents[docId]?.subdocs?.[idx]?.name ?? '',
                 })}
                 onDeleteSubdoc={deleteSubdoc}
+                sideVisning={sideVisning}
+                onSideVisning={setSideVisning}
               />
               <BogKontekst.Provider value={bogKontekst}>
               <BlockList
@@ -696,6 +708,12 @@ export default function EditorPage() {
                 focusRequest={focusRequest}
                 elementer={activeDoc === 'A2'}
                 onAfsnitHjaelp={(id) => setHjaelp({ id, loc: locKey })}
+                papir={sideVisning ? {
+                  metadata: project.metadata ?? {},
+                  docId: loc.sub !== null ? `${activeDoc}.${loc.sub + 1}` : activeDoc,
+                  afsnit: subName ?? currentDoc?.title ?? DOC_TITLES[activeDoc] ?? '',
+                  revision: (currentDoc?.revisions ?? []).at(-1) ?? {},
+                } : null}
               />
               </BogKontekst.Provider>
               {hjaelpAfsnit && (

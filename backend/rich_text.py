@@ -8,6 +8,7 @@ document, template and API caller keeps working:
     **fed**        bold
     *kursiv*       italic
     ***begge***    bold italic
+    ++understreg++ underline (uden om de andre: ++**fed og understreget**++)
     • punkt        bullet line      (already how the templates write lists)
     1. punkt       numbered line
 
@@ -32,6 +33,25 @@ _INLINE = re.compile(
 )
 
 
+# Understregning ligger uden om fed og kursiv. "C++ og x++" er ikke
+# understregning: efter de første ++ skal der stå et tegn, ikke et mellemrum.
+_UNDERLINE = re.compile(r"\+\+(?=\S)(?P<u>[^\n]+?)(?<=\S)\+\+")
+
+
+def runs(text: str) -> list[tuple[str, bool, bool, bool]]:
+    """Split text into (segment, bold, italic, underline) runs."""
+    out: list[tuple[str, bool, bool, bool]] = []
+    pos = 0
+    for m in _UNDERLINE.finditer(text):
+        if m.start() > pos:
+            out += [(seg, b, i, False) for seg, b, i in split_runs(text[pos:m.start()])]
+        out += [(seg, b, i, True) for seg, b, i in split_runs(m.group("u"))]
+        pos = m.end()
+    if pos < len(text):
+        out += [(seg, b, i, False) for seg, b, i in split_runs(text[pos:])]
+    return out
+
+
 def split_runs(text: str) -> list[tuple[str, bool, bool]]:
     """Split text into (segment, bold, italic) runs."""
     runs: list[tuple[str, bool, bool]] = []
@@ -52,7 +72,7 @@ def split_runs(text: str) -> list[tuple[str, bool, bool]]:
 
 
 def has_markup(text: str) -> bool:
-    return bool(_INLINE.search(text or ""))
+    return bool(_INLINE.search(text or "") or _UNDERLINE.search(text or ""))
 
 
 def to_reportlab(text: str) -> str:
@@ -65,23 +85,24 @@ def to_reportlab(text: str) -> str:
     if not has_markup(text):
         return text
     out = []
-    for seg, bold, italic in split_runs(text):
+    for seg, bold, italic, under in runs(text):
         if bold and italic:
-            out.append(f"<b><i>{seg}</i></b>")
+            seg = f"<b><i>{seg}</i></b>"
         elif bold:
-            out.append(f"<b>{seg}</b>")
+            seg = f"<b>{seg}</b>"
         elif italic:
-            out.append(f"<i>{seg}</i>")
-        else:
-            out.append(seg)
+            seg = f"<i>{seg}</i>"
+        out.append(f"<u>{seg}</u>" if under else seg)
     return "".join(out)
 
 
 def add_docx_runs(paragraph, text: str) -> None:
-    """Append text to a python-docx paragraph as bold/italic runs."""
-    for seg, bold, italic in split_runs(text):
+    """Append text to a python-docx paragraph as bold/italic/underlined runs."""
+    for seg, bold, italic, under in runs(text):
         run = paragraph.add_run(seg)
         if bold:
             run.bold = True
         if italic:
             run.italic = True
+        if under:
+            run.underline = True
