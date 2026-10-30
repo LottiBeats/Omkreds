@@ -36,6 +36,8 @@ import { opdaterLinks, laesSti } from '../../lib/koblinger.js'
 const TextBlock = lazy(() => import('./TextBlock.jsx'))
 import RichTextStatic    from './RichTextStatic.jsx'
 import SidePapir from '../editor/SidePapir.jsx'
+import Baand from '../editor/Baand.jsx'
+import FindErstat from '../editor/FindErstat.jsx'
 const ImageBlock = lazy(() => import('./ImageBlock.jsx'))
 const PythonBlock = lazy(() => import('./PythonBlock.jsx'))
 const CustomCalcBlock = lazy(() => import('./CustomCalcBlock.jsx'))
@@ -277,6 +279,25 @@ const BLOCK_TYPES = [
   { type: 'control_plan', label: 'Kontrolplan (DS 1140)', icon: 'KP', color: '#1e3a5f', component: ControlPlanBlock,
     default: { title: 'Kontrolplan', mode: 'plan', items: [] } },
 ]
+
+// Paletten til venstre kan skjules fra båndet; valget huskes i browseren.
+const PALET_KEY = 'omkreds.palet'
+function laesPalet() { try { return localStorage.getItem(PALET_KEY) !== '0' } catch { return true } }
+function gemPalet(v) { try { localStorage.setItem(PALET_KEY, v ? '1' : '0') } catch { /* privat vindue */ } }
+const ZOOM_KEY = 'omkreds.zoom'
+function laesZoom() { try { const z = Number(localStorage.getItem(ZOOM_KEY)); return z >= 50 && z <= 200 ? z : 100 } catch { return 100 } }
+function gemZoom(z) { try { localStorage.setItem(ZOOM_KEY, String(z)) } catch { /* privat vindue */ } }
+
+// Ord i dokumentets tekst og overskrifter, uden formateringstegnene.
+function ordTal(blocks) {
+  let n = 0
+  for (const b of blocks ?? []) {
+    if (b.type !== 'text' && b.type !== 'heading') continue
+    const t = String(b.data?.text ?? '').replace(/\*\*|\+\+|[*•]|^\s*\d+\.\s/gm, ' ')
+    n += (t.match(/[\p{L}\p{N}][\p{L}\p{N}'’.,/-]*/gu) || []).length
+  }
+  return n
+}
 
 const TYPE_MAP = Object.fromEntries(BLOCK_TYPES.map(t => [t.type, t]))
 
@@ -790,6 +811,23 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   const udgListeRef = useRef(udgListe)
   udgListeRef.current = udgListe
   const h = useRef({}).current
+  const [visPalet, setVisPalet] = useState(laesPalet)
+  const [zoom, setZoom] = useState(laesZoom)
+  const [find, setFind] = useState(null)          // null | { erstat, n }
+  const ord = useMemo(() => ordTal(blocks), [blocks])
+
+  // Ctrl+F finder, Ctrl+H erstatter -- som i Word.
+  useEffect(() => {
+    const paaTast = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      const k = e.key.toLowerCase()
+      if (k !== 'f' && k !== 'h') return
+      e.preventDefault()
+      setFind(f => ({ erstat: k === 'h' || !!f?.erstat, n: (f?.n ?? 0) + 1 }))
+    }
+    window.addEventListener('keydown', paaTast)
+    return () => window.removeEventListener('keydown', paaTast)
+  }, [])
 
   const reveal = (id) => setMinimised(prev => { const s = new Set(prev); s.delete(id); return s })
 
@@ -889,18 +927,87 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
   // bliver i blokken, billedet kommer lige efter, og resten af teksten får
   // sin egen blok bagefter. Uden billede (fra paletten) står der et tomt
   // billedfelt, klar til at få et.
-  h.insertImageInText = (id, before, after, img) => {
+  h.insertImageInText = (id, before, after, img) =>
+    h.indsaetITekst(id, before, after, { id: Date.now(), type: 'image', data: { ...TYPE_MAP.image.default, ...(img || {}) } })
+
+  // Det samme for alt, der sættes ind ved markøren i en tekst: billede,
+  // tabel, beregning fra båndet eller "/"-menuen.
+  h.indsaetITekst = (id, before, after, nb) => {
+    const cur = blocksRef.current
+    const i = cur.findIndex(x => x.id === id)
+    if (i < 0) return
+    const out = []
+    if (before) out.push({ ...cur[i], data: { ...cur[i].data, text: before } })
+    out.push(nb)
+    if (after) out.push({ id: nb.id + 1, type: 'text', data: { ...TYPE_MAP.text.default, text: after } })
+    const n = [...cur]; n.splice(i, 1, ...out); onChange(n)
+    setSelectedId(nb.id); reveal(nb.id)
+    if (nb.type !== 'image') gaaTil(nb.id)
+  }
+
+  // En ny blok af en type -- eller en gemt beregning -- som paletten laver den.
+  h.nyBlok = (type, template) => {
+    if (template) return { id: Date.now(), type: 'saved_calc', data: { title: template.name, template_id: template.id, params: {}, _result: null } }
+    const def = TYPE_MAP[type]; if (!def) return null
+    const nb = { id: Date.now(), type, data: { ...def.default } }
+    if (type === 'element') nb.data.nr = naesteNr(blocksRef.current, nb.data.art)
+    return nb
+  }
+
+  // Båndets Indsæt og "/"-menuen: ved markøren, hvis den står i en tekst,
+  // ellers efter den blok, den sidst stod i, eller nederst.
+  h.indsaet = (aktiv, type, template) => {
+    const nb = h.nyBlok(type, template); if (!nb) return
+    if (aktiv?.type === 'text' && aktiv.delVedMarkoer && blocksRef.current.some(b => b.id === aktiv.blockId)) {
+      const [before, after] = aktiv.delVedMarkoer()
+      return h.indsaetITekst(aktiv.blockId, before, after, nb)
+    }
+    const idx = blocksRef.current.findIndex(b => b.id === aktiv?.blockId)
+    h.insertAt(idx >= 0 ? idx + 1 : blocksRef.current.length, nb)
+    gaaTil(nb.id)
+  }
+
+  // Båndets typografi (components/editor/Baand.jsx). Et afsnit i en tekst
+  // bliver til en overskrift: teksten før bliver i blokken, overskriften
+  // kommer efter, og resten af teksten får sin egen blok -- som i Word, hvor
+  // det er afsnittet og ikke hele teksten, der skifter typografi.
+  h.tekstTilOverskrift = (id, before, overskrift, after, level) => {
     const cur = blocksRef.current
     const i = cur.findIndex(x => x.id === id)
     if (i < 0) return
     const t = Date.now()
-    const image = { id: t, type: 'image', data: { ...TYPE_MAP.image.default, ...(img || {}) } }
+    const head = { id: before ? t : cur[i].id, type: 'heading', data: { ...TYPE_MAP.heading.default, level, text: overskrift } }
     const out = []
     if (before) out.push({ ...cur[i], data: { ...cur[i].data, text: before } })
-    out.push(image)
+    out.push(head)
     if (after) out.push({ id: t + 1, type: 'text', data: { ...TYPE_MAP.text.default, text: after } })
     const n = [...cur]; n.splice(i, 1, ...out); onChange(n)
-    setSelectedId(image.id); reveal(image.id)
+    setSelectedId(head.id)
+    fokusPaa(head.id, 'input')
+  }
+
+  h.overskriftTilTekst = (id) => {
+    const cur = blocksRef.current
+    const i = cur.findIndex(x => x.id === id)
+    if (i < 0 || cur[i].type !== 'heading') return
+    const nb = { id: cur[i].id, type: 'text', data: { ...TYPE_MAP.text.default, text: cur[i].data?.text ?? '' } }
+    const n = [...cur]; n[i] = nb; onChange(n)
+    setSelectedId(nb.id)
+    fokusPaa(nb.id, '[contenteditable="true"]')
+  }
+
+  h.saetNiveau = (id, level) => {
+    const b = blocksRef.current.find(x => x.id === id)
+    if (b?.type === 'heading') h.updateBlock(id, { ...b, data: { ...b.data, level } })
+  }
+
+  function fokusPaa(id, sel) {
+    let tries = 0
+    const f = () => {
+      const el = pageRef.current?.querySelector(`[data-block-id="${id}"] ${sel}`)
+      if (el) el.focus(); else if (tries++ < 60) setTimeout(f, 50)
+    }
+    setTimeout(f, 0)
   }
 
   h.duplicateBlock = (id) => {
@@ -1072,7 +1179,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
     <div style={s.outer}>
 
       {/* ── Left block-type panel ── */}
-      <aside style={s.panel} aria-label="Tilføj blok">
+      {visPalet && <aside style={s.panel} aria-label="Tilføj blok">
         {PANEL_GROUPS.map((group, gi) => (
           <div key={group.label}>
             <div style={{ ...s.panelSection, borderTop: gi === 0 ? 'none' : '1px solid var(--line)' }}>
@@ -1138,9 +1245,18 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
           )}
         </div>
 
-      </aside>
+      </aside>}
 
       <div style={papir ? s.colPapir : s.col}>
+      <Baand h={h} grupper={PANEL_GROUPS} typer={TYPE_MAP} templates={templates} onManageTemplates={onManageTemplates}
+             visPalet={visPalet} onPalet={() => setVisPalet(v => { gemPalet(!v); return !v })}
+             zoom={zoom} onZoom={z => { const v = Math.max(50, Math.min(200, z)); setZoom(v); gemZoom(v) }}
+             ord={ord} onFind={() => setFind(f => ({ erstat: false, n: (f?.n ?? 0) + 1 }))}>
+        {find && (
+          <FindErstat erstat={find.erstat} aabnet={find.n} blocks={blocks} onChange={onChange}
+                      gaaTil={gaaTil} pageRef={pageRef} onLuk={() => setFind(null)} />
+        )}
+      </Baand>
       {elementer && (
         <ElementPanel
           blocks={blocks}
@@ -1151,6 +1267,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
       )}
 
       {/* ── Document page ── */}
+      <div style={zoom !== 100 ? { zoom: zoom / 100 } : undefined}>
       <Papir papir={papir}>
       <div ref={pageRef} style={papir ? s.pageInd : s.page} onClick={() => setSelectedId(null)}>
 
@@ -1196,6 +1313,7 @@ export default function BlockList({ blocks, onChange, templates = [], onManageTe
 
       </div>
       </Papir>
+      </div>
       </div>
     </div>
     </KoblingKontekst.Provider>

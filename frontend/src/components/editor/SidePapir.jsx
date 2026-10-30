@@ -35,17 +35,15 @@ export default function SidePapir({ metadata = {}, docId, afsnit, revision = {},
   const indhold = useRef(null)
   const mmRef = useRef(null)
   const [sider, setSider] = useState(1)
-  const [mmPx, setMmPx] = useState(96 / 25.4)
 
-  // Hvor mange sider fylder indholdet? Måles i rigtige mm, så en zoom i
-  // browseren ikke flytter sideskiftene.
+  // Hvor mange sider fylder indholdet? Måles mod en lineal på 100 mm i samme
+  // koordinater, så zoom (båndets eller browserens) ikke flytter sideskiftene.
   useEffect(() => {
     const el = indhold.current
     if (!el) return
     const maal = () => {
       const px = mmRef.current?.getBoundingClientRect().width / 100 || 96 / 25.4
-      setMmPx(px)
-      setSider(Math.max(1, Math.ceil(el.scrollHeight / (INDHOLD_MM * px) - 0.02)))
+      setSider(Math.max(1, Math.ceil(el.getBoundingClientRect().height / (INDHOLD_MM * px) - 0.02)))
     }
     maal()
     const ro = new ResizeObserver(maal)
@@ -88,7 +86,7 @@ export default function SidePapir({ metadata = {}, docId, afsnit, revision = {},
         <div ref={indhold} className="sp-indhold">
           {children}
           {Array.from({ length: sider - 1 }, (_, i) => (
-            <div key={i} className="sp-skift" style={{ top: (i + 1) * INDHOLD_MM * mmPx }} aria-hidden="true">
+            <div key={i} className="sp-skift" style={{ top: `${(i + 1) * INDHOLD_MM}mm` }} aria-hidden="true">
               <span>Side {i + 2}</span>
             </div>
           ))}

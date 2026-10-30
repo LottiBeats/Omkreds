@@ -31,3 +31,19 @@ def test_docx_runs():
     runs = [(r.text, bool(r.bold), bool(r.italic)) for r in p.runs]
     assert runs == [("Bemærk: ", False, False), ("vigtigt", True, False),
                     (" og ", False, False), ("kursivt", False, True)]
+
+
+def test_understregning():
+    from rich_text import to_reportlab, runs
+    assert to_reportlab("a ++b++ c") == "a <u>b</u> c"
+    assert to_reportlab("++**fed**++ og *k*") == "<u><b>fed</b></u> og <i>k</i>"
+    assert to_reportlab("C++ og x++ er ikke understreget") == "C++ og x++ er ikke understreget"
+    assert runs("++a++ b") == [("a", False, False, True), (" b", False, False, False)]
+
+
+def test_understregning_i_word():
+    from docx import Document
+    from rich_text import add_docx_runs
+    p = Document().add_paragraph()
+    add_docx_runs(p, "x ++u++ **f**")
+    assert [(r.text, bool(r.underline), bool(r.bold)) for r in p.runs] == [("x ", False, False), ("u", True, False), (" ", False, False), ("f", False, True)]

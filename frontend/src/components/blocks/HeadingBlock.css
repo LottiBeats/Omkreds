@@ -1,19 +1,5 @@
 /* HeadingBlock.css — overskrift med Word-typografier */
 .hdb { display: grid; gap: 6px; }
-.hdb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.hdb-grp { display: inline-flex; border: 1px solid var(--line-2, #d6d3d1); border-radius: 6px; overflow: hidden; background: var(--surface, #fff); }
-.hdb-sty {
-  border: 0; background: none; padding: 3px 11px; cursor: pointer; color: var(--ink-2, #44403c);
-  font-family: var(--font-sans, inherit); line-height: 1.3;
-}
-.hdb-sty + .hdb-sty { border-left: 1px solid var(--line-2, #d6d3d1); }
-.hdb-sty-1 { font-size: 13.5px; font-weight: 700; }
-.hdb-sty-2 { font-size: 12.5px; font-weight: 700; }
-.hdb-sty-3 { font-size: 12px; font-weight: 600; }
-.hdb-sty:hover { color: var(--brand-ink, #b23a1f); }
-.hdb-sty.on { background: var(--brand-wash, #fbece8); color: var(--brand-ink, #b23a1f); }
-.hdb-hint { font-size: 11.5px; color: var(--faint, #a8a29e); }
-
 .hdb-row { display: flex; align-items: baseline; gap: 0.6em; }
 .hdb-no { color: var(--muted, #78716c); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hdb-row input {

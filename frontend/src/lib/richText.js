@@ -6,6 +6,7 @@
  * editor shows it formatted:
  *
  *   **fed**  *kursiv*  ***begge***         inline marks
+ *   ++understreget++  ++**også fed**++     understregning (uden om de andre)
  *   • punkt                                 bullet list line (the templates' own convention)
  *   1. punkt                                numbered list line
  *   blank line                              new paragraph
@@ -30,26 +31,53 @@ function textNode(text, marks) {
   return marks.length ? { type: 'text', text, marks: marks.map(type => ({ type })) } : { type: 'text', text }
 }
 
+// Understregning ligger uden om fed og kursiv: ++**fed og understreget**++.
+const UNDERLINE = /\+\+(?=\S)([^\n]+?)(?<=\S)\+\+/g
+
 /** One line of text → inline nodes. */
 function parseInline(line) {
   const out = []
   let pos = 0
-  for (const m of line.matchAll(INLINE)) {
-    if (m.index > pos) out.push(textNode(line.slice(pos, m.index), []))
-    if (m[1] !== undefined)      out.push(textNode(m[1], ['bold', 'italic']))
-    else if (m[2] !== undefined) out.push(textNode(m[2], ['bold']))
-    else                         out.push(textNode(m[3], ['italic']))
+  for (const m of line.matchAll(UNDERLINE)) {
+    if (m.index > pos) out.push(...parseMarks(line.slice(pos, m.index), []))
+    out.push(...parseMarks(m[1], ['underline']))
     pos = m.index + m[0].length
   }
-  if (pos < line.length) out.push(textNode(line.slice(pos), []))
+  if (pos < line.length) out.push(...parseMarks(line.slice(pos), []))
+  return out
+}
+
+function parseMarks(line, extra) {
+  const out = []
+  let pos = 0
+  for (const m of line.matchAll(INLINE)) {
+    if (m.index > pos) out.push(textNode(line.slice(pos, m.index), extra))
+    if (m[1] !== undefined)      out.push(textNode(m[1], ['bold', 'italic', ...extra]))
+    else if (m[2] !== undefined) out.push(textNode(m[2], ['bold', ...extra]))
+    else                         out.push(textNode(m[3], ['italic', ...extra]))
+    pos = m.index + m[0].length
+  }
+  if (pos < line.length) out.push(textNode(line.slice(pos), extra))
   return out
 }
 
 function serializeInline(nodes = []) {
   let s = ''
-  for (const n of nodes) {
+  for (let j = 0; j < nodes.length; j++) {
+    const n = nodes[j]
     if (n.type === 'hardBreak') { s += '\n'; continue }
     if (n.type !== 'text') continue
+    // Understreget over flere runs (fx med et kursivt ord i): ét ++…++ om
+    // dem alle, så mellemrummene imellem også står understreget.
+    if (harMark(n, 'underline')) {
+      let k = j
+      while (k + 1 < nodes.length && nodes[k + 1].type === 'text' && harMark(nodes[k + 1], 'underline')) k++
+      const inde = nodes.slice(j, k + 1).map(x => ({ ...x, marks: x.marks.filter(m => m.type !== 'underline') }))
+      const [, lead, core, trail] = /^(\s*)([\s\S]*?)(\s*)$/.exec(serializeInline(inde))
+      s += core ? `${lead}++${core}++${trail}` : lead + trail
+      j = k
+      continue
+    }
     const marks = new Set((n.marks ?? []).map(m => m.type))
     const b = marks.has('bold'), i = marks.has('italic')
     if (!b && !i) { s += n.text; continue }
@@ -61,6 +89,8 @@ function serializeInline(nodes = []) {
   }
   return s
 }
+
+const harMark = (n, type) => (n.marks ?? []).some(m => m.type === type)
 
 // ── Blocks ────────────────────────────────────────────────────────────────────
 
