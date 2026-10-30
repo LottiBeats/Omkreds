@@ -1,10 +1,14 @@
-name: Omkreds FEM til Windows
+name: Omkreds og Omkreds FEM til Windows
 
-# Bygger skrivebordsprogrammet (desktop/) til en Windows-installation (.exe).
-# Påvirker ikke omkreds.dk — deploy.yml kører kun på master.
+# Bygger skrivebordsprogrammerne (desktop/) til Windows-installationer (.exe):
+#   Omkreds FEM   rammeberegning med modeller som filer (fem.html)
+#   Omkreds       hele programmet lokalt: projekter, dokumenter, PDF og Word
+#                 (index.html; desktop/src-tauri/tauri.omkreds.conf.json)
+# Begge bruger den samme pakkede backend. Påvirker ikke omkreds.dk — deploy.yml
+# kører kun på master.
 #
-# Installationsfilen ligger bagefter under "Artifacts" på kørslen i
-# Actions-fanen. Et tag som fem-v0.1.0 laver desuden en GitHub-release med den.
+# Installationsfilerne ligger bagefter under "Artifacts" på kørslen i
+# Actions-fanen. Et tag som fem-v0.1.0 laver desuden en GitHub-release med dem.
 on:
   workflow_dispatch:
   push:
@@ -15,6 +19,7 @@ on:
       - 'backend/**'
       - 'frontend/src/**'
       - 'frontend/fem.html'
+      - 'frontend/index.html'
       - 'frontend/vite.config.js'
       - '.github/workflows/desktop-windows.yml'
 
@@ -47,7 +52,7 @@ jobs:
         with:
           workspaces: desktop/src-tauri
 
-      - name: Frontend (fem.html)
+      - name: Frontend (fem.html og index.html)
         working-directory: frontend
         env:
           OMKREDS_DESKTOP: '1'
@@ -89,20 +94,71 @@ jobs:
           if ((Get-Item smoke.pdf).Length -lt 1000) { throw 'PDF for lille' }
           Stop-Process -Id $p.Id
 
-      - name: Skrivebordsprogrammet (Tauri)
+      # Hele Omkreds: et projekt skal kunne oprettes, gemmes og ligge i
+      # databasen i datamappen, og PDF, Word og Excel skal kunne laves.
+      - name: Røgtest af Omkreds (hele programmet)
+        shell: pwsh
+        run: |
+          $env:OMKREDS_DATA = "$env:RUNNER_TEMP\omkreds-data"
+          $p = Start-Process -FilePath desktop/build-py/dist/omkreds-backend/omkreds-backend.exe `
+                 -ArgumentList '--app','omkreds','--port','8767','--no-browser' -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 90; $i++) {
+            try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8767/ | Out-Null; $ok = $true; break }
+            catch { Start-Sleep -Seconds 1 }
+          }
+          if (-not $ok) { Get-Content "$env:TEMP\omkreds.log" -ErrorAction SilentlyContinue; throw 'Omkreds startede ikke' }
+          $side = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8767/projects/abc/A2
+          if ($side.Content -notmatch '<div id="root">') { throw 'Appens adresser giver ikke index.html' }
+          $B = 'http://127.0.0.1:8767/api'
+          $proj = Invoke-RestMethod -Method Post "$B/projects?name=R%C3%B8gtest&ref=T-1"
+          $proj.documents.A2.blocks = @(@{ id = 1; type = 'heading'; data = @{ level = 1; text = 'Røgtest' } },
+                                        @{ id = 2; type = 'text'; data = @{ text = 'Lokal PDF og Word.' } })
+          Invoke-RestMethod -Method Put -ContentType 'application/json; charset=utf-8' `
+            -Body ([Text.Encoding]::UTF8.GetBytes(($proj | ConvertTo-Json -Depth 30))) "$B/projects/$($proj.id)" | Out-Null
+          $liste = Invoke-RestMethod "$B/projects"
+          if (@($liste).Count -ne 1) { throw "Forventede 1 projekt, fik $(@($liste).Count)" }
+          if (-not (Test-Path "$env:OMKREDS_DATA\projects.db")) { throw 'Databasen ligger ikke i datamappen' }
+          Invoke-WebRequest -UseBasicParsing -Method Post -OutFile a2.pdf "$B/projects/$($proj.id)/pdf/A2"
+          Invoke-WebRequest -UseBasicParsing -Method Post -OutFile a2.docx "$B/projects/$($proj.id)/word/A2"
+          $bog = @{ ark = @(@{ navn = 'Ark1'; celler = @(@('L', '4,5'), @('M', '=B1*2')) }); navne = @{} } | ConvertTo-Json -Depth 6
+          Invoke-WebRequest -UseBasicParsing -Method Post -ContentType 'application/json' -Body $bog -OutFile bog.xlsx "$B/regneark/xlsx"
+          foreach ($f in 'a2.pdf','a2.docx','bog.xlsx') {
+            if ((Get-Item $f).Length -lt 1000) { throw "$f for lille" }
+          }
+          Stop-Process -Id $p.Id
+
+      # De to programmer er den samme skal bygget med hver sin konfiguration.
+      # Installationsfilerne flyttes ud efter hver bygning, så den næste ikke
+      # blander sig med den forrige.
+      - name: Skrivebordsprogrammerne (Tauri)
         working-directory: desktop
+        shell: pwsh
         run: |
           npm install
+          New-Item -ItemType Directory -Force -Path ../installation/fem, ../installation/omkreds | Out-Null
           npx tauri build
+          if ($LASTEXITCODE -ne 0) { throw 'Omkreds FEM kunne ikke bygges' }
+          Move-Item src-tauri/target/release/bundle/nsis/*.exe ../installation/fem/
+          npx tauri build --config src-tauri/tauri.omkreds.conf.json
+          if ($LASTEXITCODE -ne 0) { throw 'Omkreds kunne ikke bygges' }
+          Move-Item src-tauri/target/release/bundle/nsis/*.exe ../installation/omkreds/
+          Get-ChildItem ../installation -Recurse -Filter *.exe | ForEach-Object { Write-Host $_.FullName }
 
       - uses: actions/upload-artifact@v4
         with:
           name: Omkreds-FEM-Windows
-          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          path: installation/fem/*.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Omkreds-Windows
+          path: installation/omkreds/*.exe
           if-no-files-found: error
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/fem-v')
         uses: softprops/action-gh-release@v2
         with:
-          files: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          files: installation/*/*.exe

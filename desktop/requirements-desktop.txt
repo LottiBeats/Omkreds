@@ -16,3 +16,4 @@ forallpeople
 reportlab
 python-docx
 pyinstaller
+openpyxl

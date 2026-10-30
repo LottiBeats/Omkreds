@@ -56,6 +56,7 @@ import ProjectTypeModal from '../components/ProjectTypeModal.jsx'
 const TemplateEditorModal = lazy(() => import('../components/TemplateEditorModal.jsx'))
 const RegnearksBog = lazy(() => import('../components/bog/RegnearksBog.jsx'))
 import '../components/editor/editor.css'
+import { gemFil } from '../lib/gemFil.js'
 
 const LAST_KEY = (id) => `omkreds.sidst.${id}`
 
@@ -70,14 +71,8 @@ function parseLocation(splat) {
   return { resolved: true, info: false, doc: first, sub }
 }
 
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
+// Download i browseren, gem-dialog i skrivebordsprogrammet (lib/gemFil.js).
+const downloadBlob = (blob, filename) => gemFil(blob, filename)
 
 function isTextTarget(el) {
   if (!el) return false
