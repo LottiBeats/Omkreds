@@ -35,6 +35,7 @@ import { expandLoads, loadSpan, isPartial, flipElements, memberChain } from './f
 import { resultStates, sampleElement, envelopeSamples, isUls, SITUATION_LABEL } from './femDiagrams.js'
 import { reaktionsRaekker, reaktionsEkstremer, reaktionerSomTsv } from './femReaktioner.js'
 import './fem.css'
+import { STEEL_SECTIONS } from '../../lib/staalprofiler.js'
 
 // ── Vocabulary ────────────────────────────────────────────────────────────────
 
@@ -68,10 +69,6 @@ const MATERIALS = [
 const steelOptions = (cur) => [
   ...(cur && !STEEL_SECTIONS.includes(cur) ? [<option key="_ukendt" value={cur}>{cur} (ukendt profil)</option>] : []),
   ...STEEL_SECTIONS.map(s => <option key={s}>{s}</option>),
-]
-const STEEL_SECTIONS = [
-  'IPE160', 'IPE180', 'IPE200', 'IPE220', 'IPE240', 'IPE270', 'IPE300', 'IPE330', 'IPE360', 'IPE400', 'IPE450', 'IPE500',
-  'HEA160', 'HEA180', 'HEA200', 'HEA220', 'HEA240', 'HEA260', 'HEA300', 'HEB160', 'HEB200', 'HEB240', 'HEB300',
 ]
 
 /** Result states grouped by design situation, ULS first, keeping their index. */

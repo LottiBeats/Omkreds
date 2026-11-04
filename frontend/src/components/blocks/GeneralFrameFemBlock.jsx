@@ -27,6 +27,7 @@ import ModelSketch from './ModelSketch.jsx'
 import FemWorkspace from '../fem/FemWorkspace.jsx'
 import { createPortal } from 'react-dom'
 import { isStaleResult, hashCalcInputs } from '../../lib/calcState.js'
+import { STEEL_SECTIONS } from '../../lib/staalprofiler.js'
 
 /**
  * Handlingskategorierne. Kategorien bærer ψ og lastvarigheden — derfor står
@@ -107,9 +108,12 @@ const MATERIALS = [
 // CHECK_TYPE_FOR_MATERIAL in backend/section_resolver.py.
 const CHECK_TYPE_FOR_MATERIAL = { steel: 'steel_beam', timber: 'timber_beam' }
 
-const STEEL_SECTIONS = [
-  'IPE200', 'IPE240', 'IPE270', 'IPE300', 'IPE360', 'IPE400', 'IPE450', 'IPE500',
-  'HEA200', 'HEA300', 'HEB200', 'HEB300',
+
+// Et profil, der ikke er på listen, vises som sig selv (markeret) i stedet
+// for at <select> stille viser det første.
+const steelOptions = (cur) => [
+  ...(cur && !STEEL_SECTIONS.includes(cur) ? [<option key="_ukendt" value={cur}>{cur} (ukendt profil)</option>] : []),
+  ...STEEL_SECTIONS.map(x => <option key={x}>{x}</option>),
 ]
 
 // ── Tiny helpers ──────────────────────────────────────────────────────────────
@@ -548,7 +552,7 @@ function MemberRow({ member, check, onSection, onRemove }) {
               {material === 'steel' ? (
                 <select style={{ ...s.smallInput, width: 96 }} value={first.section ?? ''}
                   onChange={e => onSection({ section: e.target.value })}>
-                  {STEEL_SECTIONS.map(x => <option key={x}>{x}</option>)}
+                  {steelOptions(first.section)}
                 </select>
               ) : (
                 <input style={{ ...s.smallInput, width: 88 }} value={first.section ?? ''}
@@ -654,7 +658,7 @@ function ElemRow({ elem, onChange, onRemove, nodeIds = [] }) {
               {material === 'steel' ? (
                 <select style={{ ...s.smallInput, width: 96 }} value={elem.section}
                   onChange={e => onChange({ ...elem, section: e.target.value })}>
-                  {STEEL_SECTIONS.map(x => <option key={x}>{x}</option>)}
+                  {steelOptions(elem.section)}
                 </select>
               ) : (
                 <input style={{ ...s.smallInput, width: 96 }} value={elem.section}
