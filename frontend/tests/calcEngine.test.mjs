@@ -104,7 +104,7 @@ test('enheder: stivhed, tierpotenser, høje potenser, promille og °C', () => {
 
 test('flere enheder under brøkstregen står i parentes', () => {
   assert.deepEqual(run(['u = 2 kN/m/m', 'λ = 0,13 W/(m·K)', 'U = 0,2 W/m²K']),
-    ['= 2 kN/(m·m)', '= 0,13 W/(m·K)', '= 0,2 W/(m²·K)'])
+    ['= 2 kN/m²', '= 0,13 W/(m·K)', '= 0,2 W/(m²·K)'])
 })
 
 test('tyngdeacceleration: g som værdi og 9,81 m/s² efter en variabel', () => {
@@ -114,4 +114,15 @@ test('tyngdeacceleration: g som værdi og 9,81 m/s² efter en variabel', () => {
   const r = evaluate(['m_1 = 1200 kg', 'F = m_1·9,81 m/s²', 'L_1 = 4 m', 'q = L_1·2,5 kN/m²'])
   assert.deepEqual(r.map(chip).map(([, t]) => t), ['= 1200 kg', '= 11,77 kN', '= 4 m', '= 10 kN/m'])
   assert.equal(r[1].formula, 'm_1·9,81 m/s²')
+})
+
+test('ens enheder slås sammen, halve potenser med rodtegn', () => {
+  const r = evaluate(['h = 400 mm', 'b = 400 mm', 'A = h*b', 'i = h/√12',
+                      'z = i/A', 'w = √(i/A)', 'q = √(A)', 'k = A^0.75', 'l = 3 m', 'lam = l/i'])
+  const vis = (n) => chip(r.find(x => x.name === n))[1]
+  assert.equal(vis('z'), '= 7,22·10⁻⁴ 1/mm')
+  assert.equal(vis('w'), '= 0,02686 1/√mm')
+  assert.equal(vis('q'), '= 400 mm')
+  assert.equal(vis('k'), '= 8000 mm·√mm')
+  assert.equal(vis('lam'), '= 25,98')
 })

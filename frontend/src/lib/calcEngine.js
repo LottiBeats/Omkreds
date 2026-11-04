@@ -113,6 +113,38 @@ export function unitLabel(s) {
     .replace(/\s+/g, '·')
 }
 
+// mathjs slår ikke ens enheder sammen: i/A står som "mm / (mm mm)" og
+// √(i/A) som "mm^0.5 / (mm^0.5 mm^0.5)". Her lægges potenserne sammen pr.
+// enhed (med samme præfiks, så tallet er det samme), og halve potenser
+// skrives med rodtegn: 1/√mm, mm·√mm.
+function potensTekst(navn, p) {
+  if (Number.isInteger(p)) return p === 1 ? navn : navn + hævet(p)
+  if (Number.isInteger(p * 2)) {
+    const hel = Math.floor(p)
+    return (hel ? (hel === 1 ? navn : navn + hævet(hel)) + '·' : '') + '√' + navn
+  }
+  return `${navn}^${Math.round(p * 1000) / 1000}`
+}
+
+function samletEnhed(v) {
+  const own = v.formatUnits()
+  if (!own || !v.units?.length) return null
+  const sum = new Map()
+  for (const { unit, prefix, power } of v.units) {
+    const navn = (prefix?.name ?? '') + unit.name
+    sum.set(navn, (sum.get(navn) ?? 0) + power)
+  }
+  const dele = [...sum].filter(([, p]) => Math.abs(p) > 1e-9)
+  const ens = dele.length === v.units.length && v.units.every(u => Number.isInteger(u.power))
+  if (ens) return null                                  // intet at slå sammen
+  const label = (arr) => arr.map(([n, p]) => potensTekst(n, Math.abs(p))).join('·')
+  const op = dele.filter(([, p]) => p > 0), ned = dele.filter(([, p]) => p < 0)
+  if (!op.length && !ned.length) return [v.toNumber(own), '']
+  const under = ned.length > 1 ? `(${label(ned)})` : label(ned)
+  const tekst = ned.length ? `${op.length ? label(op) : '1'}/${under}` : label(op)
+  return [v.toNumber(own), tekst.replace(/\bdegC\b/g, '°C').replace(/\bminute\b/g, 'min')]
+}
+
 function pick(u) {
   if (u.equalBase(math.unit('MPa'))) {
     return Math.abs(u.toNumber('MPa')) >= 0.05 ? ['MPa', 'MPa'] : ['kN / m^2', 'kN/m²']
@@ -147,12 +179,15 @@ export function fmtQty(v, out, keepOwn) {
   if (typeof v === 'boolean') return [v ? 'sand' : 'falsk', '']
   if (!isUnit(v)) return [String(v), '']
   if (out) return [fmtNum(v.toNumber(pre(out))), unitLabel(out.replace(/\bkNm\b/, 'kN m'))]
+  const samlet = samletEnhed(v)
   if (keepOwn) {
+    if (samlet) return [fmtNum(samlet[0]), samlet[1]]
     const own = v.formatUnits()
     if (own) return [fmtNum(v.toNumber(own)), unitLabel(own)]
   }
   const p = pick(v)
   if (p) return [fmtNum(v.toNumber(p[0])), p[1]]
+  if (samlet) return [fmtNum(samlet[0]), samlet[1]]
   const own = v.formatUnits()
   return [fmtNum(v.toNumber(own)), unitLabel(own)]
 }
